@@ -1,39 +1,47 @@
-**Welcome to your Base44 project** 
+## Projeto de Treinamentos com Supabase
 
-**About**
+Este app usa React + Vite com Supabase (Postgres) para dados, autenticação e
+armazenamento de arquivos.
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+### Requisitos
 
-This project contains everything you need to run your app locally.
+- Node.js LTS
+- Conta no Supabase
 
-**Edit the code in your local development environment**
+### Configuração local
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+1. Instale as dependências:
+   ```bash
+   npm install
+   ```
+2. Crie um arquivo `.env.local`:
+   ```bash
+   VITE_SUPABASE_URL=https://seu-projeto.supabase.co
+   VITE_SUPABASE_ANON_KEY=sua_chave_anon
+   VITE_SUPABASE_STORAGE_BUCKET=uploads
+   # Opcional: função de email no Supabase
+   VITE_SUPABASE_EMAIL_FUNCTION=send-email
+   # Opcional: webhook externo para envio de email
+   VITE_EMAIL_WEBHOOK_URL=
+   ```
+3. Rode o app:
+   ```bash
+   npm run dev
+   ```
 
-**Prerequisites:** 
+### Configuração do Supabase
 
-1. Clone the repository using the project's Git URL 
-2. Navigate to the project directory
-3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
+1. Crie um projeto no Supabase.
+2. Execute o script `supabase/schema.sql` no SQL Editor para criar as tabelas.
+3. Crie o bucket de armazenamento `uploads` e deixe como **public** (ou adapte
+   a lógica para URLs assinadas).
+4. Configure as políticas de RLS conforme sua necessidade. Para rotas públicas
+   (ex.: inscrições), habilite **SELECT/INSERT** nas tabelas necessárias.
 
-```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
+### Envio de email
 
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
-```
+O app chama a função `send-email` via Supabase Functions. Você pode:
+- Criar a função `send-email` no Supabase, **ou**
+- Informar um webhook em `VITE_EMAIL_WEBHOOK_URL`.
 
-Run the app: `npm run dev`
-
-**Publish your changes**
-
-Open [Base44.com](http://Base44.com) and click on Publish.
-
-**Docs & Support**
-
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
-
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+Se nenhuma opção estiver configurada, o envio de emails exibirá erro.
