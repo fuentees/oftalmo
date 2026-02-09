@@ -311,8 +311,16 @@ export default function PublicEnrollment() {
         <Card>
           <CardHeader className="bg-blue-600 text-white">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                <GraduationCap className="h-6 w-6" />
+              <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center overflow-hidden">
+                {training.logo_url ? (
+                  <img
+                    src={training.logo_url}
+                    alt="Logo do treinamento"
+                    className="h-12 w-12 object-contain"
+                  />
+                ) : (
+                  <GraduationCap className="h-6 w-6" />
+                )}
               </div>
               <div>
                 <CardTitle className="text-2xl">Inscrição em Treinamento</CardTitle>

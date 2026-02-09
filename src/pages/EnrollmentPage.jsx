@@ -38,7 +38,8 @@ import {
   Plus,
   Edit,
   Link2,
-  FileText
+  FileText,
+  Image as ImageIcon
 } from "lucide-react";
 import { format } from "date-fns";
 import PageHeader from "@/components/common/PageHeader";
@@ -62,6 +63,7 @@ export default function EnrollmentPage() {
   const [showInactiveFields, setShowInactiveFields] = useState(false);
   const [formErrors, setFormErrors] = useState({});
   const hasAutoSeededRef = React.useRef(false);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -513,6 +515,34 @@ export default function EnrollmentPage() {
     alert("Link de inscrição copiado!");
   };
 
+  const handleLogoUpload = async (file) => {
+    if (!file || !trainingId) return;
+    setLogoUploading(true);
+    try {
+      const { file_url } = await dataClient.integrations.Core.UploadFile({ file });
+      await dataClient.entities.Training.update(trainingId, { logo_url: file_url });
+      queryClient.invalidateQueries({ queryKey: ["training"] });
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      toast.success("Logo atualizado com sucesso.");
+    } catch (error) {
+      toast.error(error?.message || "Erro ao enviar logo.");
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!trainingId) return;
+    try {
+      await dataClient.entities.Training.update(trainingId, { logo_url: null });
+      queryClient.invalidateQueries({ queryKey: ["training"] });
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      toast.success("Logo removido com sucesso.");
+    } catch (error) {
+      toast.error(error?.message || "Erro ao remover logo.");
+    }
+  };
+
   const handleEditField = (field) => {
     setEditingField(field);
     setFieldFormData({
@@ -828,8 +858,16 @@ export default function EnrollmentPage() {
       <Card>
         <CardHeader className="bg-blue-600 text-white">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-              <GraduationCap className="h-6 w-6" />
+            <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center overflow-hidden">
+              {training.logo_url ? (
+                <img
+                  src={training.logo_url}
+                  alt="Logo do treinamento"
+                  className="h-12 w-12 object-contain"
+                />
+              ) : (
+                <GraduationCap className="h-6 w-6" />
+              )}
             </div>
             <div>
               <CardTitle className="text-2xl">{training.title}</CardTitle>
@@ -859,11 +897,44 @@ export default function EnrollmentPage() {
             </TabsList>
 
             <TabsContent value="mask" className="mt-6 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4 text-slate-500" />
+                    Logo do Treinamento
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {training.logo_url ? (
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={training.logo_url}
+                        alt="Logo do treinamento"
+                        className="h-20 w-20 rounded-lg object-contain border border-slate-200 bg-white"
+                      />
+                      <Button variant="outline" onClick={handleRemoveLogo}>
+                        Remover logo
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      Nenhuma logo cadastrada. Envie uma imagem para exibir no formulário público.
+                    </p>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleLogoUpload(e.target.files?.[0])}
+                      disabled={logoUploading}
+                    />
+                    <span className="text-xs text-slate-500">PNG/JPG até 2MB</span>
+                  </div>
+                </CardContent>
+              </Card>
+
               <div className="flex flex-wrap items-center gap-3">
-                <Button variant="outline" onClick={handleCopyEnrollmentLink}>
-                  <Link2 className="h-4 w-4 mr-2" />
-                  Copiar Link de Inscrição
-                </Button>
                 <Button variant="outline" onClick={handleAddDefaultFields}>
                   <Plus className="h-4 w-4 mr-2" />
                   {seedDefaults.isPending ? "Aplicando..." : "Aplicar Campos Padrão"}
@@ -910,6 +981,13 @@ export default function EnrollmentPage() {
             </TabsContent>
 
             <TabsContent value="form" className="mt-6 space-y-6">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="outline" onClick={handleCopyEnrollmentLink}>
+                  <Link2 className="h-4 w-4 mr-2" />
+                  Copiar Link de Inscrição
+                </Button>
+              </div>
+
               {(isFullyBooked || isCancelled) && (
                 <Alert className="border-red-200 bg-red-50 mb-6">
                   <AlertCircle className="h-4 w-4 text-red-600" />
