@@ -33,7 +33,7 @@ export default function TrainingHistory({ professional }) {
     
     const validityDate = new Date(participant.validity_date);
     const now = new Date();
-    const daysUntilExpiry = Math.floor((validityDate - now) / (1000 * 60 * 60 * 24));
+    const daysUntilExpiry = Math.floor((validityDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     
     if (daysUntilExpiry < 0) {
       return <Badge className="bg-red-100 text-red-700">Vencido</Badge>;

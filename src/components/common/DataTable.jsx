@@ -10,7 +10,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
-export default function DataTable({ columns, data, isLoading, onRowClick, emptyMessage = "Nenhum registro encontrado" }) {
+export default function DataTable({
+  columns,
+  data = [],
+  isLoading = false,
+  onRowClick,
+  emptyMessage = "Nenhum registro encontrado",
+}) {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
 
   const handleSort = (column) => {
