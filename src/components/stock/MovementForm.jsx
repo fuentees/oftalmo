@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   Select,
   SelectContent,
@@ -17,7 +18,13 @@ import {
 import { Loader2, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 import { format } from "date-fns";
 
-export default function MovementForm({ type, materials, preselectedMaterial = null, onClose }) {
+export default function MovementForm({
+  type,
+  materials,
+  preselectedMaterial = null,
+  onClose,
+  movement = null,
+}) {
   const [formData, setFormData] = useState({
     material_id: "",
     material_name: "",
@@ -35,8 +42,26 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const navigate = useNavigate();
 
   useEffect(() => {
+      if (movement) {
+      setFormData({
+        material_id: movement.material_id || "",
+        material_name: movement.material_name || "",
+        type: movement.type || "entrada",
+        quantity: Number(movement.quantity || 1),
+        date: movement.date
+          ? format(new Date(movement.date), "yyyy-MM-dd")
+          : format(new Date(), "yyyy-MM-dd"),
+        responsible: movement.responsible || "",
+        sector: movement.sector || "",
+        document_number: movement.document_number || "",
+        notes: movement.notes || "",
+      });
+        setMaterialSearch(movement.material_name || "");
+        return;
+    }
     if (preselectedMaterial) {
       setFormData((prev) => ({
         ...prev,
@@ -44,7 +69,12 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
         material_name: preselectedMaterial.name,
       }));
     }
-  }, [preselectedMaterial]);
+  }, [movement, preselectedMaterial]);
+
+  useEffect(() => {
+    if (movement) return;
+    setFormData((prev) => ({ ...prev, type }));
+  }, [type, movement]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -99,22 +129,46 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
     });
   }, [materials, materialSearch]);
 
-  const createMovement = useMutation({
+  const applyStockDelta = async (materialId, delta) => {
+    if (!materialId || !Number.isFinite(delta) || delta === 0) return;
+    const material = materials.find((item) => item.id === materialId);
+    if (!material) return;
+    const currentStock = material.current_stock || 0;
+    const newStock = currentStock + delta;
+    await dataClient.entities.Material.update(material.id, {
+      current_stock: Math.max(0, newStock),
+    });
+  };
+
+  const computeEffect = (movementData) => {
+    const quantity = Number(movementData.quantity || 0);
+    if (!Number.isFinite(quantity)) return 0;
+    return movementData.type === "entrada" ? quantity : -quantity;
+  };
+
+  const saveMovement = useMutation({
     mutationFn: async (/** @type {any} */ data) => {
-      // Create the movement
-      await dataClient.entities.StockMovement.create(data);
-      
-      // Update material stock
-      const material = materials.find((m) => m.id === data.material_id);
-      if (material) {
-        const currentStock = material.current_stock || 0;
-        const newStock = data.type === "entrada" 
-          ? currentStock + data.quantity 
-          : currentStock - data.quantity;
-        
-        await dataClient.entities.Material.update(material.id, {
-          current_stock: Math.max(0, newStock),
-        });
+      if (!movement) {
+        await dataClient.entities.StockMovement.create(data);
+        const effect = computeEffect(data);
+        await applyStockDelta(data.material_id, effect);
+        return;
+      }
+
+      await dataClient.entities.StockMovement.update(movement.id, data);
+      const previousEffect = computeEffect(movement);
+      const newEffect = computeEffect(data);
+
+      if (movement.material_id && movement.material_id === data.material_id) {
+        const delta = newEffect - previousEffect;
+        await applyStockDelta(movement.material_id, delta);
+      } else {
+        if (movement.material_id) {
+          await applyStockDelta(movement.material_id, -previousEffect);
+        }
+        if (data.material_id) {
+          await applyStockDelta(data.material_id, newEffect);
+        }
       }
     },
     onSuccess: () => {
@@ -126,7 +180,7 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    createMovement.mutate(formData);
+    saveMovement.mutate(formData);
   };
 
   const handleChange = (field, value) => {
@@ -146,14 +200,22 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className={`p-3 rounded-lg flex items-center gap-2 ${type === "entrada" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-        {type === "entrada" ? (
+      <div
+        className={`p-3 rounded-lg flex items-center gap-2 ${
+          formData.type === "entrada"
+            ? "bg-green-50 text-green-700"
+            : "bg-red-50 text-red-700"
+        }`}
+      >
+        {formData.type === "entrada" ? (
           <ArrowDownCircle className="h-5 w-5" />
         ) : (
           <ArrowUpCircle className="h-5 w-5" />
         )}
         <span className="font-medium">
-          {type === "entrada" ? "Entrada de Material" : "Saída de Material"}
+          {formData.type === "entrada"
+            ? "Entrada de Material"
+            : "Saída de Material"}
         </span>
       </div>
 
@@ -222,7 +284,7 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
         />
       </div>
 
-      {type === "saida" && (
+      {formData.type === "saida" && (
         <div className="space-y-3">
           <div className="space-y-2">
             <Label>Município (Destino)</Label>
@@ -310,11 +372,18 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
         </Button>
         <Button 
           type="submit" 
-          disabled={createMovement.isPending || !formData.material_id} 
-          className={type === "entrada" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}
+          disabled={saveMovement.isPending || !formData.material_id} 
+          className={
+            formData.type === "entrada"
+              ? "bg-green-600 hover:bg-green-700"
+              : "bg-red-600 hover:bg-red-700"
+          }
         >
-          {createMovement.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Registrar {type === "entrada" ? "Entrada" : "Saída"}
+          {saveMovement.isPending && (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          )}
+          {movement ? "Salvar Alterações" : "Registrar"}{" "}
+          {formData.type === "entrada" ? "Entrada" : "Saída"}
         </Button>
       </div>
     </form>

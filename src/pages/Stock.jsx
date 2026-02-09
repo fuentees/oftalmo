@@ -64,14 +64,19 @@ export default function Stock() {
   const [activeTab, setActiveTab] = useState("materials");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [movementTypeFilter, setMovementTypeFilter] = useState("all");
+  const [movementMaterialSearch, setMovementMaterialSearch] = useState("");
+  const [movementMunicipioSearch, setMovementMunicipioSearch] = useState("");
   
   const [showMaterialForm, setShowMaterialForm] = useState(false);
   const [showMovementForm, setShowMovementForm] = useState(false);
+  const [editingMovement, setEditingMovement] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showMovementDetails, setShowMovementDetails] = useState(false);
   const [selectedMaterial, setSelectedMaterial] = useState(null);
+  const [selectedMovement, setSelectedMovement] = useState(null);
   const [movementType, setMovementType] = useState("entrada");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleteMovementConfirm, setDeleteMovementConfirm] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [importTarget, setImportTarget] = useState("materials");
   const [importFile, setImportFile] = useState(null);
@@ -113,6 +118,38 @@ export default function Stock() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["materials"] });
       setDeleteConfirm(null);
+    },
+  });
+
+  const applyStockDelta = async (materialId, delta) => {
+    if (!materialId || !Number.isFinite(delta) || delta === 0) return;
+    const material = materials.find((item) => item.id === materialId);
+    if (!material) return;
+    const currentStock = material.current_stock || 0;
+    const newStock = currentStock + delta;
+    await dataClient.entities.Material.update(material.id, {
+      current_stock: Math.max(0, newStock),
+    });
+  };
+
+  const computeEffect = (movement) => {
+    const quantity = Number(movement.quantity || 0);
+    if (!Number.isFinite(quantity)) return 0;
+    return movement.type === "entrada" ? quantity : -quantity;
+  };
+
+  const deleteMovement = useMutation({
+    mutationFn: async (movement) => {
+      await dataClient.entities.StockMovement.delete(movement.id);
+      const effect = computeEffect(movement);
+      if (movement.material_id) {
+        await applyStockDelta(movement.material_id, -effect);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["movements"] });
+      queryClient.invalidateQueries({ queryKey: ["materials"] });
+      setDeleteMovementConfirm(null);
     },
   });
 
@@ -640,12 +677,16 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     return matchesSearch && matchesCategory;
   });
 
-  const filteredMovements = movements.filter((m) => {
-    const matchesSearch = m.material_name?.toLowerCase().includes(search.toLowerCase()) ||
-                          m.responsible?.toLowerCase().includes(search.toLowerCase()) ||
-                          m.sector?.toLowerCase().includes(search.toLowerCase());
-    const matchesType = movementTypeFilter === "all" || m.type === movementTypeFilter;
-    return matchesSearch && matchesType;
+  const filteredMovements = movements.filter((movement) => {
+    const materialQuery = movementMaterialSearch.trim().toLowerCase();
+    const municipioQuery = movementMunicipioSearch.trim().toLowerCase();
+    const materialName = movement.material_name?.toLowerCase() || "";
+    const municipioName = movement.sector?.toLowerCase() || "";
+    const matchesMaterial =
+      !materialQuery || materialName.includes(materialQuery);
+    const matchesMunicipio =
+      !municipioQuery || municipioName.includes(municipioQuery);
+    return matchesMaterial && matchesMunicipio;
   });
 
   const exportMovements = () => {
@@ -818,11 +859,54 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
       render: (row) => getGveByMunicipio(row.sector),
     },
     { header: "Documento", accessor: "document_number" },
+    {
+      header: "Ações",
+      cellClassName: "text-right",
+      render: (row) => (
+        <div className="flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedMovement(row);
+              setShowMovementDetails(true);
+            }}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingMovement(row);
+              setMovementType(row.type || "entrada");
+              setShowMovementForm(true);
+            }}
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-red-600"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeleteMovementConfirm(row);
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
   ];
 
   const handleNewMovement = (type) => {
     setMovementType(type);
     setSelectedMaterial(null);
+    setEditingMovement(null);
     setShowMovementForm(true);
   };
 
@@ -967,23 +1051,26 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
         <TabsContent value="movements">
           <div className="flex flex-col lg:flex-row gap-3 justify-between">
             <div className="flex-1">
-              <SearchFilter
-                searchValue={search}
-                onSearchChange={setSearch}
-                searchPlaceholder="Buscar por material ou responsável..."
-                filters={[
-                  {
-                    value: movementTypeFilter,
-                    onChange: setMovementTypeFilter,
-                    placeholder: "Tipo",
-                    allLabel: "Todos os tipos",
-                    options: [
-                      { value: "entrada", label: "Entrada" },
-                      { value: "saida", label: "Saída" },
-                    ],
-                  },
-                ]}
-              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="movement-material-search">Buscar material</Label>
+                  <Input
+                    id="movement-material-search"
+                    value={movementMaterialSearch}
+                    onChange={(e) => setMovementMaterialSearch(e.target.value)}
+                    placeholder="Digite o nome do material"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="movement-municipio-search">Buscar município</Label>
+                  <Input
+                    id="movement-municipio-search"
+                    value={movementMunicipioSearch}
+                    onChange={(e) => setMovementMunicipioSearch(e.target.value)}
+                    placeholder="Digite o município"
+                  />
+                </div>
+              </div>
             </div>
             <div className="flex gap-2">
               <Button
@@ -1153,14 +1240,73 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {movementType === "entrada" ? "Registrar Entrada" : "Registrar Saída"}
+              {editingMovement
+                ? "Editar Movimentação"
+                : movementType === "entrada"
+                ? "Registrar Entrada"
+                : "Registrar Saída"}
             </DialogTitle>
           </DialogHeader>
           <MovementForm
             type={movementType}
             materials={materials}
-            onClose={() => setShowMovementForm(false)}
+            movement={editingMovement}
+            onClose={() => {
+              setShowMovementForm(false);
+              setEditingMovement(null);
+            }}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Movement Details Dialog */}
+      <Dialog open={showMovementDetails} onOpenChange={setShowMovementDetails}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Detalhes da Movimentação</DialogTitle>
+          </DialogHeader>
+          {selectedMovement && (
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Data:</span>
+                <span>{formatDate(selectedMovement.date)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tipo:</span>
+                <span className="capitalize">{selectedMovement.type}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Material:</span>
+                <span>{selectedMovement.material_name || "-"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Quantidade:</span>
+                <span>{selectedMovement.quantity}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Responsável:</span>
+                <span>{selectedMovement.responsible || "-"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Município:</span>
+                <span>{selectedMovement.sector || "-"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">GVE:</span>
+                <span>{getGveByMunicipio(selectedMovement.sector)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Documento:</span>
+                <span>{selectedMovement.document_number || "-"}</span>
+              </div>
+              {selectedMovement.notes && (
+                <div className="space-y-1">
+                  <span className="text-slate-500">Observações:</span>
+                  <p className="text-slate-700">{selectedMovement.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1191,6 +1337,30 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteMaterial.mutate(deleteConfirm.id)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Movement Delete Confirmation */}
+      <AlertDialog
+        open={!!deleteMovementConfirm}
+        onOpenChange={() => setDeleteMovementConfirm(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir esta movimentação?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMovement.mutate(deleteMovementConfirm)}
               className="bg-red-600 hover:bg-red-700"
             >
               Excluir
