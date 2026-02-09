@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -12,11 +13,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Palette, Check, FileSpreadsheet, Trash2, Download, FileText } from "lucide-react";
+import {
+  Palette,
+  Check,
+  FileSpreadsheet,
+  Trash2,
+  Download,
+  FileText,
+  Eye,
+  Database,
+  Info,
+} from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import DataExport from "@/components/settings/DataExport";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import { format } from "date-fns";
 import {
   DEFAULT_CERTIFICATE_TEMPLATE,
   loadCertificateTemplate,
@@ -138,6 +150,54 @@ export default function Settings() {
       message: "Modelo padrão restaurado.",
     });
   };
+
+  const interpolateText = (text, data) =>
+    String(text || "").replace(/\{\{(\w+)\}\}/g, (_, key) =>
+      data[key] !== undefined && data[key] !== null ? String(data[key]) : ""
+    );
+
+  const previewData = {
+    nome: "Nome do Participante",
+    rg: "RG 00.000.000-0",
+    treinamento: "Treinamento de Exemplo",
+    carga_horaria: "8",
+    data: format(new Date(), "dd/MM/yyyy"),
+    entidade: certificateTemplate.entityName || "Entidade",
+    coordenador: "Coordenador(a) Responsável",
+    instrutor: "Instrutor(a) Responsável",
+  };
+
+  const resolveSignature = (signature) => {
+    if (!signature || signature.source === "none") return null;
+    if (signature.source === "custom") {
+      const name = signature.name?.trim();
+      const role = signature.role?.trim();
+      if (!name && !role) return null;
+      return { name, role };
+    }
+    if (signature.source === "coordinator") {
+      return {
+        name: previewData.coordenador,
+        role: signature.role || "Coordenador",
+      };
+    }
+    if (signature.source === "instructor") {
+      return {
+        name: previewData.instrutor,
+        role: signature.role || "Instrutor",
+      };
+    }
+    return null;
+  };
+
+  const previewHeaderLines = certificateTemplate.headerLines || [];
+  const previewTitle = certificateTemplate.title || "CERTIFICADO";
+  const previewBody = interpolateText(certificateTemplate.body || "", previewData);
+  const previewFooter = certificateTemplate.footer
+    ? interpolateText(certificateTemplate.footer, previewData)
+    : "";
+  const signature1 = resolveSignature(certificateTemplate.signature1);
+  const signature2 = resolveSignature(certificateTemplate.signature2);
 
   const normalizeHeader = (value) =>
     String(value ?? "")
@@ -287,335 +347,458 @@ export default function Settings() {
         subtitle="Personalize o sistema"
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Palette className="h-5 w-5 text-blue-600" />
-            Tema de Cores
-          </CardTitle>
-          <CardDescription>
-            Escolha a cor principal do sistema
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {colors.map((color) => (
-              <button
-                key={color.value}
-                onClick={() => handleColorChange(color.value)}
-                className={`relative p-4 rounded-lg border-2 transition-all hover:scale-105 ${
-                  selectedColor === color.value
-                    ? "border-slate-900 shadow-lg"
-                    : "border-slate-200 hover:border-slate-300"
-                }`}
-              >
-                <div
-                  className={`h-16 w-full rounded-md mb-2 bg-${color.value}-600`}
+      <Tabs defaultValue="tema" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 gap-2 lg:grid-cols-6">
+          <TabsTrigger value="tema" className="gap-2">
+            <Palette className="h-4 w-4" />
+            Tema
+          </TabsTrigger>
+          <TabsTrigger value="planilhas" className="gap-2">
+            <FileSpreadsheet className="h-4 w-4" />
+            Planilhas
+          </TabsTrigger>
+          <TabsTrigger value="certificados" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Certificados
+          </TabsTrigger>
+          <TabsTrigger value="preview" className="gap-2">
+            <Eye className="h-4 w-4" />
+            Visualização
+          </TabsTrigger>
+          <TabsTrigger value="exportacao" className="gap-2">
+            <Database className="h-4 w-4" />
+            Exportações
+          </TabsTrigger>
+          <TabsTrigger value="sobre" className="gap-2">
+            <Info className="h-4 w-4" />
+            Sobre
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="tema" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="h-5 w-5 text-blue-600" />
+                Tema de Cores
+              </CardTitle>
+              <CardDescription>
+                Escolha a cor principal do sistema
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {colors.map((color) => (
+                  <button
+                    key={color.value}
+                    onClick={() => handleColorChange(color.value)}
+                    className={`relative p-4 rounded-lg border-2 transition-all hover:scale-105 ${
+                      selectedColor === color.value
+                        ? "border-slate-900 shadow-lg"
+                        : "border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    <div
+                      className={`h-16 w-full rounded-md mb-2 bg-${color.value}-600`}
+                    />
+                    <p className="text-sm font-medium text-center">{color.name}</p>
+                    {selectedColor === color.value && (
+                      <div className="absolute top-2 right-2 h-6 w-6 rounded-full bg-white flex items-center justify-center">
+                        <Check className="h-4 w-4 text-green-600" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="planilhas" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5 text-green-600" />
+                Municípios x GVE (SP)
+              </CardTitle>
+              <CardDescription>
+                Faça upload da planilha para usar em estoque, treinamentos e viagens.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert>
+                <AlertDescription>
+                  Colunas aceitas: MUNICIPIO (ou CIDADE) e GVE / GVE_NOME.
+                </AlertDescription>
+              </Alert>
+              <div className="space-y-2">
+                <Label htmlFor="gve-upload">Importar planilha (CSV ou XLSX)</Label>
+                <Input
+                  id="gve-upload"
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={handleMappingFile}
                 />
-                <p className="text-sm font-medium text-center">{color.name}</p>
-                {selectedColor === color.value && (
-                  <div className="absolute top-2 right-2 h-6 w-6 rounded-full bg-white flex items-center justify-center">
-                    <Check className="h-4 w-4 text-green-600" />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleExportMapping}
+                  disabled={!gveMapping.length}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar planilha
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleClearMapping}
+                  disabled={!gveMapping.length}
+                  className="text-red-600"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Remover planilha
+                </Button>
+              </div>
+              <div className="text-sm text-slate-600">
+                {gveMapping.length > 0
+                  ? `${gveMapping.length} municípios carregados.`
+                  : "Nenhuma planilha carregada."}
+              </div>
+              {mappingStatus && (
+                <Alert
+                  className={
+                    mappingStatus.type === "error"
+                      ? "border-red-200 bg-red-50"
+                      : mappingStatus.type === "success"
+                      ? "border-green-200 bg-green-50"
+                      : "border-blue-200 bg-blue-50"
+                  }
+                >
+                  <AlertDescription
+                    className={
+                      mappingStatus.type === "error"
+                        ? "text-red-800"
+                        : mappingStatus.type === "success"
+                        ? "text-green-800"
+                        : "text-blue-800"
+                    }
+                  >
+                    {mappingStatus.message}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="certificados" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-blue-600" />
+                Modelo de Certificado
+              </CardTitle>
+              <CardDescription>
+                Configure textos, assinaturas e logos do certificado padrão.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert>
+                <AlertDescription>
+                  Variáveis disponíveis: {"{{nome}}"}, {"{{rg}}"}, {"{{treinamento}}"},
+                  {"{{carga_horaria}}"}, {"{{data}}"}, {"{{entidade}}"},
+                  {"{{coordenador}}"} e {"{{instrutor}}"}.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-2">
+                <Label>Texto do cabeçalho (uma linha por item)</Label>
+                <Textarea
+                  value={(certificateTemplate.headerLines || []).join("\n")}
+                  onChange={(e) => handleCertificateHeaderChange(e.target.value)}
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Título</Label>
+                  <Input
+                    value={certificateTemplate.title}
+                    onChange={(e) => handleCertificateChange("title", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Entidade</Label>
+                  <Input
+                    value={certificateTemplate.entityName}
+                    onChange={(e) => handleCertificateChange("entityName", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Texto do certificado</Label>
+                <Textarea
+                  value={certificateTemplate.body}
+                  onChange={(e) => handleCertificateChange("body", e.target.value)}
+                  rows={4}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Rodapé (cidade/data)</Label>
+                <Input
+                  value={certificateTemplate.footer}
+                  onChange={(e) => handleCertificateChange("footer", e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Assinatura 1</Label>
+                  <Select
+                    value={certificateTemplate.signature1.source}
+                    onValueChange={(value) =>
+                      handleSignatureChange("signature1", "source", value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="coordinator">Coordenador</SelectItem>
+                      <SelectItem value="instructor">Instrutor</SelectItem>
+                      <SelectItem value="custom">Outro (manual)</SelectItem>
+                      <SelectItem value="none">Sem assinatura</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {certificateTemplate.signature1.source === "custom" && (
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Nome"
+                        value={certificateTemplate.signature1.name}
+                        onChange={(e) =>
+                          handleSignatureChange("signature1", "name", e.target.value)
+                        }
+                      />
+                      <Input
+                        placeholder="Cargo"
+                        value={certificateTemplate.signature1.role}
+                        onChange={(e) =>
+                          handleSignatureChange("signature1", "role", e.target.value)
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Assinatura 2</Label>
+                  <Select
+                    value={certificateTemplate.signature2.source}
+                    onValueChange={(value) =>
+                      handleSignatureChange("signature2", "source", value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="coordinator">Coordenador</SelectItem>
+                      <SelectItem value="instructor">Instrutor</SelectItem>
+                      <SelectItem value="custom">Outro (manual)</SelectItem>
+                      <SelectItem value="none">Sem assinatura</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {certificateTemplate.signature2.source === "custom" && (
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Nome"
+                        value={certificateTemplate.signature2.name}
+                        onChange={(e) =>
+                          handleSignatureChange("signature2", "name", e.target.value)
+                        }
+                      />
+                      <Input
+                        placeholder="Cargo"
+                        value={certificateTemplate.signature2.role}
+                        onChange={(e) =>
+                          handleSignatureChange("signature2", "role", e.target.value)
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Logo principal</Label>
+                  <Input
+                    type="file"
+                    accept=".png,.jpg,.jpeg"
+                    onChange={(e) => handleLogoUpload("primary", e)}
+                  />
+                  {certificateTemplate.logos?.primary && (
+                    <img
+                      src={certificateTemplate.logos.primary}
+                      alt="Logo principal"
+                      className="h-16 object-contain border rounded-md p-2"
+                    />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Logo secundário</Label>
+                  <Input
+                    type="file"
+                    accept=".png,.jpg,.jpeg"
+                    onChange={(e) => handleLogoUpload("secondary", e)}
+                  />
+                  {certificateTemplate.logos?.secondary && (
+                    <img
+                      src={certificateTemplate.logos.secondary}
+                      alt="Logo secundário"
+                      className="h-16 object-contain border rounded-md p-2"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={handleSaveCertificate}>Salvar</Button>
+                <Button variant="outline" onClick={handleResetCertificate}>
+                  Restaurar padrão
+                </Button>
+              </div>
+
+              {certificateStatus && (
+                <Alert
+                  className={
+                    certificateStatus.type === "error"
+                      ? "border-red-200 bg-red-50"
+                      : "border-green-200 bg-green-50"
+                  }
+                >
+                  <AlertDescription
+                    className={
+                      certificateStatus.type === "error"
+                        ? "text-red-800"
+                        : "text-green-800"
+                    }
+                  >
+                    {certificateStatus.message}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="preview" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5 text-slate-700" />
+                Visualização do Certificado
+              </CardTitle>
+              <CardDescription>
+                Pré-visualize o modelo com dados de exemplo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-white border rounded-lg p-8 shadow-sm">
+                <div className="flex items-center justify-between gap-4">
+                  {certificateTemplate.logos?.primary ? (
+                    <img
+                      src={certificateTemplate.logos.primary}
+                      alt="Logo principal"
+                      className="h-16 object-contain"
+                    />
+                  ) : (
+                    <div className="h-16 w-28 rounded-md border border-dashed border-slate-300 flex items-center justify-center text-xs text-slate-400">
+                      Logo principal
+                    </div>
+                  )}
+                  {certificateTemplate.logos?.secondary ? (
+                    <img
+                      src={certificateTemplate.logos.secondary}
+                      alt="Logo secundário"
+                      className="h-16 object-contain"
+                    />
+                  ) : (
+                    <div className="h-16 w-28 rounded-md border border-dashed border-slate-300 flex items-center justify-center text-xs text-slate-400">
+                      Logo secundário
+                    </div>
+                  )}
+                </div>
+
+                {previewHeaderLines.length > 0 && (
+                  <div className="mt-6 space-y-1 text-center text-sm font-semibold text-slate-700">
+                    {previewHeaderLines.map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
                   </div>
                 )}
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="h-5 w-5 text-green-600" />
-            Municípios x GVE (SP)
-          </CardTitle>
-          <CardDescription>
-            Faça upload da planilha para usar em estoque, treinamentos e viagens.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert>
-            <AlertDescription>
-              Colunas aceitas: MUNICIPIO (ou CIDADE) e GVE / GVE_NOME.
-            </AlertDescription>
-          </Alert>
-          <div className="space-y-2">
-            <Label htmlFor="gve-upload">Importar planilha (CSV ou XLSX)</Label>
-            <Input
-              id="gve-upload"
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              onChange={handleMappingFile}
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleExportMapping}
-              disabled={!gveMapping.length}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Exportar planilha
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleClearMapping}
-              disabled={!gveMapping.length}
-              className="text-red-600"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Remover planilha
-            </Button>
-          </div>
-          <div className="text-sm text-slate-600">
-            {gveMapping.length > 0
-              ? `${gveMapping.length} municípios carregados.`
-              : "Nenhuma planilha carregada."}
-          </div>
-          {mappingStatus && (
-            <Alert
-              className={
-                mappingStatus.type === "error"
-                  ? "border-red-200 bg-red-50"
-                  : mappingStatus.type === "success"
-                  ? "border-green-200 bg-green-50"
-                  : "border-blue-200 bg-blue-50"
-              }
-            >
-              <AlertDescription
-                className={
-                  mappingStatus.type === "error"
-                    ? "text-red-800"
-                    : mappingStatus.type === "success"
-                    ? "text-green-800"
-                    : "text-blue-800"
-                }
-              >
-                {mappingStatus.message}
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
+                <h2 className="mt-8 text-2xl font-bold text-center text-slate-900">
+                  {previewTitle}
+                </h2>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-blue-600" />
-            Modelo de Certificado
-          </CardTitle>
-          <CardDescription>
-            Configure textos, assinaturas e logos do certificado padrão.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert>
-            <AlertDescription>
-              Variáveis disponíveis: {"{{nome}}"}, {"{{rg}}"}, {"{{treinamento}}"},
-              {"{{carga_horaria}}"}, {"{{data}}"}, {"{{entidade}}"},
-              {"{{coordenador}}"} e {"{{instrutor}}"}.
-            </AlertDescription>
-          </Alert>
+                <p className="mt-6 text-center text-slate-700 whitespace-pre-line">
+                  {previewBody}
+                </p>
 
-          <div className="space-y-2">
-            <Label>Texto do cabeçalho (uma linha por item)</Label>
-            <Textarea
-              value={(certificateTemplate.headerLines || []).join("\n")}
-              onChange={(e) => handleCertificateHeaderChange(e.target.value)}
-              rows={3}
-            />
-          </div>
+                {previewFooter && (
+                  <p className="mt-8 text-center text-slate-700">{previewFooter}</p>
+                )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Título</Label>
-              <Input
-                value={certificateTemplate.title}
-                onChange={(e) => handleCertificateChange("title", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Entidade</Label>
-              <Input
-                value={certificateTemplate.entityName}
-                onChange={(e) => handleCertificateChange("entityName", e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Texto do certificado</Label>
-            <Textarea
-              value={certificateTemplate.body}
-              onChange={(e) => handleCertificateChange("body", e.target.value)}
-              rows={4}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Rodapé (cidade/data)</Label>
-            <Input
-              value={certificateTemplate.footer}
-              onChange={(e) => handleCertificateChange("footer", e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Assinatura 1</Label>
-              <Select
-                value={certificateTemplate.signature1.source}
-                onValueChange={(value) =>
-                  handleSignatureChange("signature1", "source", value)
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="coordinator">Coordenador</SelectItem>
-                  <SelectItem value="instructor">Instrutor</SelectItem>
-                  <SelectItem value="custom">Outro (manual)</SelectItem>
-                  <SelectItem value="none">Sem assinatura</SelectItem>
-                </SelectContent>
-              </Select>
-              {certificateTemplate.signature1.source === "custom" && (
-                <div className="space-y-2">
-                  <Input
-                    placeholder="Nome"
-                    value={certificateTemplate.signature1.name}
-                    onChange={(e) =>
-                      handleSignatureChange("signature1", "name", e.target.value)
-                    }
-                  />
-                  <Input
-                    placeholder="Cargo"
-                    value={certificateTemplate.signature1.role}
-                    onChange={(e) =>
-                      handleSignatureChange("signature1", "role", e.target.value)
-                    }
-                  />
+                <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  {[signature1, signature2].map((signature, index) => (
+                    <div
+                      key={`signature-${index}`}
+                      className="text-center text-sm text-slate-700"
+                    >
+                      <div className="h-10 border-b border-slate-300" />
+                      {signature?.name && (
+                        <p className="mt-2 font-semibold">{signature.name}</p>
+                      )}
+                      {signature?.role && (
+                        <p className="text-xs text-slate-500">{signature.role}</p>
+                      )}
+                      {!signature && (
+                        <p className="mt-2 text-xs text-slate-400">
+                          Sem assinatura
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Assinatura 2</Label>
-              <Select
-                value={certificateTemplate.signature2.source}
-                onValueChange={(value) =>
-                  handleSignatureChange("signature2", "source", value)
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="coordinator">Coordenador</SelectItem>
-                  <SelectItem value="instructor">Instrutor</SelectItem>
-                  <SelectItem value="custom">Outro (manual)</SelectItem>
-                  <SelectItem value="none">Sem assinatura</SelectItem>
-                </SelectContent>
-              </Select>
-              {certificateTemplate.signature2.source === "custom" && (
-                <div className="space-y-2">
-                  <Input
-                    placeholder="Nome"
-                    value={certificateTemplate.signature2.name}
-                    onChange={(e) =>
-                      handleSignatureChange("signature2", "name", e.target.value)
-                    }
-                  />
-                  <Input
-                    placeholder="Cargo"
-                    value={certificateTemplate.signature2.role}
-                    onChange={(e) =>
-                      handleSignatureChange("signature2", "role", e.target.value)
-                    }
-                  />
-                </div>
-              )}
-            </div>
-          </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Logo principal</Label>
-              <Input
-                type="file"
-                accept=".png,.jpg,.jpeg"
-                onChange={(e) => handleLogoUpload("primary", e)}
-              />
-              {certificateTemplate.logos?.primary && (
-                <img
-                  src={certificateTemplate.logos.primary}
-                  alt="Logo principal"
-                  className="h-16 object-contain border rounded-md p-2"
-                />
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Logo secundário</Label>
-              <Input
-                type="file"
-                accept=".png,.jpg,.jpeg"
-                onChange={(e) => handleLogoUpload("secondary", e)}
-              />
-              {certificateTemplate.logos?.secondary && (
-                <img
-                  src={certificateTemplate.logos.secondary}
-                  alt="Logo secundário"
-                  className="h-16 object-contain border rounded-md p-2"
-                />
-              )}
-            </div>
-          </div>
+        <TabsContent value="exportacao" className="mt-6">
+          <DataExport />
+        </TabsContent>
 
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={handleSaveCertificate}>Salvar</Button>
-            <Button variant="outline" onClick={handleResetCertificate}>
-              Restaurar padrão
-            </Button>
-          </div>
-
-          {certificateStatus && (
-            <Alert
-              className={
-                certificateStatus.type === "error"
-                  ? "border-red-200 bg-red-50"
-                  : "border-green-200 bg-green-50"
-              }
-            >
-              <AlertDescription
-                className={
-                  certificateStatus.type === "error"
-                    ? "text-red-800"
-                    : "text-green-800"
-                }
-              >
-                {certificateStatus.message}
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
-
-      <DataExport />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Sobre o Sistema</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2 text-sm text-slate-600">
-            <p><strong>Sistema:</strong> Centro de Oftalmologia Sanitária</p>
-            <p><strong>Versão:</strong> 1.0</p>
-            <p><strong>Módulos:</strong> Treinamentos, Profissionais, Estoque, Agenda</p>
-          </div>
-        </CardContent>
-      </Card>
+        <TabsContent value="sobre" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Sobre o Sistema</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 text-sm text-slate-600">
+                <p><strong>Sistema:</strong> Centro de Oftalmologia Sanitária</p>
+                <p><strong>Versão:</strong> 1.0</p>
+                <p><strong>Módulos:</strong> Treinamentos, Profissionais, Estoque, Agenda</p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
