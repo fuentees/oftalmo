@@ -1244,24 +1244,22 @@ export default function EnrollmentPage() {
                       ))}
                     </datalist>
                   )}
-                  <Tabs defaultValue={sectionOrder[0]} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
-                      {sectionOrder.map((section) => (
-                        <TabsTrigger key={section} value={section}>
-                          {sectionLabels[section]}
-                          {fieldsBySection[section].length > 0 && (
-                            <span className="ml-2 text-xs text-slate-500">
-                              ({fieldsBySection[section].length})
-                            </span>
-                          )}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-
-                    {sectionOrder.map((section) => {
+                  <div className="space-y-8">
+                    {sectionOrder.map((section, index) => {
                       const sectionFields = fieldsBySection[section];
                       return (
-                        <TabsContent key={section} value={section} className="mt-6">
+                        <div key={section} className="space-y-4">
+                          {index > 0 && <div className="border-t border-slate-200" />}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-lg font-semibold text-slate-900">
+                              {sectionLabels[section]}
+                            </h3>
+                            {sectionFields.length > 0 && (
+                              <span className="text-xs text-slate-500">
+                                ({sectionFields.length})
+                              </span>
+                            )}
+                          </div>
                           {sectionFields.length === 0 ? (
                             <p className="text-sm text-slate-500">
                               Nenhum campo configurado para esta seção.
@@ -1330,10 +1328,10 @@ export default function EnrollmentPage() {
                               })}
                             </div>
                           )}
-                        </TabsContent>
+                        </div>
                       );
                     })}
-                  </Tabs>
+                  </div>
 
                   <div className="flex justify-end pt-4">
                     <Button
