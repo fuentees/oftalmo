@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useNavigate } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
 import {
   Select,
   SelectContent,
@@ -42,10 +41,9 @@ export default function MovementForm({
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const navigate = useNavigate();
 
   useEffect(() => {
-      if (movement) {
+    if (movement) {
       setFormData({
         material_id: movement.material_id || "",
         material_name: movement.material_name || "",
@@ -59,8 +57,8 @@ export default function MovementForm({
         document_number: movement.document_number || "",
         notes: movement.notes || "",
       });
-        setMaterialSearch(movement.material_name || "");
-        return;
+      setMaterialSearch(movement.material_name || "");
+      return;
     }
     if (preselectedMaterial) {
       setFormData((prev) => ({
