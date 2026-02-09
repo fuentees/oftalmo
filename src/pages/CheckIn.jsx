@@ -17,7 +17,7 @@ import {
 import { format } from "date-fns";
 
 export default function CheckIn() {
-  const [registration, setRegistration] = useState("");
+  const [rgPrefix, setRgPrefix] = useState("");
   const [submitted, setSubmitted] = useState(false);
   
   const urlParams = new URLSearchParams(window.location.search);
@@ -47,20 +47,32 @@ export default function CheckIn() {
 
   const checkIn = useMutation({
     mutationFn: async () => {
-      if (!registration.trim()) {
-        throw new Error("Informe sua matrícula");
+      const rgDigits = rgPrefix.replace(/\D/g, "");
+      if (!rgDigits) {
+        throw new Error("Informe os 4 primeiros dígitos do RG");
+      }
+      if (rgDigits.length < 4) {
+        throw new Error("Informe ao menos 4 dígitos do RG");
       }
 
       const participants = await dataClient.entities.TrainingParticipant.filter({
         training_id: linkData.training_id,
-        professional_registration: registration.trim(),
       });
 
-      if (participants.length === 0) {
-        throw new Error("Matrícula não encontrada neste treinamento");
+      const matched = participants.filter((participant) => {
+        const participantRg = String(participant.professional_rg || "").replace(/\D/g, "");
+        return participantRg.startsWith(rgDigits);
+      });
+
+      if (matched.length === 0) {
+        throw new Error("RG não encontrado neste treinamento");
       }
 
-      const participant = participants[0];
+      if (matched.length > 1) {
+        throw new Error("Mais de um participante encontrado. Informe mais dígitos do RG");
+      }
+
+      const participant = matched[0];
 
       if (participant.enrollment_status === "cancelado") {
         throw new Error("Sua inscrição foi cancelada");
@@ -212,12 +224,12 @@ export default function CheckIn() {
             className="space-y-4"
           >
             <div className="space-y-2">
-              <Label htmlFor="registration">Matrícula *</Label>
+              <Label htmlFor="rgPrefix">RG (4 primeiros dígitos) *</Label>
               <Input
-                id="registration"
-                value={registration}
-                onChange={(e) => setRegistration(e.target.value)}
-                placeholder="Digite sua matrícula"
+                id="rgPrefix"
+                value={rgPrefix}
+                onChange={(e) => setRgPrefix(e.target.value)}
+                placeholder="Ex: 1234"
                 required
                 autoFocus
               />
@@ -252,7 +264,7 @@ export default function CheckIn() {
           </form>
 
           <p className="text-xs text-center text-slate-500">
-            ⚠️ Certifique-se de informar sua matrícula corretamente
+            ⚠️ Use os 4 primeiros dígitos do RG. Se houver duplicidade, informe mais dígitos.
           </p>
         </CardContent>
       </Card>
