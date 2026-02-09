@@ -15,7 +15,12 @@ import {
   Download,
   FileSpreadsheet,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  AlertTriangle,
+  CalendarX,
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +44,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "@/components/ui/use-toast";
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
@@ -66,6 +79,10 @@ export default function Stock() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [movementMaterialSearch, setMovementMaterialSearch] = useState("");
   const [movementMunicipioSearch, setMovementMunicipioSearch] = useState("");
+  const [materialsPageSize, setMaterialsPageSize] = useState("10");
+  const [materialsPage, setMaterialsPage] = useState(1);
+  const [movementsPageSize, setMovementsPageSize] = useState("10");
+  const [movementsPage, setMovementsPage] = useState(1);
   
   const [showMaterialForm, setShowMaterialForm] = useState(false);
   const [showMovementForm, setShowMovementForm] = useState(false);
@@ -119,6 +136,15 @@ export default function Stock() {
       queryClient.invalidateQueries({ queryKey: ["materials"] });
       setDeleteConfirm(null);
     },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Não foi possível excluir",
+        description:
+          error?.message ||
+          "Verifique suas permissões no Supabase (policy de delete).",
+      });
+    },
   });
 
   const applyStockDelta = async (materialId, delta) => {
@@ -150,6 +176,15 @@ export default function Stock() {
       queryClient.invalidateQueries({ queryKey: ["movements"] });
       queryClient.invalidateQueries({ queryKey: ["materials"] });
       setDeleteMovementConfirm(null);
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Não foi possível excluir a movimentação",
+        description:
+          error?.message ||
+          "Verifique suas permissões no Supabase (policy de delete).",
+      });
     },
   });
 
@@ -234,6 +269,20 @@ export default function Stock() {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return "-";
     return format(parsed, "dd/MM/yyyy");
+  };
+
+  const PAGE_SIZE_OPTIONS = ["10", "20", "50"];
+
+  const paginate = (items, page, pageSize) => {
+    const size = Number(pageSize) || 10;
+    const totalPages = Math.max(1, Math.ceil(items.length / size));
+    const safePage = Math.min(Math.max(page, 1), totalPages);
+    const start = (safePage - 1) * size;
+    return {
+      data: items.slice(start, start + size),
+      totalPages,
+      safePage,
+    };
   };
 
   const gveMap = React.useMemo(() => {
@@ -689,6 +738,27 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     return matchesMaterial && matchesMunicipio;
   });
 
+  const materialsPagination = React.useMemo(
+    () => paginate(filteredMaterials, materialsPage, materialsPageSize),
+    [filteredMaterials, materialsPage, materialsPageSize]
+  );
+  const movementsPagination = React.useMemo(
+    () => paginate(filteredMovements, movementsPage, movementsPageSize),
+    [filteredMovements, movementsPage, movementsPageSize]
+  );
+
+  React.useEffect(() => {
+    if (materialsPage !== materialsPagination.safePage) {
+      setMaterialsPage(materialsPagination.safePage);
+    }
+  }, [materialsPage, materialsPagination.safePage]);
+
+  React.useEffect(() => {
+    if (movementsPage !== movementsPagination.safePage) {
+      setMovementsPage(movementsPagination.safePage);
+    }
+  }, [movementsPage, movementsPagination.safePage]);
+
   const exportMovements = () => {
     const headers = [
       { key: "date", label: "Data" },
@@ -1013,36 +1083,106 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
             ]}
           />
           {(lowStockCount > 0 || expiredCount > 0 || expiringCount > 0) && (
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {lowStockCount > 0 && (
-                <Alert className="border-red-200 bg-red-50">
-                  <AlertCircle className="h-4 w-4 text-red-600" />
-                  <AlertDescription className="text-red-800">
-                    {lowStockCount} material(is) com estoque mínimo.
-                  </AlertDescription>
-                </Alert>
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-red-700">Estoque mínimo</p>
+                      <p className="text-2xl font-semibold text-red-800">
+                        {lowStockCount}
+                      </p>
+                    </div>
+                    <AlertTriangle className="h-6 w-6 text-red-600" />
+                  </div>
+                </div>
               )}
               {expiredCount > 0 && (
-                <Alert className="border-red-200 bg-red-50">
-                  <AlertCircle className="h-4 w-4 text-red-600" />
-                  <AlertDescription className="text-red-800">
-                    {expiredCount} material(is) com validade vencida.
-                  </AlertDescription>
-                </Alert>
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-red-700">Validade vencida</p>
+                      <p className="text-2xl font-semibold text-red-800">
+                        {expiredCount}
+                      </p>
+                    </div>
+                    <CalendarX className="h-6 w-6 text-red-600" />
+                  </div>
+                </div>
               )}
               {expiringCount > 0 && (
-                <Alert className="border-amber-200 bg-amber-50">
-                  <AlertCircle className="h-4 w-4 text-amber-600" />
-                  <AlertDescription className="text-amber-800">
-                    {expiringCount} material(is) vencem em até 30 dias.
-                  </AlertDescription>
-                </Alert>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-amber-700">Vence em 30 dias</p>
+                      <p className="text-2xl font-semibold text-amber-800">
+                        {expiringCount}
+                      </p>
+                    </div>
+                    <CalendarClock className="h-6 w-6 text-amber-600" />
+                  </div>
+                </div>
               )}
             </div>
           )}
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <span>Itens por página</span>
+              <Select
+                value={materialsPageSize}
+                onValueChange={(value) => {
+                  setMaterialsPageSize(value);
+                  setMaterialsPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setMaterialsPage((prev) => Math.max(prev - 1, 1))
+                }
+                disabled={materialsPagination.safePage <= 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span>
+                Página {materialsPagination.safePage} de{" "}
+                {materialsPagination.totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setMaterialsPage((prev) =>
+                    Math.min(prev + 1, materialsPagination.totalPages)
+                  )
+                }
+                disabled={
+                  materialsPagination.safePage >= materialsPagination.totalPages
+                }
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
           <DataTable
             columns={materialColumns}
-            data={filteredMaterials}
+            data={materialsPagination.data}
             isLoading={loadingMaterials}
             emptyMessage="Nenhum material cadastrado"
           />
@@ -1083,9 +1223,64 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
               </Button>
             </div>
           </div>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <span>Itens por página</span>
+              <Select
+                value={movementsPageSize}
+                onValueChange={(value) => {
+                  setMovementsPageSize(value);
+                  setMovementsPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setMovementsPage((prev) => Math.max(prev - 1, 1))
+                }
+                disabled={movementsPagination.safePage <= 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span>
+                Página {movementsPagination.safePage} de{" "}
+                {movementsPagination.totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setMovementsPage((prev) =>
+                    Math.min(prev + 1, movementsPagination.totalPages)
+                  )
+                }
+                disabled={
+                  movementsPagination.safePage >= movementsPagination.totalPages
+                }
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
           <DataTable
             columns={movementColumns}
-            data={filteredMovements}
+            data={movementsPagination.data}
             isLoading={loadingMovements}
             emptyMessage="Nenhuma movimentação registrada"
           />
