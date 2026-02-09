@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   GraduationCap, 
   Calendar, 
@@ -444,15 +443,9 @@ export default function PublicEnrollment() {
                     ))}
                   </datalist>
                 )}
-                <Tabs defaultValue="pessoais" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
-                    <TabsTrigger value="pessoais">Dados Pessoais</TabsTrigger>
-                    <TabsTrigger value="instituicao">Instituição</TabsTrigger>
-                    <TabsTrigger value="enderecos">Endereços</TabsTrigger>
-                    <TabsTrigger value="contatos">Contatos</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="pessoais" className="mt-6">
+                <div className="space-y-8">
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Dados Pessoais</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2 sm:col-span-2">
                         <Label htmlFor="name">Nome Completo *</Label>
@@ -511,9 +504,12 @@ export default function PublicEnrollment() {
                         )}
                       </div>
                     </div>
-                  </TabsContent>
+                  </div>
 
-                  <TabsContent value="instituicao" className="mt-6">
+                  <div className="border-t border-slate-200" />
+
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Instituição</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2 sm:col-span-2">
                         <Label htmlFor="institution">Instituição que Representa *</Label>
@@ -604,9 +600,12 @@ export default function PublicEnrollment() {
                         {formErrors.sector && <p className="text-xs text-red-600">{formErrors.sector}</p>}
                       </div>
                     </div>
-                  </TabsContent>
+                  </div>
 
-                  <TabsContent value="enderecos" className="mt-6">
+                  <div className="border-t border-slate-200" />
+
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Endereços</h3>
                     <div className="grid grid-cols-1 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="work_address">Endereço de Trabalho *</Label>
@@ -634,9 +633,12 @@ export default function PublicEnrollment() {
                         )}
                       </div>
                     </div>
-                  </TabsContent>
+                  </div>
 
-                  <TabsContent value="contatos" className="mt-6">
+                  <div className="border-t border-slate-200" />
+
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Contatos</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2 sm:col-span-2">
                         <Label htmlFor="email">E-mail *</Label>
@@ -690,8 +692,8 @@ export default function PublicEnrollment() {
                         )}
                       </div>
                     </div>
-                  </TabsContent>
-                </Tabs>
+                  </div>
+                </div>
 
                 <div className="flex justify-end gap-3 pt-4">
                   <Button
