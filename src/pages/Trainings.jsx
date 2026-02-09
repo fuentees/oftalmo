@@ -272,6 +272,16 @@ export default function Trainings() {
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelectedTraining(row);
+                  setShowEnrollment(true);
+                }}
+              >
+                <Users className="h-4 w-4 mr-2" />
+                Inscrições (interno)
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedTraining(row);
                   setShowAttendance(true);
                 }}
               >
@@ -377,6 +387,7 @@ export default function Trainings() {
           </DialogHeader>
           <TrainingForm
             training={selectedTraining}
+            professionals={professionals}
             onClose={() => {
               setShowForm(false);
               setSelectedTraining(null);

@@ -15,7 +15,7 @@ import {
 import { Loader2, X, Video, Plus, XCircle } from "lucide-react";
 import { format, addDays, addWeeks } from "date-fns";
 
-export default function TrainingForm({ training, onClose }) {
+export default function TrainingForm({ training, onClose, professionals = [] }) {
   const [formData, setFormData] = useState({
     title: "",
     code: "",
@@ -27,6 +27,7 @@ export default function TrainingForm({ training, onClose }) {
     location: "",
     online_link: "",
     coordinator: "",
+    coordinator_email: "",
     monitors: [],
     max_participants: "",
     status: "agendado",
@@ -63,6 +64,7 @@ export default function TrainingForm({ training, onClose }) {
         location: training.location || "",
         online_link: training.online_link || "",
         coordinator: training.coordinator || "",
+        coordinator_email: training.coordinator_email || "",
         monitors: training.monitors || [],
         max_participants: training.max_participants || "",
         status: training.status || "agendado",
@@ -134,6 +136,26 @@ export default function TrainingForm({ training, onClose }) {
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const activeProfessionals = professionals.filter(
+    (prof) => !prof.status || prof.status === "ativo"
+  );
+
+  const findProfessionalByName = (name) => {
+    if (!name) return null;
+    const normalized = name.trim().toLowerCase();
+    return activeProfessionals.find(
+      (prof) => prof.name?.trim().toLowerCase() === normalized
+    );
+  };
+
+  const findProfessionalByEmail = (email) => {
+    if (!email) return null;
+    const normalized = email.trim().toLowerCase();
+    return activeProfessionals.find(
+      (prof) => prof.email?.trim().toLowerCase() === normalized
+    );
   };
 
   const addDate = () => {
@@ -408,9 +430,35 @@ export default function TrainingForm({ training, onClose }) {
         <Label htmlFor="coordinator">Coordenador</Label>
         <Input
           id="coordinator"
+          list="professionals-names"
           value={formData.coordinator}
-          onChange={(e) => handleChange("coordinator", e.target.value)}
+          onChange={(e) => {
+            const nextValue = e.target.value;
+            const match = findProfessionalByName(nextValue);
+            setFormData((prev) => ({
+              ...prev,
+              coordinator: nextValue,
+              coordinator_email:
+                prev.coordinator_email || match?.email || "",
+            }));
+          }}
           placeholder="Nome do coordenador"
+        />
+        <Input
+          id="coordinator_email"
+          type="email"
+          list="professionals-emails"
+          value={formData.coordinator_email}
+          onChange={(e) => {
+            const nextValue = e.target.value;
+            const match = findProfessionalByEmail(nextValue);
+            setFormData((prev) => ({
+              ...prev,
+              coordinator_email: nextValue,
+              coordinator: prev.coordinator || match?.name || "",
+            }));
+          }}
+          placeholder="Email do coordenador (opcional)"
         />
       </div>
 
@@ -431,9 +479,15 @@ export default function TrainingForm({ training, onClose }) {
           <div key={index} className="flex gap-2 p-2 border rounded-lg">
             <Input
               value={monitor.name}
+              list="professionals-names"
               onChange={(e) => {
                 const newMonitors = [...formData.monitors];
-                newMonitors[index].name = e.target.value;
+                const nextValue = e.target.value;
+                const match = findProfessionalByName(nextValue);
+                newMonitors[index].name = nextValue;
+                if (!newMonitors[index].email && match?.email) {
+                  newMonitors[index].email = match.email;
+                }
                 handleChange("monitors", newMonitors);
               }}
               placeholder="Nome do monitor"
@@ -441,6 +495,7 @@ export default function TrainingForm({ training, onClose }) {
             <Input
               type="email"
               value={monitor.email}
+              list="professionals-emails"
               onChange={(e) => {
                 const newMonitors = [...formData.monitors];
                 newMonitors[index].email = e.target.value;
@@ -463,6 +518,19 @@ export default function TrainingForm({ training, onClose }) {
           </div>
         ))}
       </div>
+
+      <datalist id="professionals-names">
+        {activeProfessionals.map((prof) => (
+          <option key={prof.id} value={prof.name} />
+        ))}
+      </datalist>
+      <datalist id="professionals-emails">
+        {activeProfessionals
+          .filter((prof) => prof.email)
+          .map((prof) => (
+            <option key={prof.id} value={prof.email} />
+          ))}
+      </datalist>
 
       <div className="space-y-1.5">
         <Label htmlFor="max_participants">Capacidade Máxima</Label>
