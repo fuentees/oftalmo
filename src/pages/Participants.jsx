@@ -32,6 +32,8 @@ import { useNavigate } from "react-router-dom";
 export default function Participants() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [courseFilter, setCourseFilter] = useState("all");
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
@@ -134,21 +136,25 @@ export default function Participants() {
     repadronizacao: "Repadronização",
   };
 
-  const trainingTypeMaps = useMemo(() => {
+  const trainingMaps = useMemo(() => {
     const byId = new Map();
     const byTitle = new Map();
+    const titleById = new Map();
     trainings.forEach((training) => {
       if (training.id) byId.set(training.id, training.type);
       const titleKey = normalizeText(training.title);
       if (titleKey) byTitle.set(titleKey, training.type);
+      if (training.id && training.title) {
+        titleById.set(training.id, training.title);
+      }
     });
-    return { byId, byTitle };
+    return { byId, byTitle, titleById };
   }, [trainings]);
 
   const resolveTrainingType = (participant) => {
     if (!participant) return null;
-    const byId = trainingTypeMaps.byId;
-    const byTitle = trainingTypeMaps.byTitle;
+    const byId = trainingMaps.byId;
+    const byTitle = trainingMaps.byTitle;
     const typeFromId = byId.get(participant.training_id);
     if (typeFromId) return typeFromId;
     const typeFromTitle = byTitle.get(normalizeText(participant.training_title));
@@ -326,23 +332,30 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     return groups.map((group) => {
       const profile = mergeParticipantData(group.members);
       const typeSet = new Set();
+      const titleSet = new Set();
       group.members.forEach((member) => {
         const type = resolveTrainingType(member);
         if (type) typeSet.add(type);
+        const title =
+          member.training_title ||
+          trainingMaps.titleById.get(member.training_id);
+        if (title) titleSet.add(title);
       });
       return {
         id: group.id,
         profile,
         members: group.members,
         courseTypes: Array.from(typeSet),
+        courseTitles: Array.from(titleSet),
       };
     });
-  }, [participants, trainingTypeMaps]);
+  }, [participants, trainingMaps]);
 
   const filteredParticipants = groupedParticipants
     .filter((group) => {
       if (!search) return true;
       const searchTerm = normalizeText(search);
+      const courseTitles = group.courseTitles.join(" ");
       const courseLabel = group.courseTypes
         .map((type) => typeLabels[type] || type)
         .join(" ");
@@ -355,11 +368,23 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
           group.profile.health_region,
           group.profile.mobile_phone,
           courseLabel,
+          courseTitles,
         ]
           .filter(Boolean)
           .join(" ")
       );
       return haystack.includes(searchTerm);
+    })
+    .filter((group) => {
+      if (typeFilter === "all") return true;
+      return group.courseTypes.includes(typeFilter);
+    })
+    .filter((group) => {
+      if (courseFilter === "all") return true;
+      const normalizedFilter = normalizeText(courseFilter);
+      return group.courseTitles.some(
+        (title) => normalizeText(title) === normalizedFilter
+      );
     })
     .sort((a, b) =>
       (a.profile.professional_name || "").localeCompare(
@@ -369,12 +394,32 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
       )
     );
 
+  const courseOptions = useMemo(() => {
+    const titles = new Set();
+    trainings.forEach((training) => {
+      if (training.title) titles.add(training.title);
+    });
+    participants.forEach((participant) => {
+      if (participant.training_title) {
+        titles.add(participant.training_title);
+        return;
+      }
+      if (participant.training_id) {
+        const title = trainingMaps.titleById.get(participant.training_id);
+        if (title) titles.add(title);
+      }
+    });
+    return Array.from(titles)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
+      .map((title) => ({ value: title, label: title }));
+  }, [participants, trainings, trainingMaps]);
+
   const totalItems = filteredParticipants.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, typeFilter, courseFilter]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -463,6 +508,27 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
             searchValue={search}
             onSearchChange={setSearch}
             searchPlaceholder="Buscar por nome, RG, e-mail ou município..."
+            filters={[
+              {
+                value: typeFilter,
+                onChange: setTypeFilter,
+                placeholder: "Tipo de curso",
+                allLabel: "Todos os tipos",
+                options: [
+                  { value: "teorico", label: "Teórico" },
+                  { value: "pratico", label: "Prático" },
+                  { value: "teorico_pratico", label: "Teórico/Prático" },
+                  { value: "repadronizacao", label: "Repadronização" },
+                ],
+              },
+              {
+                value: courseFilter,
+                onChange: setCourseFilter,
+                placeholder: "Curso",
+                allLabel: "Todos os cursos",
+                options: courseOptions,
+              },
+            ]}
           />
         </div>
         <div className="flex gap-2">
