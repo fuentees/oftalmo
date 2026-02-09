@@ -6,6 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { 
   Table, 
   TableBody, 
@@ -21,6 +31,7 @@ import * as XLSX from "xlsx";
 
 export default function AttendanceControl({ training, participants, onClose }) {
   const [search, setSearch] = useState("");
+  const [confirmAllOpen, setConfirmAllOpen] = useState(false);
   const trainingDates = Array.isArray(training?.dates)
     ? training.dates.filter((dateItem) => dateItem?.date)
     : [];
@@ -86,6 +97,56 @@ export default function AttendanceControl({ training, participants, onClose }) {
     },
   });
 
+  const markAllPresent = useMutation({
+    mutationFn: async () => {
+      if (!selectedDate) {
+        throw new Error("Selecione uma data.");
+      }
+      if (activeParticipants.length === 0) {
+        throw new Error("Nenhum participante para atualizar.");
+      }
+      const totalDates = training.dates?.length || 1;
+      const checkInTime = format(new Date(), "HH:mm");
+
+      await Promise.all(
+        activeParticipants.map((participant) => {
+          const records = participant.attendance_records || [];
+          const existingIndex = records.findIndex((r) => r.date === selectedDate);
+          const updatedRecords = [...records];
+          const record = {
+            date: selectedDate,
+            status: "presente",
+            check_in_time: checkInTime,
+          };
+
+          if (existingIndex >= 0) {
+            updatedRecords[existingIndex] = record;
+          } else {
+            updatedRecords.push(record);
+          }
+
+          const presentCount = updatedRecords.filter(
+            (r) => r.status === "presente"
+          ).length;
+          const percentage = Math.round((presentCount / totalDates) * 100);
+
+          return dataClient.entities.TrainingParticipant.update(participant.id, {
+            attendance_records: updatedRecords,
+            attendance_percentage: percentage,
+            approved: percentage >= 75,
+          });
+        })
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["participants"] });
+      toast.success("Presença marcada para todos.");
+    },
+    onError: (error) => {
+      toast.error(error.message || "Erro ao marcar presença.");
+    },
+  });
+
   const generateLink = useMutation({
     mutationFn: async () => {
       const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -117,11 +178,14 @@ export default function AttendanceControl({ training, participants, onClose }) {
     }
   };
 
-  const filteredParticipants = participants.filter(
-    p =>
-      p.enrollment_status !== "cancelado" &&
-      (p.professional_name?.toLowerCase().includes(search.toLowerCase()) ||
-        p.professional_registration?.toLowerCase().includes(search.toLowerCase()))
+  const activeParticipants = participants.filter(
+    (p) => p.enrollment_status !== "cancelado"
+  );
+
+  const filteredParticipants = activeParticipants.filter(
+    (p) =>
+      p.professional_name?.toLowerCase().includes(search.toLowerCase()) ||
+      p.professional_registration?.toLowerCase().includes(search.toLowerCase())
   );
 
   const participantsWithRecords = filteredParticipants.filter(
@@ -304,6 +368,18 @@ export default function AttendanceControl({ training, participants, onClose }) {
             </Card>
           </div>
 
+          <div className="flex flex-wrap justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmAllOpen(true)}
+              disabled={!selectedDate || activeParticipants.length === 0 || markAllPresent.isPending}
+              className="gap-2"
+            >
+              <UserCheck className="h-4 w-4" />
+              Dar presença a todos
+            </Button>
+          </div>
+
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -476,6 +552,32 @@ export default function AttendanceControl({ training, participants, onClose }) {
       )}
     </TabsContent>
   </Tabs>
+
+      <AlertDialog open={confirmAllOpen} onOpenChange={setConfirmAllOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar presença em massa</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso marcará todos os {activeParticipants.length} inscritos como
+              presentes na data{" "}
+              {selectedDate ? formatDate(selectedDate) : "selecionada"}.
+              Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmAllOpen(false);
+                markAllPresent.mutate();
+              }}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 </div>
   );
 }
