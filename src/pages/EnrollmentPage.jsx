@@ -37,7 +37,8 @@ import {
   Users,
   Plus,
   Edit,
-  Link2
+  Link2,
+  FileText
 } from "lucide-react";
 import { format } from "date-fns";
 import PageHeader from "@/components/common/PageHeader";
@@ -824,25 +825,6 @@ export default function EnrollmentPage() {
         subtitle="Gerencie as inscrições do treinamento"
       />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" onClick={handleCopyEnrollmentLink}>
-          <Link2 className="h-4 w-4 mr-2" />
-          Copiar Link de Inscrição
-        </Button>
-        <Button variant="outline" onClick={handleAddDefaultFields}>
-          <Plus className="h-4 w-4 mr-2" />
-          {seedDefaults.isPending ? "Aplicando..." : "Aplicar Campos Padrão"}
-        </Button>
-        <Button onClick={() => {
-          setEditingField(null);
-          setFieldFormData(getDefaultFieldData());
-          setFieldFormOpen(true);
-        }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Campo do Formulário
-        </Button>
-      </div>
-
       <Card>
         <CardHeader className="bg-blue-600 text-white">
           <div className="flex items-center gap-3">
@@ -860,8 +842,12 @@ export default function EnrollmentPage() {
         </CardHeader>
 
         <CardContent className="pt-6">
-          <Tabs defaultValue="form" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs defaultValue="mask" className="w-full">
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
+              <TabsTrigger value="mask">
+                <FileText className="h-4 w-4 mr-2" />
+                Máscara do Formulário
+              </TabsTrigger>
               <TabsTrigger value="form">
                 <GraduationCap className="h-4 w-4 mr-2" />
                 Formulário de Inscrição
@@ -872,7 +858,26 @@ export default function EnrollmentPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="form" className="mt-6 space-y-6">
+            <TabsContent value="mask" className="mt-6 space-y-6">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="outline" onClick={handleCopyEnrollmentLink}>
+                  <Link2 className="h-4 w-4 mr-2" />
+                  Copiar Link de Inscrição
+                </Button>
+                <Button variant="outline" onClick={handleAddDefaultFields}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  {seedDefaults.isPending ? "Aplicando..." : "Aplicar Campos Padrão"}
+                </Button>
+                <Button onClick={() => {
+                  setEditingField(null);
+                  setFieldFormData(getDefaultFieldData());
+                  setFieldFormOpen(true);
+                }}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Campo do Formulário
+                </Button>
+              </div>
+
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Campos do Formulário</CardTitle>
@@ -902,7 +907,9 @@ export default function EnrollmentPage() {
                   />
                 </CardContent>
               </Card>
+            </TabsContent>
 
+            <TabsContent value="form" className="mt-6 space-y-6">
               {(isFullyBooked || isCancelled) && (
                 <Alert className="border-red-200 bg-red-50 mb-6">
                   <AlertCircle className="h-4 w-4 text-red-600" />
