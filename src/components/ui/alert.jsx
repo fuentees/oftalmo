@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as React from "react"
 import { cva } from "class-variance-authority";
 
@@ -20,29 +19,41 @@ const alertVariants = cva(
   }
 )
 
-const Alert = React.forwardRef(({ className, variant, ...props }, ref) => (
-  <div
-    ref={ref}
-    role="alert"
-    className={cn(alertVariants({ variant }), className)}
-    {...props} />
-))
+/** @typedef {import("class-variance-authority").VariantProps<typeof alertVariants>} AlertVariantProps */
+/** @typedef {import("react").HTMLAttributes<HTMLDivElement> & AlertVariantProps} AlertProps */
+
+const Alert = React.forwardRef(
+  /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, AlertProps>} */
+  ({ className, variant, ...props }, ref) => (
+    <div
+      ref={ref}
+      role="alert"
+      className={cn(alertVariants({ variant }), className)}
+      {...props} />
+  )
+)
 Alert.displayName = "Alert"
 
-const AlertTitle = React.forwardRef(({ className, ...props }, ref) => (
-  <h5
-    ref={ref}
-    className={cn("mb-1 font-medium leading-none tracking-tight", className)}
-    {...props} />
-))
+const AlertTitle = React.forwardRef(
+  /** @type {import("react").ForwardRefRenderFunction<HTMLHeadingElement, import("react").HTMLAttributes<HTMLHeadingElement>>} */
+  ({ className, ...props }, ref) => (
+    <h5
+      ref={ref}
+      className={cn("mb-1 font-medium leading-none tracking-tight", className)}
+      {...props} />
+  )
+)
 AlertTitle.displayName = "AlertTitle"
 
-const AlertDescription = React.forwardRef(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("text-sm [&_p]:leading-relaxed", className)}
-    {...props} />
-))
+const AlertDescription = React.forwardRef(
+  /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, import("react").HTMLAttributes<HTMLDivElement>>} */
+  ({ className, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn("text-sm [&_p]:leading-relaxed", className)}
+      {...props} />
+  )
+)
 AlertDescription.displayName = "AlertDescription"
 
 export { Alert, AlertTitle, AlertDescription }

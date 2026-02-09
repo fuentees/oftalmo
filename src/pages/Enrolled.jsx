@@ -25,8 +25,10 @@ export default function Enrolled() {
   const queryClient = useQueryClient();
 
   // Get training ID from URL
-  const urlParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
-  const trainingId = urlParams.get('training');
+  const queryString =
+    window.location.search || window.location.hash.split("?")[1] || "";
+  const urlParams = new URLSearchParams(queryString);
+  const trainingId = urlParams.get("training");
 
   const { data: training, isLoading: trainingLoading } = useQuery({
     queryKey: ["training", trainingId],
