@@ -23,6 +23,14 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
   logos: {
     primary: "",
     secondary: "",
+    tertiary: "",
+    quaternary: "",
+  },
+  logoPositions: {
+    primary: { x: 20, y: 18, w: 30, h: 30 },
+    secondary: { x: 247, y: 18, w: 30, h: 30 },
+    tertiary: { x: 20, y: 160, w: 30, h: 30 },
+    quaternary: { x: 247, y: 160, w: 30, h: 30 },
   },
 };
 
@@ -32,6 +40,10 @@ const mergeTemplate = (template) => ({
   logos: {
     ...DEFAULT_CERTIFICATE_TEMPLATE.logos,
     ...(template?.logos || {}),
+  },
+  logoPositions: {
+    ...DEFAULT_CERTIFICATE_TEMPLATE.logoPositions,
+    ...(template?.logoPositions || {}),
   },
   signature1: {
     ...DEFAULT_CERTIFICATE_TEMPLATE.signature1,

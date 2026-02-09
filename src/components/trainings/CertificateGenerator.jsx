@@ -23,6 +23,23 @@ const getImageFormat = (dataUrl) => {
   return "PNG";
 };
 
+const getLogoPosition = (template, key, pageWidth, pageHeight) => {
+  const defaults = {
+    primary: { x: 20, y: 18, w: 30, h: 30 },
+    secondary: { x: pageWidth - 50, y: 18, w: 30, h: 30 },
+    tertiary: { x: 20, y: pageHeight - 50, w: 30, h: 30 },
+    quaternary: { x: pageWidth - 50, y: pageHeight - 50, w: 30, h: 30 },
+  };
+  const stored = template.logoPositions?.[key] || {};
+  const base = defaults[key] || { x: 20, y: 18, w: 30, h: 30 };
+  return {
+    x: Number.isFinite(Number(stored.x)) ? Number(stored.x) : base.x,
+    y: Number.isFinite(Number(stored.y)) ? Number(stored.y) : base.y,
+    w: Number.isFinite(Number(stored.w)) ? Number(stored.w) : base.w,
+    h: Number.isFinite(Number(stored.h)) ? Number(stored.h) : base.h,
+  };
+};
+
 const resolveSignature = (signature, training) => {
   if (!signature || signature.source === "none") return null;
   if (signature.source === "coordinator") {
@@ -66,16 +83,15 @@ export const generateParticipantCertificate = (participant, training) => {
   pdf.rect(15, 15, pageWidth - 30, pageHeight - 30);
 
   // Logos
-  const logoPrimary = template.logos?.primary;
-  const logoSecondary = template.logos?.secondary;
-  if (logoPrimary) {
-    const formatPrimary = getImageFormat(logoPrimary);
-    pdf.addImage(logoPrimary, formatPrimary, 20, 18, 30, 30);
-  }
-  if (logoSecondary) {
-    const formatSecondary = getImageFormat(logoSecondary);
-    pdf.addImage(logoSecondary, formatSecondary, pageWidth - 50, 18, 30, 30);
-  }
+  const logoKeys = ["primary", "secondary", "tertiary", "quaternary"];
+  logoKeys.forEach((key) => {
+    const dataUrl = template.logos?.[key];
+    if (!dataUrl) return;
+    const format = getImageFormat(dataUrl);
+    if (!format) return;
+    const pos = getLogoPosition(template, key, pageWidth, pageHeight);
+    pdf.addImage(dataUrl, format, pos.x, pos.y, pos.w, pos.h);
+  });
 
   // Header lines
   if (Array.isArray(template.headerLines) && template.headerLines.length > 0) {
@@ -190,16 +206,15 @@ export const generateMonitorCertificate = (monitor, training) => {
   pdf.rect(15, 15, pageWidth - 30, pageHeight - 30);
 
   // Logos
-  const logoPrimary = template.logos?.primary;
-  const logoSecondary = template.logos?.secondary;
-  if (logoPrimary) {
-    const formatPrimary = getImageFormat(logoPrimary);
-    pdf.addImage(logoPrimary, formatPrimary, 20, 18, 30, 30);
-  }
-  if (logoSecondary) {
-    const formatSecondary = getImageFormat(logoSecondary);
-    pdf.addImage(logoSecondary, formatSecondary, pageWidth - 50, 18, 30, 30);
-  }
+  const logoKeys = ["primary", "secondary", "tertiary", "quaternary"];
+  logoKeys.forEach((key) => {
+    const dataUrl = template.logos?.[key];
+    if (!dataUrl) return;
+    const format = getImageFormat(dataUrl);
+    if (!format) return;
+    const pos = getLogoPosition(template, key, pageWidth, pageHeight);
+    pdf.addImage(dataUrl, format, pos.x, pos.y, pos.w, pos.h);
+  });
 
   // Header lines
   if (Array.isArray(template.headerLines) && template.headerLines.length > 0) {
