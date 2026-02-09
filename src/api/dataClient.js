@@ -201,10 +201,50 @@ const parseXlsx = (buffer) => {
   return normalizeRows(rows || []);
 };
 
+const getStoragePathFromUrl = (fileUrl) => {
+  try {
+    const url = new URL(fileUrl);
+    const pathname = url.pathname || "";
+    const publicMarker = "/storage/v1/object/public/";
+    const privateMarker = "/storage/v1/object/";
+    let pathPart = "";
+    if (pathname.includes(publicMarker)) {
+      pathPart = pathname.split(publicMarker)[1] || "";
+    } else if (pathname.includes(privateMarker)) {
+      pathPart = pathname.split(privateMarker)[1] || "";
+    }
+    if (!pathPart) return null;
+    const [bucket, ...rest] = pathPart.split("/");
+    const path = rest.join("/");
+    if (!bucket || !path) return null;
+    return { bucket, path };
+  } catch (error) {
+    return null;
+  }
+};
+
+const getSignedUrlForStorageFile = async (fileUrl) => {
+  const storageRef = getStoragePathFromUrl(fileUrl);
+  if (!storageRef) return null;
+  const { data, error } = await supabase.storage
+    .from(storageRef.bucket)
+    .createSignedUrl(storageRef.path, 300);
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
+};
+
 const extractDataFromFileUrl = async (fileUrl) => {
-  const response = await fetch(fileUrl);
+  let response = await fetch(fileUrl);
   if (!response.ok) {
-    throw new Error("Falha ao baixar arquivo importado.");
+    const signedUrl = await getSignedUrlForStorageFile(fileUrl);
+    if (signedUrl) {
+      response = await fetch(signedUrl);
+    }
+  }
+  if (!response.ok) {
+    throw new Error(
+      `Falha ao baixar arquivo importado (status ${response.status}).`
+    );
   }
   const contentType = response.headers.get("content-type") || "";
   const lowerUrl = fileUrl.toLowerCase();
