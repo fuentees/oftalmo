@@ -140,6 +140,13 @@ export default function Trainings() {
     cancelado: "Cancelado",
   };
 
+  const formatDate = (value) => {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "-";
+    return format(parsed, "dd/MM/yyyy");
+  };
+
   const typeLabels = {
     teorico: "Teórico",
     pratico: "Prático",
@@ -150,13 +157,14 @@ export default function Trainings() {
     {
       header: "Data(s)",
       render: (row) => {
-        if (row.dates && row.dates.length > 0) {
+        if (Array.isArray(row.dates) && row.dates.length > 0) {
+          const formattedDate = formatDate(row.dates[0]?.date);
           return (
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-slate-400" />
               <div>
-                <div>{format(new Date(row.dates[0].date), "dd/MM/yyyy")}</div>
-                {row.dates.length > 1 && (
+                <div>{formattedDate}</div>
+                {row.dates.length > 1 && formattedDate !== "-" && (
                   <span className="text-xs text-slate-500">+{row.dates.length - 1} data(s)</span>
                 )}
               </div>

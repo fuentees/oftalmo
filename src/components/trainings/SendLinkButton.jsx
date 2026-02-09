@@ -16,6 +16,13 @@ export default function SendLinkButton({ training, participants }) {
   const [showDialog, setShowDialog] = useState(false);
   const [result, setResult] = useState(null);
 
+  const formatDate = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return format(parsed, "dd/MM/yyyy");
+  };
+
   const sendLink = useMutation({
     mutationFn: async () => {
       if (!training.online_link) {
@@ -34,10 +41,15 @@ export default function SendLinkButton({ training, participants }) {
       
       for (const participant of enrolledParticipants) {
         try {
-          const datesText = training.dates && training.dates.length > 0
-            ? training.dates.map(d => 
-                `${format(new Date(d.date), "dd/MM/yyyy")}${d.start_time ? ` às ${d.start_time}` : ""}`
-              ).join("<br>")
+          const datesText = Array.isArray(training.dates) && training.dates.length > 0
+            ? training.dates
+                .map(d => {
+                  const formattedDate = formatDate(d?.date);
+                  if (!formattedDate) return null;
+                  return `${formattedDate}${d.start_time ? ` às ${d.start_time}` : ""}`;
+                })
+                .filter(Boolean)
+                .join("<br>")
             : "Data a definir";
 
           await dataClient.integrations.Core.SendEmail({

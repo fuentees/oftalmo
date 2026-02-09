@@ -8,6 +8,17 @@ import DataTable from "@/components/common/DataTable";
 export default function TrainingDetails({ training, participants }) {
   if (!training) return null;
 
+  const formatDate = (value, pattern = "dd/MM/yyyy") => {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "-";
+    return format(parsed, pattern);
+  };
+
+  const trainingDates = Array.isArray(training.dates)
+    ? training.dates.filter((dateItem) => dateItem?.date)
+    : [];
+
   const statusColors = {
     agendado: "bg-blue-100 text-blue-700",
     em_andamento: "bg-amber-100 text-amber-700",
@@ -87,14 +98,14 @@ export default function TrainingDetails({ training, participants }) {
             </div>
 
             <div className="space-y-2 text-sm">
-              {training.dates && training.dates.length > 0 ? (
+              {trainingDates.length > 0 ? (
                 <div>
                   <p className="text-slate-500 font-medium mb-1">Datas e Horários:</p>
-                  {training.dates.map((dateItem, index) => (
+                  {trainingDates.map((dateItem, index) => (
                     <div key={index} className="flex items-start gap-2 pl-2 mb-1">
                       <Calendar className="h-4 w-4 text-slate-400 mt-0.5" />
                       <div>
-                        <div>{format(new Date(dateItem.date), "dd/MM/yyyy")}</div>
+                        <div>{formatDate(dateItem.date)}</div>
                         {dateItem.start_time && dateItem.end_time && (
                           <div className="text-slate-500 text-xs">
                             {dateItem.start_time} - {dateItem.end_time}

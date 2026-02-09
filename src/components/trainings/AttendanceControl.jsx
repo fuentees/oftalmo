@@ -19,11 +19,21 @@ import { toast } from "sonner";
 
 export default function AttendanceControl({ training, participants, onClose }) {
   const [search, setSearch] = useState("");
+  const trainingDates = Array.isArray(training?.dates)
+    ? training.dates.filter((dateItem) => dateItem?.date)
+    : [];
   const [selectedDate, setSelectedDate] = useState(
-    training.dates && training.dates.length > 0 ? training.dates[0].date : null
+    trainingDates[0]?.date || null
   );
   const [generatedLink, setGeneratedLink] = useState(null);
   const queryClient = useQueryClient();
+
+  const formatDate = (value, pattern = "dd/MM/yyyy") => {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "-";
+    return format(parsed, pattern);
+  };
 
   const updateAttendance = useMutation({
     mutationFn: async ({ participantId, date, status }) => {
@@ -123,9 +133,9 @@ export default function AttendanceControl({ training, participants, onClose }) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-lg">{training.title}</h3>
-          {training.dates && training.dates.length > 0 && (
+          {trainingDates.length > 0 && (
             <p className="text-sm text-slate-500">
-              {training.dates.length} data(s) de treinamento
+              {trainingDates.length} data(s) de treinamento
             </p>
           )}
         </div>
@@ -135,14 +145,14 @@ export default function AttendanceControl({ training, participants, onClose }) {
       </div>
 
       {/* Date Selection */}
-      {training.dates && training.dates.length > 1 && (
+      {trainingDates.length > 1 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Selecione a Data</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex gap-2 flex-wrap">
-              {training.dates.map((dateItem, index) => (
+              {trainingDates.map((dateItem, index) => (
                 <Button
                   key={index}
                   variant={selectedDate === dateItem.date ? "default" : "outline"}
@@ -153,7 +163,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
                   }}
                 >
                   <Calendar className="h-4 w-4 mr-2" />
-                  {format(new Date(dateItem.date), "dd/MM/yyyy")}
+                  {formatDate(dateItem.date)}
                   {dateItem.start_time && ` - ${dateItem.start_time}`}
                 </Button>
               ))}
