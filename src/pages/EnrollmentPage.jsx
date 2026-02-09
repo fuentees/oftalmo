@@ -27,6 +27,8 @@ import {
   AlertCircle,
   Loader2,
   Download,
+  Upload,
+  FileSpreadsheet,
   Trash2,
   Users,
   Plus,
@@ -54,6 +56,9 @@ export default function EnrollmentPage() {
   const [fieldSearch, setFieldSearch] = useState("");
   const [showInactiveFields, setShowInactiveFields] = useState(false);
   const [formErrors, setFormErrors] = useState(/** @type {Record<string, string | null>} */ ({}));
+  const [showUploadList, setShowUploadList] = useState(false);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -94,6 +99,42 @@ export default function EnrollmentPage() {
   const activeEnrollmentFields = enrollmentFields
     .filter((field) => field.is_active)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const normalizeHeader = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+  const normalizeRow = (row) =>
+    Object.entries(row || {}).reduce((acc, [key, value]) => {
+      const normalizedKey = normalizeHeader(key);
+      if (!normalizedKey) return acc;
+      acc[normalizedKey] = value;
+      return acc;
+    }, {});
+
+  const getLatestTrainingDate = () => {
+    const dates = [
+      training?.date,
+      ...trainingDates.map((item) => item?.date).filter(Boolean),
+    ].filter(Boolean);
+    if (dates.length === 0) return null;
+    const parsedDates = dates
+      .map((date) => new Date(date))
+      .filter((date) => !Number.isNaN(date.getTime()));
+    if (parsedDates.length === 0) return null;
+    return new Date(Math.max(...parsedDates.map((date) => date.getTime())));
+  };
+
+  const latestTrainingDate = getLatestTrainingDate();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isPastTraining =
+    latestTrainingDate && latestTrainingDate.getTime() < today.getTime();
 
   const formatCpf = (value) => {
     const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -274,6 +315,9 @@ export default function EnrollmentPage() {
       order: 15,
     },
   ];
+
+  const templateFields =
+    activeEnrollmentFields.length > 0 ? activeEnrollmentFields : defaultEnrollmentFields;
 
   const getDefaultFieldData = () => ({
     training_id: trainingId,
@@ -582,6 +626,173 @@ export default function EnrollmentPage() {
     link.setAttribute("href", url);
     link.setAttribute("download", `inscricoes_${training?.title || 'treinamento'}_${format(new Date(), "yyyy-MM-dd")}.csv`);
     link.click();
+  };
+
+  const handleDownloadTemplate = () => {
+    const headers = templateFields.map((field) => field.label || field.field_key);
+    const csv = `${headers.map((header) => `"${header}"`).join(";")}\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `modelo_inscritos_${training?.title || "treinamento"}.csv`
+    );
+    link.click();
+  };
+
+  const importParticipants = useMutation({
+    mutationFn: async (/** @type {File} */ file) => {
+      if (!file) throw new Error("Selecione um arquivo.");
+      setUploadStatus({ type: "loading", message: "Processando planilha..." });
+
+      const { file_url } = await dataClient.integrations.Core.UploadFile({ file });
+      const result = await dataClient.integrations.Core.ExtractDataFromUploadedFile({
+        file_url,
+      });
+
+      if (result.status === "error") {
+        throw new Error(result.details || "Erro ao processar planilha");
+      }
+
+      const rows = result.output?.participants || result.output || [];
+      if (!Array.isArray(rows) || rows.length === 0) {
+        throw new Error("Nenhum dado encontrado na planilha.");
+      }
+
+      const fieldKeyMap = templateFields.reduce((acc, field) => {
+        const keys = [
+          normalizeHeader(field.field_key),
+          normalizeHeader(field.label),
+        ].filter(Boolean);
+        acc[field.field_key] = Array.from(new Set(keys));
+        return acc;
+      }, {});
+
+      const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
+      const baseDate = firstDate ? new Date(firstDate) : null;
+      const validityDate =
+        training.validity_months &&
+        baseDate &&
+        !Number.isNaN(baseDate.getTime())
+          ? format(
+              new Date(
+                baseDate.setMonth(baseDate.getMonth() + training.validity_months)
+              ),
+              "yyyy-MM-dd"
+            )
+          : null;
+
+      const payloads = [];
+      const skipped = [];
+
+      rows.forEach((row, index) => {
+        const normalizedRow = normalizeRow(row);
+        const data = {};
+
+        templateFields.forEach((field) => {
+          const keys = fieldKeyMap[field.field_key] || [];
+          const value = keys.reduce((acc, key) => {
+            if (acc !== null && acc !== undefined && acc !== "") return acc;
+            const candidate = normalizedRow[key];
+            if (candidate === undefined || candidate === null || candidate === "") {
+              return acc;
+            }
+            return candidate;
+          }, null);
+          if (value !== null && value !== undefined && value !== "") {
+            data[field.field_key] = value;
+          }
+        });
+
+        const missingRequired = templateFields.filter(
+          (field) => field.required && !data[field.field_key]
+        );
+
+        if (missingRequired.length > 0) {
+          skipped.push(index + 2);
+          return;
+        }
+
+        payloads.push({
+          training_id: trainingId,
+          training_title: training.title,
+          training_date: firstDate,
+          professional_name: data.name,
+          professional_cpf: data.cpf,
+          professional_rg: data.rg,
+          professional_email: data.email,
+          professional_sector: data.sector,
+          professional_registration: data.registration,
+          professional_formation: data.professional_formation,
+          institution: data.institution,
+          state: data.state,
+          health_region: data.health_region,
+          municipality: data.municipality,
+          unit_name: data.unit_name,
+          position: data.position,
+          work_address: data.work_address,
+          residential_address: data.residential_address,
+          commercial_phone: data.commercial_phone,
+          mobile_phone: data.mobile_phone,
+          enrollment_status: "inscrito",
+          enrollment_date: new Date().toISOString(),
+          attendance_records: [],
+          attendance_percentage: 0,
+          approved: false,
+          certificate_issued: false,
+          validity_date: validityDate,
+        });
+      });
+
+      if (payloads.length === 0) {
+        throw new Error("Nenhuma linha válida encontrada.");
+      }
+
+      await dataClient.entities.TrainingParticipant.bulkCreate(payloads);
+      await dataClient.entities.Training.update(trainingId, {
+        participants_count: (training.participants_count || 0) + payloads.length,
+      });
+
+      setUploadStatus({
+        type: "success",
+        message: `${payloads.length} participante(s) importado(s).${
+          skipped.length ? ` ${skipped.length} linha(s) ignoradas.` : ""
+        }`,
+      });
+
+      return { payloads, skipped };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
+      queryClient.invalidateQueries({ queryKey: ["training"] });
+      setTimeout(() => {
+        setShowUploadList(false);
+        setUploadFile(null);
+        setUploadStatus(null);
+      }, 2000);
+    },
+    onError: (error) => {
+      setUploadStatus({
+        type: "error",
+        message: error.message || "Erro ao importar participantes.",
+      });
+    },
+  });
+
+  const handleUploadFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setUploadFile(file);
+      setUploadStatus(null);
+    }
+  };
+
+  const handleUploadParticipants = () => {
+    if (uploadFile) {
+      importParticipants.mutate(uploadFile);
+    }
   };
 
   const filteredParticipants = allParticipants.filter(p => 
@@ -985,16 +1196,27 @@ export default function EnrollmentPage() {
             </TabsContent>
 
             <TabsContent value="list" className="mt-6 space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col lg:flex-row gap-3 justify-between">
                 <SearchFilter
                   searchValue={search}
                   onSearchChange={setSearch}
                   searchPlaceholder="Buscar por nome, CPF ou email..."
                 />
-                <Button onClick={handleExportExcel} variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Exportar Excel
-                </Button>
+                <div className="flex gap-2">
+                  {isPastTraining && (
+                    <Button
+                      onClick={() => setShowUploadList(true)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Importar Lista
+                    </Button>
+                  )}
+                  <Button onClick={handleExportExcel} variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
+                </div>
               </div>
 
               <DataTable
@@ -1029,6 +1251,94 @@ export default function EnrollmentPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Upload List Dialog */}
+      <Dialog open={showUploadList} onOpenChange={setShowUploadList}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Importar Lista de Participantes
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Use o modelo do formulário padrão de inscrição. Apenas treinamentos
+                já concluídos permitem importação.
+              </AlertDescription>
+            </Alert>
+            <div className="flex">
+              <Button variant="outline" onClick={handleDownloadTemplate}>
+                <Download className="h-4 w-4 mr-2" />
+                Baixar modelo
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="upload-list-file">
+                Selecione o arquivo (.xlsx ou .csv)
+              </Label>
+              <Input
+                id="upload-list-file"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleUploadFileChange}
+              />
+              {uploadFile && (
+                <p className="text-sm text-slate-500">
+                  Arquivo selecionado: {uploadFile.name}
+                </p>
+              )}
+            </div>
+            {uploadStatus && (
+              <Alert
+                className={
+                  uploadStatus.type === "error"
+                    ? "border-red-200 bg-red-50"
+                    : uploadStatus.type === "success"
+                    ? "border-green-200 bg-green-50"
+                    : "border-blue-200 bg-blue-50"
+                }
+              >
+                <AlertDescription
+                  className={
+                    uploadStatus.type === "error"
+                      ? "text-red-800"
+                      : uploadStatus.type === "success"
+                      ? "text-green-800"
+                      : "text-blue-800"
+                  }
+                >
+                  {uploadStatus.message}
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowUploadList(false)}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleUploadParticipants}
+                disabled={!uploadFile || importParticipants.isPending}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {importParticipants.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Importando...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Importar
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Field Form Dialog */}
       <Dialog open={fieldFormOpen} onOpenChange={(open) => !open && resetFieldForm()}>
