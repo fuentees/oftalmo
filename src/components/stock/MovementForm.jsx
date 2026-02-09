@@ -7,13 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useNavigate } from "react-router-dom";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Loader2, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 import { format } from "date-fns";
 
@@ -35,8 +28,7 @@ export default function MovementForm({
     document_number: "",
     notes: "",
   });
-  const [materialSearch, setMaterialSearch] = useState("");
-  const [municipioSearch, setMunicipioSearch] = useState("");
+  const [materialInput, setMaterialInput] = useState("");
   const [gveMapping, setGveMapping] = useState([]);
 
   const queryClient = useQueryClient();
@@ -57,7 +49,6 @@ export default function MovementForm({
         document_number: movement.document_number || "",
         notes: movement.notes || "",
       });
-      setMaterialSearch(movement.material_name || "");
       return;
     }
     if (preselectedMaterial) {
@@ -66,8 +57,26 @@ export default function MovementForm({
         material_id: preselectedMaterial.id,
         material_name: preselectedMaterial.name,
       }));
+      setMaterialInput(
+        preselectedMaterial.code
+          ? `${preselectedMaterial.code} - ${preselectedMaterial.name}`
+          : preselectedMaterial.name
+      );
     }
   }, [movement, preselectedMaterial]);
+
+  useEffect(() => {
+    if (!movement) return;
+    if (materialInput) return;
+    const match = materials.find((item) => item.id === movement.material_id);
+    if (match) {
+      setMaterialInput(
+        match.code ? `${match.code} - ${match.name}` : match.name
+      );
+    } else if (movement.material_name) {
+      setMaterialInput(movement.material_name);
+    }
+  }, [movement, materials, materialInput]);
 
   useEffect(() => {
     if (movement) return;
@@ -113,19 +122,20 @@ export default function MovementForm({
     [gveMapping]
   );
 
-  const filteredMunicipios = municipalityOptions.filter((item) =>
-    normalizeText(item).includes(normalizeText(municipioSearch))
+  const materialOptions = useMemo(
+    () =>
+      materials
+        .map((material) => ({
+          id: material.id,
+          name: material.name,
+          code: material.code,
+          label: material.code
+            ? `${material.code} - ${material.name}`
+            : material.name,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+    [materials]
   );
-
-  const filteredMaterials = useMemo(() => {
-    if (!materialSearch.trim()) return materials;
-    const query = normalizeText(materialSearch);
-    return materials.filter((material) => {
-      const name = normalizeText(material.name);
-      const code = normalizeText(material.code);
-      return name.includes(query) || code.includes(query);
-    });
-  }, [materials, materialSearch]);
 
   const applyStockDelta = async (materialId, delta) => {
     if (!materialId || !Number.isFinite(delta) || delta === 0) return;
@@ -185,12 +195,37 @@ export default function MovementForm({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleMaterialSelect = (materialId) => {
-    const material = materials.find((m) => m.id === materialId);
+  const findMaterialByInput = (value) => {
+    const normalized = normalizeText(value);
+    return materials.find((material) => {
+      const name = normalizeText(material.name);
+      const code = normalizeText(material.code);
+      const label = normalizeText(
+        material.code ? `${material.code} - ${material.name}` : material.name
+      );
+      return (
+        normalized === name ||
+        (code && normalized === code) ||
+        normalized === label
+      );
+    });
+  };
+
+  const handleMaterialInput = (value) => {
+    setMaterialInput(value);
+    const match = findMaterialByInput(value);
+    if (match) {
+      setFormData((prev) => ({
+        ...prev,
+        material_id: match.id,
+        material_name: match.name,
+      }));
+      return;
+    }
     setFormData((prev) => ({
       ...prev,
-      material_id: materialId,
-      material_name: material?.name || "",
+      material_id: "",
+      material_name: value,
     }));
   };
 
@@ -218,32 +253,28 @@ export default function MovementForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="material-search">Buscar material</Label>
+        <Label htmlFor="material-input">Material *</Label>
         <Input
-          id="material-search"
-          value={materialSearch}
-          onChange={(e) => setMaterialSearch(e.target.value)}
-          placeholder="Digite nome ou código"
+          id="material-input"
+          value={materialInput}
+          onChange={(e) => handleMaterialInput(e.target.value)}
+          placeholder="Digite o nome ou código do material"
+          list="materials-list"
         />
-        <Label>Material *</Label>
-        <Select value={formData.material_id} onValueChange={handleMaterialSelect}>
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione o material" />
-          </SelectTrigger>
-          <SelectContent>
-            {filteredMaterials.map((material) => (
-              <SelectItem key={material.id} value={material.id}>
-                {material.code ? `${material.code} - ` : ""}{material.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {filteredMaterials.length === 0 && (
-          <p className="text-sm text-slate-500">Nenhum material encontrado.</p>
+        <datalist id="materials-list">
+          {materialOptions.map((option) => (
+            <option key={option.id} value={option.label} />
+          ))}
+        </datalist>
+        {materialInput && !formData.material_id && (
+          <p className="text-sm text-slate-500">
+            Selecione um material da lista para continuar.
+          </p>
         )}
         {selectedMaterial && (
           <p className="text-sm text-slate-500">
-            Estoque atual: {selectedMaterial.current_stock || 0} {selectedMaterial.unit}
+            Estoque atual: {selectedMaterial.current_stock || 0}{" "}
+            {selectedMaterial.unit}
           </p>
         )}
       </div>
@@ -313,25 +344,16 @@ export default function MovementForm({
             ) : (
               <>
                 <Input
-                  value={municipioSearch}
-                  onChange={(e) => setMunicipioSearch(e.target.value)}
-                  placeholder="Buscar município"
-                />
-                <Select
                   value={formData.sector}
-                  onValueChange={(value) => handleChange("sector", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o município" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredMunicipios.map((municipio) => (
-                      <SelectItem key={municipio} value={municipio}>
-                        {municipio}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(e) => handleChange("sector", e.target.value)}
+                  placeholder="Digite o município"
+                  list="municipios-list"
+                />
+                <datalist id="municipios-list">
+                  {municipalityOptions.map((municipio) => (
+                    <option key={municipio} value={municipio} />
+                  ))}
+                </datalist>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>GVE</Label>
