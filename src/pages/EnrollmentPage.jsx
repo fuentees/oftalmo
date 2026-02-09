@@ -130,8 +130,43 @@ export default function EnrollmentPage() {
       const normalizedKey = normalizeHeader(key);
       if (!normalizedKey) return acc;
       acc[normalizedKey] = value;
+      const flatKey = normalizedKey.replace(/_/g, "");
+      if (flatKey && !(flatKey in acc)) {
+        acc[flatKey] = value;
+      }
       return acc;
     }, {});
+
+  const fieldAliases = {
+    name: ["nome completo", "nome_completo", "nome do participante", "participante"],
+    cpf: ["cpf/cnpj", "cpf cnpj", "documento", "documento_cpf"],
+    rg: ["r.g", "r_g", "registro geral", "registro_geral"],
+    email: ["e-mail", "e mail", "e_mail"],
+    professional_formation: ["formacao", "formacao profissional", "formação", "profissao"],
+    institution: ["instituicao", "instituição", "instituicao que representa", "orgao", "órgão"],
+    state: ["uf"],
+    health_region: [
+      "regional de saude",
+      "regional de saúde",
+      "regiao de saude",
+      "região de saúde",
+      "grupo de vigilancia epidemiologica",
+      "grupo de vigilância epidemiológica",
+      "gve",
+    ],
+    municipality: ["municipio", "município", "cidade"],
+    unit_name: ["nome unidade", "nome da unidade", "unidade", "unidade de saude", "unidade de saúde"],
+    sector: ["setor", "cargo", "funcao", "função"],
+    work_address: ["endereco de trabalho", "endereço de trabalho", "endereco trabalho", "endereço trabalho"],
+    residential_address: [
+      "endereco residencial",
+      "endereço residencial",
+      "endereco residencia",
+      "endereço residencia",
+    ],
+    commercial_phone: ["telefone comercial", "telefone trabalho", "telefone fixo", "fone"],
+    mobile_phone: ["celular", "telefone celular", "telefone móvel", "telefone mobile", "whatsapp"],
+  };
 
   const normalizeText = (value) =>
     String(value ?? "")
@@ -704,13 +739,28 @@ export default function EnrollmentPage() {
       }
 
       const fieldKeyMap = templateFields.reduce((acc, field) => {
+        const aliases = fieldAliases[field.field_key] || [];
         const keys = [
           normalizeHeader(field.field_key),
           normalizeHeader(field.label),
+          ...aliases.map((alias) => normalizeHeader(alias)),
         ].filter(Boolean);
         acc[field.field_key] = Array.from(new Set(keys));
         return acc;
       }, {});
+
+      const availableKeys = new Set();
+      if (rows.length > 0) {
+        const sampleRow = normalizeRow(rows[0]);
+        Object.keys(sampleRow).forEach((key) => availableKeys.add(key));
+      }
+
+      const requiredFields = templateFields.filter((field) => {
+        if (!field.required) return false;
+        if (field.field_key === "name") return true;
+        const keys = fieldKeyMap[field.field_key] || [];
+        return keys.some((key) => availableKeys.has(key));
+      });
 
       const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
       const baseDate = firstDate ? new Date(firstDate) : null;
@@ -748,8 +798,15 @@ export default function EnrollmentPage() {
           }
         });
 
-        const missingRequired = templateFields.filter(
-          (field) => field.required && !data[field.field_key]
+        if (!data.health_region && data.municipality) {
+          const gveValue = getGveByMunicipio(data.municipality);
+          if (gveValue) {
+            data.health_region = gveValue;
+          }
+        }
+
+        const missingRequired = requiredFields.filter(
+          (field) => !data[field.field_key]
         );
 
         if (missingRequired.length > 0) {
@@ -789,6 +846,16 @@ export default function EnrollmentPage() {
       });
 
       if (payloads.length === 0) {
+        const requiredLabels = requiredFields
+          .map((field) => field.label || field.field_key)
+          .filter(Boolean);
+        if (requiredLabels.length > 0) {
+          throw new Error(
+            `Nenhuma linha válida encontrada. Verifique as colunas obrigatórias: ${requiredLabels.join(
+              ", "
+            )}.`
+          );
+        }
         throw new Error("Nenhuma linha válida encontrada.");
       }
 
