@@ -37,7 +37,9 @@ import DataTable from "@/components/common/DataTable";
 import SearchFilter from "@/components/common/SearchFilter";
 
 export default function EnrollmentPage() {
-  const urlParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
+  const queryString =
+    window.location.search || window.location.hash.split("?")[1] || "";
+  const urlParams = new URLSearchParams(queryString);
   const trainingId = urlParams.get("training");
   
   const [formData, setFormData] = useState({});

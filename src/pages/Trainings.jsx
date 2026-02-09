@@ -250,7 +250,7 @@ export default function Trainings() {
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  const enrollUrl = `${window.location.origin}${window.location.pathname}#/PublicEnrollment?training=${row.id}`;
+                  const enrollUrl = `${window.location.origin}/PublicEnrollment?training=${encodeURIComponent(row.id)}`;
                   navigator.clipboard.writeText(enrollUrl);
                   alert("Link de inscrição copiado!");
                 }}
@@ -262,7 +262,7 @@ export default function Trainings() {
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.location.href = `#/EnrollmentPage?training=${row.id}`;
+                  window.location.href = `/EnrollmentPage?training=${encodeURIComponent(row.id)}`;
                 }}
               >
                 <UserPlus className="h-4 w-4 mr-2" />

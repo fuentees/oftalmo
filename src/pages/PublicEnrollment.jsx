@@ -20,7 +20,9 @@ import {
 import { format } from "date-fns";
 
 export default function PublicEnrollment() {
-  const urlParams = new URLSearchParams(window.location.search);
+  const queryString =
+    window.location.search || window.location.hash.split("?")[1] || "";
+  const urlParams = new URLSearchParams(queryString);
   const trainingId = urlParams.get("training");
   
   const [formData, setFormData] = useState({

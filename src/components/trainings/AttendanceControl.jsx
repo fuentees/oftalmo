@@ -89,7 +89,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
         check_ins_count: 0
       });
 
-      return `${window.location.origin}/#/CheckIn?token=${token}`;
+      return `${window.location.origin}/CheckIn?token=${token}`;
     },
     onSuccess: (link) => {
       setGeneratedLink(link);
