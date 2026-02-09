@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
-import { format } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 import {
   Package,
   Plus,
@@ -47,14 +47,12 @@ import MovementForm from "@/components/stock/MovementForm";
 import MaterialDetails from "@/components/stock/MaterialDetails";
 
 const DEFAULT_CATEGORIES = [
-  { value: "EPI", label: "EPI" },
   { value: "escritorio", label: "Escritório" },
-  { value: "limpeza", label: "Limpeza" },
-  { value: "ferramentas", label: "Ferramentas" },
-  { value: "eletrico", label: "Elétrico" },
-  { value: "hidraulico", label: "Hidráulico" },
+  { value: "folhetos", label: "Folhetos" },
   { value: "informatica", label: "Informática" },
-  { value: "outros", label: "Outros" },
+  { value: "limpeza", label: "Limpeza" },
+  { value: "manuais", label: "Manuais" },
+  { value: "outras", label: "Outras" },
 ];
 
 const CATEGORY_LABELS = DEFAULT_CATEGORIES.reduce((acc, item) => {
@@ -144,14 +142,12 @@ export default function Stock() {
   const generateMaterialCode = (categoryValue) => {
     const normalized = normalizeCategoryKey(categoryValue);
     const prefixes = {
-      epi: "EPI",
       escritorio: "ESC",
+      folhetos: "FOL",
       limpeza: "LMP",
-      ferramentas: "FER",
-      eletrico: "ELE",
-      hidraulico: "HID",
+      manuais: "MAN",
       informatica: "INF",
-      outros: "OUT",
+      outras: "OUT",
     };
     const prefix =
       prefixes[categoryValue] ||
@@ -171,16 +167,10 @@ export default function Stock() {
     return format(parsed, "dd/MM/yyyy");
   };
 
-  const materialCategoryValues = React.useMemo(
-    () => materials.map((m) => m.category).filter(Boolean),
-    [materials]
-  );
-
   const allCategories = React.useMemo(() => {
     const merged = [
       ...DEFAULT_CATEGORIES.map((item) => item.value),
       ...customCategories,
-      ...materialCategoryValues,
     ];
     const unique = [];
     const seen = new Set();
@@ -192,12 +182,35 @@ export default function Stock() {
       unique.push(value);
     });
     return unique;
-  }, [customCategories, materialCategoryValues]);
+  }, [customCategories]);
 
-  const categoryOptions = allCategories.map((value) => ({
-    value,
-    label: formatCategoryLabel(value),
-  }));
+  const categoryOptions = allCategories
+    .map((value) => ({
+      value,
+      label: formatCategoryLabel(value),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+
+  React.useEffect(() => {
+    if (!materials.length) return;
+    setCustomCategories((prev) => {
+      const existingKeys = new Set(
+        [...DEFAULT_CATEGORIES.map((item) => item.value), ...prev].map(
+          normalizeCategoryKey
+        )
+      );
+      const additions = [];
+      materials.forEach((material) => {
+        if (!material.category) return;
+        const key = normalizeCategoryKey(material.category);
+        if (existingKeys.has(key)) return;
+        existingKeys.add(key);
+        additions.push(material.category);
+      });
+      if (additions.length === 0) return prev;
+      return [...prev, ...additions];
+    });
+  }, [materials]);
 
   const canDeleteCategory = (value) => {
     const key = normalizeCategoryKey(value);
@@ -219,6 +232,46 @@ export default function Stock() {
     setCustomCategories((prev) => [...prev, trimmed]);
     return trimmed;
   };
+
+  const getExpiryStatus = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    const today = new Date();
+    const days = differenceInCalendarDays(parsed, today);
+    if (days < 0) {
+      return { status: "expired", days };
+    }
+    if (days <= 30) {
+      return { status: "expiring", days };
+    }
+    return null;
+  };
+
+  const getExpiryLabel = (value) => {
+    const result = getExpiryStatus(value);
+    if (!result) return null;
+    if (result.status === "expired") return "Vencido";
+    if (result.days === 0) return "Vence hoje";
+    if (result.days === 1) return "Vence amanhã";
+    return `Vence em ${result.days} dias`;
+  };
+
+  const isLowStock = (material) => {
+    const current = material?.current_stock;
+    const minimum = material?.minimum_stock;
+    if (current === null || current === undefined) return false;
+    if (minimum === null || minimum === undefined) return false;
+    return current <= minimum;
+  };
+
+  const lowStockCount = materials.filter(isLowStock).length;
+  const expiredCount = materials.filter(
+    (material) => getExpiryStatus(material.expiry_date)?.status === "expired"
+  ).length;
+  const expiringCount = materials.filter(
+    (material) => getExpiryStatus(material.expiry_date)?.status === "expiring"
+  ).length;
 
   const handleDeleteCategory = (value) => {
     if (!value || !canDeleteCategory(value)) return false;
@@ -358,10 +411,11 @@ export default function Stock() {
             const name = cleanValue(pickValue(row, ["name", "nome"]));
             if (!name) return null;
             const categoryValue =
-              cleanValue(pickValue(row, ["category", "categoria"])) || "outros";
+              cleanValue(pickValue(row, ["category", "categoria"])) || "outras";
             const codeValue =
               cleanValue(pickValue(row, ["code", "codigo"])) ||
               generateMaterialCode(categoryValue);
+            handleAddCategory(categoryValue);
             return {
               name,
               code: codeValue,
@@ -505,8 +559,9 @@ export default function Stock() {
     const template =
       target === "materials"
         ? `name,code,description,unit,category,minimum_stock,current_stock,location,expiry_date
-Luvas de Proteção,EPI-001,Luva nitrílica,par,EPI,50,120,Almoxarifado,2026-01-01
-Álcool 70%,LIM-002,Frasco 1L,un,limpeza,20,45,Depósito,2025-11-30`
+Papel A4,ESC-1001,Papel sulfite,caixa,escritorio,10,30,Almoxarifado,2026-01-01
+Álcool 70%,LIM-0002,Frasco 1L,un,limpeza,20,45,Depósito,2025-11-30
+Manual NR-10,MAN-0100,Manual de segurança,un,manuais,5,15,Arquivo,2027-12-31`
         : `material_code,material_name,type,quantity,date,responsible,sector,document_number,notes
 EPI-001,Luvas de Proteção,entrada,100,2025-01-10,Almoxarifado,Manutenção,NF-123,Entrada inicial
 LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição`;
@@ -565,7 +620,7 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     {
       header: "Estoque",
       render: (row) => {
-        const isLow = row.current_stock && row.minimum_stock && row.current_stock <= row.minimum_stock;
+        const isLow = isLowStock(row);
         return (
           <span className={isLow ? "text-red-600 font-semibold" : ""}>
             {row.current_stock || 0} {row.unit}
@@ -577,6 +632,40 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     {
       header: "Validade",
       render: (row) => formatDate(row.expiry_date),
+    },
+    {
+      header: "Alertas",
+      render: (row) => {
+        const alerts = [];
+        if (isLowStock(row)) {
+          alerts.push(
+            <Badge
+              key="low-stock"
+              className="bg-red-100 text-red-700"
+            >
+              Estoque baixo
+            </Badge>
+          );
+        }
+        const expiryLabel = getExpiryLabel(row.expiry_date);
+        if (expiryLabel) {
+          const status = getExpiryStatus(row.expiry_date)?.status;
+          alerts.push(
+            <Badge
+              key="expiry"
+              className={
+                status === "expired"
+                  ? "bg-red-100 text-red-700"
+                  : "bg-amber-100 text-amber-700"
+              }
+            >
+              {expiryLabel}
+            </Badge>
+          );
+        }
+        if (alerts.length === 0) return "-";
+        return <div className="flex flex-wrap gap-1">{alerts}</div>;
+      },
     },
     {
       header: "Ações",
@@ -770,6 +859,34 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
               },
             ]}
           />
+          {(lowStockCount > 0 || expiredCount > 0 || expiringCount > 0) && (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {lowStockCount > 0 && (
+                <Alert className="border-red-200 bg-red-50">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800">
+                    {lowStockCount} material(is) com estoque mínimo.
+                  </AlertDescription>
+                </Alert>
+              )}
+              {expiredCount > 0 && (
+                <Alert className="border-red-200 bg-red-50">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800">
+                    {expiredCount} material(is) com validade vencida.
+                  </AlertDescription>
+                </Alert>
+              )}
+              {expiringCount > 0 && (
+                <Alert className="border-amber-200 bg-amber-50">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800">
+                    {expiringCount} material(is) vencem em até 30 dias.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
           <DataTable
             columns={materialColumns}
             data={filteredMaterials}
