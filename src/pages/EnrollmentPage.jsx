@@ -1076,6 +1076,14 @@ export default function EnrollmentPage() {
                 />
                 <div className="flex flex-wrap items-center gap-2">
                   <SendLinkButton training={training} participants={allParticipants} />
+                  <Button variant="outline" onClick={() => {
+                    const link = `${window.location.origin}/TrainingFeedback?training=${encodeURIComponent(trainingId)}`;
+                    navigator.clipboard.writeText(link);
+                    alert("Link de avaliação copiado!");
+                  }}>
+                    <Link2 className="h-4 w-4 mr-2" />
+                    Copiar Link de Avaliação
+                  </Button>
                   <Button onClick={handleExportExcel} variant="outline">
                     <Download className="h-4 w-4 mr-2" />
                     Exportar Excel

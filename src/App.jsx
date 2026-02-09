@@ -8,6 +8,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Login from './pages/Login';
+import TrainingFeedback from './pages/TrainingFeedback';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -17,7 +18,7 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
   : <>{children}</>;
 
-const PUBLIC_ROUTES = ["/publicenrollment", "/enrollmentpage", "/checkin", "/enrolled"];
+const PUBLIC_ROUTES = ["/publicenrollment", "/enrollmentpage", "/checkin", "/enrolled", "/trainingfeedback"];
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
@@ -85,6 +86,7 @@ function App() {
           <NavigationTracker />
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/TrainingFeedback" element={<TrainingFeedback />} />
             <Route path="/*" element={<AuthenticatedApp />} />
           </Routes>
         </Router>
