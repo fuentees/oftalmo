@@ -44,6 +44,7 @@ export default function PublicEnrollment() {
     mobile_phone: "",
   });
   const [submitted, setSubmitted] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
@@ -59,6 +60,32 @@ export default function PublicEnrollment() {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return null;
     return format(parsed, pattern);
+  };
+
+  const formatCpf = (value) => {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    return digits
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})/, "$1-$2")
+      .replace(/(-\d{2})\d+?$/, "$1");
+  };
+
+  const formatPhone = (value) => {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 10) {
+      return digits
+        .replace(/(\d{2})(\d)/, "($1) $2")
+        .replace(/(\d{4})(\d)/, "$1-$2");
+    }
+    return digits
+      .replace(/(\d{2})(\d)/, "($1) $2")
+      .replace(/(\d{5})(\d)/, "$1-$2");
+  };
+
+  const formatRg = (value) => {
+    const cleaned = value.replace(/[^0-9xX]/g, "").slice(0, 12);
+    return cleaned.toUpperCase();
   };
 
   const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
@@ -110,7 +137,6 @@ export default function PublicEnrollment() {
         health_region: data.health_region,
         municipality: data.municipality,
         unit_name: data.unit_name,
-        position: data.position,
         work_address: data.work_address,
         residential_address: data.residential_address,
         commercial_phone: data.commercial_phone,
@@ -136,6 +162,57 @@ export default function PublicEnrollment() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const errors = {};
+    const cpfDigits = String(formData.cpf || "").replace(/\D/g, "");
+    const rgDigits = String(formData.rg || "").replace(/\D/g, "");
+    const commercialDigits = String(formData.commercial_phone || "").replace(/\D/g, "");
+    const mobileDigits = String(formData.mobile_phone || "").replace(/\D/g, "");
+
+    if (!formData.name?.trim()) errors.name = "Campo obrigatório.";
+    if (!formData.rg?.trim() || rgDigits.length < 5 || rgDigits.length > 12) {
+      errors.rg = "RG inválido.";
+    }
+    if (formData.cpf?.trim()) {
+      const isValidCpf = (() => {
+        if (cpfDigits.length !== 11 || /^(\d)\1+$/.test(cpfDigits)) return false;
+        let sum = 0;
+        for (let i = 0; i < 9; i += 1) sum += Number(cpfDigits[i]) * (10 - i);
+        let check = (sum * 10) % 11;
+        if (check === 10) check = 0;
+        if (check !== Number(cpfDigits[9])) return false;
+        sum = 0;
+        for (let i = 0; i < 10; i += 1) sum += Number(cpfDigits[i]) * (11 - i);
+        check = (sum * 10) % 11;
+        if (check === 10) check = 0;
+        return check === Number(cpfDigits[10]);
+      })();
+      if (!isValidCpf) {
+        errors.cpf = "CPF inválido.";
+      }
+    }
+    if (!formData.professional_formation?.trim()) errors.professional_formation = "Campo obrigatório.";
+    if (!formData.institution?.trim()) errors.institution = "Campo obrigatório.";
+    if (!formData.state?.trim()) errors.state = "Campo obrigatório.";
+    if (!formData.municipality?.trim()) errors.municipality = "Campo obrigatório.";
+    if (!formData.health_region?.trim()) errors.health_region = "Campo obrigatório.";
+    if (!formData.unit_name?.trim()) errors.unit_name = "Campo obrigatório.";
+    if (!formData.sector?.trim()) errors.sector = "Campo obrigatório.";
+    if (!formData.work_address?.trim()) errors.work_address = "Campo obrigatório.";
+    if (!formData.residential_address?.trim()) errors.residential_address = "Campo obrigatório.";
+    if (!formData.email?.trim()) {
+      errors.email = "Campo obrigatório.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = "E-mail inválido.";
+    }
+    if (commercialDigits.length < 10 || commercialDigits.length > 11) {
+      errors.commercial_phone = "Telefone inválido.";
+    }
+    if (mobileDigits.length < 10 || mobileDigits.length > 11) {
+      errors.mobile_phone = "Celular inválido.";
+    }
+
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     enrollMutation.mutate(formData);
   };
 
@@ -334,9 +411,16 @@ export default function PublicEnrollment() {
                       <Input
                         id="rg"
                         value={formData.rg}
-                        onChange={(e) => setFormData({...formData, rg: e.target.value})}
+                        onChange={(e) => {
+                          const nextValue = formatRg(e.target.value);
+                          setFormData({ ...formData, rg: nextValue });
+                          if (formErrors.rg) {
+                            setFormErrors((prev) => ({ ...prev, rg: null }));
+                          }
+                        }}
                         required
                       />
+                      {formErrors.rg && <p className="text-xs text-red-600">{formErrors.rg}</p>}
                     </div>
 
                     <div className="space-y-2">
@@ -344,9 +428,16 @@ export default function PublicEnrollment() {
                       <Input
                         id="cpf"
                         value={formData.cpf}
-                        onChange={(e) => setFormData({...formData, cpf: e.target.value})}
+                        onChange={(e) => {
+                          const nextValue = formatCpf(e.target.value);
+                          setFormData({ ...formData, cpf: nextValue });
+                          if (formErrors.cpf) {
+                            setFormErrors((prev) => ({ ...prev, cpf: null }));
+                          }
+                        }}
                         placeholder="000.000.000-00"
                       />
+                      {formErrors.cpf && <p className="text-xs text-red-600">{formErrors.cpf}</p>}
                     </div>
 
                     <div className="space-y-2 sm:col-span-2">
@@ -357,6 +448,9 @@ export default function PublicEnrollment() {
                         onChange={(e) => setFormData({...formData, professional_formation: e.target.value})}
                         required
                       />
+                      {formErrors.professional_formation && (
+                        <p className="text-xs text-red-600">{formErrors.professional_formation}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -372,6 +466,9 @@ export default function PublicEnrollment() {
                         onChange={(e) => setFormData({...formData, institution: e.target.value})}
                         required
                       />
+                      {formErrors.institution && (
+                        <p className="text-xs text-red-600">{formErrors.institution}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -383,6 +480,7 @@ export default function PublicEnrollment() {
                         placeholder="Ex: SP"
                         required
                       />
+                      {formErrors.state && <p className="text-xs text-red-600">{formErrors.state}</p>}
                     </div>
 
                     <div className="space-y-2">
@@ -393,6 +491,9 @@ export default function PublicEnrollment() {
                         onChange={(e) => setFormData({...formData, municipality: e.target.value})}
                         required
                       />
+                      {formErrors.municipality && (
+                        <p className="text-xs text-red-600">{formErrors.municipality}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2 sm:col-span-2">
@@ -403,6 +504,9 @@ export default function PublicEnrollment() {
                         onChange={(e) => setFormData({...formData, health_region: e.target.value})}
                         required
                       />
+                      {formErrors.health_region && (
+                        <p className="text-xs text-red-600">{formErrors.health_region}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2 sm:col-span-2">
@@ -413,6 +517,7 @@ export default function PublicEnrollment() {
                         onChange={(e) => setFormData({...formData, unit_name: e.target.value})}
                         required
                       />
+                      {formErrors.unit_name && <p className="text-xs text-red-600">{formErrors.unit_name}</p>}
                     </div>
 
                     <div className="space-y-2 sm:col-span-2">
@@ -423,6 +528,7 @@ export default function PublicEnrollment() {
                         onChange={(e) => setFormData({...formData, sector: e.target.value})}
                         required
                       />
+                      {formErrors.sector && <p className="text-xs text-red-600">{formErrors.sector}</p>}
                     </div>
                   </div>
                 </div>
@@ -438,6 +544,9 @@ export default function PublicEnrollment() {
                         onChange={(e) => setFormData({...formData, work_address: e.target.value})}
                         required
                       />
+                      {formErrors.work_address && (
+                        <p className="text-xs text-red-600">{formErrors.work_address}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -448,6 +557,9 @@ export default function PublicEnrollment() {
                         onChange={(e) => setFormData({...formData, residential_address: e.target.value})}
                         required
                       />
+                      {formErrors.residential_address && (
+                        <p className="text-xs text-red-600">{formErrors.residential_address}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -464,6 +576,7 @@ export default function PublicEnrollment() {
                         onChange={(e) => setFormData({...formData, email: e.target.value})}
                         required
                       />
+                      {formErrors.email && <p className="text-xs text-red-600">{formErrors.email}</p>}
                     </div>
 
                     <div className="space-y-2">
@@ -471,10 +584,19 @@ export default function PublicEnrollment() {
                       <Input
                         id="commercial_phone"
                         value={formData.commercial_phone}
-                        onChange={(e) => setFormData({...formData, commercial_phone: e.target.value})}
+                        onChange={(e) => {
+                          const nextValue = formatPhone(e.target.value);
+                          setFormData({ ...formData, commercial_phone: nextValue });
+                          if (formErrors.commercial_phone) {
+                            setFormErrors((prev) => ({ ...prev, commercial_phone: null }));
+                          }
+                        }}
                         placeholder="(11) 1234-5678"
                         required
                       />
+                      {formErrors.commercial_phone && (
+                        <p className="text-xs text-red-600">{formErrors.commercial_phone}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -482,10 +604,19 @@ export default function PublicEnrollment() {
                       <Input
                         id="mobile_phone"
                         value={formData.mobile_phone}
-                        onChange={(e) => setFormData({...formData, mobile_phone: e.target.value})}
+                        onChange={(e) => {
+                          const nextValue = formatPhone(e.target.value);
+                          setFormData({ ...formData, mobile_phone: nextValue });
+                          if (formErrors.mobile_phone) {
+                            setFormErrors((prev) => ({ ...prev, mobile_phone: null }));
+                          }
+                        }}
                         placeholder="(11) 91234-5678"
                         required
                       />
+                      {formErrors.mobile_phone && (
+                        <p className="text-xs text-red-600">{formErrors.mobile_phone}</p>
+                      )}
                     </div>
                   </div>
                 </div>

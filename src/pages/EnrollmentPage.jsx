@@ -100,6 +100,48 @@ export default function EnrollmentPage() {
     .filter((field) => field.is_active)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
+  const formatCpf = (value) => {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    return digits
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})/, "$1-$2")
+      .replace(/(-\d{2})\d+?$/, "$1");
+  };
+
+  const formatPhone = (value) => {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 10) {
+      return digits
+        .replace(/(\d{2})(\d)/, "($1) $2")
+        .replace(/(\d{4})(\d)/, "$1-$2");
+    }
+    return digits
+      .replace(/(\d{2})(\d)/, "($1) $2")
+      .replace(/(\d{5})(\d)/, "$1-$2");
+  };
+
+  const formatRg = (value) => {
+    const cleaned = value.replace(/[^0-9xX]/g, "").slice(0, 12);
+    return cleaned.toUpperCase();
+  };
+
+  const formatFieldValue = (field, value) => {
+    if (!value) return value;
+    const key = field.field_key?.toLowerCase() || "";
+    if (key.includes("cpf")) return formatCpf(value);
+    if (key.includes("rg")) return formatRg(value);
+    if (
+      field.type === "tel" ||
+      key.includes("phone") ||
+      key.includes("celular") ||
+      key.includes("telefone")
+    ) {
+      return formatPhone(value);
+    }
+    return value;
+  };
+
   const defaultEnrollmentFields = [
     {
       field_key: "name",
@@ -192,7 +234,7 @@ export default function EnrollmentPage() {
       order: 10,
     },
     {
-      field_key: "position",
+      field_key: "sector",
       label: "Cargo",
       type: "text",
       required: false,
@@ -262,20 +304,18 @@ export default function EnrollmentPage() {
     mutationFn: (payload) => dataClient.entities.EnrollmentField.bulkCreate(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
-      if (trainingId) {
-        localStorage.setItem(`enrollment_defaults_seeded_${trainingId}`, "true");
-      }
+      localStorage.setItem("enrollment_defaults_seeded_global", "true");
     },
   });
 
   React.useEffect(() => {
     if (!trainingId || !fieldsFetched) return;
     if (enrollmentFields.length > 0 || seedDefaults.isPending) return;
-    const seededFlag = localStorage.getItem(`enrollment_defaults_seeded_${trainingId}`);
+    const seededFlag = localStorage.getItem("enrollment_defaults_seeded_global");
     if (seededFlag === "true") return;
     const payload = defaultEnrollmentFields.map((field) => ({
       ...field,
-      training_id: trainingId,
+      training_id: null,
       is_active: true,
     }));
     seedDefaults.mutate(payload);
@@ -426,6 +466,13 @@ export default function EnrollmentPage() {
         return;
       }
 
+      if (lowerKey.includes("rg")) {
+        if (digits.length < 5 || digits.length > 12) {
+          errors[field.field_key] = "RG inválido.";
+        }
+        return;
+      }
+
       if (field.type === "email" || lowerKey.includes("email")) {
         const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value));
         if (!isValidEmail) {
@@ -475,6 +522,24 @@ export default function EnrollmentPage() {
     } else {
       createField.mutate(payload);
     }
+  };
+
+  const handleAddDefaultFields = () => {
+    const existingKeys = new Set(enrollmentFields.map((field) => field.field_key));
+    const payload = defaultEnrollmentFields
+      .filter((field) => !existingKeys.has(field.field_key))
+      .map((field) => ({
+        ...field,
+        training_id: null,
+        is_active: true,
+      }));
+
+    if (payload.length === 0) {
+      alert("Todos os campos padrão já existem.");
+      return;
+    }
+
+    seedDefaults.mutate(payload);
   };
 
   const handleExportExcel = () => {
@@ -745,6 +810,10 @@ export default function EnrollmentPage() {
           <Link2 className="h-4 w-4 mr-2" />
           Copiar Link de Inscrição
         </Button>
+        <Button variant="outline" onClick={handleAddDefaultFields}>
+          <Plus className="h-4 w-4 mr-2" />
+          Aplicar Campos Padrão
+        </Button>
         <Button onClick={() => {
           setEditingField(null);
           setFieldFormData(getDefaultFieldData());
@@ -858,9 +927,9 @@ export default function EnrollmentPage() {
                           <Input
                                 id={field.field_key}
                                 type={field.type}
-                                value={formData[field.field_key] || ""}
+                            value={formData[field.field_key] || ""}
                             onChange={(e) => {
-                              const nextValue = e.target.value;
+                              const nextValue = formatFieldValue(field, e.target.value);
                               setFormData({ ...formData, [field.field_key]: nextValue });
                               if (formErrors[field.field_key]) {
                                 setFormErrors((prev) => ({ ...prev, [field.field_key]: null }));
