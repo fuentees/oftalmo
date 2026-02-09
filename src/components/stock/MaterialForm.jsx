@@ -68,7 +68,7 @@ export default function MaterialForm({ material, onClose }) {
   }, [material]);
 
   const saveMaterial = useMutation({
-    mutationFn: (data) => {
+    mutationFn: (/** @type {any} */ data) => {
       if (material) {
         return dataClient.entities.Material.update(material.id, data);
       }

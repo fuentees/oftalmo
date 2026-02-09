@@ -62,7 +62,8 @@ export default function EnrollmentFieldsManager() {
   });
 
   const createField = useMutation({
-    mutationFn: (data) => dataClient.entities.EnrollmentField.create(data),
+    mutationFn: (/** @type {any} */ data) =>
+      dataClient.entities.EnrollmentField.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       resetForm();
@@ -70,7 +71,8 @@ export default function EnrollmentFieldsManager() {
   });
 
   const updateField = useMutation({
-    mutationFn: ({ id, data }) => dataClient.entities.EnrollmentField.update(id, data),
+    mutationFn: (/** @type {{ id: any; data: any }} */ payload) =>
+      dataClient.entities.EnrollmentField.update(payload.id, payload.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       resetForm();
@@ -78,7 +80,8 @@ export default function EnrollmentFieldsManager() {
   });
 
   const deleteField = useMutation({
-    mutationFn: (id) => dataClient.entities.EnrollmentField.delete(id),
+    mutationFn: (/** @type {any} */ id) =>
+      dataClient.entities.EnrollmentField.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       setDeleteConfirm(null);
@@ -212,7 +215,7 @@ export default function EnrollmentFieldsManager() {
         subtitle="Gerencie os campos personalizados do formulário"
         action={() => setShowForm(true)}
         actionLabel="Novo Campo"
-        icon={Plus}
+        actionIcon={Plus}
       />
 
       <DataTable

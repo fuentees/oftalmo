@@ -30,7 +30,7 @@ export default function MaterialsManager({ training }) {
   });
 
   const uploadMaterial = useMutation({
-    mutationFn: async (data) => {
+    mutationFn: async (/** @type {any} */ data) => {
       setUploading(true);
       const { file_url } = await dataClient.integrations.Core.UploadFile({ file: data.file });
       
@@ -55,7 +55,8 @@ export default function MaterialsManager({ training }) {
   });
 
   const deleteMaterial = useMutation({
-    mutationFn: (id) => dataClient.entities.TrainingMaterial.delete(id),
+    mutationFn: (/** @type {any} */ id) =>
+      dataClient.entities.TrainingMaterial.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trainingMaterials"] });
     },

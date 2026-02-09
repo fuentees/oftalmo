@@ -32,7 +32,7 @@ export default function ProfessionalForm({ professional, onClose }) {
   }, [professional]);
 
   const saveProfessional = useMutation({
-    mutationFn: (data) => {
+    mutationFn: (/** @type {any} */ data) => {
       if (professional) {
         return dataClient.entities.Professional.update(professional.id, data);
       }

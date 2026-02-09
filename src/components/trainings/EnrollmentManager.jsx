@@ -20,7 +20,7 @@ export default function EnrollmentManager({ training, professionals, existingPar
   const queryClient = useQueryClient();
 
   const enrollParticipant = useMutation({
-    mutationFn: async (professionalId) => {
+    mutationFn: async (/** @type {any} */ professionalId) => {
       const professional = professionals.find((p) => p.id === professionalId);
       const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
       const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
@@ -67,7 +67,8 @@ export default function EnrollmentManager({ training, professionals, existingPar
   });
 
   const updateEnrollmentStatus = useMutation({
-    mutationFn: ({ participantId, status }) => {
+    mutationFn: (/** @type {{ participantId: any; status: string }} */ payload) => {
+      const { participantId, status } = payload;
       return dataClient.entities.TrainingParticipant.update(participantId, {
         enrollment_status: status,
       });

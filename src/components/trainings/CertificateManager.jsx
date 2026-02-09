@@ -78,7 +78,7 @@ export default function CertificateManager({ training, participants, onClose }) 
   });
 
   const issueCertificates = useMutation({
-    mutationFn: async (participantIds) => {
+    mutationFn: async (/** @type {any[]} */ participantIds) => {
       setProcessing(true);
       setResult(null);
 

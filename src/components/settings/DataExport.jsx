@@ -9,14 +9,16 @@ import { toast } from "sonner";
 
 export default function DataExport() {
   const [exporting, setExporting] = useState(false);
-  const [selected, setSelected] = useState({
-    professionals: true,
-    trainings: true,
-    participants: true,
-    materials: true,
-    events: true,
-    requests: true,
-  });
+  const [selected, setSelected] = useState(
+    /** @type {Record<string, boolean>} */ ({
+      professionals: true,
+      trainings: true,
+      participants: true,
+      materials: true,
+      events: true,
+      requests: true,
+    })
+  );
 
   const entities = [
     { key: "professionals", label: "Profissionais", entity: "Professional" },
@@ -63,7 +65,7 @@ export default function DataExport() {
   };
 
   const handleSelectAll = (checked) => {
-    const newSelected = {};
+    const newSelected = /** @type {Record<string, boolean>} */ ({});
     entities.forEach(item => {
       newSelected[item.key] = checked;
     });

@@ -40,7 +40,7 @@ export default function ParticipantsManager({ training, professionals, existingP
   const queryClient = useQueryClient();
 
   const addParticipants = useMutation({
-    mutationFn: async (professionalIds) => {
+    mutationFn: async (/** @type {any[]} */ professionalIds) => {
       const baseDate = training.date ? new Date(training.date) : null;
       const validityDate =
         training.validity_months &&
@@ -83,16 +83,15 @@ export default function ParticipantsManager({ training, professionals, existingP
   });
 
   const updateParticipant = useMutation({
-    mutationFn: ({ participantId, data }) => {
-      return dataClient.entities.TrainingParticipant.update(participantId, data);
-    },
+    mutationFn: (/** @type {{ participantId: any; data: any }} */ payload) =>
+      dataClient.entities.TrainingParticipant.update(payload.participantId, payload.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["participants"] });
     },
   });
 
   const removeParticipant = useMutation({
-    mutationFn: async (participantId) => {
+    mutationFn: async (/** @type {any} */ participantId) => {
       await dataClient.entities.TrainingParticipant.delete(participantId);
       
       // Update training participant count

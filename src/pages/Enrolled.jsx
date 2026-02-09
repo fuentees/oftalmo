@@ -49,8 +49,8 @@ export default function Enrolled() {
     : allParticipants;
 
   const updateEnrollmentStatus = useMutation({
-    mutationFn: ({ id, status }) => 
-      dataClient.entities.TrainingParticipant.update(id, { enrollment_status: status }),
+    mutationFn: (/** @type {{ id: any; status: string }} */ payload) =>
+      dataClient.entities.TrainingParticipant.update(payload.id, { enrollment_status: payload.status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
     },

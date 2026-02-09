@@ -92,7 +92,7 @@ export default function TrainingForm({ training, onClose }) {
   };
 
   const saveTraining = useMutation({
-    mutationFn: (data) => {
+    mutationFn: (/** @type {any} */ data) => {
       if (training) {
         return dataClient.entities.Training.update(training.id, data);
       }

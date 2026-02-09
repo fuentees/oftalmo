@@ -41,7 +41,7 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
   }, [preselectedMaterial]);
 
   const createMovement = useMutation({
-    mutationFn: async (data) => {
+    mutationFn: async (/** @type {any} */ data) => {
       // Create the movement
       await dataClient.entities.StockMovement.create(data);
       
