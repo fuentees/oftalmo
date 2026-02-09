@@ -45,24 +45,9 @@ export default function PublicEnrollment() {
     mobile_phone: "",
   });
   const [submitted, setSubmitted] = useState(false);
-  const [formErrors, setFormErrors] = useState({
-    name: null,
-    cpf: null,
-    rg: null,
-    email: null,
-    sector: null,
-    registration: null,
-    professional_formation: null,
-    institution: null,
-    state: null,
-    health_region: null,
-    municipality: null,
-    unit_name: null,
-    work_address: null,
-    residential_address: null,
-    commercial_phone: null,
-    mobile_phone: null,
-  });
+  const [formErrors, setFormErrors] = useState(
+    /** @type {Record<string, string | null>} */ ({})
+  );
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
@@ -109,7 +94,7 @@ export default function PublicEnrollment() {
   const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
 
   const enrollMutation = useMutation({
-    mutationFn: async (data) => {
+    mutationFn: async (/** @type {Record<string, any>} */ data) => {
       // Check if already enrolled
       const existing = await dataClient.entities.TrainingParticipant.filter({
         training_id: trainingId,
@@ -180,7 +165,7 @@ export default function PublicEnrollment() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const errors = {};
+    const errors = /** @type {Record<string, string | null>} */ ({});
     const cpfDigits = String(formData.cpf || "").replace(/\D/g, "");
     const rgDigits = String(formData.rg || "").replace(/\D/g, "");
     const commercialDigits = String(formData.commercial_phone || "").replace(/\D/g, "");

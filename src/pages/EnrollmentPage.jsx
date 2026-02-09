@@ -301,7 +301,8 @@ export default function EnrollmentPage() {
   };
 
   const seedDefaults = useMutation({
-    mutationFn: (payload) => dataClient.entities.EnrollmentField.bulkCreate(payload),
+    mutationFn: (/** @type {any} */ payload) =>
+      dataClient.entities.EnrollmentField.bulkCreate(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       localStorage.setItem("enrollment_defaults_seeded_global", "true");
@@ -322,7 +323,8 @@ export default function EnrollmentPage() {
   }, [trainingId, fieldsFetched, enrollmentFields.length, seedDefaults.isPending]);
 
   const createField = useMutation({
-    mutationFn: (data) => dataClient.entities.EnrollmentField.create(data),
+    mutationFn: (/** @type {any} */ data) =>
+      dataClient.entities.EnrollmentField.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       resetFieldForm();
@@ -330,7 +332,8 @@ export default function EnrollmentPage() {
   });
 
   const updateField = useMutation({
-    mutationFn: ({ id, data }) => dataClient.entities.EnrollmentField.update(id, data),
+    mutationFn: (/** @type {any} */ payload) =>
+      dataClient.entities.EnrollmentField.update(payload.id, payload.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       resetFieldForm();
@@ -338,7 +341,8 @@ export default function EnrollmentPage() {
   });
 
   const deleteField = useMutation({
-    mutationFn: (id) => dataClient.entities.EnrollmentField.delete(id),
+    mutationFn: (/** @type {any} */ id) =>
+      dataClient.entities.EnrollmentField.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       setFieldDeleteConfirm(null);
@@ -346,7 +350,7 @@ export default function EnrollmentPage() {
   });
 
   const enrollMutation = useMutation({
-    mutationFn: async (data) => {
+    mutationFn: async (/** @type {Record<string, any>} */ data) => {
       const existing = await dataClient.entities.TrainingParticipant.filter({
         training_id: trainingId,
         professional_cpf: data.cpf,
@@ -417,7 +421,7 @@ export default function EnrollmentPage() {
   });
 
   const deleteParticipant = useMutation({
-    mutationFn: async (id) => {
+    mutationFn: async (/** @type {any} */ id) => {
       await dataClient.entities.TrainingParticipant.delete(id);
       await dataClient.entities.Training.update(trainingId, {
         participants_count: Math.max(0, (training.participants_count || 1) - 1),
@@ -432,7 +436,7 @@ export default function EnrollmentPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const errors = {};
+    const errors = /** @type {Record<string, string | null>} */ ({});
     activeEnrollmentFields.forEach((field) => {
       const rawValue = formData[field.field_key];
       const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;

@@ -5,10 +5,10 @@ import { Plus } from "lucide-react";
 export default function PageHeader({
   title,
   subtitle,
-  action,
+  action = null,
   actionLabel = "Adicionar",
   actionIcon: ActionIcon = Plus,
-  onActionClick,
+  onActionClick = null,
 }) {
   const actionHandler = action || onActionClick;
   return (

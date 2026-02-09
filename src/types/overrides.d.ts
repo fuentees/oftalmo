@@ -141,7 +141,3 @@ declare module "@/components/ui/tooltip" {
   export const TooltipTrigger: any;
 }
 
-declare module "papaparse" {
-  const Papa: any;
-  export default Papa;
-}
