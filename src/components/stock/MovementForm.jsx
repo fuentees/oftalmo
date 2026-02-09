@@ -105,7 +105,7 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
             <SelectValue placeholder="Selecione o material" />
           </SelectTrigger>
           <SelectContent>
-            {materials.filter(m => m.status === "ativo").map((material) => (
+            {materials.map((material) => (
               <SelectItem key={material.id} value={material.id}>
                 {material.code ? `${material.code} - ` : ""}{material.name}
               </SelectItem>
