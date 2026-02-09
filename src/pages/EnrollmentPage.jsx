@@ -350,6 +350,10 @@ export default function EnrollmentPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       setFieldDeleteConfirm(null);
+      toast.success("Campo excluído com sucesso.");
+    },
+    onError: (error) => {
+      toast.error(error?.message || "Erro ao excluir campo.");
     },
   });
 
@@ -742,7 +746,6 @@ export default function EnrollmentPage() {
       render: (row) => (
         <div>
           <p className="font-medium">{row.label}</p>
-          <p className="text-xs text-slate-500">{row.field_key}</p>
         </div>
       ),
     },
@@ -783,6 +786,7 @@ export default function EnrollmentPage() {
             size="sm"
             onClick={() => setFieldDeleteConfirm(row)}
             className="text-red-600 hover:text-red-700"
+            disabled={deleteField.isPending}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -1189,7 +1193,12 @@ export default function EnrollmentPage() {
       </Dialog>
 
       {/* Field Delete Confirmation */}
-      <AlertDialog open={!!fieldDeleteConfirm} onOpenChange={() => setFieldDeleteConfirm(null)}>
+      <AlertDialog
+        open={!!fieldDeleteConfirm}
+        onOpenChange={(open) => {
+          if (!open) setFieldDeleteConfirm(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir campo do formulário</AlertDialogTitle>
@@ -1203,8 +1212,9 @@ export default function EnrollmentPage() {
             <AlertDialogAction
               onClick={() => deleteField.mutate(fieldDeleteConfirm.id)}
               className="bg-red-600 hover:bg-red-700"
+              disabled={deleteField.isPending}
             >
-              Excluir
+              {deleteField.isPending ? "Excluindo..." : "Excluir"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
