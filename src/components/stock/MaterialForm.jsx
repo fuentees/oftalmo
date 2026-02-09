@@ -28,7 +28,7 @@ export default function MaterialForm({
     code: "",
     description: "",
     unit: "unidade",
-    category: "outros",
+    category: "outras",
     minimum_stock: 0,
     current_stock: 0,
     location: "",
@@ -42,14 +42,12 @@ export default function MaterialForm({
   const generateCode = (category) => {
     const normalized = String(category || "").trim().toLowerCase();
     const prefixes = {
-      epi: "EPI",
       escritorio: "ESC",
+      folhetos: "FOL",
       limpeza: "LMP",
-      ferramentas: "FER",
-      eletrico: "ELE",
-      hidraulico: "HID",
+      manuais: "MAN",
       informatica: "INF",
-      outros: "OUT",
+      outras: "OUT",
     };
     const prefix =
       prefixes[category] ||
@@ -61,14 +59,12 @@ export default function MaterialForm({
   };
 
   const defaultCategoryOptions = [
-    { value: "EPI", label: "EPI" },
     { value: "escritorio", label: "Escritório" },
-    { value: "limpeza", label: "Limpeza" },
-    { value: "ferramentas", label: "Ferramentas" },
-    { value: "eletrico", label: "Elétrico" },
-    { value: "hidraulico", label: "Hidráulico" },
+    { value: "folhetos", label: "Folhetos" },
     { value: "informatica", label: "Informática" },
-    { value: "outros", label: "Outros" },
+    { value: "limpeza", label: "Limpeza" },
+    { value: "manuais", label: "Manuais" },
+    { value: "outras", label: "Outras" },
   ];
 
   const categoryOptions = categories.length > 0 ? categories : defaultCategoryOptions;
@@ -82,14 +78,26 @@ export default function MaterialForm({
       .replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
+  const sortedCategoryOptions = [...categoryOptions].sort((a, b) =>
+    a.label.localeCompare(b.label, "pt-BR")
+  );
+  const sortedCustomCategories = [...customCategories].sort((a, b) =>
+    resolveCategoryLabel(a).localeCompare(resolveCategoryLabel(b), "pt-BR")
+  );
+
   useEffect(() => {
     if (material) {
+      const allowedCategories = categoryOptions.map((option) => option.value);
+      const incomingCategory = material.category || "outras";
+      const normalizedCategory = allowedCategories.includes(incomingCategory)
+        ? incomingCategory
+        : "outras";
       setFormData({
         name: material.name || "",
         code: material.code || "",
         description: material.description || "",
         unit: material.unit || "unidade",
-        category: material.category || "outros",
+        category: normalizedCategory,
         minimum_stock: material.minimum_stock || 0,
         current_stock: material.current_stock || 0,
         location: material.location || "",
@@ -102,7 +110,7 @@ export default function MaterialForm({
         code: prev.code || generateCode(prev.category),
       }));
     }
-  }, [material]);
+  }, [material, categoryOptions]);
 
   const saveMaterial = useMutation({
     mutationFn: (/** @type {any} */ data) => {
@@ -160,7 +168,7 @@ export default function MaterialForm({
       return;
     }
     if (formData.category === value) {
-      handleChange("category", "outros");
+      handleChange("category", "outras");
     }
   };
 
@@ -216,7 +224,7 @@ export default function MaterialForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {categoryOptions.map((option) => (
+              {sortedCategoryOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
                 </SelectItem>
@@ -240,9 +248,9 @@ export default function MaterialForm({
                 Adicionar
               </Button>
             </div>
-            {customCategories.length > 0 && (
+            {sortedCustomCategories.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {customCategories.map((category) => {
+                {sortedCustomCategories.map((category) => {
                   const deletable = canDeleteCategory
                     ? canDeleteCategory(category)
                     : true;

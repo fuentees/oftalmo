@@ -9,14 +9,12 @@ export default function MaterialDetails({ material, movements }) {
   if (!material) return null;
 
   const categoryLabels = {
-    EPI: "EPI",
     escritorio: "Escritório",
-    limpeza: "Limpeza",
-    ferramentas: "Ferramentas",
-    eletrico: "Elétrico",
-    hidraulico: "Hidráulico",
+    folhetos: "Folhetos",
     informatica: "Informática",
-    outros: "Outros",
+    limpeza: "Limpeza",
+    manuais: "Manuais",
+    outras: "Outras",
   };
 
   const formatCategoryLabel = (value) => {
