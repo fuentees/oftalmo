@@ -22,6 +22,7 @@ create table if not exists trainings (
   status text,
   validity_months integer,
   logo_url text,
+  speakers jsonb,
   notes text,
   created_at timestamptz default now()
 );

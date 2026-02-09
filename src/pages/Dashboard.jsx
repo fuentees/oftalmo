@@ -154,6 +154,85 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Próximos eventos em destaque */}
+      <Card className="border-slate-200 shadow-lg hover:shadow-xl transition-shadow">
+        <CardHeader className="flex flex-row items-center justify-between pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Calendar className="h-4 w-4 text-blue-600" />
+            </div>
+            Próximos Eventos e Atividades
+          </CardTitle>
+          <Link
+            to={createPageUrl("Schedule")}
+            className="text-sm text-blue-600 hover:text-blue-700 flex items-center font-medium"
+          >
+            Ver agenda <ChevronRight className="h-4 w-4" />
+          </Link>
+        </CardHeader>
+        <CardContent className="space-y-2 max-h-[28rem] overflow-y-auto">
+          {loadingEvents ? (
+            <p className="text-sm text-slate-500 text-center py-4">Carregando...</p>
+          ) : upcomingEvents.length === 0 ? (
+            <p className="text-sm text-slate-500 text-center py-4">Nenhum evento próximo</p>
+          ) : (
+            upcomingEvents.map((event) => {
+              const Icon = typeIcons[event.type] || Circle;
+              return (
+                <div
+                  key={event.id}
+                  className="p-4 border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-blue-300 transition-all hover:shadow-md cursor-pointer"
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="p-2 rounded-lg flex-shrink-0"
+                      style={{ backgroundColor: event.color + "20" }}
+                    >
+                      <Icon className="h-4 w-4" style={{ color: event.color }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-sm text-slate-900 truncate">
+                        {event.title}
+                      </h4>
+                      <p className="text-xs text-slate-500">{typeLabels[event.type]}</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-slate-600">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {format(new Date(event.start_date), "dd/MM", { locale: ptBR })}
+                          {event.end_date && event.end_date !== event.start_date &&
+                            ` - ${format(new Date(event.end_date), "dd/MM", { locale: ptBR })}`}
+                        </div>
+                        {event.start_time && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {event.start_time}
+                          </div>
+                        )}
+                      </div>
+                      {event.location && (
+                        <div className="flex items-center gap-1 mt-1 text-xs text-slate-500">
+                          <MapPin className="h-3 w-3" />
+                          <span className="truncate">{event.location}</span>
+                        </div>
+                      )}
+                      {event.professional_names && event.professional_names.length > 0 && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <Users className="h-3 w-3 text-slate-400" />
+                          <span className="text-xs text-slate-600 truncate">
+                            {event.professional_names.slice(0, 2).join(", ")}
+                            {event.professional_names.length > 2 && ` +${event.professional_names.length - 2}`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
@@ -235,85 +314,6 @@ export default function Dashboard() {
               isLoading={loadingMovements}
               emptyMessage="Nenhuma movimentação registrada"
             />
-          </CardContent>
-        </Card>
-
-        {/* Upcoming Events */}
-        <Card className="border-slate-200 shadow-lg hover:shadow-xl transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Calendar className="h-4 w-4 text-blue-600" />
-              </div>
-              Próximos Eventos e Atividades
-            </CardTitle>
-            <Link
-              to={createPageUrl("Schedule")}
-              className="text-sm text-blue-600 hover:text-blue-700 flex items-center font-medium"
-            >
-              Ver agenda <ChevronRight className="h-4 w-4" />
-            </Link>
-          </CardHeader>
-          <CardContent className="space-y-2 max-h-96 overflow-y-auto">
-            {loadingEvents ? (
-              <p className="text-sm text-slate-500 text-center py-4">Carregando...</p>
-            ) : upcomingEvents.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-4">Nenhum evento próximo</p>
-            ) : (
-              upcomingEvents.map((event) => {
-                const Icon = typeIcons[event.type] || Circle;
-                return (
-                  <div
-                    key={event.id}
-                    className="p-4 border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-blue-300 transition-all hover:shadow-md cursor-pointer"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className="p-2 rounded-lg flex-shrink-0"
-                        style={{ backgroundColor: event.color + "20" }}
-                      >
-                        <Icon className="h-4 w-4" style={{ color: event.color }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm text-slate-900 truncate">
-                          {event.title}
-                        </h4>
-                        <p className="text-xs text-slate-500">{typeLabels[event.type]}</p>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-slate-600">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {format(new Date(event.start_date), "dd/MM", { locale: ptBR })}
-                            {event.end_date && event.end_date !== event.start_date && 
-                              ` - ${format(new Date(event.end_date), "dd/MM", { locale: ptBR })}`}
-                          </div>
-                          {event.start_time && (
-                            <div className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {event.start_time}
-                            </div>
-                          )}
-                        </div>
-                        {event.location && (
-                          <div className="flex items-center gap-1 mt-1 text-xs text-slate-500">
-                            <MapPin className="h-3 w-3" />
-                            <span className="truncate">{event.location}</span>
-                          </div>
-                        )}
-                        {event.professional_names && event.professional_names.length > 0 && (
-                          <div className="flex items-center gap-1 mt-1">
-                            <Users className="h-3 w-3 text-slate-400" />
-                            <span className="text-xs text-slate-600 truncate">
-                              {event.professional_names.slice(0, 2).join(", ")}
-                              {event.professional_names.length > 2 && ` +${event.professional_names.length - 2}`}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
           </CardContent>
         </Card>
       </div>

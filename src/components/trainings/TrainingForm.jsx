@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, X, Video, Plus, XCircle } from "lucide-react";
+import { Loader2, X, Video, Plus, XCircle, Mic } from "lucide-react";
 import { format, addDays, addWeeks } from "date-fns";
 
 export default function TrainingForm({ training, onClose, professionals = [] }) {
@@ -29,6 +29,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     coordinator: "",
     coordinator_email: "",
     monitors: [],
+    speakers: [],
     max_participants: "",
     status: "agendado",
     validity_months: "",
@@ -66,6 +67,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         coordinator: training.coordinator || "",
         coordinator_email: training.coordinator_email || "",
         monitors: training.monitors || [],
+        speakers: training.speakers || [],
         max_participants: training.max_participants || "",
         status: training.status || "agendado",
         validity_months: training.validity_months || "",
@@ -130,6 +132,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       duration_hours: formData.duration_hours ? Number(formData.duration_hours) : null,
       max_participants: formData.max_participants ? Number(formData.max_participants) : null,
       validity_months: formData.validity_months ? Number(formData.validity_months) : null,
+      coordinator_email: formData.coordinator_email || null,
     };
     saveTraining.mutate(dataToSave);
   };
@@ -155,6 +158,14 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     const normalized = email.trim().toLowerCase();
     return activeProfessionals.find(
       (prof) => prof.email?.trim().toLowerCase() === normalized
+    );
+  };
+
+  const findProfessionalByRg = (rg) => {
+    if (!rg) return null;
+    const normalized = rg.replace(/\D/g, "");
+    return activeProfessionals.find(
+      (prof) => String(prof.rg || "").replace(/\D/g, "") === normalized
     );
   };
 
@@ -519,6 +530,109 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         ))}
       </div>
 
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm flex items-center gap-2">
+            <Mic className="h-4 w-4 text-amber-600" />
+            Palestrantes
+          </Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              handleChange("speakers", [
+                ...formData.speakers,
+                { name: "", rg: "", email: "", lecture: "" },
+              ])
+            }
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Adicionar Palestrante
+          </Button>
+        </div>
+        {formData.speakers.map((speaker, index) => (
+          <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-2 border rounded-lg">
+            <Input
+              value={speaker.name}
+              list="professionals-names"
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                const match = findProfessionalByName(nextValue);
+                const newSpeakers = [...formData.speakers];
+                newSpeakers[index].name = nextValue;
+                if (!newSpeakers[index].email && match?.email) {
+                  newSpeakers[index].email = match.email;
+                }
+                if (!newSpeakers[index].rg && match?.rg) {
+                  newSpeakers[index].rg = match.rg;
+                }
+                handleChange("speakers", newSpeakers);
+              }}
+              placeholder="Nome do palestrante"
+            />
+            <Input
+              value={speaker.rg}
+              list="professionals-rg"
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                const match = findProfessionalByRg(nextValue);
+                const newSpeakers = [...formData.speakers];
+                newSpeakers[index].rg = nextValue;
+                if (!newSpeakers[index].name && match?.name) {
+                  newSpeakers[index].name = match.name;
+                }
+                if (!newSpeakers[index].email && match?.email) {
+                  newSpeakers[index].email = match.email;
+                }
+                handleChange("speakers", newSpeakers);
+              }}
+              placeholder="RG do palestrante"
+            />
+            <Input
+              type="email"
+              value={speaker.email}
+              list="professionals-emails"
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                const match = findProfessionalByEmail(nextValue);
+                const newSpeakers = [...formData.speakers];
+                newSpeakers[index].email = nextValue;
+                if (!newSpeakers[index].name && match?.name) {
+                  newSpeakers[index].name = match.name;
+                }
+                if (!newSpeakers[index].rg && match?.rg) {
+                  newSpeakers[index].rg = match.rg;
+                }
+                handleChange("speakers", newSpeakers);
+              }}
+              placeholder="Email do palestrante"
+            />
+            <Input
+              value={speaker.lecture}
+              onChange={(e) => {
+                const newSpeakers = [...formData.speakers];
+                newSpeakers[index].lecture = e.target.value;
+                handleChange("speakers", newSpeakers);
+              }}
+              placeholder="Aula/tema a ser ministrada"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                const newSpeakers = formData.speakers.filter((_, i) => i !== index);
+                handleChange("speakers", newSpeakers);
+              }}
+              className="text-red-600 justify-self-end"
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
       <datalist id="professionals-names">
         {activeProfessionals.map((prof) => (
           <option key={prof.id} value={prof.name} />
@@ -529,6 +643,13 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
           .filter((prof) => prof.email)
           .map((prof) => (
             <option key={prof.id} value={prof.email} />
+          ))}
+      </datalist>
+      <datalist id="professionals-rg">
+        {activeProfessionals
+          .filter((prof) => prof.rg)
+          .map((prof) => (
+            <option key={prof.id} value={prof.rg} />
           ))}
       </datalist>
 

@@ -203,6 +203,30 @@ export default function TrainingDetails({ training, participants }) {
         </Card>
       )}
 
+      {training.speakers && training.speakers.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-slate-500">Palestrantes</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {training.speakers.map((speaker, index) => (
+              <div key={index} className="flex flex-col border-b border-slate-100 pb-2 last:border-none">
+                <span className="font-medium text-slate-800">{speaker.name}</span>
+                <span className="text-slate-500">
+                  {speaker.lecture || "Tema não informado"}
+                </span>
+                {(speaker.email || speaker.rg) && (
+                  <span className="text-xs text-slate-400">
+                    {speaker.email ? speaker.email : ""}{speaker.email && speaker.rg ? " • " : ""}
+                    {speaker.rg ? `RG: ${speaker.rg}` : ""}
+                  </span>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Participants */}
       <Card>
         <CardHeader className="pb-2">
