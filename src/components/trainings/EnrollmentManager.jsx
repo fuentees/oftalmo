@@ -22,10 +22,15 @@ export default function EnrollmentManager({ training, professionals, existingPar
   const enrollParticipant = useMutation({
     mutationFn: async (professionalId) => {
       const professional = professionals.find((p) => p.id === professionalId);
-      const firstDate = training.dates && training.dates.length > 0 ? training.dates[0].date : null;
-      const validityDate = training.validity_months && firstDate
-        ? format(addMonths(new Date(firstDate), training.validity_months), "yyyy-MM-dd")
-        : null;
+      const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
+      const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
+      const baseDate = firstDate ? new Date(firstDate) : null;
+      const validityDate =
+        training.validity_months &&
+        baseDate &&
+        !Number.isNaN(baseDate.getTime())
+          ? format(addMonths(baseDate, training.validity_months), "yyyy-MM-dd")
+          : null;
       
       const participant = {
         training_id: training.id,

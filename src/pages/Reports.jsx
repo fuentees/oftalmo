@@ -31,6 +31,12 @@ export default function Reports() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
+
+  const toValidDate = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
   const { data: participants = [] } = useQuery({
     queryKey: ["participants"],
     queryFn: () => dataClient.entities.TrainingParticipant.list(),
@@ -86,9 +92,9 @@ export default function Reports() {
   const filteredTrainings = trainings.filter(t => {
     if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
     
-    if (dateRange.start && dateRange.end && t.dates && t.dates.length > 0) {
-      const trainingDate = new Date(t.dates[0].date);
-      if (!isWithinInterval(trainingDate, { start: dateRange.start, end: dateRange.end })) {
+    if (dateRange.start && dateRange.end && Array.isArray(t.dates) && t.dates.length > 0) {
+      const trainingDate = toValidDate(t.dates[0]?.date);
+      if (trainingDate && !isWithinInterval(trainingDate, { start: dateRange.start, end: dateRange.end })) {
         return false;
       }
     }
@@ -131,9 +137,12 @@ export default function Reports() {
 
   // Treinamentos por mês
   const trainingsByMonth = filteredTrainings.reduce((acc, training) => {
-    if (training.dates && training.dates.length > 0) {
-      const month = format(new Date(training.dates[0].date), "MMM/yy");
-      acc[month] = (acc[month] || 0) + 1;
+    if (Array.isArray(training.dates) && training.dates.length > 0) {
+      const trainingDate = toValidDate(training.dates[0]?.date);
+      if (trainingDate) {
+        const month = format(trainingDate, "MMM/yy");
+        acc[month] = (acc[month] || 0) + 1;
+      }
     }
     return acc;
   }, {});

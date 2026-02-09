@@ -1,6 +1,13 @@
 import jsPDF from "jspdf";
 import { format } from "date-fns";
 
+const formatDateSafe = (value, pattern = "dd/MM/yyyy") => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return format(parsed, pattern);
+};
+
 export const generateParticipantCertificate = (participant, training) => {
   const pdf = new jsPDF({
     orientation: "landscape",
@@ -43,8 +50,11 @@ export const generateParticipantCertificate = (participant, training) => {
     pdf.text(`com carga horária de ${training.duration_hours} horas,`, pageWidth / 2, 100, { align: "center" });
   }
 
-  if (training.dates && training.dates.length > 0) {
-    const dateText = `realizado em ${format(new Date(training.dates[0].date), "dd/MM/yyyy")}.`;
+  const participantDate = Array.isArray(training.dates)
+    ? formatDateSafe(training.dates[0]?.date)
+    : null;
+  if (participantDate) {
+    const dateText = `realizado em ${participantDate}.`;
     pdf.text(dateText, pageWidth / 2, 110, { align: "center" });
   }
 
@@ -54,7 +64,7 @@ export const generateParticipantCertificate = (participant, training) => {
 
   // Instructor
   pdf.line(40, yPos, 100, yPos);
-  pdf.text(training.instructor, 70, yPos + 5, { align: "center" });
+  pdf.text(training.instructor || "", 70, yPos + 5, { align: "center" });
   pdf.setFontSize(9);
   pdf.text("Instrutor", 70, yPos + 10, { align: "center" });
 
@@ -118,8 +128,11 @@ export const generateMonitorCertificate = (monitor, training) => {
     pdf.text(`ministrando aulas com carga horária de ${training.duration_hours} horas,`, pageWidth / 2, 115, { align: "center" });
   }
 
-  if (training.dates && training.dates.length > 0) {
-    const dateText = `realizado em ${format(new Date(training.dates[0].date), "dd/MM/yyyy")}.`;
+  const monitorDate = Array.isArray(training.dates)
+    ? formatDateSafe(training.dates[0]?.date)
+    : null;
+  if (monitorDate) {
+    const dateText = `realizado em ${monitorDate}.`;
     pdf.text(dateText, pageWidth / 2, 125, { align: "center" });
   }
 
@@ -129,7 +142,7 @@ export const generateMonitorCertificate = (monitor, training) => {
 
   // Instructor
   pdf.line(40, yPos, 100, yPos);
-  pdf.text(training.instructor, 70, yPos + 5, { align: "center" });
+  pdf.text(training.instructor || "", 70, yPos + 5, { align: "center" });
   pdf.setFontSize(9);
   pdf.text("Instrutor Responsável", 70, yPos + 10, { align: "center" });
 

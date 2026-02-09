@@ -43,14 +43,22 @@ export default function TrainingForm({ training, onClose }) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    const defaultDates = [
+      { date: format(new Date(), "yyyy-MM-dd"), start_time: "08:00", end_time: "12:00" }
+    ];
+
     if (training) {
+      const normalizedDates = Array.isArray(training.dates)
+        ? training.dates.filter((dateItem) => dateItem?.date)
+        : [];
+
       setFormData({
         title: training.title || "",
         code: training.code || "",
         type: training.type || "teorico",
         category: training.category || "tecnico",
         description: training.description || "",
-        dates: training.dates || [{ date: format(new Date(), "yyyy-MM-dd"), start_time: "08:00", end_time: "12:00" }],
+        dates: normalizedDates.length > 0 ? normalizedDates : defaultDates,
         duration_hours: training.duration_hours || 4,
         location: training.location || "",
         online_link: training.online_link || "",

@@ -73,6 +73,15 @@ export default function EnrollmentPage() {
     enabled: !!trainingId,
   });
 
+  const formatDateSafe = (value, pattern = "dd/MM/yyyy") => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return format(parsed, pattern);
+  };
+
+  const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
+
   const enrollMutation = useMutation({
     mutationFn: async (data) => {
       const existing = await dataClient.entities.TrainingParticipant.filter({
@@ -88,11 +97,20 @@ export default function EnrollmentPage() {
         throw new Error("Treinamento com vagas esgotadas");
       }
 
-      const firstDate = training.dates && training.dates.length > 0 ? training.dates[0].date : null;
+      const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
       
-      const validityDate = training.validity_months && firstDate
-        ? format(new Date(firstDate).setMonth(new Date(firstDate).getMonth() + training.validity_months), "yyyy-MM-dd")
-        : null;
+      const baseDate = firstDate ? new Date(firstDate) : null;
+      const validityDate =
+        training.validity_months &&
+        baseDate &&
+        !Number.isNaN(baseDate.getTime())
+          ? format(
+              new Date(
+                baseDate.setMonth(baseDate.getMonth() + training.validity_months)
+              ),
+              "yyyy-MM-dd"
+            )
+          : null;
 
       await dataClient.entities.TrainingParticipant.create({
         training_id: trainingId,
@@ -319,7 +337,7 @@ export default function EnrollmentPage() {
             <div>
               <CardTitle className="text-2xl">{training.title}</CardTitle>
               <p className="text-blue-100 text-sm mt-1">
-                {training.dates && training.dates.length > 0 && format(new Date(training.dates[0].date), "dd/MM/yyyy")}
+                {trainingDates.length > 0 && formatDateSafe(trainingDates[0].date)}
                 {training.location && ` • ${training.location}`}
               </p>
             </div>

@@ -41,9 +41,13 @@ export default function ParticipantsManager({ training, professionals, existingP
 
   const addParticipants = useMutation({
     mutationFn: async (professionalIds) => {
-      const validityDate = training.validity_months 
-        ? format(addMonths(new Date(training.date), training.validity_months), "yyyy-MM-dd")
-        : null;
+      const baseDate = training.date ? new Date(training.date) : null;
+      const validityDate =
+        training.validity_months &&
+        baseDate &&
+        !Number.isNaN(baseDate.getTime())
+          ? format(addMonths(baseDate, training.validity_months), "yyyy-MM-dd")
+          : null;
 
       const newParticipants = professionalIds.map((id) => {
         const professional = professionals.find((p) => p.id === id);

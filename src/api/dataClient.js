@@ -11,6 +11,47 @@ const EMAIL_WEBHOOK_URL = import.meta.env.VITE_EMAIL_WEBHOOK_URL;
 const toSnakeCase = (value) =>
   value.replace(/([A-Z])/g, "_$1").toLowerCase();
 
+const normalizeTrainingDates = (dates) => {
+  if (!dates) return [];
+  let parsed = dates;
+
+  if (typeof dates === "string") {
+    try {
+      parsed = JSON.parse(dates);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed
+    .map((item) => {
+      if (!item) return null;
+      if (typeof item === "string") return { date: item };
+      if (typeof item === "object" && item.date) return { ...item };
+      return null;
+    })
+    .filter(Boolean);
+};
+
+const normalizeTrainingRecord = (record) => {
+  if (!record) return record;
+  const normalizedDates = normalizeTrainingDates(record.dates);
+  return {
+    ...record,
+    dates: normalizedDates,
+  };
+};
+
+const normalizeEntityData = (table, payload) => {
+  if (!payload || table !== "trainings") return payload;
+  if (Array.isArray(payload)) {
+    return payload.map(normalizeTrainingRecord);
+  }
+  return normalizeTrainingRecord(payload);
+};
+
 export const mapSupabaseUser = (user) => {
   if (!user) return null;
   const metadata = user.user_metadata || {};
@@ -53,7 +94,7 @@ const list = async (table, order, limit) => {
   if (limit) query = query.limit(limit);
   const { data, error } = await query;
   if (error) throw error;
-  return data || [];
+  return normalizeEntityData(table, data || []);
 };
 
 const filter = async (table, filters, order, limit) => {
@@ -63,7 +104,7 @@ const filter = async (table, filters, order, limit) => {
   if (limit) query = query.limit(limit);
   const { data, error } = await query;
   if (error) throw error;
-  return data || [];
+  return normalizeEntityData(table, data || []);
 };
 
 const create = async (table, payload) => {
@@ -73,13 +114,13 @@ const create = async (table, payload) => {
     .select()
     .single();
   if (error) throw error;
-  return data;
+  return normalizeEntityData(table, data);
 };
 
 const bulkCreate = async (table, payload) => {
   const { data, error } = await supabase.from(table).insert(payload).select();
   if (error) throw error;
-  return data || [];
+  return normalizeEntityData(table, data || []);
 };
 
 const update = async (table, id, payload) => {
@@ -90,7 +131,7 @@ const update = async (table, id, payload) => {
     .select()
     .single();
   if (error) throw error;
-  return data;
+  return normalizeEntityData(table, data);
 };
 
 const remove = async (table, id) => {

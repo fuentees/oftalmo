@@ -52,6 +52,15 @@ export default function PublicEnrollment() {
     enabled: !!trainingId,
   });
 
+  const formatDateSafe = (value, pattern = "dd/MM/yyyy") => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return format(parsed, pattern);
+  };
+
+  const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
+
   const enrollMutation = useMutation({
     mutationFn: async (data) => {
       // Check if already enrolled
@@ -69,11 +78,19 @@ export default function PublicEnrollment() {
         throw new Error("Treinamento com vagas esgotadas");
       }
 
-      const firstDate = training.dates && training.dates.length > 0 ? training.dates[0].date : null;
-      
-      const validityDate = training.validity_months && firstDate
-        ? format(new Date(firstDate).setMonth(new Date(firstDate).getMonth() + training.validity_months), "yyyy-MM-dd")
-        : null;
+      const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
+      const baseDate = firstDate ? new Date(firstDate) : null;
+      const validityDate =
+        training.validity_months &&
+        baseDate &&
+        !Number.isNaN(baseDate.getTime())
+          ? format(
+              new Date(
+                baseDate.setMonth(baseDate.getMonth() + training.validity_months)
+              ),
+              "yyyy-MM-dd"
+            )
+          : null;
 
       await dataClient.entities.TrainingParticipant.create({
         training_id: trainingId,
@@ -169,12 +186,12 @@ export default function PublicEnrollment() {
               <p className="text-sm text-slate-600">
                 <strong>Treinamento:</strong> {training.title}
               </p>
-              {training.dates && training.dates.length > 0 && (
+              {trainingDates.length > 0 && (
                 <div>
                   <p className="text-sm text-slate-600 font-semibold mb-1">Datas:</p>
-                  {training.dates.map((dateItem, index) => (
+                  {trainingDates.map((dateItem, index) => (
                     <p key={index} className="text-sm text-slate-600 pl-3">
-                      • {format(new Date(dateItem.date), "dd/MM/yyyy")}
+                      • {formatDateSafe(dateItem.date)}
                       {dateItem.start_time && dateItem.end_time && ` - ${dateItem.start_time} às ${dateItem.end_time}`}
                     </p>
                   ))}
@@ -223,11 +240,11 @@ export default function PublicEnrollment() {
               )}
               <div className="space-y-2">
                 <p className="text-sm font-medium text-slate-700">Datas e Horários:</p>
-                {training.dates && training.dates.length > 0 ? (
-                  training.dates.map((dateItem, index) => (
+                {trainingDates.length > 0 ? (
+                  trainingDates.map((dateItem, index) => (
                     <div key={index} className="flex items-center gap-3 text-sm text-slate-700 pl-2">
                       <Calendar className="h-4 w-4 text-blue-600" />
-                      <span>{format(new Date(dateItem.date), "dd/MM/yyyy")}</span>
+                      <span>{formatDateSafe(dateItem.date)}</span>
                       {dateItem.start_time && dateItem.end_time && (
                         <>
                           <Clock className="h-4 w-4 text-blue-600" />
