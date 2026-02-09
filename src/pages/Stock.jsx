@@ -731,7 +731,7 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     { header: "Material", accessor: "material_name", cellClassName: "font-medium" },
     { header: "Quantidade", accessor: "quantity" },
     { header: "Responsável", accessor: "responsible" },
-    { header: "Setor/Destino", accessor: "sector" },
+    { header: "Município (Destino)", accessor: "sector" },
     { header: "Documento", accessor: "document_number" },
   ];
 
