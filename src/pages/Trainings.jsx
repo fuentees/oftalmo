@@ -12,6 +12,7 @@ import {
   UserPlus,
   ClipboardCheck,
   Award,
+  Link2,
   MoreVertical,
   FileText,
   Upload,
@@ -29,6 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -53,8 +55,10 @@ import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
 import TrainingForm from "@/components/trainings/TrainingForm";
 import TrainingDetails from "@/components/trainings/TrainingDetails";
+import EnrollmentManager from "@/components/trainings/EnrollmentManager";
 import AttendanceControl from "@/components/trainings/AttendanceControl";
 import CertificateManager from "@/components/trainings/CertificateManager";
+import SendLinkButton from "@/components/trainings/SendLinkButton";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
 
 export default function Trainings() {
@@ -64,6 +68,7 @@ export default function Trainings() {
   
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [showEnrollment, setShowEnrollment] = useState(false);
   const [showAttendance, setShowAttendance] = useState(false);
   const [showCertificates, setShowCertificates] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
@@ -72,6 +77,8 @@ export default function Trainings() {
   const [showImport, setShowImport] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
+
+  const navigate = useNavigate();
 
   const queryClient = useQueryClient();
 
@@ -554,20 +561,23 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.location.href = `/EnrollmentPage?training=${encodeURIComponent(row.id)}`;
+                  const enrollUrl = `${window.location.origin}/PublicEnrollment?training=${encodeURIComponent(row.id)}`;
+                  navigator.clipboard.writeText(enrollUrl);
+                  alert("Link de inscrição copiado!");
+                }}
+              >
+                <Link2 className="h-4 w-4 mr-2" />
+                Copiar Link
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/EnrollmentPage?training=${encodeURIComponent(row.id)}`);
                 }}
               >
                 <UserPlus className="h-4 w-4 mr-2" />
                 Página de Inscrição
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  window.location.href = `/TrainingFeedback?training=${encodeURIComponent(row.id)}`;
-                }}
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                Página de Avaliação
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
@@ -814,7 +824,6 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           </DialogHeader>
           <TrainingForm
             training={selectedTraining}
-            professionals={professionals}
             onClose={() => {
               setShowForm(false);
               setSelectedTraining(null);
@@ -832,6 +841,32 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           <TrainingDetails
             training={selectedTraining}
             participants={participants.filter(p => p.training_id === selectedTraining?.id)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Enrollment Manager Dialog */}
+      <Dialog open={showEnrollment} onOpenChange={setShowEnrollment}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Inscrições - {selectedTraining?.title}</span>
+              {selectedTraining && (
+                <SendLinkButton 
+                  training={selectedTraining}
+                  participants={participants.filter(p => p.training_id === selectedTraining?.id)}
+                />
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <EnrollmentManager
+            training={selectedTraining}
+            professionals={professionals}
+            existingParticipants={participants.filter(p => p.training_id === selectedTraining?.id)}
+            onClose={() => {
+              setShowEnrollment(false);
+              setSelectedTraining(null);
+            }}
           />
         </DialogContent>
       </Dialog>
