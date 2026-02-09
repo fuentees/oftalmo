@@ -86,6 +86,7 @@ export default function Stock() {
       return [];
     }
   });
+  const [gveMapping, setGveMapping] = useState([]);
 
   const queryClient = useQueryClient();
 
@@ -123,8 +124,39 @@ export default function Stock() {
     );
   }, [customCategories]);
 
+  const loadGveMapping = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem("gveMappingSp");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setGveMapping(parsed);
+      }
+    } catch (error) {
+      // Ignora erro de leitura
+    }
+  };
+
+  React.useEffect(() => {
+    loadGveMapping();
+  }, []);
+
+  React.useEffect(() => {
+    if (activeTab === "movements") {
+      loadGveMapping();
+    }
+  }, [activeTab]);
+
   const normalizeCategoryKey = (value) =>
     String(value ?? "").trim().toLowerCase();
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
 
   const formatCategoryLabel = (value) => {
     if (!value) return "-";
@@ -166,6 +198,17 @@ export default function Stock() {
     if (Number.isNaN(parsed.getTime())) return "-";
     return format(parsed, "dd/MM/yyyy");
   };
+
+  const gveMap = React.useMemo(() => {
+    const map = new Map();
+    gveMapping.forEach((item) => {
+      map.set(normalizeText(item.municipio), item.gve);
+    });
+    return map;
+  }, [gveMapping]);
+
+  const getGveByMunicipio = (municipio) =>
+    gveMap.get(normalizeText(municipio)) || "-";
 
   const allCategories = React.useMemo(() => {
     const merged = [
@@ -599,10 +642,48 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
 
   const filteredMovements = movements.filter((m) => {
     const matchesSearch = m.material_name?.toLowerCase().includes(search.toLowerCase()) ||
-                          m.responsible?.toLowerCase().includes(search.toLowerCase());
+                          m.responsible?.toLowerCase().includes(search.toLowerCase()) ||
+                          m.sector?.toLowerCase().includes(search.toLowerCase());
     const matchesType = movementTypeFilter === "all" || m.type === movementTypeFilter;
     return matchesSearch && matchesType;
   });
+
+  const exportMovements = () => {
+    const headers = [
+      { key: "date", label: "Data" },
+      { key: "type", label: "Tipo" },
+      { key: "material_name", label: "Material" },
+      { key: "quantity", label: "Quantidade" },
+      { key: "responsible", label: "Responsável" },
+      { key: "sector", label: "Município" },
+      { key: "gve", label: "GVE" },
+      { key: "document_number", label: "Documento" },
+      { key: "notes", label: "Observações" },
+    ];
+
+    const escapeValue = (value) =>
+      `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+    const rows = filteredMovements.map((movement) => ({
+      ...movement,
+      date: formatDate(movement.date),
+      gve: getGveByMunicipio(movement.sector),
+    }));
+
+    const csv = [
+      headers.map((header) => escapeValue(header.label)).join(";"),
+      ...rows.map((row) =>
+        headers.map((header) => escapeValue(row[header.key])).join(";")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "movimentacoes_estoque.csv";
+    link.click();
+  };
 
   const materialColumns = [
     { header: "Código", accessor: "code" },
@@ -732,6 +813,10 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     { header: "Quantidade", accessor: "quantity" },
     { header: "Responsável", accessor: "responsible" },
     { header: "Município (Destino)", accessor: "sector" },
+    {
+      header: "GVE",
+      render: (row) => getGveByMunicipio(row.sector),
+    },
     { header: "Documento", accessor: "document_number" },
   ];
 
@@ -764,14 +849,6 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
           <div className="flex gap-2">
             {activeTab === "materials" ? (
               <>
-                <Button
-                  variant="outline"
-                  onClick={() => downloadTemplate("materials")}
-                  className="flex items-center gap-2"
-                >
-                  <Download className="h-4 w-4" />
-                  Modelo
-                </Button>
                 <Button
                   onClick={() => handleOpenImport("materials")}
                   className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
@@ -808,14 +885,6 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
               </>
             ) : (
               <>
-                <Button
-                  variant="outline"
-                  onClick={() => downloadTemplate("movements")}
-                  className="flex items-center gap-2"
-                >
-                  <Download className="h-4 w-4" />
-                  Modelo
-                </Button>
                 <Button
                   onClick={() => handleOpenImport("movements")}
                   className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
@@ -896,23 +965,37 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
         </TabsContent>
 
         <TabsContent value="movements">
-          <SearchFilter
-            searchValue={search}
-            onSearchChange={setSearch}
-            searchPlaceholder="Buscar por material ou responsável..."
-            filters={[
-              {
-                value: movementTypeFilter,
-                onChange: setMovementTypeFilter,
-                placeholder: "Tipo",
-                allLabel: "Todos os tipos",
-                options: [
-                  { value: "entrada", label: "Entrada" },
-                  { value: "saida", label: "Saída" },
-                ],
-              },
-            ]}
-          />
+          <div className="flex flex-col lg:flex-row gap-3 justify-between">
+            <div className="flex-1">
+              <SearchFilter
+                searchValue={search}
+                onSearchChange={setSearch}
+                searchPlaceholder="Buscar por material ou responsável..."
+                filters={[
+                  {
+                    value: movementTypeFilter,
+                    onChange: setMovementTypeFilter,
+                    placeholder: "Tipo",
+                    allLabel: "Todos os tipos",
+                    options: [
+                      { value: "entrada", label: "Entrada" },
+                      { value: "saida", label: "Saída" },
+                    ],
+                  },
+                ]}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={exportMovements}
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Exportar Planilha
+              </Button>
+            </div>
+          </div>
           <DataTable
             columns={movementColumns}
             data={filteredMovements}
