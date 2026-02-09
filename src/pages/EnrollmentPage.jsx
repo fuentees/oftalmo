@@ -11,7 +11,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,19 +27,18 @@ import {
   AlertCircle,
   Loader2,
   Download,
+  Upload,
+  FileSpreadsheet,
   Trash2,
   Users,
   Plus,
   Edit,
-  Link2,
-  FileText,
-  Image as ImageIcon
+  Link2
 } from "lucide-react";
 import { format } from "date-fns";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
 import SearchFilter from "@/components/common/SearchFilter";
-import SendLinkButton from "@/components/trainings/SendLinkButton";
 
 export default function EnrollmentPage() {
   const queryString =
@@ -57,11 +55,10 @@ export default function EnrollmentPage() {
   const [fieldDeleteConfirm, setFieldDeleteConfirm] = useState(null);
   const [fieldSearch, setFieldSearch] = useState("");
   const [showInactiveFields, setShowInactiveFields] = useState(false);
-  const [formErrors, setFormErrors] = useState(
-    /** @type {Record<string, string | null>} */ ({})
-  );
-  const hasAutoSeededRef = React.useRef(false);
-  const [logoUploading, setLogoUploading] = useState(false);
+  const [formErrors, setFormErrors] = useState(/** @type {Record<string, string | null>} */ ({}));
+  const [showUploadList, setShowUploadList] = useState(false);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -102,6 +99,42 @@ export default function EnrollmentPage() {
   const activeEnrollmentFields = enrollmentFields
     .filter((field) => field.is_active)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const normalizeHeader = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+  const normalizeRow = (row) =>
+    Object.entries(row || {}).reduce((acc, [key, value]) => {
+      const normalizedKey = normalizeHeader(key);
+      if (!normalizedKey) return acc;
+      acc[normalizedKey] = value;
+      return acc;
+    }, {});
+
+  const getLatestTrainingDate = () => {
+    const dates = [
+      training?.date,
+      ...trainingDates.map((item) => item?.date).filter(Boolean),
+    ].filter(Boolean);
+    if (dates.length === 0) return null;
+    const parsedDates = dates
+      .map((date) => new Date(date))
+      .filter((date) => !Number.isNaN(date.getTime()));
+    if (parsedDates.length === 0) return null;
+    return new Date(Math.max(...parsedDates.map((date) => date.getTime())));
+  };
+
+  const latestTrainingDate = getLatestTrainingDate();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isPastTraining =
+    latestTrainingDate && latestTrainingDate.getTime() < today.getTime();
 
   const formatCpf = (value) => {
     const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -283,6 +316,9 @@ export default function EnrollmentPage() {
     },
   ];
 
+  const templateFields =
+    activeEnrollmentFields.length > 0 ? activeEnrollmentFields : defaultEnrollmentFields;
+
   const getDefaultFieldData = () => ({
     training_id: trainingId,
     field_key: "",
@@ -309,17 +345,12 @@ export default function EnrollmentPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       localStorage.setItem("enrollment_defaults_seeded_global", "true");
-      toast.success("Campos padrão aplicados com sucesso.");
-    },
-    onError: (error) => {
-      toast.error(error?.message || "Erro ao aplicar campos padrão.");
     },
   });
 
   React.useEffect(() => {
     if (!trainingId || !fieldsFetched) return;
     if (enrollmentFields.length > 0 || seedDefaults.isPending) return;
-    if (hasAutoSeededRef.current) return;
     const seededFlag = localStorage.getItem("enrollment_defaults_seeded_global");
     if (seededFlag === "true") return;
     const payload = defaultEnrollmentFields.map((field) => ({
@@ -327,7 +358,6 @@ export default function EnrollmentPage() {
       training_id: null,
       is_active: true,
     }));
-    hasAutoSeededRef.current = true;
     seedDefaults.mutate(payload);
   }, [trainingId, fieldsFetched, enrollmentFields.length, seedDefaults.isPending]);
 
@@ -355,10 +385,6 @@ export default function EnrollmentPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       setFieldDeleteConfirm(null);
-      toast.success("Campo excluído com sucesso.");
-    },
-    onError: (error) => {
-      toast.error(error?.message || "Erro ao excluir campo.");
     },
   });
 
@@ -517,34 +543,6 @@ export default function EnrollmentPage() {
     alert("Link de inscrição copiado!");
   };
 
-  const handleLogoUpload = async (file) => {
-    if (!file || !trainingId) return;
-    setLogoUploading(true);
-    try {
-      const { file_url } = await dataClient.integrations.Core.UploadFile({ file });
-      await dataClient.entities.Training.update(trainingId, { logo_url: file_url });
-      queryClient.invalidateQueries({ queryKey: ["training"] });
-      queryClient.invalidateQueries({ queryKey: ["trainings"] });
-      toast.success("Logo atualizado com sucesso.");
-    } catch (error) {
-      toast.error(error?.message || "Erro ao enviar logo.");
-    } finally {
-      setLogoUploading(false);
-    }
-  };
-
-  const handleRemoveLogo = async () => {
-    if (!trainingId) return;
-    try {
-      await dataClient.entities.Training.update(trainingId, { logo_url: null });
-      queryClient.invalidateQueries({ queryKey: ["training"] });
-      queryClient.invalidateQueries({ queryKey: ["trainings"] });
-      toast.success("Logo removido com sucesso.");
-    } catch (error) {
-      toast.error(error?.message || "Erro ao remover logo.");
-    }
-  };
-
   const handleEditField = (field) => {
     setEditingField(field);
     setFieldFormData({
@@ -570,7 +568,6 @@ export default function EnrollmentPage() {
   };
 
   const handleAddDefaultFields = () => {
-    if (seedDefaults.isPending) return;
     const existingKeys = new Set(enrollmentFields.map((field) => field.field_key));
     const payload = defaultEnrollmentFields
       .filter((field) => !existingKeys.has(field.field_key))
@@ -581,7 +578,7 @@ export default function EnrollmentPage() {
       }));
 
     if (payload.length === 0) {
-      toast.info("Todos os campos padrão já existem.");
+      alert("Todos os campos padrão já existem.");
       return;
     }
 
@@ -629,6 +626,173 @@ export default function EnrollmentPage() {
     link.setAttribute("href", url);
     link.setAttribute("download", `inscricoes_${training?.title || 'treinamento'}_${format(new Date(), "yyyy-MM-dd")}.csv`);
     link.click();
+  };
+
+  const handleDownloadTemplate = () => {
+    const headers = templateFields.map((field) => field.label || field.field_key);
+    const csv = `${headers.map((header) => `"${header}"`).join(";")}\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `modelo_inscritos_${training?.title || "treinamento"}.csv`
+    );
+    link.click();
+  };
+
+  const importParticipants = useMutation({
+    mutationFn: async (/** @type {File} */ file) => {
+      if (!file) throw new Error("Selecione um arquivo.");
+      setUploadStatus({ type: "loading", message: "Processando planilha..." });
+
+      const { file_url } = await dataClient.integrations.Core.UploadFile({ file });
+      const result = await dataClient.integrations.Core.ExtractDataFromUploadedFile({
+        file_url,
+      });
+
+      if (result.status === "error") {
+        throw new Error(result.details || "Erro ao processar planilha");
+      }
+
+      const rows = result.output?.participants || result.output || [];
+      if (!Array.isArray(rows) || rows.length === 0) {
+        throw new Error("Nenhum dado encontrado na planilha.");
+      }
+
+      const fieldKeyMap = templateFields.reduce((acc, field) => {
+        const keys = [
+          normalizeHeader(field.field_key),
+          normalizeHeader(field.label),
+        ].filter(Boolean);
+        acc[field.field_key] = Array.from(new Set(keys));
+        return acc;
+      }, {});
+
+      const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
+      const baseDate = firstDate ? new Date(firstDate) : null;
+      const validityDate =
+        training.validity_months &&
+        baseDate &&
+        !Number.isNaN(baseDate.getTime())
+          ? format(
+              new Date(
+                baseDate.setMonth(baseDate.getMonth() + training.validity_months)
+              ),
+              "yyyy-MM-dd"
+            )
+          : null;
+
+      const payloads = [];
+      const skipped = [];
+
+      rows.forEach((row, index) => {
+        const normalizedRow = normalizeRow(row);
+        const data = {};
+
+        templateFields.forEach((field) => {
+          const keys = fieldKeyMap[field.field_key] || [];
+          const value = keys.reduce((acc, key) => {
+            if (acc !== null && acc !== undefined && acc !== "") return acc;
+            const candidate = normalizedRow[key];
+            if (candidate === undefined || candidate === null || candidate === "") {
+              return acc;
+            }
+            return candidate;
+          }, null);
+          if (value !== null && value !== undefined && value !== "") {
+            data[field.field_key] = value;
+          }
+        });
+
+        const missingRequired = templateFields.filter(
+          (field) => field.required && !data[field.field_key]
+        );
+
+        if (missingRequired.length > 0) {
+          skipped.push(index + 2);
+          return;
+        }
+
+        payloads.push({
+          training_id: trainingId,
+          training_title: training.title,
+          training_date: firstDate,
+          professional_name: data.name,
+          professional_cpf: data.cpf,
+          professional_rg: data.rg,
+          professional_email: data.email,
+          professional_sector: data.sector,
+          professional_registration: data.registration,
+          professional_formation: data.professional_formation,
+          institution: data.institution,
+          state: data.state,
+          health_region: data.health_region,
+          municipality: data.municipality,
+          unit_name: data.unit_name,
+          position: data.position,
+          work_address: data.work_address,
+          residential_address: data.residential_address,
+          commercial_phone: data.commercial_phone,
+          mobile_phone: data.mobile_phone,
+          enrollment_status: "inscrito",
+          enrollment_date: new Date().toISOString(),
+          attendance_records: [],
+          attendance_percentage: 0,
+          approved: false,
+          certificate_issued: false,
+          validity_date: validityDate,
+        });
+      });
+
+      if (payloads.length === 0) {
+        throw new Error("Nenhuma linha válida encontrada.");
+      }
+
+      await dataClient.entities.TrainingParticipant.bulkCreate(payloads);
+      await dataClient.entities.Training.update(trainingId, {
+        participants_count: (training.participants_count || 0) + payloads.length,
+      });
+
+      setUploadStatus({
+        type: "success",
+        message: `${payloads.length} participante(s) importado(s).${
+          skipped.length ? ` ${skipped.length} linha(s) ignoradas.` : ""
+        }`,
+      });
+
+      return { payloads, skipped };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
+      queryClient.invalidateQueries({ queryKey: ["training"] });
+      setTimeout(() => {
+        setShowUploadList(false);
+        setUploadFile(null);
+        setUploadStatus(null);
+      }, 2000);
+    },
+    onError: (error) => {
+      setUploadStatus({
+        type: "error",
+        message: error.message || "Erro ao importar participantes.",
+      });
+    },
+  });
+
+  const handleUploadFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setUploadFile(file);
+      setUploadStatus(null);
+    }
+  };
+
+  const handleUploadParticipants = () => {
+    if (uploadFile) {
+      importParticipants.mutate(uploadFile);
+    }
   };
 
   const filteredParticipants = allParticipants.filter(p => 
@@ -779,6 +943,7 @@ export default function EnrollmentPage() {
       render: (row) => (
         <div>
           <p className="font-medium">{row.label}</p>
+          <p className="text-xs text-slate-500">{row.field_key}</p>
         </div>
       ),
     },
@@ -819,7 +984,6 @@ export default function EnrollmentPage() {
             size="sm"
             onClick={() => setFieldDeleteConfirm(row)}
             className="text-red-600 hover:text-red-700"
-            disabled={deleteField.isPending}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -857,19 +1021,30 @@ export default function EnrollmentPage() {
         subtitle="Gerencie as inscrições do treinamento"
       />
 
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" onClick={handleCopyEnrollmentLink}>
+          <Link2 className="h-4 w-4 mr-2" />
+          Copiar Link de Inscrição
+        </Button>
+        <Button variant="outline" onClick={handleAddDefaultFields}>
+          <Plus className="h-4 w-4 mr-2" />
+          Aplicar Campos Padrão
+        </Button>
+        <Button onClick={() => {
+          setEditingField(null);
+          setFieldFormData(getDefaultFieldData());
+          setFieldFormOpen(true);
+        }}>
+          <Plus className="h-4 w-4 mr-2" />
+          Novo Campo do Formulário
+        </Button>
+      </div>
+
       <Card>
         <CardHeader className="bg-blue-600 text-white">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center overflow-hidden">
-              {training.logo_url ? (
-                <img
-                  src={training.logo_url}
-                  alt="Logo do treinamento"
-                  className="h-12 w-12 object-contain"
-                />
-              ) : (
-                <GraduationCap className="h-6 w-6" />
-              )}
+            <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
+              <GraduationCap className="h-6 w-6" />
             </div>
             <div>
               <CardTitle className="text-2xl">{training.title}</CardTitle>
@@ -882,12 +1057,8 @@ export default function EnrollmentPage() {
         </CardHeader>
 
         <CardContent className="pt-6">
-          <Tabs defaultValue="mask" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
-              <TabsTrigger value="mask">
-                <FileText className="h-4 w-4 mr-2" />
-                Máscara do Formulário
-              </TabsTrigger>
+          <Tabs defaultValue="form" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="form">
                 <GraduationCap className="h-4 w-4 mr-2" />
                 Formulário de Inscrição
@@ -898,59 +1069,7 @@ export default function EnrollmentPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="mask" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <ImageIcon className="h-4 w-4 text-slate-500" />
-                    Logo do Treinamento
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {training.logo_url ? (
-                    <div className="flex items-center gap-4">
-                      <img
-                        src={training.logo_url}
-                        alt="Logo do treinamento"
-                        className="h-20 w-20 rounded-lg object-contain border border-slate-200 bg-white"
-                      />
-                      <Button variant="outline" onClick={handleRemoveLogo}>
-                        Remover logo
-                      </Button>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">
-                      Nenhuma logo cadastrada. Envie uma imagem para exibir no formulário público.
-                    </p>
-                  )}
-
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleLogoUpload(e.target.files?.[0])}
-                      disabled={logoUploading}
-                    />
-                    <span className="text-xs text-slate-500">PNG/JPG até 2MB</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <Button variant="outline" onClick={handleAddDefaultFields}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  {seedDefaults.isPending ? "Aplicando..." : "Aplicar Campos Padrão"}
-                </Button>
-                <Button onClick={() => {
-                  setEditingField(null);
-                  setFieldFormData(getDefaultFieldData());
-                  setFieldFormOpen(true);
-                }}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Novo Campo do Formulário
-                </Button>
-              </div>
-
+            <TabsContent value="form" className="mt-6 space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Campos do Formulário</CardTitle>
@@ -980,15 +1099,6 @@ export default function EnrollmentPage() {
                   />
                 </CardContent>
               </Card>
-            </TabsContent>
-
-            <TabsContent value="form" className="mt-6 space-y-6">
-              <div className="flex flex-wrap items-center gap-3">
-                <Button variant="outline" onClick={handleCopyEnrollmentLink}>
-                  <Link2 className="h-4 w-4 mr-2" />
-                  Copiar Link de Inscrição
-                </Button>
-              </div>
 
               {(isFullyBooked || isCancelled) && (
                 <Alert className="border-red-200 bg-red-50 mb-6">
@@ -1010,43 +1120,60 @@ export default function EnrollmentPage() {
 
               {!isFullyBooked && !isCancelled && (
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  {sectionOrder.map((section) => {
-                    const sectionFields = fieldsBySection[section];
-                    if (sectionFields.length === 0) return null;
-                    return (
-                      <div key={section} className="space-y-4">
-                        <h4 className="font-semibold text-slate-900">
+                  <Tabs defaultValue={sectionOrder[0]} className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+                      {sectionOrder.map((section) => (
+                        <TabsTrigger key={section} value={section}>
                           {sectionLabels[section]}
-                        </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          {sectionFields.map((field) => (
-                            <div key={field.id} className="space-y-2">
-                              <Label htmlFor={field.field_key}>
-                                {field.label} {field.required && "*"}
-                              </Label>
-                              <Input
-                                id={field.field_key}
-                                type={field.type}
-                                value={formData[field.field_key] || ""}
-                                onChange={(e) => {
-                                  const nextValue = formatFieldValue(field, e.target.value);
-                                  setFormData({ ...formData, [field.field_key]: nextValue });
-                                  if (formErrors[field.field_key]) {
-                                    setFormErrors((prev) => ({ ...prev, [field.field_key]: null }));
-                                  }
-                                }}
-                                placeholder={field.placeholder}
-                                required={field.required}
-                              />
-                              {formErrors[field.field_key] && (
-                                <p className="text-xs text-red-600">{formErrors[field.field_key]}</p>
-                              )}
+                          {fieldsBySection[section].length > 0 && (
+                            <span className="ml-2 text-xs text-slate-500">
+                              ({fieldsBySection[section].length})
+                            </span>
+                          )}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+
+                    {sectionOrder.map((section) => {
+                      const sectionFields = fieldsBySection[section];
+                      return (
+                        <TabsContent key={section} value={section} className="mt-6">
+                          {sectionFields.length === 0 ? (
+                            <p className="text-sm text-slate-500">
+                              Nenhum campo configurado para esta seção.
+                            </p>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              {sectionFields.map((field) => (
+                                <div key={field.id} className="space-y-2">
+                                  <Label htmlFor={field.field_key}>
+                                    {field.label} {field.required && "*"}
+                                  </Label>
+                                  <Input
+                                    id={field.field_key}
+                                    type={field.type}
+                                    value={formData[field.field_key] || ""}
+                                    onChange={(e) => {
+                                      const nextValue = formatFieldValue(field, e.target.value);
+                                      setFormData({ ...formData, [field.field_key]: nextValue });
+                                      if (formErrors[field.field_key]) {
+                                        setFormErrors((prev) => ({ ...prev, [field.field_key]: null }));
+                                      }
+                                    }}
+                                    placeholder={field.placeholder}
+                                    required={field.required}
+                                  />
+                                  {formErrors[field.field_key] && (
+                                    <p className="text-xs text-red-600">{formErrors[field.field_key]}</p>
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
+                          )}
+                        </TabsContent>
+                      );
+                    })}
+                  </Tabs>
 
                   <div className="flex justify-end pt-4">
                     <Button
@@ -1069,22 +1196,22 @@ export default function EnrollmentPage() {
             </TabsContent>
 
             <TabsContent value="list" className="mt-6 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-col lg:flex-row gap-3 justify-between">
                 <SearchFilter
                   searchValue={search}
                   onSearchChange={setSearch}
                   searchPlaceholder="Buscar por nome, CPF ou email..."
                 />
-                <div className="flex flex-wrap items-center gap-2">
-                  <SendLinkButton training={training} participants={allParticipants} />
-                  <Button variant="outline" onClick={() => {
-                    const link = `${window.location.origin}/TrainingFeedback?training=${encodeURIComponent(trainingId)}`;
-                    navigator.clipboard.writeText(link);
-                    alert("Link de avaliação copiado!");
-                  }}>
-                    <Link2 className="h-4 w-4 mr-2" />
-                    Copiar Link de Avaliação
-                  </Button>
+                <div className="flex gap-2">
+                  {isPastTraining && (
+                    <Button
+                      onClick={() => setShowUploadList(true)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Importar Lista
+                    </Button>
+                  )}
                   <Button onClick={handleExportExcel} variant="outline">
                     <Download className="h-4 w-4 mr-2" />
                     Exportar Excel
@@ -1124,6 +1251,94 @@ export default function EnrollmentPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Upload List Dialog */}
+      <Dialog open={showUploadList} onOpenChange={setShowUploadList}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Importar Lista de Participantes
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Use o modelo do formulário padrão de inscrição. Apenas treinamentos
+                já concluídos permitem importação.
+              </AlertDescription>
+            </Alert>
+            <div className="flex">
+              <Button variant="outline" onClick={handleDownloadTemplate}>
+                <Download className="h-4 w-4 mr-2" />
+                Baixar modelo
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="upload-list-file">
+                Selecione o arquivo (.xlsx ou .csv)
+              </Label>
+              <Input
+                id="upload-list-file"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleUploadFileChange}
+              />
+              {uploadFile && (
+                <p className="text-sm text-slate-500">
+                  Arquivo selecionado: {uploadFile.name}
+                </p>
+              )}
+            </div>
+            {uploadStatus && (
+              <Alert
+                className={
+                  uploadStatus.type === "error"
+                    ? "border-red-200 bg-red-50"
+                    : uploadStatus.type === "success"
+                    ? "border-green-200 bg-green-50"
+                    : "border-blue-200 bg-blue-50"
+                }
+              >
+                <AlertDescription
+                  className={
+                    uploadStatus.type === "error"
+                      ? "text-red-800"
+                      : uploadStatus.type === "success"
+                      ? "text-green-800"
+                      : "text-blue-800"
+                  }
+                >
+                  {uploadStatus.message}
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowUploadList(false)}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleUploadParticipants}
+                disabled={!uploadFile || importParticipants.isPending}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {importParticipants.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Importando...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Importar
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Field Form Dialog */}
       <Dialog open={fieldFormOpen} onOpenChange={(open) => !open && resetFieldForm()}>
@@ -1274,12 +1489,7 @@ export default function EnrollmentPage() {
       </Dialog>
 
       {/* Field Delete Confirmation */}
-      <AlertDialog
-        open={!!fieldDeleteConfirm}
-        onOpenChange={(open) => {
-          if (!open) setFieldDeleteConfirm(null);
-        }}
-      >
+      <AlertDialog open={!!fieldDeleteConfirm} onOpenChange={() => setFieldDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir campo do formulário</AlertDialogTitle>
@@ -1293,9 +1503,8 @@ export default function EnrollmentPage() {
             <AlertDialogAction
               onClick={() => deleteField.mutate(fieldDeleteConfirm.id)}
               className="bg-red-600 hover:bg-red-700"
-              disabled={deleteField.isPending}
             >
-              {deleteField.isPending ? "Excluindo..." : "Excluir"}
+              Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

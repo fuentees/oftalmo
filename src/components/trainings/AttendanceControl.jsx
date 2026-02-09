@@ -14,16 +14,19 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
-import { UserCheck, UserX, Search, Calendar, Link as LinkIcon, Copy, CheckCircle } from "lucide-react";
+import { UserCheck, UserX, Search, Calendar, Link as LinkIcon, Copy, CheckCircle, Download } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 export default function AttendanceControl({ training, participants, onClose }) {
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState("controle");
   const trainingDates = Array.isArray(training?.dates)
     ? training.dates.filter((dateItem) => dateItem?.date)
     : [];
+  const sortedTrainingDates = [...trainingDates].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
   const [selectedDate, setSelectedDate] = useState(
     trainingDates[0]?.date || null
   );
@@ -35,6 +38,13 @@ export default function AttendanceControl({ training, participants, onClose }) {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return "-";
     return format(parsed, pattern);
+  };
+
+  const getStatusLabel = (status) => {
+    if (status === "presente") return "Presente";
+    if (status === "justificado") return "Justificado";
+    if (status === "ausente") return "Ausente";
+    return "-";
   };
 
   const updateAttendance = useMutation({
@@ -114,13 +124,55 @@ export default function AttendanceControl({ training, participants, onClose }) {
         p.professional_registration?.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const activeParticipants = participants.filter(
-    (p) => p.enrollment_status !== "cancelado"
+  const participantsWithRecords = filteredParticipants.filter(
+    (participant) =>
+      Array.isArray(participant.attendance_records) &&
+      participant.attendance_records.length > 0
   );
 
   const getAttendanceForDate = (participant, date) => {
     const records = participant.attendance_records || [];
     return records.find(r => r.date === date);
+  };
+
+  const exportDailyAttendance = () => {
+    if (sortedTrainingDates.length === 0) return;
+    if (participantsWithRecords.length === 0) {
+      toast.error("Nenhum participante com presença registrada.");
+      return;
+    }
+    const headers = [
+      "Nome",
+      "RG",
+      "E-mail",
+      ...sortedTrainingDates.map((item) => formatDate(item.date)),
+    ];
+    const rows = participantsWithRecords.map((participant) => {
+      const base = [
+        participant.professional_name || "",
+        participant.professional_rg || "",
+        participant.professional_email || "",
+      ];
+      const attendance = sortedTrainingDates.map((item) => {
+        const record = getAttendanceForDate(participant, item.date);
+        return getStatusLabel(record?.status);
+      });
+      return [...base, ...attendance];
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Frequencia");
+
+    const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `frequencia_${training.title || "treinamento"}.xlsx`;
+    link.click();
   };
 
   const stats = {
@@ -134,44 +186,6 @@ export default function AttendanceControl({ training, participants, onClose }) {
       return record?.status === "ausente";
     }).length,
   };
-
-  const dailyStats = trainingDates.map((dateItem) => {
-    const date = dateItem.date;
-    let present = 0;
-    let absent = 0;
-    let justified = 0;
-    let missing = 0;
-
-    activeParticipants.forEach((participant) => {
-      const record = getAttendanceForDate(participant, date);
-      if (!record || !record.status) {
-        missing += 1;
-        return;
-      }
-      if (record.status === "presente") {
-        present += 1;
-        return;
-      }
-      if (record.status === "ausente") {
-        absent += 1;
-        return;
-      }
-      if (record.status === "justificado") {
-        justified += 1;
-        return;
-      }
-      missing += 1;
-    });
-
-    return {
-      date,
-      present,
-      absent,
-      justified,
-      missing,
-      total: activeParticipants.length,
-    };
-  });
 
   return (
     <div className="space-y-4">
@@ -189,13 +203,13 @@ export default function AttendanceControl({ training, participants, onClose }) {
         </Button>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs defaultValue="attendance" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="controle">Controle</TabsTrigger>
-          <TabsTrigger value="dia">Por dia</TabsTrigger>
+          <TabsTrigger value="attendance">Presença</TabsTrigger>
+          <TabsTrigger value="daily">Frequência por dia</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="controle" className="space-y-4 mt-4">
+        <TabsContent value="attendance" className="space-y-4 mt-4">
           {/* Date Selection */}
           {trainingDates.length > 1 && (
             <Card>
@@ -204,7 +218,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
               </CardHeader>
               <CardContent>
                 <div className="flex gap-2 flex-wrap">
-                  {trainingDates.map((dateItem, index) => (
+                  {sortedTrainingDates.map((dateItem, index) => (
                     <Button
                       key={index}
                       variant={selectedDate === dateItem.date ? "default" : "outline"}
@@ -315,146 +329,153 @@ export default function AttendanceControl({ training, participants, onClose }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredParticipants.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
-                      Nenhum participante encontrado
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredParticipants.map((participant) => {
-                    const record = getAttendanceForDate(participant, selectedDate);
-                    const status = record?.status || "ausente";
-                    
-                    return (
-                      <TableRow key={participant.id}>
-                        <TableCell className="font-medium">
-                          {participant.professional_name}
-                        </TableCell>
-                        <TableCell>{participant.professional_registration}</TableCell>
-                        <TableCell className="text-sm text-slate-500">
-                          {record?.check_in_time || "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            className={
-                              status === "presente"
-                                ? "bg-green-100 text-green-700"
-                                : status === "justificado"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-red-100 text-red-700"
+                {filteredParticipants.map((participant) => {
+                  const record = getAttendanceForDate(participant, selectedDate);
+                  const status = record?.status || "ausente";
+                  
+                  return (
+                    <TableRow key={participant.id}>
+                      <TableCell className="font-medium">
+                        {participant.professional_name}
+                      </TableCell>
+                      <TableCell>{participant.professional_registration}</TableCell>
+                      <TableCell className="text-sm text-slate-500">
+                        {record?.check_in_time || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            status === "presente"
+                              ? "bg-green-100 text-green-700"
+                              : status === "justificado"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-red-100 text-red-700"
+                          }
+                        >
+                          {status === "presente" ? "Presente" : status === "justificado" ? "Justificado" : "Ausente"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">
+                            {participant.attendance_percentage || 0}%
+                          </span>
+                          {participant.approved && (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant={status === "presente" ? "default" : "outline"}
+                            onClick={() =>
+                              updateAttendance.mutate({
+                                participantId: participant.id,
+                                date: selectedDate,
+                                status: "presente",
+                              })
                             }
+                            disabled={updateAttendance.isPending}
                           >
-                            {status === "presente" ? "Presente" : status === "justificado" ? "Justificado" : "Ausente"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">
-                              {participant.attendance_percentage || 0}%
-                            </span>
-                            {participant.approved && (
-                              <CheckCircle className="h-4 w-4 text-green-600" />
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant={status === "presente" ? "default" : "outline"}
-                              onClick={() =>
-                                updateAttendance.mutate({
-                                  participantId: participant.id,
-                                  date: selectedDate,
-                                  status: "presente",
-                                })
-                              }
-                              disabled={updateAttendance.isPending}
-                            >
-                              <UserCheck className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant={status === "ausente" ? "default" : "outline"}
-                              onClick={() =>
-                                updateAttendance.mutate({
-                                  participantId: participant.id,
-                                  date: selectedDate,
-                                  status: "ausente",
-                                })
-                              }
-                              disabled={updateAttendance.isPending}
-                            >
-                              <UserX className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
+                            <UserCheck className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={status === "ausente" ? "default" : "outline"}
+                            onClick={() =>
+                              updateAttendance.mutate({
+                                participantId: participant.id,
+                                date: selectedDate,
+                                status: "ausente",
+                              })
+                            }
+                            disabled={updateAttendance.isPending}
+                          >
+                            <UserX className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
-        </TabsContent>
+    </TabsContent>
 
-        <TabsContent value="dia" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Resumo por dia</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50">
-                    <TableHead>Data</TableHead>
-                    <TableHead>Presentes</TableHead>
-                    <TableHead>Ausentes</TableHead>
-                    <TableHead>Justificados</TableHead>
-                    <TableHead>Sem registro</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Ação</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {dailyStats.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-6 text-slate-500">
-                        Nenhuma data disponível
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    dailyStats.map((day) => (
-                      <TableRow key={day.date}>
-                        <TableCell className="font-medium">{formatDate(day.date)}</TableCell>
-                        <TableCell className="text-green-700">{day.present}</TableCell>
-                        <TableCell className="text-red-700">{day.absent}</TableCell>
-                        <TableCell className="text-amber-700">{day.justified}</TableCell>
-                        <TableCell>{day.missing}</TableCell>
-                        <TableCell>{day.total}</TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedDate(day.date);
-                              setGeneratedLink(null);
-                              setActiveTab("controle");
-                            }}
-                          >
-                            Ver dia
-                          </Button>
+    <TabsContent value="daily" className="space-y-4 mt-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-medium text-slate-700">
+            Frequência por dia
+          </h4>
+          <p className="text-xs text-slate-500">
+            Nome, RG e e-mail com presença por data.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={exportDailyAttendance}
+          disabled={sortedTrainingDates.length === 0}
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Exportar Planilha
+        </Button>
+      </div>
+
+      {sortedTrainingDates.length === 0 ? (
+        <div className="rounded-lg border bg-white p-8 text-center text-slate-500">
+          Nenhuma data cadastrada para este treinamento.
+        </div>
+      ) : (
+        <div className="border rounded-lg overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50">
+                <TableHead className="font-semibold">Nome</TableHead>
+                <TableHead className="font-semibold">RG</TableHead>
+                <TableHead className="font-semibold">E-mail</TableHead>
+                {sortedTrainingDates.map((item, index) => (
+                  <TableHead key={`${item.date}-${index}`} className="font-semibold">
+                    {formatDate(item.date)}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {participantsWithRecords.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={3 + sortedTrainingDates.length} className="text-center py-8 text-slate-500">
+                    Nenhum participante com presença registrada.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                participantsWithRecords.map((participant) => (
+                  <TableRow key={`daily-${participant.id}`}>
+                    <TableCell className="font-medium">
+                      {participant.professional_name}
+                    </TableCell>
+                    <TableCell>{participant.professional_rg || "-"}</TableCell>
+                    <TableCell>{participant.professional_email || "-"}</TableCell>
+                    {sortedTrainingDates.map((item, index) => {
+                      const record = getAttendanceForDate(participant, item.date);
+                      return (
+                        <TableCell key={`${participant.id}-${index}`}>
+                          {getStatusLabel(record?.status)}
                         </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+                      );
+                    })}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </TabsContent>
+  </Tabs>
+</div>
   );
 }

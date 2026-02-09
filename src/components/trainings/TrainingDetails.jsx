@@ -33,6 +33,35 @@ export default function TrainingDetails({ training, participants }) {
     cancelado: "Cancelado",
   };
 
+  const getLastTrainingDate = () => {
+    const dates = [];
+    if (Array.isArray(training.dates)) {
+      training.dates.forEach((item) => {
+        if (item?.date) dates.push(item.date);
+      });
+    }
+    if (training.date) dates.push(training.date);
+    if (dates.length === 0) return null;
+    const parsedDates = dates
+      .map((date) => new Date(date))
+      .filter((date) => !Number.isNaN(date.getTime()));
+    if (parsedDates.length === 0) return null;
+    return new Date(Math.max(...parsedDates.map((date) => date.getTime())));
+  };
+
+  const getEffectiveStatus = () => {
+    if (training.status === "concluido" || training.status === "cancelado") {
+      return training.status;
+    }
+    const lastDate = getLastTrainingDate();
+    if (!lastDate) return training.status;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return lastDate.getTime() < today.getTime() ? "concluido" : training.status;
+  };
+
+  const effectiveStatus = getEffectiveStatus();
+
   const typeLabels = {
     teorico: "Teórico",
     pratico: "Prático",
@@ -145,7 +174,7 @@ export default function TrainingDetails({ training, participants }) {
               )}
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-slate-400" />
-                <span>Instrutor: {training.instructor}</span>
+                <span>Coordenador: {training.coordinator || "-"}</span>
               </div>
             </div>
           </CardContent>
@@ -158,8 +187,8 @@ export default function TrainingDetails({ training, participants }) {
           <CardContent className="space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-slate-500">Status:</span>
-              <Badge className={statusColors[training.status]}>
-                {statusLabels[training.status]}
+              <Badge className={statusColors[effectiveStatus]}>
+                {statusLabels[effectiveStatus]}
               </Badge>
             </div>
             <div className="flex justify-between">

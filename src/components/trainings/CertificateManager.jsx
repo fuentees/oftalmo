@@ -187,10 +187,15 @@ export default function CertificateManager({ training, participants, onClose }) 
     }
   };
 
-  // Only approved participants 
-  const eligibleParticipants = participants.filter(
-    p => p.approved && p.enrollment_status === "confirmado"
-  );
+  // Participantes com presença registrada e frequência satisfatória
+  const eligibleParticipants = participants.filter((p) => {
+    if (p.enrollment_status === "cancelado") return false;
+    const hasRecords =
+      Array.isArray(p.attendance_records) && p.attendance_records.length > 0;
+    if (!hasRecords) return false;
+    const percentage = Number(p.attendance_percentage || 0);
+    return p.approved || percentage >= 75;
+  });
 
   const alreadySentCount = eligibleParticipants.filter(p => p.certificate_issued).length;
 
