@@ -36,7 +36,7 @@ export default function GlobalSearch({ open, onClose }) {
     trainings: trainings.filter(t => 
       t.title?.toLowerCase().includes(query.toLowerCase()) ||
       t.code?.toLowerCase().includes(query.toLowerCase()) ||
-      t.instructor?.toLowerCase().includes(query.toLowerCase())
+      t.coordinator?.toLowerCase().includes(query.toLowerCase())
     ).slice(0, 5),
     professionals: professionals.filter(p => 
       p.name?.toLowerCase().includes(query.toLowerCase()) ||
@@ -120,7 +120,7 @@ export default function GlobalSearch({ open, onClose }) {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm truncate">{item.title}</p>
-                        <p className="text-xs text-slate-500">{item.instructor}</p>
+                        <p className="text-xs text-slate-500">{item.coordinator}</p>
                       </div>
                       <Badge variant="outline">{item.status}</Badge>
                     </button>

@@ -4,21 +4,44 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Palette, Check, FileSpreadsheet, Trash2, Download } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Palette, Check, FileSpreadsheet, Trash2, Download, FileText } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import DataExport from "@/components/settings/DataExport";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import {
+  DEFAULT_CERTIFICATE_TEMPLATE,
+  loadCertificateTemplate,
+  resetCertificateTemplate,
+  saveCertificateTemplate,
+} from "@/lib/certificateTemplate";
 
 export default function Settings() {
   const [selectedColor, setSelectedColor] = useState("blue");
   const [gveMapping, setGveMapping] = useState([]);
   const [mappingStatus, setMappingStatus] = useState(null);
+  const [certificateTemplate, setCertificateTemplate] = useState(
+    DEFAULT_CERTIFICATE_TEMPLATE
+  );
+  const [certificateStatus, setCertificateStatus] = useState(null);
 
   useEffect(() => {
     const savedColor = localStorage.getItem("theme-color") || "blue";
     setSelectedColor(savedColor);
     applyColor(savedColor);
+  }, []);
+
+  useEffect(() => {
+    const template = loadCertificateTemplate();
+    setCertificateTemplate(template);
   }, []);
 
   useEffect(() => {
@@ -52,6 +75,68 @@ export default function Settings() {
     applyColor(colorValue);
     localStorage.setItem("theme-color", colorValue);
     window.location.reload();
+  };
+
+  const handleCertificateHeaderChange = (value) => {
+    const lines = value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      headerLines: lines,
+    }));
+  };
+
+  const handleCertificateChange = (field, value) => {
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSignatureChange = (key, field, value) => {
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleLogoUpload = (field, event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      setCertificateTemplate((prev) => ({
+        ...prev,
+        logos: {
+          ...prev.logos,
+          [field]: dataUrl,
+        },
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveCertificate = () => {
+    saveCertificateTemplate(certificateTemplate);
+    setCertificateStatus({
+      type: "success",
+      message: "Modelo de certificado salvo com sucesso.",
+    });
+  };
+
+  const handleResetCertificate = () => {
+    const reset = resetCertificateTemplate();
+    setCertificateTemplate(reset);
+    setCertificateStatus({
+      type: "success",
+      message: "Modelo padrão restaurado.",
+    });
   };
 
   const normalizeHeader = (value) =>
@@ -310,6 +395,207 @@ export default function Settings() {
                 }
               >
                 {mappingStatus.message}
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-blue-600" />
+            Modelo de Certificado
+          </CardTitle>
+          <CardDescription>
+            Configure textos, assinaturas e logos do certificado padrão.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert>
+            <AlertDescription>
+              Variáveis disponíveis: {"{{nome}}"}, {"{{rg}}"}, {"{{treinamento}}"},
+              {"{{carga_horaria}}"}, {"{{data}}"}, {"{{entidade}}"},
+              {"{{coordenador}}"} e {"{{instrutor}}"}.
+            </AlertDescription>
+          </Alert>
+
+          <div className="space-y-2">
+            <Label>Texto do cabeçalho (uma linha por item)</Label>
+            <Textarea
+              value={(certificateTemplate.headerLines || []).join("\n")}
+              onChange={(e) => handleCertificateHeaderChange(e.target.value)}
+              rows={3}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Título</Label>
+              <Input
+                value={certificateTemplate.title}
+                onChange={(e) => handleCertificateChange("title", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Entidade</Label>
+              <Input
+                value={certificateTemplate.entityName}
+                onChange={(e) => handleCertificateChange("entityName", e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Texto do certificado</Label>
+            <Textarea
+              value={certificateTemplate.body}
+              onChange={(e) => handleCertificateChange("body", e.target.value)}
+              rows={4}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Rodapé (cidade/data)</Label>
+            <Input
+              value={certificateTemplate.footer}
+              onChange={(e) => handleCertificateChange("footer", e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Assinatura 1</Label>
+              <Select
+                value={certificateTemplate.signature1.source}
+                onValueChange={(value) =>
+                  handleSignatureChange("signature1", "source", value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="coordinator">Coordenador</SelectItem>
+                  <SelectItem value="instructor">Instrutor</SelectItem>
+                  <SelectItem value="custom">Outro (manual)</SelectItem>
+                  <SelectItem value="none">Sem assinatura</SelectItem>
+                </SelectContent>
+              </Select>
+              {certificateTemplate.signature1.source === "custom" && (
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Nome"
+                    value={certificateTemplate.signature1.name}
+                    onChange={(e) =>
+                      handleSignatureChange("signature1", "name", e.target.value)
+                    }
+                  />
+                  <Input
+                    placeholder="Cargo"
+                    value={certificateTemplate.signature1.role}
+                    onChange={(e) =>
+                      handleSignatureChange("signature1", "role", e.target.value)
+                    }
+                  />
+                </div>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Assinatura 2</Label>
+              <Select
+                value={certificateTemplate.signature2.source}
+                onValueChange={(value) =>
+                  handleSignatureChange("signature2", "source", value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="coordinator">Coordenador</SelectItem>
+                  <SelectItem value="instructor">Instrutor</SelectItem>
+                  <SelectItem value="custom">Outro (manual)</SelectItem>
+                  <SelectItem value="none">Sem assinatura</SelectItem>
+                </SelectContent>
+              </Select>
+              {certificateTemplate.signature2.source === "custom" && (
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Nome"
+                    value={certificateTemplate.signature2.name}
+                    onChange={(e) =>
+                      handleSignatureChange("signature2", "name", e.target.value)
+                    }
+                  />
+                  <Input
+                    placeholder="Cargo"
+                    value={certificateTemplate.signature2.role}
+                    onChange={(e) =>
+                      handleSignatureChange("signature2", "role", e.target.value)
+                    }
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Logo principal</Label>
+              <Input
+                type="file"
+                accept=".png,.jpg,.jpeg"
+                onChange={(e) => handleLogoUpload("primary", e)}
+              />
+              {certificateTemplate.logos?.primary && (
+                <img
+                  src={certificateTemplate.logos.primary}
+                  alt="Logo principal"
+                  className="h-16 object-contain border rounded-md p-2"
+                />
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Logo secundário</Label>
+              <Input
+                type="file"
+                accept=".png,.jpg,.jpeg"
+                onChange={(e) => handleLogoUpload("secondary", e)}
+              />
+              {certificateTemplate.logos?.secondary && (
+                <img
+                  src={certificateTemplate.logos.secondary}
+                  alt="Logo secundário"
+                  className="h-16 object-contain border rounded-md p-2"
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleSaveCertificate}>Salvar</Button>
+            <Button variant="outline" onClick={handleResetCertificate}>
+              Restaurar padrão
+            </Button>
+          </div>
+
+          {certificateStatus && (
+            <Alert
+              className={
+                certificateStatus.type === "error"
+                  ? "border-red-200 bg-red-50"
+                  : "border-green-200 bg-green-50"
+              }
+            >
+              <AlertDescription
+                className={
+                  certificateStatus.type === "error"
+                    ? "text-red-800"
+                    : "text-green-800"
+                }
+              >
+                {certificateStatus.message}
               </AlertDescription>
             </Alert>
           )}
