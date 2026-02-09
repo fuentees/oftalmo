@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,7 +69,7 @@ export default function TrainingForm({ training, onClose }) {
 
   const generateTrainingCode = async () => {
     const currentYear = new Date().getFullYear();
-    const trainings = await base44.entities.Training.list();
+    const trainings = await dataClient.entities.Training.list();
     
     // Filter trainings from current year
     const yearTrainings = trainings.filter(t => {
@@ -86,9 +86,9 @@ export default function TrainingForm({ training, onClose }) {
   const saveTraining = useMutation({
     mutationFn: (data) => {
       if (training) {
-        return base44.entities.Training.update(training.id, data);
+        return dataClient.entities.Training.update(training.id, data);
       }
-      return base44.entities.Training.create(data);
+      return dataClient.entities.Training.create(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trainings"] });

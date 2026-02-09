@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ export default function CertificatesPanel({ professional }) {
   const { data: certificates = [], isLoading } = useQuery({
     queryKey: ["certificates", professional.id],
     queryFn: async () => {
-      const participants = await base44.entities.TrainingParticipant.filter({ 
+      const participants = await dataClient.entities.TrainingParticipant.filter({ 
         professional_id: professional.id,
         certificate_issued: true
       }, "-certificate_sent_date");

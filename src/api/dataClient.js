@@ -294,7 +294,7 @@ const redirectToLogin = (returnTo = window.location.href) => {
   window.location.href = target;
 };
 
-export const base44 = {
+export const dataClient = {
   entities,
   auth: {
     me,

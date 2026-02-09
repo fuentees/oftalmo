@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
 import {
   Users,
@@ -37,12 +37,12 @@ export default function Participants() {
 
   const { data: participants = [], isLoading } = useQuery({
     queryKey: ["participants"],
-    queryFn: () => base44.entities.TrainingParticipant.list("-training_date"),
+    queryFn: () => dataClient.entities.TrainingParticipant.list("-training_date"),
   });
 
   const { data: trainings = [] } = useQuery({
     queryKey: ["trainings"],
-    queryFn: () => base44.entities.Training.list(),
+    queryFn: () => dataClient.entities.Training.list(),
   });
 
   const uploadExcel = useMutation({
@@ -50,10 +50,10 @@ export default function Participants() {
       setUploadStatus({ type: "loading", message: "Processando planilha..." });
       
       // Upload file
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { file_url } = await dataClient.integrations.Core.UploadFile({ file });
       
       // Extract data from Excel
-      const result = await base44.integrations.Core.ExtractDataFromUploadedFile({
+      const result = await dataClient.integrations.Core.ExtractDataFromUploadedFile({
         file_url,
         json_schema: {
           type: "object",
@@ -87,7 +87,7 @@ export default function Participants() {
       const participantsData = result.output.participants || result.output;
       
       // Create participants
-      await base44.entities.TrainingParticipant.bulkCreate(participantsData);
+      await dataClient.entities.TrainingParticipant.bulkCreate(participantsData);
       
       setUploadStatus({ 
         type: "success", 

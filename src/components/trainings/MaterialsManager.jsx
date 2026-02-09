@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Upload, Trash2, Download, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,21 +20,21 @@ export default function MaterialsManager({ training }) {
 
   const { data: materials = [] } = useQuery({
     queryKey: ["trainingMaterials", training?.id],
-    queryFn: () => base44.entities.TrainingMaterial.list(),
+    queryFn: () => dataClient.entities.TrainingMaterial.list(),
     select: (data) => data.filter(m => m.training_id === training?.id),
   });
 
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
-    queryFn: () => base44.auth.me(),
+    queryFn: () => dataClient.auth.me(),
   });
 
   const uploadMaterial = useMutation({
     mutationFn: async (data) => {
       setUploading(true);
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: data.file });
+      const { file_url } = await dataClient.integrations.Core.UploadFile({ file: data.file });
       
-      return base44.entities.TrainingMaterial.create({
+      return dataClient.entities.TrainingMaterial.create({
         training_id: training.id,
         training_title: training.title,
         name: data.name,
@@ -55,7 +55,7 @@ export default function MaterialsManager({ training }) {
   });
 
   const deleteMaterial = useMutation({
-    mutationFn: (id) => base44.entities.TrainingMaterial.delete(id),
+    mutationFn: (id) => dataClient.entities.TrainingMaterial.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trainingMaterials"] });
     },

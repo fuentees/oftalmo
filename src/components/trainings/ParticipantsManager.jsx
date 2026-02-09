@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -64,10 +64,10 @@ export default function ParticipantsManager({ training, professionals, existingP
         };
       });
 
-      await base44.entities.TrainingParticipant.bulkCreate(newParticipants);
+      await dataClient.entities.TrainingParticipant.bulkCreate(newParticipants);
       
       // Update training participant count
-      await base44.entities.Training.update(training.id, {
+      await dataClient.entities.Training.update(training.id, {
         participants_count: (training.participants_count || 0) + professionalIds.length,
       });
     },
@@ -80,7 +80,7 @@ export default function ParticipantsManager({ training, professionals, existingP
 
   const updateParticipant = useMutation({
     mutationFn: ({ participantId, data }) => {
-      return base44.entities.TrainingParticipant.update(participantId, data);
+      return dataClient.entities.TrainingParticipant.update(participantId, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["participants"] });
@@ -89,10 +89,10 @@ export default function ParticipantsManager({ training, professionals, existingP
 
   const removeParticipant = useMutation({
     mutationFn: async (participantId) => {
-      await base44.entities.TrainingParticipant.delete(participantId);
+      await dataClient.entities.TrainingParticipant.delete(participantId);
       
       // Update training participant count
-      await base44.entities.Training.update(training.id, {
+      await dataClient.entities.Training.update(training.id, {
         participants_count: Math.max(0, (training.participants_count || 1) - 1),
       });
     },

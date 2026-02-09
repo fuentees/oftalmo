@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "./utils";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import {
   LayoutDashboard,
   Package,
@@ -53,7 +53,7 @@ export default function Layout({ children, currentPageName }) {
 
   const loadUser = async () => {
     try {
-      const currentUser = await base44.auth.me();
+      const currentUser = await dataClient.auth.me();
       setUser(currentUser);
     } catch (error) {
       console.log("User not logged in");
@@ -61,7 +61,7 @@ export default function Layout({ children, currentPageName }) {
   };
 
   const handleLogout = () => {
-    base44.auth.logout();
+    dataClient.auth.logout();
   };
 
   const navigation = [

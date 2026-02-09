@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
 import { Download } from "lucide-react";
 import {
@@ -64,16 +64,16 @@ export default function Stock() {
 
   const { data: materials = [], isLoading: loadingMaterials } = useQuery({
     queryKey: ["materials"],
-    queryFn: () => base44.entities.Material.list(),
+    queryFn: () => dataClient.entities.Material.list(),
   });
 
   const { data: movements = [], isLoading: loadingMovements } = useQuery({
     queryKey: ["movements"],
-    queryFn: () => base44.entities.StockMovement.list("-date", 100),
+    queryFn: () => dataClient.entities.StockMovement.list("-date", 100),
   });
 
   const deleteMaterial = useMutation({
-    mutationFn: (id) => base44.entities.Material.delete(id),
+    mutationFn: (id) => dataClient.entities.Material.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["materials"] });
       setDeleteConfirm(null);

@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
@@ -31,27 +31,27 @@ import DataTable from "@/components/common/DataTable";
 export default function Dashboard() {
   const { data: materials = [], isLoading: loadingMaterials } = useQuery({
     queryKey: ["materials"],
-    queryFn: () => base44.entities.Material.list(),
+    queryFn: () => dataClient.entities.Material.list(),
   });
 
   const { data: movements = [], isLoading: loadingMovements } = useQuery({
     queryKey: ["movements"],
-    queryFn: () => base44.entities.StockMovement.list("-created_date", 10),
+    queryFn: () => dataClient.entities.StockMovement.list("-created_date", 10),
   });
 
   const { data: trainings = [], isLoading: loadingTrainings } = useQuery({
     queryKey: ["trainings"],
-    queryFn: () => base44.entities.Training.list("-date", 10),
+    queryFn: () => dataClient.entities.Training.list("-date", 10),
   });
 
   const { data: professionals = [], isLoading: loadingProfessionals } = useQuery({
     queryKey: ["professionals"],
-    queryFn: () => base44.entities.Professional.list(),
+    queryFn: () => dataClient.entities.Professional.list(),
   });
 
   const { data: events = [], isLoading: loadingEvents } = useQuery({
     queryKey: ["events"],
-    queryFn: () => base44.entities.Event.list("-start_date"),
+    queryFn: () => dataClient.entities.Event.list("-start_date"),
   });
 
   // Calculate stats

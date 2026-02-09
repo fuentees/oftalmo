@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +51,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
       const presentCount = updatedRecords.filter(r => r.status === "presente").length;
       const percentage = Math.round((presentCount / totalDates) * 100);
 
-      return base44.entities.TrainingParticipant.update(participantId, {
+      return dataClient.entities.TrainingParticipant.update(participantId, {
         attendance_records: updatedRecords,
         attendance_percentage: percentage,
         approved: percentage >= 75
@@ -69,7 +69,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 6);
 
-      await base44.entities.AttendanceLink.create({
+      await dataClient.entities.AttendanceLink.create({
         training_id: training.id,
         training_title: training.title,
         date: selectedDate,

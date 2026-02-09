@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { format, addMonths, differenceInDays, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -33,17 +33,17 @@ export default function Reports() {
   const [customEndDate, setCustomEndDate] = useState("");
   const { data: participants = [] } = useQuery({
     queryKey: ["participants"],
-    queryFn: () => base44.entities.TrainingParticipant.list(),
+    queryFn: () => dataClient.entities.TrainingParticipant.list(),
   });
 
   const { data: trainings = [] } = useQuery({
     queryKey: ["trainings"],
-    queryFn: () => base44.entities.Training.list(),
+    queryFn: () => dataClient.entities.Training.list(),
   });
 
   const { data: professionals = [] } = useQuery({
     queryKey: ["professionals"],
-    queryFn: () => base44.entities.Professional.list(),
+    queryFn: () => dataClient.entities.Professional.list(),
   });
 
   // Apply filters

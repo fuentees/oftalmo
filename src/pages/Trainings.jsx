@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
 import {
   GraduationCap,
@@ -84,21 +84,21 @@ export default function Trainings() {
 
   const { data: trainings = [], isLoading } = useQuery({
     queryKey: ["trainings"],
-    queryFn: () => base44.entities.Training.list("-date"),
+    queryFn: () => dataClient.entities.Training.list("-date"),
   });
 
   const { data: professionals = [] } = useQuery({
     queryKey: ["professionals"],
-    queryFn: () => base44.entities.Professional.list(),
+    queryFn: () => dataClient.entities.Professional.list(),
   });
 
   const { data: participants = [] } = useQuery({
     queryKey: ["participants"],
-    queryFn: () => base44.entities.TrainingParticipant.list(),
+    queryFn: () => dataClient.entities.TrainingParticipant.list(),
   });
 
   const deleteTraining = useMutation({
-    mutationFn: (id) => base44.entities.Training.delete(id),
+    mutationFn: (id) => dataClient.entities.Training.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trainings"] });
       setDeleteConfirm(null);

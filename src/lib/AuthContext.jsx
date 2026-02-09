@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from "react";
 import { supabase } from "@/api/supabaseClient";
-import { mapSupabaseUser } from "@/api/base44Client";
+import { mapSupabaseUser } from "@/api/dataClient";
 
 const AuthContext = createContext();
 

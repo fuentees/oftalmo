@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
 import {
   UserPlus,
@@ -32,7 +32,7 @@ export default function Enrolled() {
     queryKey: ["training", trainingId],
     queryFn: async () => {
       if (!trainingId) return null;
-      const allTrainings = await base44.entities.Training.list();
+      const allTrainings = await dataClient.entities.Training.list();
       return allTrainings.find(t => t.id === trainingId);
     },
     enabled: !!trainingId,
@@ -40,7 +40,7 @@ export default function Enrolled() {
 
   const { data: allParticipants = [], isLoading } = useQuery({
     queryKey: ["enrolled-participants"],
-    queryFn: () => base44.entities.TrainingParticipant.list("-enrollment_date"),
+    queryFn: () => dataClient.entities.TrainingParticipant.list("-enrollment_date"),
   });
 
   // Filter participants for this specific training
@@ -50,7 +50,7 @@ export default function Enrolled() {
 
   const updateEnrollmentStatus = useMutation({
     mutationFn: ({ id, status }) => 
-      base44.entities.TrainingParticipant.update(id, { enrollment_status: status }),
+      dataClient.entities.TrainingParticipant.update(id, { enrollment_status: status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
     },

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,7 +34,7 @@ export default function DataExport() {
       
       for (const item of entities) {
         if (selected[item.key]) {
-          const data = await base44.entities[item.entity].list();
+          const data = await dataClient.entities[item.entity].list();
           exportData[item.key] = data;
         }
       }

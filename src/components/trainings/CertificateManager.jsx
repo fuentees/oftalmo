@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { format, addMonths } from "date-fns";
 import { generateParticipantCertificate, generateMonitorCertificate } from "./CertificateGenerator";
 import { Button } from "@/components/ui/button";
@@ -43,10 +43,10 @@ export default function CertificateManager({ training, participants, onClose }) 
           const pdfFile = new File([pdfBlob], `certificado-monitor-${monitor.name}.pdf`, { type: 'application/pdf' });
 
           // Upload PDF
-          const { file_url } = await base44.integrations.Core.UploadFile({ file: pdfFile });
+          const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
           // Send email
-          await base44.integrations.Core.SendEmail({
+          await dataClient.integrations.Core.SendEmail({
             to: monitor.email,
             subject: `Certificado de Monitoria - ${training.title}`,
             body: `
@@ -96,11 +96,11 @@ export default function CertificateManager({ training, participants, onClose }) 
           const pdfFile = new File([pdfBlob], `certificado-${participant.professional_name}.pdf`, { type: 'application/pdf' });
 
           // Upload PDF
-          const { file_url } = await base44.integrations.Core.UploadFile({ file: pdfFile });
+          const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
           // Send email to participant
           if (participant.professional_email) {
-            await base44.integrations.Core.SendEmail({
+            await dataClient.integrations.Core.SendEmail({
               to: participant.professional_email,
               subject: `Certificado de Conclusão - ${training.title}`,
               body: `
@@ -116,7 +116,7 @@ export default function CertificateManager({ training, participants, onClose }) 
 
           // Send copy to coordinator if exists
           if (training.coordinator_email) {
-            await base44.integrations.Core.SendEmail({
+            await dataClient.integrations.Core.SendEmail({
               to: training.coordinator_email,
               subject: `Cópia: Certificado emitido - ${participant.professional_name}`,
               body: `
@@ -132,7 +132,7 @@ export default function CertificateManager({ training, participants, onClose }) 
             ? addMonths(new Date(), training.validity_months).toISOString().split('T')[0]
             : null;
 
-          await base44.entities.TrainingParticipant.update(participant.id, {
+          await dataClient.entities.TrainingParticipant.update(participant.id, {
             certificate_issued: true,
             certificate_sent_date: new Date().toISOString(),
             certificate_url: file_url,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +43,7 @@ export default function MovementForm({ type, materials, preselectedMaterial, onC
   const createMovement = useMutation({
     mutationFn: async (data) => {
       // Create the movement
-      await base44.entities.StockMovement.create(data);
+      await dataClient.entities.StockMovement.create(data);
       
       // Update material stock
       const material = materials.find((m) => m.id === data.material_id);
@@ -53,7 +53,7 @@ export default function MovementForm({ type, materials, preselectedMaterial, onC
           ? currentStock + data.quantity 
           : currentStock - data.quantity;
         
-        await base44.entities.Material.update(material.id, {
+        await dataClient.entities.Material.update(material.id, {
           current_stock: Math.max(0, newStock),
         });
       }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +28,7 @@ export default function CheckIn() {
     queryFn: async () => {
       if (!token) throw new Error("Token não fornecido");
       
-      const links = await base44.entities.AttendanceLink.filter({ token });
+      const links = await dataClient.entities.AttendanceLink.filter({ token });
       if (links.length === 0) throw new Error("Link inválido");
       
       const link = links[0];
@@ -51,7 +51,7 @@ export default function CheckIn() {
         throw new Error("Informe sua matrícula");
       }
 
-      const participants = await base44.entities.TrainingParticipant.filter({
+      const participants = await dataClient.entities.TrainingParticipant.filter({
         training_id: linkData.training_id,
         professional_registration: registration.trim(),
       });
@@ -84,18 +84,18 @@ export default function CheckIn() {
         });
       }
 
-      const training = await base44.entities.Training.filter({ id: linkData.training_id });
+      const training = await dataClient.entities.Training.filter({ id: linkData.training_id });
       const totalDates = training[0]?.dates?.length || 1;
       const presentCount = updatedRecords.filter(r => r.status === "presente").length;
       const percentage = Math.round((presentCount / totalDates) * 100);
 
-      await base44.entities.TrainingParticipant.update(participant.id, {
+      await dataClient.entities.TrainingParticipant.update(participant.id, {
         attendance_records: updatedRecords,
         attendance_percentage: percentage,
         approved: percentage >= 75,
       });
 
-      await base44.entities.AttendanceLink.update(linkData.id, {
+      await dataClient.entities.AttendanceLink.update(linkData.id, {
         check_ins_count: (linkData.check_ins_count || 0) + 1,
       });
 

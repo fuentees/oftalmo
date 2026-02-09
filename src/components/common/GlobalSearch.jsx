@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Search, X, GraduationCap, User, Package, Calendar } from "lucide-react";
@@ -14,22 +14,22 @@ export default function GlobalSearch({ open, onClose }) {
 
   const { data: trainings = [] } = useQuery({
     queryKey: ["trainings"],
-    queryFn: () => base44.entities.Training.list(),
+    queryFn: () => dataClient.entities.Training.list(),
   });
 
   const { data: professionals = [] } = useQuery({
     queryKey: ["professionals"],
-    queryFn: () => base44.entities.Professional.list(),
+    queryFn: () => dataClient.entities.Professional.list(),
   });
 
   const { data: materials = [] } = useQuery({
     queryKey: ["materials"],
-    queryFn: () => base44.entities.Material.list(),
+    queryFn: () => dataClient.entities.Material.list(),
   });
 
   const { data: events = [] } = useQuery({
     queryKey: ["events"],
-    queryFn: () => base44.entities.Event.list(),
+    queryFn: () => dataClient.entities.Event.list(),
   });
 
   const results = query.length > 0 ? {

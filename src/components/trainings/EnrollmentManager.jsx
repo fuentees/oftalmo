@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -47,10 +47,10 @@ export default function EnrollmentManager({ training, professionals, existingPar
         validity_date: validityDate,
       };
 
-      await base44.entities.TrainingParticipant.create(participant);
+      await dataClient.entities.TrainingParticipant.create(participant);
       
       // Update training participant count
-      await base44.entities.Training.update(training.id, {
+      await dataClient.entities.Training.update(training.id, {
         participants_count: (training.participants_count || 0) + 1,
       });
     },
@@ -63,7 +63,7 @@ export default function EnrollmentManager({ training, professionals, existingPar
 
   const updateEnrollmentStatus = useMutation({
     mutationFn: ({ participantId, status }) => {
-      return base44.entities.TrainingParticipant.update(participantId, {
+      return dataClient.entities.TrainingParticipant.update(participantId, {
         enrollment_status: status,
       });
     },

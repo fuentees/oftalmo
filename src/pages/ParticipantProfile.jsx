@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,7 +33,7 @@ export default function ParticipantProfile() {
   const { data: participant, isLoading: loadingParticipant } = useQuery({
     queryKey: ["participant", participantId],
     queryFn: async () => {
-      const participants = await base44.entities.TrainingParticipant.list();
+      const participants = await dataClient.entities.TrainingParticipant.list();
       return participants.find((p) => p.id === participantId);
     },
     enabled: !!participantId,
@@ -42,7 +42,7 @@ export default function ParticipantProfile() {
   const { data: allParticipations = [], isLoading: loadingParticipations } = useQuery({
     queryKey: ["all-participations", participant?.professional_id],
     queryFn: () =>
-      base44.entities.TrainingParticipant.filter(
+      dataClient.entities.TrainingParticipant.filter(
         { professional_id: participant.professional_id },
         "-enrollment_date"
       ),

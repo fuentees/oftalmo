@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,9 +70,9 @@ export default function MaterialForm({ material, onClose }) {
   const saveMaterial = useMutation({
     mutationFn: (data) => {
       if (material) {
-        return base44.entities.Material.update(material.id, data);
+        return dataClient.entities.Material.update(material.id, data);
       }
-      return base44.entities.Material.create(data);
+      return dataClient.entities.Material.create(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["materials"] });

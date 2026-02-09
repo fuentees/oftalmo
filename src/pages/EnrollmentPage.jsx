@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,7 +50,7 @@ export default function EnrollmentPage() {
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
     queryFn: async () => {
-      const trainings = await base44.entities.Training.list();
+      const trainings = await dataClient.entities.Training.list();
       return trainings.find(t => t.id === trainingId);
     },
     enabled: !!trainingId,
@@ -59,7 +59,7 @@ export default function EnrollmentPage() {
   const { data: enrollmentFields = [] } = useQuery({
     queryKey: ["enrollment-fields", trainingId],
     queryFn: async () => {
-      const allFields = await base44.entities.EnrollmentField.list("order");
+      const allFields = await dataClient.entities.EnrollmentField.list("order");
       return allFields.filter(f => 
         f.is_active && (!f.training_id || f.training_id === trainingId)
       );
@@ -69,13 +69,13 @@ export default function EnrollmentPage() {
 
   const { data: allParticipants = [], isLoading: participantsLoading } = useQuery({
     queryKey: ["enrolled-participants", trainingId],
-    queryFn: () => base44.entities.TrainingParticipant.filter({ training_id: trainingId }, "-enrollment_date"),
+    queryFn: () => dataClient.entities.TrainingParticipant.filter({ training_id: trainingId }, "-enrollment_date"),
     enabled: !!trainingId,
   });
 
   const enrollMutation = useMutation({
     mutationFn: async (data) => {
-      const existing = await base44.entities.TrainingParticipant.filter({
+      const existing = await dataClient.entities.TrainingParticipant.filter({
         training_id: trainingId,
         professional_cpf: data.cpf,
       });
@@ -94,7 +94,7 @@ export default function EnrollmentPage() {
         ? format(new Date(firstDate).setMonth(new Date(firstDate).getMonth() + training.validity_months), "yyyy-MM-dd")
         : null;
 
-      await base44.entities.TrainingParticipant.create({
+      await dataClient.entities.TrainingParticipant.create({
         training_id: trainingId,
         training_title: training.title,
         training_date: firstDate,
@@ -113,7 +113,7 @@ export default function EnrollmentPage() {
         validity_date: validityDate,
       });
 
-      await base44.entities.Training.update(trainingId, {
+      await dataClient.entities.Training.update(trainingId, {
         participants_count: (training.participants_count || 0) + 1,
       });
     },
@@ -126,8 +126,8 @@ export default function EnrollmentPage() {
 
   const deleteParticipant = useMutation({
     mutationFn: async (id) => {
-      await base44.entities.TrainingParticipant.delete(id);
-      await base44.entities.Training.update(trainingId, {
+      await dataClient.entities.TrainingParticipant.delete(id);
+      await dataClient.entities.Training.update(trainingId, {
         participants_count: Math.max(0, (training.participants_count || 1) - 1),
       });
     },

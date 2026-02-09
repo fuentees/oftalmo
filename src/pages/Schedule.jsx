@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -53,11 +53,11 @@ export default function Schedule() {
 
   const { data: events = [], isLoading } = useQuery({
     queryKey: ["events"],
-    queryFn: () => base44.entities.Event.list("-start_date"),
+    queryFn: () => dataClient.entities.Event.list("-start_date"),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Event.delete(id),
+    mutationFn: (id) => dataClient.entities.Event.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["events"] });
       setDeleteEvent(null);

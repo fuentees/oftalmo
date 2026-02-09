@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +46,7 @@ export default function PublicEnrollment() {
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
     queryFn: async () => {
-      const trainings = await base44.entities.Training.list();
+      const trainings = await dataClient.entities.Training.list();
       return trainings.find(t => t.id === trainingId);
     },
     enabled: !!trainingId,
@@ -55,7 +55,7 @@ export default function PublicEnrollment() {
   const enrollMutation = useMutation({
     mutationFn: async (data) => {
       // Check if already enrolled
-      const existing = await base44.entities.TrainingParticipant.filter({
+      const existing = await dataClient.entities.TrainingParticipant.filter({
         training_id: trainingId,
         professional_cpf: data.cpf,
       });
@@ -75,7 +75,7 @@ export default function PublicEnrollment() {
         ? format(new Date(firstDate).setMonth(new Date(firstDate).getMonth() + training.validity_months), "yyyy-MM-dd")
         : null;
 
-      await base44.entities.TrainingParticipant.create({
+      await dataClient.entities.TrainingParticipant.create({
         training_id: trainingId,
         training_title: training.title,
         training_date: firstDate,
@@ -95,7 +95,7 @@ export default function PublicEnrollment() {
       });
 
       // Update training count
-      await base44.entities.Training.update(trainingId, {
+      await dataClient.entities.Training.update(trainingId, {
         participants_count: (training.participants_count || 0) + 1,
       });
     },

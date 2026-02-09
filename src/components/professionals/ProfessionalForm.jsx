@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,9 +50,9 @@ export default function ProfessionalForm({ professional, onClose }) {
   const saveProfessional = useMutation({
     mutationFn: (data) => {
       if (professional) {
-        return base44.entities.Professional.update(professional.id, data);
+        return dataClient.entities.Professional.update(professional.id, data);
       }
-      return base44.entities.Professional.create(data);
+      return dataClient.entities.Professional.create(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["professionals"] });

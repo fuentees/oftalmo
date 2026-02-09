@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -19,7 +19,7 @@ export default function FeedbackForm({ training, participant, onClose }) {
   const queryClient = useQueryClient();
 
   const submitFeedback = useMutation({
-    mutationFn: (data) => base44.entities.TrainingFeedback.create({
+    mutationFn: (data) => dataClient.entities.TrainingFeedback.create({
       training_id: training.id,
       training_title: training.title,
       participant_id: participant.id,

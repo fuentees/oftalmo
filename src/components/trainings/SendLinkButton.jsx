@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -40,7 +40,7 @@ export default function SendLinkButton({ training, participants }) {
               ).join("<br>")
             : "Data a definir";
 
-          await base44.integrations.Core.SendEmail({
+          await dataClient.integrations.Core.SendEmail({
             to: participant.professional_email,
             subject: `Link de Acesso - ${training.title}`,
             body: `

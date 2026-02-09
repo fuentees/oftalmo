@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +30,7 @@ export default function EventForm({ event, onClose, onSuccess }) {
 
   const { data: professionals = [] } = useQuery({
     queryKey: ["professionals"],
-    queryFn: () => base44.entities.Professional.list(),
+    queryFn: () => dataClient.entities.Professional.list(),
   });
 
   useEffect(() => {
@@ -56,9 +56,9 @@ export default function EventForm({ event, onClose, onSuccess }) {
   const saveMutation = useMutation({
     mutationFn: async (data) => {
       if (event) {
-        return base44.entities.Event.update(event.id, data);
+        return dataClient.entities.Event.update(event.id, data);
       } else {
-        return base44.entities.Event.create(data);
+        return dataClient.entities.Event.create(data);
       }
     },
     onSuccess: () => {

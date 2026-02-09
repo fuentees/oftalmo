@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,16 +53,16 @@ export default function EnrollmentFieldsManager() {
 
   const { data: fields = [], isLoading } = useQuery({
     queryKey: ["enrollment-fields"],
-    queryFn: () => base44.entities.EnrollmentField.list("order"),
+    queryFn: () => dataClient.entities.EnrollmentField.list("order"),
   });
 
   const { data: trainings = [] } = useQuery({
     queryKey: ["trainings"],
-    queryFn: () => base44.entities.Training.list("title"),
+    queryFn: () => dataClient.entities.Training.list("title"),
   });
 
   const createField = useMutation({
-    mutationFn: (data) => base44.entities.EnrollmentField.create(data),
+    mutationFn: (data) => dataClient.entities.EnrollmentField.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       resetForm();
@@ -70,7 +70,7 @@ export default function EnrollmentFieldsManager() {
   });
 
   const updateField = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.EnrollmentField.update(id, data),
+    mutationFn: ({ id, data }) => dataClient.entities.EnrollmentField.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       resetForm();
@@ -78,7 +78,7 @@ export default function EnrollmentFieldsManager() {
   });
 
   const deleteField = useMutation({
-    mutationFn: (id) => base44.entities.EnrollmentField.delete(id),
+    mutationFn: (id) => dataClient.entities.EnrollmentField.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       setDeleteConfirm(null);
