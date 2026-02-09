@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ export default function PublicEnrollment() {
   const [formErrors, setFormErrors] = useState(
     /** @type {Record<string, string | null>} */ ({})
   );
+  const [gveMapping, setGveMapping] = useState([]);
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
@@ -90,6 +91,46 @@ export default function PublicEnrollment() {
     const cleaned = value.replace(/[^0-9xX]/g, "").slice(0, 12);
     return cleaned.toUpperCase();
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem("gveMappingSp");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setGveMapping(parsed);
+      }
+    } catch (error) {
+      // Ignora erro de leitura
+    }
+  }, []);
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const gveMap = useMemo(() => {
+    const map = new Map();
+    gveMapping.forEach((item) => {
+      map.set(normalizeText(item.municipio), item.gve);
+    });
+    return map;
+  }, [gveMapping]);
+
+  const municipalityOptions = useMemo(
+    () =>
+      gveMapping
+        .map((item) => item.municipio)
+        .sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [gveMapping]
+  );
+
+  const getGveByMunicipio = (municipio) =>
+    gveMap.get(normalizeText(municipio)) || "";
 
   const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
 
@@ -366,7 +407,7 @@ export default function PublicEnrollment() {
                 )}
                 <div className="flex items-center gap-2 text-sm text-slate-700">
                   <User className="h-4 w-4 text-blue-600" />
-                  Instrutor: {training.instructor}
+                  Coordenador: {training.coordinator}
                 </div>
               </div>
               {training.max_participants && (
@@ -396,6 +437,13 @@ export default function PublicEnrollment() {
 
             {!isFullyBooked && !isCancelled && (
               <form onSubmit={handleSubmit} className="space-y-6">
+                {municipalityOptions.length > 0 && (
+                  <datalist id="municipios-list">
+                    {municipalityOptions.map((municipio) => (
+                      <option key={municipio} value={municipio} />
+                    ))}
+                  </datalist>
+                )}
                 <Tabs defaultValue="pessoais" className="w-full">
                   <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
                     <TabsTrigger value="pessoais">Dados Pessoais</TabsTrigger>
@@ -497,7 +545,22 @@ export default function PublicEnrollment() {
                         <Input
                           id="municipality"
                           value={formData.municipality}
-                          onChange={(e) => setFormData({...formData, municipality: e.target.value})}
+                          list={municipalityOptions.length > 0 ? "municipios-list" : undefined}
+                          onChange={(e) => {
+                            const nextValue = e.target.value;
+                            const gveValue = getGveByMunicipio(nextValue);
+                            setFormData((prev) => ({
+                              ...prev,
+                              municipality: nextValue,
+                              health_region: gveValue || prev.health_region,
+                            }));
+                            if (formErrors.municipality) {
+                              setFormErrors((prev) => ({ ...prev, municipality: null }));
+                            }
+                            if (gveValue && formErrors.health_region) {
+                              setFormErrors((prev) => ({ ...prev, health_region: null }));
+                            }
+                          }}
                           required
                         />
                         {formErrors.municipality && (
@@ -506,11 +569,12 @@ export default function PublicEnrollment() {
                       </div>
 
                       <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="health_region">Regional de Saúde / Grupo de Vigilância Epidemiológica *</Label>
+                        <Label htmlFor="health_region">GVE *</Label>
                         <Input
                           id="health_region"
-                          value={formData.health_region}
-                          onChange={(e) => setFormData({...formData, health_region: e.target.value})}
+                          value={getGveByMunicipio(formData.municipality) || formData.health_region}
+                          readOnly={Boolean(getGveByMunicipio(formData.municipality))}
+                          onChange={(e) => setFormData({ ...formData, health_region: e.target.value })}
                           required
                         />
                         {formErrors.health_region && (

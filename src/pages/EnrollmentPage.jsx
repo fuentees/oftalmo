@@ -32,6 +32,7 @@ import {
   Trash2,
   Users,
   Plus,
+  SlidersHorizontal,
   Edit,
   Link2
 } from "lucide-react";
@@ -59,6 +60,7 @@ export default function EnrollmentPage() {
   const [showUploadList, setShowUploadList] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [gveMapping, setGveMapping] = useState([]);
 
   const queryClient = useQueryClient();
 
@@ -100,6 +102,20 @@ export default function EnrollmentPage() {
     .filter((field) => field.is_active)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem("gveMappingSp");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setGveMapping(parsed);
+      }
+    } catch (error) {
+      // Ignora erro de leitura
+    }
+  }, []);
+
   const normalizeHeader = (value) =>
     String(value ?? "")
       .normalize("NFD")
@@ -116,6 +132,32 @@ export default function EnrollmentPage() {
       acc[normalizedKey] = value;
       return acc;
     }, {});
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const gveMap = React.useMemo(() => {
+    const map = new Map();
+    gveMapping.forEach((item) => {
+      map.set(normalizeText(item.municipio), item.gve);
+    });
+    return map;
+  }, [gveMapping]);
+
+  const municipalityOptions = React.useMemo(
+    () =>
+      gveMapping
+        .map((item) => item.municipio)
+        .sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [gveMapping]
+  );
+
+  const getGveByMunicipio = (municipio) =>
+    gveMap.get(normalizeText(municipio)) || "";
 
   const getLatestTrainingDate = () => {
     const dates = [
@@ -244,10 +286,10 @@ export default function EnrollmentPage() {
     },
     {
       field_key: "health_region",
-      label: "Regional de Saúde",
+      label: "GVE",
       type: "text",
       required: false,
-      placeholder: "Ex: Regional Norte",
+      placeholder: "Ex: GVE Taubaté",
       section: "instituicao",
       order: 8,
     },
@@ -588,7 +630,7 @@ export default function EnrollmentPage() {
   const handleExportExcel = () => {
     const headers = [
       "Nome", "CPF", "RG", "Email", "Setor", "Matrícula", "Formação Profissional",
-      "Instituição", "Estado", "Região de Saúde", "Município", "Nome da Unidade", "Cargo",
+      "Instituição", "Estado", "GVE", "Município", "Nome da Unidade", "Cargo",
       "Endereço de Trabalho", "Endereço Residencial", "Telefone Comercial", "Celular",
       "Data de Inscrição", "Status"
     ];
@@ -1021,25 +1063,6 @@ export default function EnrollmentPage() {
         subtitle="Gerencie as inscrições do treinamento"
       />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" onClick={handleCopyEnrollmentLink}>
-          <Link2 className="h-4 w-4 mr-2" />
-          Copiar Link de Inscrição
-        </Button>
-        <Button variant="outline" onClick={handleAddDefaultFields}>
-          <Plus className="h-4 w-4 mr-2" />
-          Aplicar Campos Padrão
-        </Button>
-        <Button onClick={() => {
-          setEditingField(null);
-          setFieldFormData(getDefaultFieldData());
-          setFieldFormOpen(true);
-        }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Campo do Formulário
-        </Button>
-      </div>
-
       <Card>
         <CardHeader className="bg-blue-600 text-white">
           <div className="flex items-center gap-3">
@@ -1058,7 +1081,11 @@ export default function EnrollmentPage() {
 
         <CardContent className="pt-6">
           <Tabs defaultValue="form" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="mask">
+                <SlidersHorizontal className="h-4 w-4 mr-2" />
+                Máscara
+              </TabsTrigger>
               <TabsTrigger value="form">
                 <GraduationCap className="h-4 w-4 mr-2" />
                 Formulário de Inscrição
@@ -1069,7 +1096,28 @@ export default function EnrollmentPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="form" className="mt-6 space-y-6">
+            <TabsContent value="mask" className="mt-6 space-y-6">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="outline" onClick={handleCopyEnrollmentLink}>
+                  <Link2 className="h-4 w-4 mr-2" />
+                  Copiar Link de Inscrição
+                </Button>
+                <Button variant="outline" onClick={handleAddDefaultFields}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Aplicar Campos Padrão
+                </Button>
+                <Button
+                  onClick={() => {
+                    setEditingField(null);
+                    setFieldFormData(getDefaultFieldData());
+                    setFieldFormOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Campo do Formulário
+                </Button>
+              </div>
+
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Campos do Formulário</CardTitle>
@@ -1099,7 +1147,9 @@ export default function EnrollmentPage() {
                   />
                 </CardContent>
               </Card>
+            </TabsContent>
 
+            <TabsContent value="form" className="mt-6 space-y-6">
               {(isFullyBooked || isCancelled) && (
                 <Alert className="border-red-200 bg-red-50 mb-6">
                   <AlertCircle className="h-4 w-4 text-red-600" />
@@ -1120,6 +1170,13 @@ export default function EnrollmentPage() {
 
               {!isFullyBooked && !isCancelled && (
                 <form onSubmit={handleSubmit} className="space-y-6">
+                  {municipalityOptions.length > 0 && (
+                    <datalist id="municipios-list">
+                      {municipalityOptions.map((municipio) => (
+                        <option key={municipio} value={municipio} />
+                      ))}
+                    </datalist>
+                  )}
                   <Tabs defaultValue={sectionOrder[0]} className="w-full">
                     <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
                       {sectionOrder.map((section) => (
@@ -1144,30 +1201,66 @@ export default function EnrollmentPage() {
                             </p>
                           ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              {sectionFields.map((field) => (
-                                <div key={field.id} className="space-y-2">
-                                  <Label htmlFor={field.field_key}>
-                                    {field.label} {field.required && "*"}
-                                  </Label>
-                                  <Input
-                                    id={field.field_key}
-                                    type={field.type}
-                                    value={formData[field.field_key] || ""}
-                                    onChange={(e) => {
-                                      const nextValue = formatFieldValue(field, e.target.value);
-                                      setFormData({ ...formData, [field.field_key]: nextValue });
-                                      if (formErrors[field.field_key]) {
-                                        setFormErrors((prev) => ({ ...prev, [field.field_key]: null }));
+                              {sectionFields.map((field) => {
+                                const fieldKey = field.field_key || "";
+                                const lowerKey = fieldKey.toLowerCase();
+                                const isMunicipalityField =
+                                  lowerKey.includes("municipio") || lowerKey.includes("municipality");
+                                const isGveField =
+                                  lowerKey === "health_region" ||
+                                  lowerKey.includes("gve") ||
+                                  lowerKey.includes("regional");
+                                const resolvedGve = getGveByMunicipio(formData.municipality);
+                                const fieldValue =
+                                  isGveField && resolvedGve ? resolvedGve : (formData[fieldKey] || "");
+
+                                return (
+                                  <div key={field.id} className="space-y-2">
+                                    <Label htmlFor={fieldKey}>
+                                      {field.label} {field.required && "*"}
+                                    </Label>
+                                    <Input
+                                      id={fieldKey}
+                                      type={field.type}
+                                      value={fieldValue}
+                                      list={
+                                        isMunicipalityField && municipalityOptions.length > 0
+                                          ? "municipios-list"
+                                          : undefined
                                       }
-                                    }}
-                                    placeholder={field.placeholder}
-                                    required={field.required}
-                                  />
-                                  {formErrors[field.field_key] && (
-                                    <p className="text-xs text-red-600">{formErrors[field.field_key]}</p>
-                                  )}
-                                </div>
-                              ))}
+                                      readOnly={isGveField && Boolean(resolvedGve)}
+                                      onChange={(e) => {
+                                        const nextValue = formatFieldValue(field, e.target.value);
+                                        if (isMunicipalityField) {
+                                          const gveValue = getGveByMunicipio(nextValue);
+                                          setFormData((prev) => ({
+                                            ...prev,
+                                            [fieldKey]: nextValue,
+                                            health_region: gveValue || prev.health_region,
+                                          }));
+                                          if (formErrors[fieldKey]) {
+                                            setFormErrors((prev) => ({ ...prev, [fieldKey]: null }));
+                                          }
+                                          if (gveValue && formErrors.health_region) {
+                                            setFormErrors((prev) => ({ ...prev, health_region: null }));
+                                          }
+                                          return;
+                                        }
+
+                                        setFormData((prev) => ({ ...prev, [fieldKey]: nextValue }));
+                                        if (formErrors[fieldKey]) {
+                                          setFormErrors((prev) => ({ ...prev, [fieldKey]: null }));
+                                        }
+                                      }}
+                                      placeholder={field.placeholder}
+                                      required={field.required}
+                                    />
+                                    {formErrors[fieldKey] && (
+                                      <p className="text-xs text-red-600">{formErrors[fieldKey]}</p>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                         </TabsContent>
