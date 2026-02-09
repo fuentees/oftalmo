@@ -19,8 +19,7 @@ const alertVariants = cva(
   }
 )
 
-/** @typedef {import("class-variance-authority").VariantProps<typeof alertVariants>} AlertVariantProps */
-/** @typedef {import("react").HTMLAttributes<HTMLDivElement> & AlertVariantProps} AlertProps */
+/** @typedef {import("react").HTMLAttributes<HTMLDivElement> & { variant?: string }} AlertProps */
 
 const Alert = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, AlertProps>} */

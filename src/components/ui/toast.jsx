@@ -45,8 +45,7 @@ const toastVariants = cva(
   }
 );
 
-/** @typedef {import("class-variance-authority").VariantProps<typeof toastVariants>} ToastVariantProps */
-/** @typedef {import("react").HTMLAttributes<HTMLDivElement> & ToastVariantProps} ToastProps */
+/** @typedef {import("react").HTMLAttributes<HTMLDivElement> & { variant?: string }} ToastProps */
 
 const Toast = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, ToastProps>} */

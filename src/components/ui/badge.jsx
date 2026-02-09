@@ -23,8 +23,7 @@ const badgeVariants = cva(
   }
 )
 
-/** @typedef {import("class-variance-authority").VariantProps<typeof badgeVariants>} BadgeVariantProps */
-/** @typedef {import("react").HTMLAttributes<HTMLDivElement> & BadgeVariantProps} BadgeProps */
+/** @typedef {import("react").HTMLAttributes<HTMLDivElement> & { variant?: string }} BadgeProps */
 
 /** @param {BadgeProps} props */
 function Badge({ className, variant, ...props }) {
