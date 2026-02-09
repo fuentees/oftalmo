@@ -10,7 +10,12 @@ import {
   Edit,
   Trash2,
   Eye,
-  History
+  History,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  AlertCircle,
+  CheckCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +36,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
@@ -50,6 +58,10 @@ export default function Stock() {
   const [selectedMaterial, setSelectedMaterial] = useState(null);
   const [movementType, setMovementType] = useState("entrada");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importTarget, setImportTarget] = useState("materials");
+  const [importFile, setImportFile] = useState(null);
+  const [importStatus, setImportStatus] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -89,6 +101,263 @@ export default function Stock() {
     { value: "informatica", label: "Informática" },
     { value: "outros", label: "Outros" },
   ];
+
+  const normalizeHeader = (value) => {
+    if (value === null || value === undefined) return "";
+    return String(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  };
+
+  const normalizeRow = (row) => {
+    const normalized = {};
+    Object.entries(row || {}).forEach(([key, value]) => {
+      const normalizedKey = normalizeHeader(key);
+      if (!normalizedKey) return;
+      normalized[normalizedKey] = value;
+    });
+    return normalized;
+  };
+
+  const pickValue = (row, keys) => {
+    for (const key of keys) {
+      const value = row[key];
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return null;
+  };
+
+  const cleanValue = (value) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed ? trimmed : null;
+    }
+    return value;
+  };
+
+  const toNumber = (value) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    const normalized = String(value).replace(",", ".").trim();
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const toInteger = (value) => {
+    const numeric = toNumber(value);
+    return Number.isFinite(numeric) ? Math.trunc(numeric) : null;
+  };
+
+  const normalizeMovementType = (value) => {
+    const normalized = normalizeHeader(value);
+    if (!normalized) return null;
+    if (normalized.includes("entrada")) return "entrada";
+    if (normalized.includes("saida")) return "saida";
+    return null;
+  };
+
+  const importStock = useMutation({
+    mutationFn: async (/** @type {{ file: File; target: "materials" | "movements" }} */ payload) => {
+      const { file, target } = payload;
+      setImportStatus({ type: "loading", message: "Processando planilha..." });
+
+      const { file_url } = await dataClient.integrations.Core.UploadFile({ file });
+      const result = await dataClient.integrations.Core.ExtractDataFromUploadedFile({
+        file_url,
+      });
+
+      if (result.status === "error") {
+        throw new Error(result.details || "Erro ao processar planilha");
+      }
+
+      const rows = result.output?.participants || result.output || [];
+      if (!Array.isArray(rows) || rows.length === 0) {
+        throw new Error("Nenhum dado encontrado na planilha.");
+      }
+
+      if (target === "materials") {
+        const payloads = rows
+          .map((rawRow) => {
+            const row = normalizeRow(rawRow);
+            const name = cleanValue(pickValue(row, ["name", "nome"]));
+            if (!name) return null;
+            return {
+              name,
+              code: cleanValue(pickValue(row, ["code", "codigo"])),
+              description: cleanValue(pickValue(row, ["description", "descricao"])),
+              unit: cleanValue(pickValue(row, ["unit", "unidade"])),
+              category: cleanValue(pickValue(row, ["category", "categoria"])),
+              minimum_stock: toInteger(
+                pickValue(row, ["minimum_stock", "estoque_minimo", "minimo"])
+              ),
+              current_stock: toInteger(
+                pickValue(row, ["current_stock", "estoque_atual", "estoque", "saldo"])
+              ),
+              location: cleanValue(pickValue(row, ["location", "localizacao", "local"])),
+              expiry_date: cleanValue(pickValue(row, ["expiry_date", "validade"])),
+              status: cleanValue(pickValue(row, ["status", "situacao"])) || "ativo",
+            };
+          })
+          .filter(Boolean);
+
+        if (payloads.length === 0) {
+          throw new Error("Nenhum material válido encontrado.");
+        }
+
+        await dataClient.entities.Material.bulkCreate(payloads);
+
+        const skipped = rows.length - payloads.length;
+        setImportStatus({
+          type: "success",
+          message: `${payloads.length} material(is) importado(s) com sucesso${
+            skipped > 0 ? ` (${skipped} linha(s) ignoradas)` : ""
+          }.`,
+        });
+
+        return { imported: payloads.length, target };
+      }
+
+      const payloads = rows
+        .map((rawRow) => {
+          const row = normalizeRow(rawRow);
+          const materialId = cleanValue(
+            pickValue(row, ["material_id", "id_material"])
+          );
+          const materialCode = cleanValue(
+            pickValue(row, ["material_code", "codigo_material", "codigo"])
+          );
+          const materialName = cleanValue(
+            pickValue(row, ["material_name", "nome_material", "material", "nome"])
+          );
+          const quantity = toInteger(pickValue(row, ["quantity", "quantidade"]));
+          const type = normalizeMovementType(pickValue(row, ["type", "tipo"]));
+
+          const matchedByCode = materialCode
+            ? materials.find(
+                (item) =>
+                  String(item.code || "").toLowerCase().trim() ===
+                  String(materialCode).toLowerCase().trim()
+              )
+            : null;
+          const matchedByName = materialName
+            ? materials.find(
+                (item) =>
+                  String(item.name || "").toLowerCase().trim() ===
+                  String(materialName).toLowerCase().trim()
+              )
+            : null;
+
+          const resolvedMaterial = matchedByCode || matchedByName;
+          const resolvedMaterialId = materialId || resolvedMaterial?.id || null;
+          const resolvedMaterialName =
+            materialName || resolvedMaterial?.name || null;
+
+          if (!type || !quantity || (!resolvedMaterialId && !resolvedMaterialName)) {
+            return null;
+          }
+
+          return {
+            material_id: resolvedMaterialId,
+            material_name: resolvedMaterialName,
+            type,
+            quantity,
+            date: cleanValue(pickValue(row, ["date", "data"])),
+            responsible: cleanValue(pickValue(row, ["responsible", "responsavel"])),
+            sector: cleanValue(pickValue(row, ["sector", "setor", "destino"])),
+            document_number: cleanValue(
+              pickValue(row, ["document_number", "documento", "numero_documento"])
+            ),
+            notes: cleanValue(pickValue(row, ["notes", "observacoes", "obs"])),
+          };
+        })
+        .filter(Boolean);
+
+      if (payloads.length === 0) {
+        throw new Error("Nenhuma movimentação válida encontrada.");
+      }
+
+      await dataClient.entities.StockMovement.bulkCreate(payloads);
+
+      const skipped = rows.length - payloads.length;
+      setImportStatus({
+        type: "success",
+        message: `${payloads.length} movimentação(ões) importada(s) com sucesso${
+          skipped > 0 ? ` (${skipped} linha(s) ignoradas)` : ""
+        }.`,
+      });
+
+      return { imported: payloads.length, target };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["materials"] });
+      queryClient.invalidateQueries({ queryKey: ["movements"] });
+      setTimeout(() => {
+        setShowImport(false);
+        setImportFile(null);
+        setImportStatus(null);
+      }, 2000);
+    },
+    onError: (error) => {
+      setImportStatus({
+        type: "error",
+        message: error.message || "Erro ao importar planilha",
+      });
+    },
+  });
+
+  const handleImportFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setImportFile(file);
+      setImportStatus(null);
+    }
+  };
+
+  const handleImport = () => {
+    if (importFile) {
+      importStock.mutate({ file: importFile, target: importTarget });
+    }
+  };
+
+  const downloadTemplate = (target) => {
+    const template =
+      target === "materials"
+        ? `name,code,description,unit,category,minimum_stock,current_stock,location,expiry_date,status
+Luvas de Proteção,EPI-001,Luva nitrílica,par,EPI,50,120,Almoxarifado,2026-01-01,ativo
+Álcool 70%,LIM-002,Frasco 1L,un,limpeza,20,45,Depósito,2025-11-30,ativo`
+        : `material_code,material_name,type,quantity,date,responsible,sector,document_number,notes
+EPI-001,Luvas de Proteção,entrada,100,2025-01-10,Almoxarifado,Manutenção,NF-123,Entrada inicial
+LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição`;
+
+    const blob = new Blob([template], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download =
+      target === "materials"
+        ? "modelo_materiais.csv"
+        : "modelo_movimentacoes.csv";
+    link.click();
+  };
+
+  const handleOpenImport = (target) => {
+    setImportTarget(target);
+    setImportFile(null);
+    setImportStatus(null);
+    setShowImport(true);
+  };
+
+  const handleCloseImport = () => {
+    setShowImport(false);
+    setImportFile(null);
+    setImportStatus(null);
+  };
 
   const filteredMaterials = materials.filter((m) => {
     const matchesSearch = m.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -242,6 +511,21 @@ export default function Stock() {
               <>
                 <Button
                   variant="outline"
+                  onClick={() => downloadTemplate("materials")}
+                  className="flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Modelo
+                </Button>
+                <Button
+                  onClick={() => handleOpenImport("materials")}
+                  className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  Importar Planilha
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => handleNewMovement("entrada")}
                   className="text-green-600 border-green-200 hover:bg-green-50"
                 >
@@ -269,6 +553,21 @@ export default function Stock() {
               </>
             ) : (
               <>
+                <Button
+                  variant="outline"
+                  onClick={() => downloadTemplate("movements")}
+                  className="flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Modelo
+                </Button>
+                <Button
+                  onClick={() => handleOpenImport("movements")}
+                  className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  Importar Planilha
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => handleNewMovement("entrada")}
@@ -339,6 +638,126 @@ export default function Stock() {
           />
         </TabsContent>
       </Tabs>
+
+      {/* Import Dialog */}
+      <Dialog
+        open={showImport}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseImport();
+            return;
+          }
+          setShowImport(true);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              {importTarget === "materials"
+                ? "Importar Materiais"
+                : "Importar Movimentações"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Baixe o modelo, preencha com os dados e envie a planilha
+                ({importTarget === "materials"
+                  ? "materiais"
+                  : "movimentações"}
+                ).
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex">
+              <Button
+                variant="outline"
+                onClick={() => downloadTemplate(importTarget)}
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Baixar modelo
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="stock-import-file">
+                Selecione o arquivo (.xlsx, .csv)
+              </Label>
+              <Input
+                id="stock-import-file"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleImportFileChange}
+              />
+              {importFile && (
+                <p className="text-sm text-slate-500">
+                  Arquivo selecionado: {importFile.name}
+                </p>
+              )}
+            </div>
+
+            {importStatus && (
+              <Alert
+                className={
+                  importStatus.type === "error"
+                    ? "border-red-200 bg-red-50"
+                    : importStatus.type === "success"
+                    ? "border-green-200 bg-green-50"
+                    : "border-blue-200 bg-blue-50"
+                }
+              >
+                {importStatus.type === "error" && (
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                )}
+                {importStatus.type === "success" && (
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                )}
+                {importStatus.type === "loading" && (
+                  <AlertCircle className="h-4 w-4 text-blue-600" />
+                )}
+                <AlertDescription
+                  className={
+                    importStatus.type === "error"
+                      ? "text-red-800"
+                      : importStatus.type === "success"
+                      ? "text-green-800"
+                      : "text-blue-800"
+                  }
+                >
+                  {importStatus.message}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={handleCloseImport}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleImport}
+                disabled={!importFile || importStock.isPending}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {importStock.isPending ? (
+                  <>
+                    <AlertCircle className="h-4 w-4 mr-2 animate-spin" />
+                    Importando...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Importar
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Material Form Dialog */}
       <Dialog open={showMaterialForm} onOpenChange={setShowMaterialForm}>
