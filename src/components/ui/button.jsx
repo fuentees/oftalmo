@@ -34,7 +34,7 @@ const buttonVariants = cva(
   }
 )
 
-/** @typedef {import("react").ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string; size?: string; asChild?: boolean }} ButtonProps */
+/** @typedef {import("react").ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"; size?: "default" | "sm" | "lg" | "icon"; asChild?: boolean }} ButtonProps */
 
 /** @type {import("react").ForwardRefExoticComponent<ButtonProps & import("react").RefAttributes<HTMLButtonElement>>} */
 const Button = React.forwardRef(

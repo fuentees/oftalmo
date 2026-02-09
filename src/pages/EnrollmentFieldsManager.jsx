@@ -345,7 +345,7 @@ export default function EnrollmentFieldsManager() {
                 <Checkbox
                   id="required"
                   checked={formData.required}
-                  onCheckedChange={(checked) => setFormData({...formData, required: checked})}
+                  onCheckedChange={(checked) => setFormData({...formData, required: checked === true})}
                 />
                 <Label htmlFor="required" className="cursor-pointer">Campo Obrigatório</Label>
               </div>
@@ -354,7 +354,7 @@ export default function EnrollmentFieldsManager() {
                 <Checkbox
                   id="is_active"
                   checked={formData.is_active}
-                  onCheckedChange={(checked) => setFormData({...formData, is_active: checked})}
+                  onCheckedChange={(checked) => setFormData({...formData, is_active: checked === true})}
                 />
                 <Label htmlFor="is_active" className="cursor-pointer">Campo Ativo</Label>
               </div>

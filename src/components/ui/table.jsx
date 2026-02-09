@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils"
 /** @typedef {import("react").TableHTMLAttributes<HTMLTableElement>} TableProps */
 /** @typedef {import("react").HTMLAttributes<HTMLTableSectionElement>} TableSectionProps */
 /** @typedef {import("react").HTMLAttributes<HTMLTableRowElement>} TableRowProps */
-/** @typedef {import("react").HTMLAttributes<HTMLTableCellElement>} TableCellProps */
+/** @typedef {import("react").TdHTMLAttributes<HTMLTableCellElement>} TableCellProps */
+/** @typedef {import("react").ThHTMLAttributes<HTMLTableCellElement>} TableHeadProps */
 /** @typedef {import("react").HTMLAttributes<HTMLTableCaptionElement>} TableCaptionProps */
 
 /** @type {import("react").ForwardRefExoticComponent<TableProps & import("react").RefAttributes<HTMLTableElement>>} */
@@ -70,9 +71,9 @@ const TableRow = React.forwardRef(
 )
 TableRow.displayName = "TableRow"
 
-/** @type {import("react").ForwardRefExoticComponent<TableCellProps & import("react").RefAttributes<HTMLTableCellElement>>} */
+/** @type {import("react").ForwardRefExoticComponent<TableHeadProps & import("react").RefAttributes<HTMLTableCellElement>>} */
 const TableHead = React.forwardRef(
-  /** @type {import("react").ForwardRefRenderFunction<HTMLTableCellElement, TableCellProps>} */
+  /** @type {import("react").ForwardRefRenderFunction<HTMLTableCellElement, TableHeadProps>} */
   ({ className, ...props }, ref) => (
     <th
       ref={ref}

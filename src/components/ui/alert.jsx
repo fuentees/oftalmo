@@ -19,7 +19,7 @@ const alertVariants = cva(
   }
 )
 
-/** @typedef {import("react").HTMLAttributes<HTMLDivElement> & { variant?: string }} AlertProps */
+/** @typedef {import("react").HTMLAttributes<HTMLDivElement> & { variant?: "default" | "destructive" }} AlertProps */
 
 /** @type {import("react").ForwardRefExoticComponent<AlertProps & import("react").RefAttributes<HTMLDivElement>>} */
 const Alert = React.forwardRef(

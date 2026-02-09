@@ -65,9 +65,10 @@ export default function DataExport() {
   };
 
   const handleSelectAll = (checked) => {
+    const nextValue = checked === true;
     const newSelected = /** @type {Record<string, boolean>} */ ({});
     entities.forEach(item => {
-      newSelected[item.key] = checked;
+      newSelected[item.key] = nextValue;
     });
     setSelected(newSelected);
   };
@@ -106,7 +107,7 @@ export default function DataExport() {
                   id={item.key}
                   checked={selected[item.key]}
                   onCheckedChange={(checked) =>
-                    setSelected(prev => ({ ...prev, [item.key]: checked }))
+                    setSelected(prev => ({ ...prev, [item.key]: checked === true }))
                   }
                 />
                 <Label htmlFor={item.key} className="cursor-pointer">
