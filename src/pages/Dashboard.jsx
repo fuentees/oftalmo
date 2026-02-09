@@ -154,6 +154,34 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatsCard
+          title="Materiais em Estoque"
+          value={materials.length}
+          icon={Package}
+          color="blue"
+        />
+        <StatsCard
+          title="Estoque Baixo"
+          value={lowStockItems.length}
+          icon={AlertTriangle}
+          color={lowStockItems.length > 0 ? "red" : "green"}
+        />
+        <StatsCard
+          title="Treinamentos/Mês"
+          value={thisMonthTrainings.length}
+          icon={GraduationCap}
+          color="purple"
+        />
+        <StatsCard
+          title="Profissionais Ativos"
+          value={activeProfessionals.length}
+          icon={Users}
+          color="green"
+        />
+      </div>
+
       {/* Próximos eventos em destaque */}
       <Card className="border-slate-200 shadow-lg hover:shadow-xl transition-shadow">
         <CardHeader className="flex flex-row items-center justify-between pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
@@ -170,7 +198,7 @@ export default function Dashboard() {
             Ver agenda <ChevronRight className="h-4 w-4" />
           </Link>
         </CardHeader>
-        <CardContent className="space-y-2 max-h-[28rem] overflow-y-auto">
+        <CardContent className="space-y-2 min-h-[32rem] max-h-[32rem] overflow-y-auto">
           {loadingEvents ? (
             <p className="text-sm text-slate-500 text-center py-4">Carregando...</p>
           ) : upcomingEvents.length === 0 ? (
@@ -232,34 +260,6 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard
-          title="Materiais em Estoque"
-          value={materials.length}
-          icon={Package}
-          color="blue"
-        />
-        <StatsCard
-          title="Estoque Baixo"
-          value={lowStockItems.length}
-          icon={AlertTriangle}
-          color={lowStockItems.length > 0 ? "red" : "green"}
-        />
-        <StatsCard
-          title="Treinamentos/Mês"
-          value={thisMonthTrainings.length}
-          icon={GraduationCap}
-          color="purple"
-        />
-        <StatsCard
-          title="Profissionais Ativos"
-          value={activeProfessionals.length}
-          icon={Users}
-          color="green"
-        />
-      </div>
 
       {/* Low Stock Alert */}
       {lowStockItems.length > 0 && (
