@@ -82,7 +82,11 @@ export default function MaterialForm({ material, onClose }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    saveMaterial.mutate(formData);
+    const payload = {
+      ...formData,
+      expiry_date: formData.expiry_date || null,
+    };
+    saveMaterial.mutate(payload);
   };
 
   const handleChange = (field, value) => {

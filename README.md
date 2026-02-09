@@ -37,6 +37,8 @@ armazenamento de arquivos.
    a lógica para URLs assinadas).
 4. Configure as políticas de RLS conforme sua necessidade. Para rotas públicas
    (ex.: inscrições), habilite **SELECT/INSERT** nas tabelas necessárias.
+   Para operações internas (painel), libere SELECT/INSERT/UPDATE/DELETE para
+   usuários autenticados nas tabelas `trainings`, `professionals`, etc.
 
 ### Envio de email
 

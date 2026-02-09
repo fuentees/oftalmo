@@ -117,6 +117,7 @@ export default function TrainingForm({ training, onClose }) {
       ...formData,
       date: formData.dates?.[0]?.date || null,
       status: autoStatus,
+      duration_hours: formData.duration_hours ? Number(formData.duration_hours) : null,
       max_participants: formData.max_participants ? Number(formData.max_participants) : null,
       validity_months: formData.validity_months ? Number(formData.validity_months) : null,
     };

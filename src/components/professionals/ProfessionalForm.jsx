@@ -62,7 +62,11 @@ export default function ProfessionalForm({ professional, onClose }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    saveProfessional.mutate(formData);
+    const payload = {
+      ...formData,
+      admission_date: formData.admission_date || null,
+    };
+    saveProfessional.mutate(payload);
   };
 
   const handleChange = (field, value) => {

@@ -70,7 +70,11 @@ export default function EventForm({ event, onClose, onSuccess }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    saveMutation.mutate(formData);
+    const payload = {
+      ...formData,
+      end_date: formData.end_date || null,
+    };
+    saveMutation.mutate(payload);
   };
 
   const typeColors = {
