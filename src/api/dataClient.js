@@ -74,6 +74,7 @@ const ENTITY_TABLES = {
   StockMovement: "stock_movements",
   TrainingMaterial: "training_materials",
   TrainingFeedback: "training_feedback",
+  TrainingFeedbackQuestion: "training_feedback_questions",
   AttendanceLink: "attendance_links",
   EnrollmentField: "enrollment_fields",
   AuditLog: "audit_logs",

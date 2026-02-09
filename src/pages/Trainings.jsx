@@ -255,6 +255,15 @@ export default function Trainings() {
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
+                  window.location.href = `/TrainingFeedback?training=${encodeURIComponent(row.id)}`;
+                }}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Página de Avaliação
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
                   setSelectedTraining(row);
                   setShowAttendance(true);
                 }}

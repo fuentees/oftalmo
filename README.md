@@ -40,6 +40,8 @@ armazenamento de arquivos.
    Também recomendamos executar a função `is_valid_cpf` e as constraints de CPF
    (no próprio `schema.sql`) para validação no backend.
    Para logo e palestrantes, adicione as colunas `logo_url` e `speakers` em `trainings`.
+   Para avaliação, adicione a coluna `answers` em `training_feedback` e a tabela
+   `training_feedback_questions` (ver `schema.sql`).
 3. Crie o bucket de armazenamento `uploads` e deixe como **public** (ou adapte
    a lógica para URLs assinadas).
 4. Configure as políticas de RLS conforme sua necessidade. Para rotas públicas

@@ -149,6 +149,18 @@ create table if not exists training_feedback (
   instructor_rating integer,
   comments text,
   would_recommend boolean,
+  answers jsonb,
+  created_at timestamptz default now()
+);
+
+create table if not exists training_feedback_questions (
+  id uuid primary key default gen_random_uuid(),
+  training_id uuid references trainings(id) on delete cascade,
+  question_text text not null,
+  question_type text default 'rating',
+  required boolean default true,
+  "order" integer default 0,
+  is_active boolean default true,
   created_at timestamptz default now()
 );
 
