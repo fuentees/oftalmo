@@ -30,6 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -76,6 +77,8 @@ export default function Trainings() {
   const [showImport, setShowImport] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
+
+  const navigate = useNavigate();
 
   const queryClient = useQueryClient();
 
@@ -570,7 +573,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.location.href = `/EnrollmentPage?training=${encodeURIComponent(row.id)}`;
+                  navigate(`/EnrollmentPage?training=${encodeURIComponent(row.id)}`);
                 }}
               >
                 <UserPlus className="h-4 w-4 mr-2" />
