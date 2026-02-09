@@ -202,3 +202,73 @@ create table if not exists app_logs (
   user_email text,
   created_at timestamptz default now()
 );
+
+-- Validação de CPF (backend)
+create or replace function public.is_valid_cpf(cpf text)
+returns boolean
+language plpgsql
+immutable
+as $$
+declare
+  digits text;
+  sum int;
+  check_digit int;
+  i int;
+begin
+  if cpf is null or btrim(cpf) = '' then
+    return true;
+  end if;
+
+  digits := regexp_replace(cpf, '\D', '', 'g');
+  if length(digits) <> 11 then
+    return false;
+  end if;
+
+  if digits ~ '^(\d)\1{10}$' then
+    return false;
+  end if;
+
+  sum := 0;
+  for i in 1..9 loop
+    sum := sum + (substring(digits from i for 1)::int) * (11 - i);
+  end loop;
+  check_digit := (sum * 10) % 11;
+  if check_digit = 10 then
+    check_digit := 0;
+  end if;
+  if check_digit <> substring(digits from 10 for 1)::int then
+    return false;
+  end if;
+
+  sum := 0;
+  for i in 1..10 loop
+    sum := sum + (substring(digits from i for 1)::int) * (12 - i);
+  end loop;
+  check_digit := (sum * 10) % 11;
+  if check_digit = 10 then
+    check_digit := 0;
+  end if;
+  if check_digit <> substring(digits from 11 for 1)::int then
+    return false;
+  end if;
+
+  return true;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'professionals_cpf_valid'
+  ) then
+    alter table public.professionals
+      add constraint professionals_cpf_valid check (public.is_valid_cpf(cpf));
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint where conname = 'training_participants_cpf_valid'
+  ) then
+    alter table public.training_participants
+      add constraint training_participants_cpf_valid check (public.is_valid_cpf(professional_cpf));
+  end if;
+end $$;

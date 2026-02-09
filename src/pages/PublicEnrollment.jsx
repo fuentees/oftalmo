@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   GraduationCap, 
   Calendar, 
@@ -393,233 +394,238 @@ export default function PublicEnrollment() {
 
             {!isFullyBooked && !isCancelled && (
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-slate-900 text-sm">Dados Pessoais</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="name">Nome Completo *</Label>
-                      <Input
-                        id="name"
-                        value={formData.name}
-                        onChange={(e) => setFormData({...formData, name: e.target.value})}
-                        required
-                      />
-                    </div>
+                <Tabs defaultValue="pessoais" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+                    <TabsTrigger value="pessoais">Dados Pessoais</TabsTrigger>
+                    <TabsTrigger value="instituicao">Instituição</TabsTrigger>
+                    <TabsTrigger value="enderecos">Endereços</TabsTrigger>
+                    <TabsTrigger value="contatos">Contatos</TabsTrigger>
+                  </TabsList>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="rg">RG *</Label>
-                      <Input
-                        id="rg"
-                        value={formData.rg}
-                        onChange={(e) => {
-                          const nextValue = formatRg(e.target.value);
-                          setFormData({ ...formData, rg: nextValue });
-                          if (formErrors.rg) {
-                            setFormErrors((prev) => ({ ...prev, rg: null }));
-                          }
-                        }}
-                        required
-                      />
-                      {formErrors.rg && <p className="text-xs text-red-600">{formErrors.rg}</p>}
-                    </div>
+                  <TabsContent value="pessoais" className="mt-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="name">Nome Completo *</Label>
+                        <Input
+                          id="name"
+                          value={formData.name}
+                          onChange={(e) => setFormData({...formData, name: e.target.value})}
+                          required
+                        />
+                      </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="cpf">CPF</Label>
-                      <Input
-                        id="cpf"
-                        value={formData.cpf}
-                        onChange={(e) => {
-                          const nextValue = formatCpf(e.target.value);
-                          setFormData({ ...formData, cpf: nextValue });
-                          if (formErrors.cpf) {
-                            setFormErrors((prev) => ({ ...prev, cpf: null }));
-                          }
-                        }}
-                        placeholder="000.000.000-00"
-                      />
-                      {formErrors.cpf && <p className="text-xs text-red-600">{formErrors.cpf}</p>}
-                    </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="rg">RG *</Label>
+                        <Input
+                          id="rg"
+                          value={formData.rg}
+                          onChange={(e) => {
+                            const nextValue = formatRg(e.target.value);
+                            setFormData({ ...formData, rg: nextValue });
+                            if (formErrors.rg) {
+                              setFormErrors((prev) => ({ ...prev, rg: null }));
+                            }
+                          }}
+                          required
+                        />
+                        {formErrors.rg && <p className="text-xs text-red-600">{formErrors.rg}</p>}
+                      </div>
 
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="professional_formation">Formação Profissional *</Label>
-                      <Input
-                        id="professional_formation"
-                        value={formData.professional_formation}
-                        onChange={(e) => setFormData({...formData, professional_formation: e.target.value})}
-                        required
-                      />
-                      {formErrors.professional_formation && (
-                        <p className="text-xs text-red-600">{formErrors.professional_formation}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="cpf">CPF</Label>
+                        <Input
+                          id="cpf"
+                          value={formData.cpf}
+                          onChange={(e) => {
+                            const nextValue = formatCpf(e.target.value);
+                            setFormData({ ...formData, cpf: nextValue });
+                            if (formErrors.cpf) {
+                              setFormErrors((prev) => ({ ...prev, cpf: null }));
+                            }
+                          }}
+                          placeholder="000.000.000-00"
+                        />
+                        {formErrors.cpf && <p className="text-xs text-red-600">{formErrors.cpf}</p>}
+                      </div>
 
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-slate-900 text-sm">Instituição</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="institution">Instituição que Representa *</Label>
-                      <Input
-                        id="institution"
-                        value={formData.institution}
-                        onChange={(e) => setFormData({...formData, institution: e.target.value})}
-                        required
-                      />
-                      {formErrors.institution && (
-                        <p className="text-xs text-red-600">{formErrors.institution}</p>
-                      )}
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="professional_formation">Formação Profissional *</Label>
+                        <Input
+                          id="professional_formation"
+                          value={formData.professional_formation}
+                          onChange={(e) => setFormData({...formData, professional_formation: e.target.value})}
+                          required
+                        />
+                        {formErrors.professional_formation && (
+                          <p className="text-xs text-red-600">{formErrors.professional_formation}</p>
+                        )}
+                      </div>
                     </div>
+                  </TabsContent>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="state">Estado *</Label>
-                      <Input
-                        id="state"
-                        value={formData.state}
-                        onChange={(e) => setFormData({...formData, state: e.target.value})}
-                        placeholder="Ex: SP"
-                        required
-                      />
-                      {formErrors.state && <p className="text-xs text-red-600">{formErrors.state}</p>}
-                    </div>
+                  <TabsContent value="instituicao" className="mt-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="institution">Instituição que Representa *</Label>
+                        <Input
+                          id="institution"
+                          value={formData.institution}
+                          onChange={(e) => setFormData({...formData, institution: e.target.value})}
+                          required
+                        />
+                        {formErrors.institution && (
+                          <p className="text-xs text-red-600">{formErrors.institution}</p>
+                        )}
+                      </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="municipality">Município *</Label>
-                      <Input
-                        id="municipality"
-                        value={formData.municipality}
-                        onChange={(e) => setFormData({...formData, municipality: e.target.value})}
-                        required
-                      />
-                      {formErrors.municipality && (
-                        <p className="text-xs text-red-600">{formErrors.municipality}</p>
-                      )}
-                    </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="state">Estado *</Label>
+                        <Input
+                          id="state"
+                          value={formData.state}
+                          onChange={(e) => setFormData({...formData, state: e.target.value})}
+                          placeholder="Ex: SP"
+                          required
+                        />
+                        {formErrors.state && <p className="text-xs text-red-600">{formErrors.state}</p>}
+                      </div>
 
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="health_region">Regional de Saúde / Grupo de Vigilância Epidemiológica *</Label>
-                      <Input
-                        id="health_region"
-                        value={formData.health_region}
-                        onChange={(e) => setFormData({...formData, health_region: e.target.value})}
-                        required
-                      />
-                      {formErrors.health_region && (
-                        <p className="text-xs text-red-600">{formErrors.health_region}</p>
-                      )}
-                    </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="municipality">Município *</Label>
+                        <Input
+                          id="municipality"
+                          value={formData.municipality}
+                          onChange={(e) => setFormData({...formData, municipality: e.target.value})}
+                          required
+                        />
+                        {formErrors.municipality && (
+                          <p className="text-xs text-red-600">{formErrors.municipality}</p>
+                        )}
+                      </div>
 
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="unit_name">Nome da Unidade *</Label>
-                      <Input
-                        id="unit_name"
-                        value={formData.unit_name}
-                        onChange={(e) => setFormData({...formData, unit_name: e.target.value})}
-                        required
-                      />
-                      {formErrors.unit_name && <p className="text-xs text-red-600">{formErrors.unit_name}</p>}
-                    </div>
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="health_region">Regional de Saúde / Grupo de Vigilância Epidemiológica *</Label>
+                        <Input
+                          id="health_region"
+                          value={formData.health_region}
+                          onChange={(e) => setFormData({...formData, health_region: e.target.value})}
+                          required
+                        />
+                        {formErrors.health_region && (
+                          <p className="text-xs text-red-600">{formErrors.health_region}</p>
+                        )}
+                      </div>
 
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="sector">Cargo *</Label>
-                      <Input
-                        id="sector"
-                        value={formData.sector}
-                        onChange={(e) => setFormData({...formData, sector: e.target.value})}
-                        required
-                      />
-                      {formErrors.sector && <p className="text-xs text-red-600">{formErrors.sector}</p>}
-                    </div>
-                  </div>
-                </div>
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="unit_name">Nome da Unidade *</Label>
+                        <Input
+                          id="unit_name"
+                          value={formData.unit_name}
+                          onChange={(e) => setFormData({...formData, unit_name: e.target.value})}
+                          required
+                        />
+                        {formErrors.unit_name && <p className="text-xs text-red-600">{formErrors.unit_name}</p>}
+                      </div>
 
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-slate-900 text-sm">Endereços</h4>
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="work_address">Endereço de Trabalho *</Label>
-                      <Input
-                        id="work_address"
-                        value={formData.work_address}
-                        onChange={(e) => setFormData({...formData, work_address: e.target.value})}
-                        required
-                      />
-                      {formErrors.work_address && (
-                        <p className="text-xs text-red-600">{formErrors.work_address}</p>
-                      )}
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="sector">Cargo *</Label>
+                        <Input
+                          id="sector"
+                          value={formData.sector}
+                          onChange={(e) => setFormData({...formData, sector: e.target.value})}
+                          required
+                        />
+                        {formErrors.sector && <p className="text-xs text-red-600">{formErrors.sector}</p>}
+                      </div>
                     </div>
+                  </TabsContent>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="residential_address">Endereço de Residência *</Label>
-                      <Input
-                        id="residential_address"
-                        value={formData.residential_address}
-                        onChange={(e) => setFormData({...formData, residential_address: e.target.value})}
-                        required
-                      />
-                      {formErrors.residential_address && (
-                        <p className="text-xs text-red-600">{formErrors.residential_address}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  <TabsContent value="enderecos" className="mt-6">
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="work_address">Endereço de Trabalho *</Label>
+                        <Input
+                          id="work_address"
+                          value={formData.work_address}
+                          onChange={(e) => setFormData({...formData, work_address: e.target.value})}
+                          required
+                        />
+                        {formErrors.work_address && (
+                          <p className="text-xs text-red-600">{formErrors.work_address}</p>
+                        )}
+                      </div>
 
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-slate-900 text-sm">Contatos</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="email">E-mail *</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({...formData, email: e.target.value})}
-                        required
-                      />
-                      {formErrors.email && <p className="text-xs text-red-600">{formErrors.email}</p>}
+                      <div className="space-y-2">
+                        <Label htmlFor="residential_address">Endereço de Residência *</Label>
+                        <Input
+                          id="residential_address"
+                          value={formData.residential_address}
+                          onChange={(e) => setFormData({...formData, residential_address: e.target.value})}
+                          required
+                        />
+                        {formErrors.residential_address && (
+                          <p className="text-xs text-red-600">{formErrors.residential_address}</p>
+                        )}
+                      </div>
                     </div>
+                  </TabsContent>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="commercial_phone">Telefone Comercial *</Label>
-                      <Input
-                        id="commercial_phone"
-                        value={formData.commercial_phone}
-                        onChange={(e) => {
-                          const nextValue = formatPhone(e.target.value);
-                          setFormData({ ...formData, commercial_phone: nextValue });
-                          if (formErrors.commercial_phone) {
-                            setFormErrors((prev) => ({ ...prev, commercial_phone: null }));
-                          }
-                        }}
-                        placeholder="(11) 1234-5678"
-                        required
-                      />
-                      {formErrors.commercial_phone && (
-                        <p className="text-xs text-red-600">{formErrors.commercial_phone}</p>
-                      )}
-                    </div>
+                  <TabsContent value="contatos" className="mt-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="email">E-mail *</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => setFormData({...formData, email: e.target.value})}
+                          required
+                        />
+                        {formErrors.email && <p className="text-xs text-red-600">{formErrors.email}</p>}
+                      </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="mobile_phone">Celular *</Label>
-                      <Input
-                        id="mobile_phone"
-                        value={formData.mobile_phone}
-                        onChange={(e) => {
-                          const nextValue = formatPhone(e.target.value);
-                          setFormData({ ...formData, mobile_phone: nextValue });
-                          if (formErrors.mobile_phone) {
-                            setFormErrors((prev) => ({ ...prev, mobile_phone: null }));
-                          }
-                        }}
-                        placeholder="(11) 91234-5678"
-                        required
-                      />
-                      {formErrors.mobile_phone && (
-                        <p className="text-xs text-red-600">{formErrors.mobile_phone}</p>
-                      )}
+                      <div className="space-y-2">
+                        <Label htmlFor="commercial_phone">Telefone Comercial *</Label>
+                        <Input
+                          id="commercial_phone"
+                          value={formData.commercial_phone}
+                          onChange={(e) => {
+                            const nextValue = formatPhone(e.target.value);
+                            setFormData({ ...formData, commercial_phone: nextValue });
+                            if (formErrors.commercial_phone) {
+                              setFormErrors((prev) => ({ ...prev, commercial_phone: null }));
+                            }
+                          }}
+                          placeholder="(11) 1234-5678"
+                          required
+                        />
+                        {formErrors.commercial_phone && (
+                          <p className="text-xs text-red-600">{formErrors.commercial_phone}</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="mobile_phone">Celular *</Label>
+                        <Input
+                          id="mobile_phone"
+                          value={formData.mobile_phone}
+                          onChange={(e) => {
+                            const nextValue = formatPhone(e.target.value);
+                            setFormData({ ...formData, mobile_phone: nextValue });
+                            if (formErrors.mobile_phone) {
+                              setFormErrors((prev) => ({ ...prev, mobile_phone: null }));
+                            }
+                          }}
+                          placeholder="(11) 91234-5678"
+                          required
+                        />
+                        {formErrors.mobile_phone && (
+                          <p className="text-xs text-red-600">{formErrors.mobile_phone}</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </TabsContent>
+                </Tabs>
 
                 <div className="flex justify-end gap-3 pt-4">
                   <Button
