@@ -923,60 +923,43 @@ export default function EnrollmentPage() {
 
               {!isFullyBooked && !isCancelled && (
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  <Tabs defaultValue={sectionOrder[0]} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
-                      {sectionOrder.map((section) => (
-                        <TabsTrigger key={section} value={section}>
+                  {sectionOrder.map((section) => {
+                    const sectionFields = fieldsBySection[section];
+                    if (sectionFields.length === 0) return null;
+                    return (
+                      <div key={section} className="space-y-4">
+                        <h4 className="font-semibold text-slate-900">
                           {sectionLabels[section]}
-                          {fieldsBySection[section].length > 0 && (
-                            <span className="ml-2 text-xs text-slate-500">
-                              ({fieldsBySection[section].length})
-                            </span>
-                          )}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-
-                    {sectionOrder.map((section) => {
-                      const sectionFields = fieldsBySection[section];
-                      return (
-                        <TabsContent key={section} value={section} className="mt-6">
-                          {sectionFields.length === 0 ? (
-                            <p className="text-sm text-slate-500">
-                              Nenhum campo configurado para esta seção.
-                            </p>
-                          ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              {sectionFields.map((field) => (
-                                <div key={field.id} className="space-y-2">
-                                  <Label htmlFor={field.field_key}>
-                                    {field.label} {field.required && "*"}
-                                  </Label>
-                                  <Input
-                                    id={field.field_key}
-                                    type={field.type}
-                                    value={formData[field.field_key] || ""}
-                                    onChange={(e) => {
-                                      const nextValue = formatFieldValue(field, e.target.value);
-                                      setFormData({ ...formData, [field.field_key]: nextValue });
-                                      if (formErrors[field.field_key]) {
-                                        setFormErrors((prev) => ({ ...prev, [field.field_key]: null }));
-                                      }
-                                    }}
-                                    placeholder={field.placeholder}
-                                    required={field.required}
-                                  />
-                                  {formErrors[field.field_key] && (
-                                    <p className="text-xs text-red-600">{formErrors[field.field_key]}</p>
-                                  )}
-                                </div>
-                              ))}
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {sectionFields.map((field) => (
+                            <div key={field.id} className="space-y-2">
+                              <Label htmlFor={field.field_key}>
+                                {field.label} {field.required && "*"}
+                              </Label>
+                              <Input
+                                id={field.field_key}
+                                type={field.type}
+                                value={formData[field.field_key] || ""}
+                                onChange={(e) => {
+                                  const nextValue = formatFieldValue(field, e.target.value);
+                                  setFormData({ ...formData, [field.field_key]: nextValue });
+                                  if (formErrors[field.field_key]) {
+                                    setFormErrors((prev) => ({ ...prev, [field.field_key]: null }));
+                                  }
+                                }}
+                                placeholder={field.placeholder}
+                                required={field.required}
+                              />
+                              {formErrors[field.field_key] && (
+                                <p className="text-xs text-red-600">{formErrors[field.field_key]}</p>
+                              )}
                             </div>
-                          )}
-                        </TabsContent>
-                      );
-                    })}
-                  </Tabs>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
 
                   <div className="flex justify-end pt-4">
                     <Button
