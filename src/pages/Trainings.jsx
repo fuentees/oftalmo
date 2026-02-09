@@ -171,6 +171,50 @@ export default function Trainings() {
     return Number.isFinite(numeric) ? Math.trunc(numeric) : null;
   };
 
+  const normalizeDateValue = (value) => {
+    if (value === undefined || value === null) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return format(value, "yyyy-MM-dd");
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      if (value >= 20000) {
+        const excelDate = new Date(Math.round((value - 25569) * 86400 * 1000));
+        if (!Number.isNaN(excelDate.getTime())) {
+          return format(excelDate, "yyyy-MM-dd");
+        }
+      }
+      return null;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+        const [day, month, year] = trimmed.split("/");
+        return `${year}-${month}-${day}`;
+      }
+      const numeric = Number(trimmed.replace(",", "."));
+      if (
+        Number.isFinite(numeric) &&
+        numeric >= 20000 &&
+        /^\d+(\.\d+)?$/.test(trimmed)
+      ) {
+        const excelDate = new Date(
+          Math.round((numeric - 25569) * 86400 * 1000)
+        );
+        if (!Number.isNaN(excelDate.getTime())) {
+          return format(excelDate, "yyyy-MM-dd");
+        }
+      }
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) {
+        return format(parsed, "yyyy-MM-dd");
+      }
+      return trimmed;
+    }
+    return null;
+  };
+
   const normalizeType = (value) => {
     const normalized = normalizeHeader(value);
     if (!normalized) return null;
@@ -196,9 +240,10 @@ export default function Trainings() {
     (Array.isArray(value) ? value : [])
       .map((item) => {
         if (!item) return null;
-        if (typeof item === "string") return item;
-        if (typeof item === "object" && item.date) return item.date;
-        return null;
+        if (typeof item === "object" && item.date) {
+          return normalizeDateValue(item.date);
+        }
+        return normalizeDateValue(item);
       })
       .filter(Boolean)
       .map((date) => ({ date }));
@@ -206,6 +251,10 @@ export default function Trainings() {
   const parseDatesField = (value) => {
     if (!value) return [];
     if (Array.isArray(value)) return normalizeDatesArray(value);
+    if (typeof value === "number") {
+      const normalized = normalizeDateValue(value);
+      return normalized ? [{ date: normalized }] : [];
+    }
     if (typeof value === "string") {
       const trimmed = value.trim();
       if (!trimmed) return [];
@@ -220,6 +269,8 @@ export default function Trainings() {
       return trimmed
         .split(/[;,|]/)
         .map((item) => item.trim())
+        .filter(Boolean)
+        .map((date) => normalizeDateValue(date))
         .filter(Boolean)
         .map((date) => ({ date }));
     }
@@ -250,7 +301,7 @@ export default function Trainings() {
           const title = cleanValue(pickValue(row, ["title", "titulo"]));
           if (!title) return null;
 
-          const dateValue = cleanValue(pickValue(row, ["date", "data"]));
+          const dateValue = normalizeDateValue(pickValue(row, ["date", "data"]));
           const parsedDates = parseDatesField(pickValue(row, ["dates", "datas"]));
           const dates = parsedDates.length
             ? parsedDates

@@ -154,6 +154,50 @@ export default function Stock() {
     return Number.isFinite(numeric) ? Math.trunc(numeric) : null;
   };
 
+  const normalizeDateValue = (value) => {
+    if (value === undefined || value === null) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return format(value, "yyyy-MM-dd");
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      if (value >= 20000) {
+        const excelDate = new Date(Math.round((value - 25569) * 86400 * 1000));
+        if (!Number.isNaN(excelDate.getTime())) {
+          return format(excelDate, "yyyy-MM-dd");
+        }
+      }
+      return null;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+        const [day, month, year] = trimmed.split("/");
+        return `${year}-${month}-${day}`;
+      }
+      const numeric = Number(trimmed.replace(",", "."));
+      if (
+        Number.isFinite(numeric) &&
+        numeric >= 20000 &&
+        /^\d+(\.\d+)?$/.test(trimmed)
+      ) {
+        const excelDate = new Date(
+          Math.round((numeric - 25569) * 86400 * 1000)
+        );
+        if (!Number.isNaN(excelDate.getTime())) {
+          return format(excelDate, "yyyy-MM-dd");
+        }
+      }
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) {
+        return format(parsed, "yyyy-MM-dd");
+      }
+      return trimmed;
+    }
+    return null;
+  };
+
   const normalizeMovementType = (value) => {
     const normalized = normalizeHeader(value);
     if (!normalized) return null;
@@ -200,7 +244,9 @@ export default function Stock() {
                 pickValue(row, ["current_stock", "estoque_atual", "estoque", "saldo"])
               ),
               location: cleanValue(pickValue(row, ["location", "localizacao", "local"])),
-              expiry_date: cleanValue(pickValue(row, ["expiry_date", "validade"])),
+              expiry_date: normalizeDateValue(
+                pickValue(row, ["expiry_date", "validade"])
+              ),
               status: cleanValue(pickValue(row, ["status", "situacao"])) || "ativo",
             };
           })
@@ -267,7 +313,7 @@ export default function Stock() {
             material_name: resolvedMaterialName,
             type,
             quantity,
-            date: cleanValue(pickValue(row, ["date", "data"])),
+            date: normalizeDateValue(pickValue(row, ["date", "data"])),
             responsible: cleanValue(pickValue(row, ["responsible", "responsavel"])),
             sector: cleanValue(pickValue(row, ["sector", "setor", "destino"])),
             document_number: cleanValue(
