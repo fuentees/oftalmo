@@ -19,13 +19,33 @@ export default function MaterialDetails({ material, movements }) {
     outros: "Outros",
   };
 
+  const formatCategoryLabel = (value) => {
+    if (!value) return "-";
+    const rawValue = String(value);
+    const normalized = rawValue.toLowerCase();
+    return (
+      categoryLabels[rawValue] ||
+      categoryLabels[normalized] ||
+      rawValue
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+    );
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "-";
+    return format(parsed, "dd/MM/yyyy");
+  };
+
   const isLowStock = material.current_stock && material.minimum_stock && 
                      material.current_stock <= material.minimum_stock;
 
   const movementColumns = [
     {
       header: "Data",
-      render: (row) => format(new Date(row.date), "dd/MM/yyyy"),
+      render: (row) => formatDate(row.date),
     },
     {
       header: "Tipo",
@@ -67,17 +87,15 @@ export default function MaterialDetails({ material, movements }) {
             <div className="pt-2 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-slate-500">Categoria:</span>
-                <Badge variant="outline">{categoryLabels[material.category]}</Badge>
+                <Badge variant="outline">{formatCategoryLabel(material.category)}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Unidade:</span>
                 <span className="capitalize">{material.unit}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Status:</span>
-                <Badge className={material.status === "ativo" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700"}>
-                  {material.status === "ativo" ? "Ativo" : "Inativo"}
-                </Badge>
+                <span className="text-slate-500">Validade:</span>
+                <span>{formatDate(material.expiry_date)}</span>
               </div>
               {material.location && (
                 <div className="flex justify-between">

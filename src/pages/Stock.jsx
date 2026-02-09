@@ -46,6 +46,22 @@ import MaterialForm from "@/components/stock/MaterialForm";
 import MovementForm from "@/components/stock/MovementForm";
 import MaterialDetails from "@/components/stock/MaterialDetails";
 
+const DEFAULT_CATEGORIES = [
+  { value: "EPI", label: "EPI" },
+  { value: "escritorio", label: "Escritório" },
+  { value: "limpeza", label: "Limpeza" },
+  { value: "ferramentas", label: "Ferramentas" },
+  { value: "eletrico", label: "Elétrico" },
+  { value: "hidraulico", label: "Hidráulico" },
+  { value: "informatica", label: "Informática" },
+  { value: "outros", label: "Outros" },
+];
+
+const CATEGORY_LABELS = DEFAULT_CATEGORIES.reduce((acc, item) => {
+  acc[item.value] = item.label;
+  return acc;
+}, {});
+
 export default function Stock() {
   const [activeTab, setActiveTab] = useState("materials");
   const [search, setSearch] = useState("");
@@ -62,6 +78,16 @@ export default function Stock() {
   const [importTarget, setImportTarget] = useState("materials");
   const [importFile, setImportFile] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
+  const [customCategories, setCustomCategories] = useState(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = window.localStorage.getItem("stockCategories");
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  });
 
   const queryClient = useQueryClient();
 
@@ -91,16 +117,116 @@ export default function Stock() {
     },
   });
 
-  const categoryOptions = [
-    { value: "EPI", label: "EPI" },
-    { value: "escritorio", label: "Escritório" },
-    { value: "limpeza", label: "Limpeza" },
-    { value: "ferramentas", label: "Ferramentas" },
-    { value: "eletrico", label: "Elétrico" },
-    { value: "hidraulico", label: "Hidráulico" },
-    { value: "informatica", label: "Informática" },
-    { value: "outros", label: "Outros" },
-  ];
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      "stockCategories",
+      JSON.stringify(customCategories)
+    );
+  }, [customCategories]);
+
+  const normalizeCategoryKey = (value) =>
+    String(value ?? "").trim().toLowerCase();
+
+  const formatCategoryLabel = (value) => {
+    if (!value) return "-";
+    const rawValue = String(value);
+    const normalized = normalizeCategoryKey(rawValue);
+    return (
+      CATEGORY_LABELS[rawValue] ||
+      CATEGORY_LABELS[normalized] ||
+      rawValue
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+    );
+  };
+
+  const generateMaterialCode = (categoryValue) => {
+    const normalized = normalizeCategoryKey(categoryValue);
+    const prefixes = {
+      epi: "EPI",
+      escritorio: "ESC",
+      limpeza: "LMP",
+      ferramentas: "FER",
+      eletrico: "ELE",
+      hidraulico: "HID",
+      informatica: "INF",
+      outros: "OUT",
+    };
+    const prefix =
+      prefixes[categoryValue] ||
+      prefixes[normalized] ||
+      normalized.replace(/[^a-z0-9]/g, "").slice(0, 3).toUpperCase() ||
+      "OUT";
+    const random = Math.floor(Math.random() * 9999)
+      .toString()
+      .padStart(4, "0");
+    return `${prefix}-${random}`;
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "-";
+    return format(parsed, "dd/MM/yyyy");
+  };
+
+  const materialCategoryValues = React.useMemo(
+    () => materials.map((m) => m.category).filter(Boolean),
+    [materials]
+  );
+
+  const allCategories = React.useMemo(() => {
+    const merged = [
+      ...DEFAULT_CATEGORIES.map((item) => item.value),
+      ...customCategories,
+      ...materialCategoryValues,
+    ];
+    const unique = [];
+    const seen = new Set();
+    merged.forEach((value) => {
+      if (!value) return;
+      const key = normalizeCategoryKey(value);
+      if (seen.has(key)) return;
+      seen.add(key);
+      unique.push(value);
+    });
+    return unique;
+  }, [customCategories, materialCategoryValues]);
+
+  const categoryOptions = allCategories.map((value) => ({
+    value,
+    label: formatCategoryLabel(value),
+  }));
+
+  const canDeleteCategory = (value) => {
+    const key = normalizeCategoryKey(value);
+    const isDefault = DEFAULT_CATEGORIES.some(
+      (item) => normalizeCategoryKey(item.value) === key
+    );
+    if (isDefault) return false;
+    return !materials.some((material) => normalizeCategoryKey(material.category) === key);
+  };
+
+  const handleAddCategory = (value) => {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) return null;
+    const key = normalizeCategoryKey(trimmed);
+    const existing = allCategories.find(
+      (item) => normalizeCategoryKey(item) === key
+    );
+    if (existing) return existing;
+    setCustomCategories((prev) => [...prev, trimmed]);
+    return trimmed;
+  };
+
+  const handleDeleteCategory = (value) => {
+    if (!value || !canDeleteCategory(value)) return false;
+    setCustomCategories((prev) =>
+      prev.filter((item) => normalizeCategoryKey(item) !== normalizeCategoryKey(value))
+    );
+    return true;
+  };
 
   const normalizeHeader = (value) => {
     if (value === null || value === undefined) return "";
@@ -231,12 +357,17 @@ export default function Stock() {
             const row = normalizeRow(rawRow);
             const name = cleanValue(pickValue(row, ["name", "nome"]));
             if (!name) return null;
+            const categoryValue =
+              cleanValue(pickValue(row, ["category", "categoria"])) || "outros";
+            const codeValue =
+              cleanValue(pickValue(row, ["code", "codigo"])) ||
+              generateMaterialCode(categoryValue);
             return {
               name,
-              code: cleanValue(pickValue(row, ["code", "codigo"])),
+              code: codeValue,
               description: cleanValue(pickValue(row, ["description", "descricao"])),
               unit: cleanValue(pickValue(row, ["unit", "unidade"])),
-              category: cleanValue(pickValue(row, ["category", "categoria"])),
+              category: categoryValue,
               minimum_stock: toInteger(
                 pickValue(row, ["minimum_stock", "estoque_minimo", "minimo"])
               ),
@@ -247,7 +378,6 @@ export default function Stock() {
               expiry_date: normalizeDateValue(
                 pickValue(row, ["expiry_date", "validade"])
               ),
-              status: cleanValue(pickValue(row, ["status", "situacao"])) || "ativo",
             };
           })
           .filter(Boolean);
@@ -374,9 +504,9 @@ export default function Stock() {
   const downloadTemplate = (target) => {
     const template =
       target === "materials"
-        ? `name,code,description,unit,category,minimum_stock,current_stock,location,expiry_date,status
-Luvas de Proteção,EPI-001,Luva nitrílica,par,EPI,50,120,Almoxarifado,2026-01-01,ativo
-Álcool 70%,LIM-002,Frasco 1L,un,limpeza,20,45,Depósito,2025-11-30,ativo`
+        ? `name,code,description,unit,category,minimum_stock,current_stock,location,expiry_date
+Luvas de Proteção,EPI-001,Luva nitrílica,par,EPI,50,120,Almoxarifado,2026-01-01
+Álcool 70%,LIM-002,Frasco 1L,un,limpeza,20,45,Depósito,2025-11-30`
         : `material_code,material_name,type,quantity,date,responsible,sector,document_number,notes
 EPI-001,Luvas de Proteção,entrada,100,2025-01-10,Almoxarifado,Manutenção,NF-123,Entrada inicial
 LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição`;
@@ -425,17 +555,11 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     {
       header: "Categoria",
       render: (row) => {
-        const categoryLabels = {
-          EPI: "EPI",
-          escritorio: "Escritório",
-          limpeza: "Limpeza",
-          ferramentas: "Ferramentas",
-          eletrico: "Elétrico",
-          hidraulico: "Hidráulico",
-          informatica: "Informática",
-          outros: "Outros",
-        };
-        return <Badge variant="outline">{categoryLabels[row.category] || row.category}</Badge>;
+        return (
+          <Badge variant="outline">
+            {formatCategoryLabel(row.category)}
+          </Badge>
+        );
       },
     },
     {
@@ -451,12 +575,8 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     },
     { header: "Mínimo", render: (row) => `${row.minimum_stock || 0} ${row.unit}` },
     {
-      header: "Status",
-      render: (row) => (
-        <Badge className={row.status === "ativo" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700"}>
-          {row.status === "ativo" ? "Ativo" : "Inativo"}
-        </Badge>
-      ),
+      header: "Validade",
+      render: (row) => formatDate(row.expiry_date),
     },
     {
       header: "Ações",
@@ -504,7 +624,7 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
   const movementColumns = [
     {
       header: "Data",
-      render: (row) => format(new Date(row.date), "dd/MM/yyyy"),
+      render: (row) => formatDate(row.date),
     },
     {
       header: "Tipo",
@@ -815,6 +935,11 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
           </DialogHeader>
           <MaterialForm
             material={selectedMaterial}
+            categories={categoryOptions}
+            customCategories={customCategories}
+            onAddCategory={handleAddCategory}
+            onDeleteCategory={handleDeleteCategory}
+            canDeleteCategory={canDeleteCategory}
             onClose={() => {
               setShowMaterialForm(false);
               setSelectedMaterial(null);
