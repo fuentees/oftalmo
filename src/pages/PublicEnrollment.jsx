@@ -55,6 +55,17 @@ export default function PublicEnrollment() {
     enabled: !!trainingId,
   });
 
+  const { data: enrollmentFields = [] } = useQuery({
+    queryKey: ["public-enrollment-fields", trainingId],
+    queryFn: async () => {
+      const allFields = await dataClient.entities.EnrollmentField.list("order");
+      return allFields.filter(
+        (field) => field.is_active && (!field.training_id || field.training_id === trainingId)
+      );
+    },
+    enabled: !!trainingId,
+  });
+
   const formatDateSafe = (value, pattern = "dd/MM/yyyy") => {
     if (!value) return null;
     const parsed = new Date(value);
@@ -89,6 +100,37 @@ export default function PublicEnrollment() {
   };
 
   const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
+  const activeEnrollmentFields = [...enrollmentFields].sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0)
+  );
+
+  const sectionLabels = {
+    pessoais: "Dados Pessoais",
+    instituicao: "Instituição",
+    enderecos: "Endereços",
+    contatos: "Contatos",
+  };
+  const sectionOrder = ["pessoais", "instituicao", "enderecos", "contatos"];
+  const fieldsBySection = sectionOrder.reduce((acc, section) => {
+    acc[section] = activeEnrollmentFields.filter((field) => field.section === section);
+    return acc;
+  }, {});
+
+  const formatFieldValue = (field, value) => {
+    if (!value) return value;
+    const key = field.field_key?.toLowerCase() || "";
+    if (key.includes("cpf")) return formatCpf(value);
+    if (key.includes("rg")) return formatRg(value);
+    if (
+      field.type === "tel" ||
+      key.includes("phone") ||
+      key.includes("celular") ||
+      key.includes("telefone")
+    ) {
+      return formatPhone(value);
+    }
+    return value;
+  };
 
   const enrollMutation = useMutation({
     mutationFn: async (data) => {
@@ -163,53 +205,65 @@ export default function PublicEnrollment() {
   const handleSubmit = (e) => {
     e.preventDefault();
     const errors = {};
-    const cpfDigits = String(formData.cpf || "").replace(/\D/g, "");
-    const rgDigits = String(formData.rg || "").replace(/\D/g, "");
-    const commercialDigits = String(formData.commercial_phone || "").replace(/\D/g, "");
-    const mobileDigits = String(formData.mobile_phone || "").replace(/\D/g, "");
+    activeEnrollmentFields.forEach((field) => {
+      const rawValue = formData[field.field_key];
+      const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
 
-    if (!formData.name?.trim()) errors.name = "Campo obrigatório.";
-    if (!formData.rg?.trim() || rgDigits.length < 5 || rgDigits.length > 12) {
-      errors.rg = "RG inválido.";
-    }
-    if (formData.cpf?.trim()) {
-      const isValidCpf = (() => {
-        if (cpfDigits.length !== 11 || /^(\d)\1+$/.test(cpfDigits)) return false;
-        let sum = 0;
-        for (let i = 0; i < 9; i += 1) sum += Number(cpfDigits[i]) * (10 - i);
-        let check = (sum * 10) % 11;
-        if (check === 10) check = 0;
-        if (check !== Number(cpfDigits[9])) return false;
-        sum = 0;
-        for (let i = 0; i < 10; i += 1) sum += Number(cpfDigits[i]) * (11 - i);
-        check = (sum * 10) % 11;
-        if (check === 10) check = 0;
-        return check === Number(cpfDigits[10]);
-      })();
-      if (!isValidCpf) {
-        errors.cpf = "CPF inválido.";
+      if (field.required && !value) {
+        errors[field.field_key] = "Campo obrigatório.";
+        return;
       }
-    }
-    if (!formData.professional_formation?.trim()) errors.professional_formation = "Campo obrigatório.";
-    if (!formData.institution?.trim()) errors.institution = "Campo obrigatório.";
-    if (!formData.state?.trim()) errors.state = "Campo obrigatório.";
-    if (!formData.municipality?.trim()) errors.municipality = "Campo obrigatório.";
-    if (!formData.health_region?.trim()) errors.health_region = "Campo obrigatório.";
-    if (!formData.unit_name?.trim()) errors.unit_name = "Campo obrigatório.";
-    if (!formData.sector?.trim()) errors.sector = "Campo obrigatório.";
-    if (!formData.work_address?.trim()) errors.work_address = "Campo obrigatório.";
-    if (!formData.residential_address?.trim()) errors.residential_address = "Campo obrigatório.";
-    if (!formData.email?.trim()) {
-      errors.email = "Campo obrigatório.";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      errors.email = "E-mail inválido.";
-    }
-    if (commercialDigits.length < 10 || commercialDigits.length > 11) {
-      errors.commercial_phone = "Telefone inválido.";
-    }
-    if (mobileDigits.length < 10 || mobileDigits.length > 11) {
-      errors.mobile_phone = "Celular inválido.";
-    }
+
+      if (!value) return;
+
+      const lowerKey = field.field_key.toLowerCase();
+      const digits = String(value).replace(/\D/g, "");
+      if (lowerKey.includes("cpf")) {
+        const isValidCpf = (() => {
+          if (digits.length !== 11 || /^(\d)\1+$/.test(digits)) return false;
+          let sum = 0;
+          for (let i = 0; i < 9; i += 1) sum += Number(digits[i]) * (10 - i);
+          let check = (sum * 10) % 11;
+          if (check === 10) check = 0;
+          if (check !== Number(digits[9])) return false;
+          sum = 0;
+          for (let i = 0; i < 10; i += 1) sum += Number(digits[i]) * (11 - i);
+          check = (sum * 10) % 11;
+          if (check === 10) check = 0;
+          return check === Number(digits[10]);
+        })();
+        if (!isValidCpf) {
+          errors[field.field_key] = "CPF inválido.";
+        }
+        return;
+      }
+
+      if (lowerKey.includes("rg")) {
+        if (digits.length < 5 || digits.length > 12) {
+          errors[field.field_key] = "RG inválido.";
+        }
+        return;
+      }
+
+      if (field.type === "email" || lowerKey.includes("email")) {
+        const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value));
+        if (!isValidEmail) {
+          errors[field.field_key] = "E-mail inválido.";
+        }
+        return;
+      }
+
+      if (
+        field.type === "tel" ||
+        lowerKey.includes("phone") ||
+        lowerKey.includes("celular") ||
+        lowerKey.includes("telefone")
+      ) {
+        if (digits.length < 10 || digits.length > 11) {
+          errors[field.field_key] = "Telefone inválido.";
+        }
+      }
+    });
 
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
@@ -401,233 +455,57 @@ export default function PublicEnrollment() {
 
             {!isFullyBooked && !isCancelled && (
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-slate-900 text-sm">Dados Pessoais</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="name">Nome Completo *</Label>
-                      <Input
-                        id="name"
-                        value={formData.name}
-                        onChange={(e) => setFormData({...formData, name: e.target.value})}
-                        required
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="rg">RG *</Label>
-                      <Input
-                        id="rg"
-                        value={formData.rg}
-                        onChange={(e) => {
-                          const nextValue = formatRg(e.target.value);
-                          setFormData({ ...formData, rg: nextValue });
-                          if (formErrors.rg) {
-                            setFormErrors((prev) => ({ ...prev, rg: null }));
-                          }
-                        }}
-                        required
-                      />
-                      {formErrors.rg && <p className="text-xs text-red-600">{formErrors.rg}</p>}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="cpf">CPF</Label>
-                      <Input
-                        id="cpf"
-                        value={formData.cpf}
-                        onChange={(e) => {
-                          const nextValue = formatCpf(e.target.value);
-                          setFormData({ ...formData, cpf: nextValue });
-                          if (formErrors.cpf) {
-                            setFormErrors((prev) => ({ ...prev, cpf: null }));
-                          }
-                        }}
-                        placeholder="000.000.000-00"
-                      />
-                      {formErrors.cpf && <p className="text-xs text-red-600">{formErrors.cpf}</p>}
-                    </div>
-
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="professional_formation">Formação Profissional *</Label>
-                      <Input
-                        id="professional_formation"
-                        value={formData.professional_formation}
-                        onChange={(e) => setFormData({...formData, professional_formation: e.target.value})}
-                        required
-                      />
-                      {formErrors.professional_formation && (
-                        <p className="text-xs text-red-600">{formErrors.professional_formation}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-slate-900 text-sm">Instituição</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="institution">Instituição que Representa *</Label>
-                      <Input
-                        id="institution"
-                        value={formData.institution}
-                        onChange={(e) => setFormData({...formData, institution: e.target.value})}
-                        required
-                      />
-                      {formErrors.institution && (
-                        <p className="text-xs text-red-600">{formErrors.institution}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="state">Estado *</Label>
-                      <Input
-                        id="state"
-                        value={formData.state}
-                        onChange={(e) => setFormData({...formData, state: e.target.value})}
-                        placeholder="Ex: SP"
-                        required
-                      />
-                      {formErrors.state && <p className="text-xs text-red-600">{formErrors.state}</p>}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="municipality">Município *</Label>
-                      <Input
-                        id="municipality"
-                        value={formData.municipality}
-                        onChange={(e) => setFormData({...formData, municipality: e.target.value})}
-                        required
-                      />
-                      {formErrors.municipality && (
-                        <p className="text-xs text-red-600">{formErrors.municipality}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="health_region">Regional de Saúde / Grupo de Vigilância Epidemiológica *</Label>
-                      <Input
-                        id="health_region"
-                        value={formData.health_region}
-                        onChange={(e) => setFormData({...formData, health_region: e.target.value})}
-                        required
-                      />
-                      {formErrors.health_region && (
-                        <p className="text-xs text-red-600">{formErrors.health_region}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="unit_name">Nome da Unidade *</Label>
-                      <Input
-                        id="unit_name"
-                        value={formData.unit_name}
-                        onChange={(e) => setFormData({...formData, unit_name: e.target.value})}
-                        required
-                      />
-                      {formErrors.unit_name && <p className="text-xs text-red-600">{formErrors.unit_name}</p>}
-                    </div>
-
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="sector">Cargo *</Label>
-                      <Input
-                        id="sector"
-                        value={formData.sector}
-                        onChange={(e) => setFormData({...formData, sector: e.target.value})}
-                        required
-                      />
-                      {formErrors.sector && <p className="text-xs text-red-600">{formErrors.sector}</p>}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-slate-900 text-sm">Endereços</h4>
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="work_address">Endereço de Trabalho *</Label>
-                      <Input
-                        id="work_address"
-                        value={formData.work_address}
-                        onChange={(e) => setFormData({...formData, work_address: e.target.value})}
-                        required
-                      />
-                      {formErrors.work_address && (
-                        <p className="text-xs text-red-600">{formErrors.work_address}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="residential_address">Endereço de Residência *</Label>
-                      <Input
-                        id="residential_address"
-                        value={formData.residential_address}
-                        onChange={(e) => setFormData({...formData, residential_address: e.target.value})}
-                        required
-                      />
-                      {formErrors.residential_address && (
-                        <p className="text-xs text-red-600">{formErrors.residential_address}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-slate-900 text-sm">Contatos</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="email">E-mail *</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({...formData, email: e.target.value})}
-                        required
-                      />
-                      {formErrors.email && <p className="text-xs text-red-600">{formErrors.email}</p>}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="commercial_phone">Telefone Comercial *</Label>
-                      <Input
-                        id="commercial_phone"
-                        value={formData.commercial_phone}
-                        onChange={(e) => {
-                          const nextValue = formatPhone(e.target.value);
-                          setFormData({ ...formData, commercial_phone: nextValue });
-                          if (formErrors.commercial_phone) {
-                            setFormErrors((prev) => ({ ...prev, commercial_phone: null }));
-                          }
-                        }}
-                        placeholder="(11) 1234-5678"
-                        required
-                      />
-                      {formErrors.commercial_phone && (
-                        <p className="text-xs text-red-600">{formErrors.commercial_phone}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="mobile_phone">Celular *</Label>
-                      <Input
-                        id="mobile_phone"
-                        value={formData.mobile_phone}
-                        onChange={(e) => {
-                          const nextValue = formatPhone(e.target.value);
-                          setFormData({ ...formData, mobile_phone: nextValue });
-                          if (formErrors.mobile_phone) {
-                            setFormErrors((prev) => ({ ...prev, mobile_phone: null }));
-                          }
-                        }}
-                        placeholder="(11) 91234-5678"
-                        required
-                      />
-                      {formErrors.mobile_phone && (
-                        <p className="text-xs text-red-600">{formErrors.mobile_phone}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                {activeEnrollmentFields.length === 0 ? (
+                  <Alert className="border-amber-200 bg-amber-50">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-800">
+                      Nenhum campo de inscrição foi configurado.
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  sectionOrder.map((section) => {
+                    const sectionFields = fieldsBySection[section];
+                    if (sectionFields.length === 0) return null;
+                    return (
+                      <div key={section} className="space-y-4">
+                        <h4 className="font-semibold text-slate-900 text-sm">
+                          {sectionLabels[section]}
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {sectionFields.map((field) => (
+                            <div key={field.id} className="space-y-2">
+                              <Label htmlFor={field.field_key}>
+                                {field.label} {field.required && "*"}
+                              </Label>
+                              <Input
+                                id={field.field_key}
+                                type={field.type}
+                                value={formData[field.field_key] || ""}
+                                onChange={(e) => {
+                                  const nextValue = formatFieldValue(field, e.target.value);
+                                  setFormData({ ...formData, [field.field_key]: nextValue });
+                                  if (formErrors[field.field_key]) {
+                                    setFormErrors((prev) => ({
+                                      ...prev,
+                                      [field.field_key]: null,
+                                    }));
+                                  }
+                                }}
+                                placeholder={field.placeholder}
+                                required={field.required}
+                              />
+                              {formErrors[field.field_key] && (
+                                <p className="text-xs text-red-600">
+                                  {formErrors[field.field_key]}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
 
                 <div className="flex justify-end gap-3 pt-4">
                   <Button

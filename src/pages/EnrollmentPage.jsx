@@ -45,6 +45,7 @@ import { format } from "date-fns";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
 import SearchFilter from "@/components/common/SearchFilter";
+import SendLinkButton from "@/components/trainings/SendLinkButton";
 
 export default function EnrollmentPage() {
   const queryString =
@@ -1067,16 +1068,19 @@ export default function EnrollmentPage() {
             </TabsContent>
 
             <TabsContent value="list" className="mt-6 space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <SearchFilter
                   searchValue={search}
                   onSearchChange={setSearch}
                   searchPlaceholder="Buscar por nome, CPF ou email..."
                 />
-                <Button onClick={handleExportExcel} variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Exportar Excel
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SendLinkButton training={training} participants={allParticipants} />
+                  <Button onClick={handleExportExcel} variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
+                </div>
               </div>
 
               <DataTable

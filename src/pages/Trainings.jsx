@@ -15,7 +15,6 @@ import {
   UserPlus,
   ClipboardCheck,
   Award,
-  Link2,
   MoreVertical,
   FileText
 } from "lucide-react";
@@ -50,10 +49,8 @@ import DataTable from "@/components/common/DataTable";
 import TrainingForm from "@/components/trainings/TrainingForm";
 import TrainingDetails from "@/components/trainings/TrainingDetails";
 import ParticipantsManager from "@/components/trainings/ParticipantsManager";
-import EnrollmentManager from "@/components/trainings/EnrollmentManager";
 import AttendanceControl from "@/components/trainings/AttendanceControl";
 import CertificateManager from "@/components/trainings/CertificateManager";
-import SendLinkButton from "@/components/trainings/SendLinkButton";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
 import FeedbackForm from "@/components/trainings/FeedbackForm";
 
@@ -65,7 +62,6 @@ export default function Trainings() {
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
-  const [showEnrollment, setShowEnrollment] = useState(false);
   const [showAttendance, setShowAttendance] = useState(false);
   const [showCertificates, setShowCertificates] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
@@ -250,33 +246,11 @@ export default function Trainings() {
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  const enrollUrl = `${window.location.origin}/PublicEnrollment?training=${encodeURIComponent(row.id)}`;
-                  navigator.clipboard.writeText(enrollUrl);
-                  alert("Link de inscrição copiado!");
-                }}
-              >
-                <Link2 className="h-4 w-4 mr-2" />
-                Copiar Link
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
                   window.location.href = `/EnrollmentPage?training=${encodeURIComponent(row.id)}`;
                 }}
               >
                 <UserPlus className="h-4 w-4 mr-2" />
                 Página de Inscrição
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedTraining(row);
-                  setShowEnrollment(true);
-                }}
-              >
-                <Users className="h-4 w-4 mr-2" />
-                Inscrições (interno)
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
@@ -405,32 +379,6 @@ export default function Trainings() {
           <TrainingDetails
             training={selectedTraining}
             participants={participants.filter(p => p.training_id === selectedTraining?.id)}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Enrollment Manager Dialog */}
-      <Dialog open={showEnrollment} onOpenChange={setShowEnrollment}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>Inscrições - {selectedTraining?.title}</span>
-              {selectedTraining && (
-                <SendLinkButton 
-                  training={selectedTraining}
-                  participants={participants.filter(p => p.training_id === selectedTraining?.id)}
-                />
-              )}
-            </DialogTitle>
-          </DialogHeader>
-          <EnrollmentManager
-            training={selectedTraining}
-            professionals={professionals}
-            existingParticipants={participants.filter(p => p.training_id === selectedTraining?.id)}
-            onClose={() => {
-              setShowEnrollment(false);
-              setSelectedTraining(null);
-            }}
           />
         </DialogContent>
       </Dialog>
