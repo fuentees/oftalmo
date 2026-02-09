@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,6 +60,7 @@ export default function EnrollmentPage() {
   const [fieldSearch, setFieldSearch] = useState("");
   const [showInactiveFields, setShowInactiveFields] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const hasAutoSeededRef = React.useRef(false);
 
   const queryClient = useQueryClient();
 
@@ -305,12 +307,17 @@ export default function EnrollmentPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
       localStorage.setItem("enrollment_defaults_seeded_global", "true");
+      toast.success("Campos padrão aplicados com sucesso.");
+    },
+    onError: (error) => {
+      toast.error(error?.message || "Erro ao aplicar campos padrão.");
     },
   });
 
   React.useEffect(() => {
     if (!trainingId || !fieldsFetched) return;
     if (enrollmentFields.length > 0 || seedDefaults.isPending) return;
+    if (hasAutoSeededRef.current) return;
     const seededFlag = localStorage.getItem("enrollment_defaults_seeded_global");
     if (seededFlag === "true") return;
     const payload = defaultEnrollmentFields.map((field) => ({
@@ -318,6 +325,7 @@ export default function EnrollmentPage() {
       training_id: null,
       is_active: true,
     }));
+    hasAutoSeededRef.current = true;
     seedDefaults.mutate(payload);
   }, [trainingId, fieldsFetched, enrollmentFields.length, seedDefaults.isPending]);
 
@@ -525,6 +533,7 @@ export default function EnrollmentPage() {
   };
 
   const handleAddDefaultFields = () => {
+    if (seedDefaults.isPending) return;
     const existingKeys = new Set(enrollmentFields.map((field) => field.field_key));
     const payload = defaultEnrollmentFields
       .filter((field) => !existingKeys.has(field.field_key))
@@ -535,7 +544,7 @@ export default function EnrollmentPage() {
       }));
 
     if (payload.length === 0) {
-      alert("Todos os campos padrão já existem.");
+      toast.info("Todos os campos padrão já existem.");
       return;
     }
 
@@ -818,7 +827,7 @@ export default function EnrollmentPage() {
         </Button>
         <Button variant="outline" onClick={handleAddDefaultFields}>
           <Plus className="h-4 w-4 mr-2" />
-          Aplicar Campos Padrão
+          {seedDefaults.isPending ? "Aplicando..." : "Aplicar Campos Padrão"}
         </Button>
         <Button onClick={() => {
           setEditingField(null);
