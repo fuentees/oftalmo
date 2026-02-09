@@ -54,7 +54,7 @@ export default function EventForm({ event, onClose, onSuccess }) {
   }, [event]);
 
   const saveMutation = useMutation({
-    mutationFn: async (data) => {
+    mutationFn: async (/** @type {any} */ data) => {
       if (event) {
         return dataClient.entities.Event.update(event.id, data);
       } else {

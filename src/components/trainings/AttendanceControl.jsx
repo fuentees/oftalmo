@@ -38,7 +38,8 @@ export default function AttendanceControl({ training, participants, onClose }) {
   };
 
   const updateAttendance = useMutation({
-    mutationFn: async ({ participantId, date, status }) => {
+    mutationFn: async (/** @type {{ participantId: any; date: any; status: any }} */ payload) => {
+      const { participantId, date, status } = payload;
       const participant = participants.find(p => p.id === participantId);
       const records = participant.attendance_records || [];
       

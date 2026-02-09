@@ -15,7 +15,7 @@ import {
 import { Loader2, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 import { format } from "date-fns";
 
-export default function MovementForm({ type, materials, preselectedMaterial, onClose }) {
+export default function MovementForm({ type, materials, preselectedMaterial = null, onClose }) {
   const [formData, setFormData] = useState({
     material_id: "",
     material_name: "",
@@ -41,7 +41,7 @@ export default function MovementForm({ type, materials, preselectedMaterial, onC
   }, [preselectedMaterial]);
 
   const createMovement = useMutation({
-    mutationFn: async (data) => {
+    mutationFn: async (/** @type {any} */ data) => {
       // Create the movement
       await dataClient.entities.StockMovement.create(data);
       

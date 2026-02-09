@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Award, Download, ExternalLink, Search, FileText, Calendar, AlertCircle } from "lucide-react";
+import { Award, ExternalLink, Search, FileText, Calendar, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -32,7 +32,7 @@ export default function CertificatesPanel({ professional }) {
     
     const validityDate = new Date(cert.validity_date);
     const now = new Date();
-    const daysUntilExpiry = Math.floor((validityDate - now) / (1000 * 60 * 60 * 24));
+    const daysUntilExpiry = Math.floor((validityDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     
     if (daysUntilExpiry < 0) {
       return { label: "Vencido", color: "bg-red-100 text-red-700", icon: AlertCircle };
@@ -49,7 +49,7 @@ export default function CertificatesPanel({ professional }) {
     }),
     expiring: filteredCertificates.filter(c => {
       if (!c.validity_date) return false;
-      const days = Math.floor((new Date(c.validity_date) - new Date()) / (1000 * 60 * 60 * 24));
+      const days = Math.floor((new Date(c.validity_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
       return days > 0 && days < 30;
     }),
     expired: filteredCertificates.filter(c => {

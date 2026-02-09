@@ -44,7 +44,9 @@ export default function PublicEnrollment() {
     mobile_phone: "",
   });
   const [submitted, setSubmitted] = useState(false);
-  const [formErrors, setFormErrors] = useState({});
+  const [formErrors, setFormErrors] = useState(
+    /** @type {Record<string, string | null>} */ ({})
+  );
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
@@ -133,7 +135,7 @@ export default function PublicEnrollment() {
   };
 
   const enrollMutation = useMutation({
-    mutationFn: async (data) => {
+    mutationFn: async (/** @type {Record<string, any>} */ data) => {
       // Check if already enrolled
       const existing = await dataClient.entities.TrainingParticipant.filter({
         training_id: trainingId,
@@ -204,7 +206,7 @@ export default function PublicEnrollment() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const errors = {};
+    const errors = /** @type {Record<string, string | null>} */ ({});
     activeEnrollmentFields.forEach((field) => {
       const rawValue = formData[field.field_key];
       const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;

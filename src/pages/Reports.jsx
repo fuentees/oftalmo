@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { format, addMonths, differenceInDays, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
 import {
   FileText,
   Download,
@@ -20,7 +19,7 @@ import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";

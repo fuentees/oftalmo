@@ -1,20 +1,8 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
-import { format } from "date-fns";
-import {
-  Users,
-  Plus,
-  Edit,
-  Trash2,
-  Eye,
-  GraduationCap,
-  Building2,
-  Mail,
-  Phone
-} from "lucide-react";
+import { Edit, Trash2, Eye, GraduationCap, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -39,8 +27,6 @@ import ProfessionalDetails from "@/components/professionals/ProfessionalDetails"
 
 export default function Professionals() {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [sectorFilter, setSectorFilter] = useState("all");
   
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -72,39 +58,13 @@ export default function Professionals() {
     },
   });
 
-  const statusOptions = [
-    { value: "ativo", label: "Ativo" },
-    { value: "inativo", label: "Inativo" },
-    { value: "afastado", label: "Afastado" },
-    { value: "ferias", label: "Férias" },
-  ];
-
-  // Get unique sectors from professionals
-  const sectors = [...new Set(professionals.map(p => p.sector).filter(Boolean))];
-  const sectorOptions = sectors.map(s => ({ value: s, label: s }));
-
   const filteredProfessionals = professionals.filter((p) => {
-    const matchesSearch = p.name?.toLowerCase().includes(search.toLowerCase()) ||
-                          p.registration?.toLowerCase().includes(search.toLowerCase()) ||
-                          p.email?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || p.status === statusFilter;
-    const matchesSector = sectorFilter === "all" || p.sector === sectorFilter;
-    return matchesSearch && matchesStatus && matchesSector;
+    const normalizedSearch = search.toLowerCase();
+    const matchesSearch = p.name?.toLowerCase().includes(normalizedSearch) ||
+                          p.email?.toLowerCase().includes(normalizedSearch) ||
+                          p.phone?.toLowerCase().includes(normalizedSearch);
+    return matchesSearch;
   });
-
-  const statusColors = {
-    ativo: "bg-green-100 text-green-700",
-    inativo: "bg-slate-100 text-slate-700",
-    afastado: "bg-amber-100 text-amber-700",
-    ferias: "bg-blue-100 text-blue-700",
-  };
-
-  const statusLabels = {
-    ativo: "Ativo",
-    inativo: "Inativo",
-    afastado: "Afastado",
-    ferias: "Férias",
-  };
 
   const columns = [
     { 
@@ -114,16 +74,6 @@ export default function Professionals() {
         <div>
           <p className="font-medium">{row.name}</p>
           {row.position && <p className="text-xs text-slate-500">{row.position}</p>}
-        </div>
-      ),
-    },
-    { header: "Matrícula", accessor: "registration" },
-    {
-      header: "Setor",
-      render: (row) => row.sector && (
-        <div className="flex items-center gap-1">
-          <Building2 className="h-4 w-4 text-slate-400" />
-          {row.sector}
         </div>
       ),
     },
@@ -157,14 +107,6 @@ export default function Professionals() {
           </div>
         );
       },
-    },
-    {
-      header: "Status",
-      render: (row) => (
-        <Badge className={statusColors[row.status || "ativo"]}>
-          {statusLabels[row.status || "ativo"]}
-        </Badge>
-      ),
     },
     {
       header: "Ações",
@@ -224,23 +166,7 @@ export default function Professionals() {
       <SearchFilter
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Buscar por nome, matrícula ou email..."
-        filters={[
-          {
-            value: statusFilter,
-            onChange: setStatusFilter,
-            placeholder: "Status",
-            allLabel: "Todos os status",
-            options: statusOptions,
-          },
-          {
-            value: sectorFilter,
-            onChange: setSectorFilter,
-            placeholder: "Setor",
-            allLabel: "Todos os setores",
-            options: sectorOptions,
-          },
-        ]}
+        searchPlaceholder="Buscar por nome, email ou telefone..."
       />
 
       <DataTable

@@ -12,7 +12,6 @@ import {
   Award,
   Clock,
   CheckCircle,
-  XCircle,
   ArrowLeft,
   Mail,
   Building2,

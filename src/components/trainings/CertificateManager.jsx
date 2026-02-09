@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Mail, Send, CheckCircle, Loader2, Award } from "lucide-react";
+import { Mail, CheckCircle, Award } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function CertificateManager({ training, participants, onClose }) {
@@ -78,7 +78,7 @@ export default function CertificateManager({ training, participants, onClose }) 
   });
 
   const issueCertificates = useMutation({
-    mutationFn: async (participantIds) => {
+    mutationFn: async (/** @type {any[]} */ participantIds) => {
       setProcessing(true);
       setResult(null);
 

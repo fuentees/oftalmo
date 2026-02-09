@@ -4,28 +4,16 @@ import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
-import { format } from "date-fns";
 
 export default function ProfessionalForm({ professional, onClose }) {
   const [formData, setFormData] = useState({
     name: "",
-    registration: "",
     rg: "",
     cpf: "",
     email: "",
     phone: "",
-    sector: "",
     position: "",
-    admission_date: "",
-    status: "ativo",
   });
 
   const queryClient = useQueryClient();
@@ -34,21 +22,17 @@ export default function ProfessionalForm({ professional, onClose }) {
     if (professional) {
       setFormData({
         name: professional.name || "",
-        registration: professional.registration || "",
         rg: professional.rg || "",
         cpf: professional.cpf || "",
         email: professional.email || "",
         phone: professional.phone || "",
-        sector: professional.sector || "",
         position: professional.position || "",
-        admission_date: professional.admission_date || "",
-        status: professional.status || "ativo",
       });
     }
   }, [professional]);
 
   const saveProfessional = useMutation({
-    mutationFn: (data) => {
+    mutationFn: (/** @type {any} */ data) => {
       if (professional) {
         return dataClient.entities.Professional.update(professional.id, data);
       }
@@ -62,11 +46,7 @@ export default function ProfessionalForm({ professional, onClose }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const payload = {
-      ...formData,
-      admission_date: formData.admission_date || null,
-    };
-    saveProfessional.mutate(payload);
+    saveProfessional.mutate({ ...formData });
   };
 
   const handleChange = (field, value) => {
@@ -107,12 +87,12 @@ export default function ProfessionalForm({ professional, onClose }) {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="registration">Matrícula</Label>
+          <Label htmlFor="position">Cargo/Função</Label>
           <Input
-            id="registration"
-            value={formData.registration}
-            onChange={(e) => handleChange("registration", e.target.value)}
-            placeholder="Ex: 12345"
+            id="position"
+            value={formData.position}
+            onChange={(e) => handleChange("position", e.target.value)}
+            placeholder="Ex: Eletricista"
           />
         </div>
       </div>
@@ -158,54 +138,6 @@ export default function ProfessionalForm({ professional, onClose }) {
           onChange={(e) => handleChange("email", e.target.value)}
           placeholder="email@exemplo.com"
         />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="sector">Setor *</Label>
-          <Input
-            id="sector"
-            value={formData.sector}
-            onChange={(e) => handleChange("sector", e.target.value)}
-            placeholder="Ex: Manutenção"
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="position">Cargo/Função</Label>
-          <Input
-            id="position"
-            value={formData.position}
-            onChange={(e) => handleChange("position", e.target.value)}
-            placeholder="Ex: Eletricista"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="admission_date">Data de Admissão</Label>
-          <Input
-            id="admission_date"
-            type="date"
-            value={formData.admission_date}
-            onChange={(e) => handleChange("admission_date", e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Status</Label>
-          <Select value={formData.status} onValueChange={(v) => handleChange("status", v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ativo">Ativo</SelectItem>
-              <SelectItem value="inativo">Inativo</SelectItem>
-              <SelectItem value="afastado">Afastado</SelectItem>
-              <SelectItem value="ferias">Férias</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
       <div className="flex justify-end gap-3 pt-4">

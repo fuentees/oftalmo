@@ -4,8 +4,6 @@ import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
 import {
   UserPlus,
-  Calendar,
-  GraduationCap,
   CheckCircle,
   XCircle,
   Clock,
@@ -25,8 +23,10 @@ export default function Enrolled() {
   const queryClient = useQueryClient();
 
   // Get training ID from URL
-  const urlParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
-  const trainingId = urlParams.get('training');
+  const queryString =
+    window.location.search || window.location.hash.split("?")[1] || "";
+  const urlParams = new URLSearchParams(queryString);
+  const trainingId = urlParams.get("training");
 
   const { data: training, isLoading: trainingLoading } = useQuery({
     queryKey: ["training", trainingId],
@@ -49,8 +49,8 @@ export default function Enrolled() {
     : allParticipants;
 
   const updateEnrollmentStatus = useMutation({
-    mutationFn: ({ id, status }) => 
-      dataClient.entities.TrainingParticipant.update(id, { enrollment_status: status }),
+    mutationFn: (/** @type {{ id: any; status: string }} */ payload) =>
+      dataClient.entities.TrainingParticipant.update(payload.id, { enrollment_status: payload.status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
     },

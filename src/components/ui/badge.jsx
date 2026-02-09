@@ -23,11 +23,10 @@ const badgeVariants = cva(
   }
 )
 
-function Badge({
-  className,
-  variant,
-  ...props
-}) {
+/** @typedef {import("react").HTMLAttributes<HTMLDivElement> & { variant?: "default" | "secondary" | "destructive" | "outline" }} BadgeProps */
+
+/** @type {(props: BadgeProps) => JSX.Element} */
+function Badge({ className, variant, ...props }) {
   return (<div className={cn(badgeVariants({ variant }), className)} {...props} />);
 }
 

@@ -2,7 +2,14 @@ import React from "react";
 import { Card } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
-export default function StatsCard({ title, value, icon: Icon, trend, trendValue, color = "blue" }) {
+export default function StatsCard({
+  title,
+  value,
+  icon: Icon,
+  trend = null,
+  trendValue = "",
+  color = "blue",
+}) {
   const colorClasses = {
     blue: "bg-blue-50 text-blue-600",
     green: "bg-green-50 text-green-600",

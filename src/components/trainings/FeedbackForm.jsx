@@ -19,7 +19,8 @@ export default function FeedbackForm({ training, participant, onClose }) {
   const queryClient = useQueryClient();
 
   const submitFeedback = useMutation({
-    mutationFn: (data) => dataClient.entities.TrainingFeedback.create({
+    mutationFn: (/** @type {any} */ data) =>
+      dataClient.entities.TrainingFeedback.create({
       training_id: training.id,
       training_title: training.title,
       participant_id: participant.id,

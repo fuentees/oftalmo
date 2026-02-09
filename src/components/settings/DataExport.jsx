@@ -9,14 +9,16 @@ import { toast } from "sonner";
 
 export default function DataExport() {
   const [exporting, setExporting] = useState(false);
-  const [selected, setSelected] = useState({
-    professionals: true,
-    trainings: true,
-    participants: true,
-    materials: true,
-    events: true,
-    requests: true,
-  });
+  const [selected, setSelected] = useState(
+    /** @type {Record<string, boolean>} */ ({
+      professionals: true,
+      trainings: true,
+      participants: true,
+      materials: true,
+      events: true,
+      requests: true,
+    })
+  );
 
   const entities = [
     { key: "professionals", label: "Profissionais", entity: "Professional" },
@@ -63,9 +65,10 @@ export default function DataExport() {
   };
 
   const handleSelectAll = (checked) => {
-    const newSelected = {};
+    const nextValue = checked === true;
+    const newSelected = /** @type {Record<string, boolean>} */ ({});
     entities.forEach(item => {
-      newSelected[item.key] = checked;
+      newSelected[item.key] = nextValue;
     });
     setSelected(newSelected);
   };
@@ -104,7 +107,7 @@ export default function DataExport() {
                   id={item.key}
                   checked={selected[item.key]}
                   onCheckedChange={(checked) =>
-                    setSelected(prev => ({ ...prev, [item.key]: checked }))
+                    setSelected(prev => ({ ...prev, [item.key]: checked === true }))
                   }
                 />
                 <Label htmlFor={item.key} className="cursor-pointer">
