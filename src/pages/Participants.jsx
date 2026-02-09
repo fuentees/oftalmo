@@ -43,6 +43,50 @@ export default function Participants() {
     queryFn: () => dataClient.entities.Training.list(),
   });
 
+  const normalizeDateValue = (value) => {
+    if (value === undefined || value === null) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return format(value, "yyyy-MM-dd");
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      if (value >= 20000) {
+        const excelDate = new Date(Math.round((value - 25569) * 86400 * 1000));
+        if (!Number.isNaN(excelDate.getTime())) {
+          return format(excelDate, "yyyy-MM-dd");
+        }
+      }
+      return null;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+        const [day, month, year] = trimmed.split("/");
+        return `${year}-${month}-${day}`;
+      }
+      const numeric = Number(trimmed.replace(",", "."));
+      if (
+        Number.isFinite(numeric) &&
+        numeric >= 20000 &&
+        /^\d+(\.\d+)?$/.test(trimmed)
+      ) {
+        const excelDate = new Date(
+          Math.round((numeric - 25569) * 86400 * 1000)
+        );
+        if (!Number.isNaN(excelDate.getTime())) {
+          return format(excelDate, "yyyy-MM-dd");
+        }
+      }
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) {
+        return format(parsed, "yyyy-MM-dd");
+      }
+      return trimmed;
+    }
+    return null;
+  };
+
   const uploadExcel = useMutation({
     mutationFn: async (file) => {
       setUploadStatus({ type: "loading", message: "Processando planilha..." });
@@ -83,16 +127,22 @@ export default function Participants() {
       }
 
       const participantsData = result.output.participants || result.output;
+      const normalizedParticipants = (participantsData || []).map((item) => ({
+        ...item,
+        training_date: normalizeDateValue(item.training_date),
+      }));
       
       // Create participants
-      await dataClient.entities.TrainingParticipant.bulkCreate(participantsData);
+      await dataClient.entities.TrainingParticipant.bulkCreate(
+        normalizedParticipants
+      );
       
       setUploadStatus({ 
         type: "success", 
-        message: `${participantsData.length} participante(s) importado(s) com sucesso!` 
+        message: `${normalizedParticipants.length} participante(s) importado(s) com sucesso!` 
       });
       
-      return participantsData;
+      return normalizedParticipants;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["participants"] });
