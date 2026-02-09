@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -208,71 +209,129 @@ export default function ParticipantProfile() {
       ).toFixed(1)
     : 0;
 
-  const renderTrainingCard = (participation) => (
-    <Card key={participation.id} className="mb-3">
-      <CardContent className="pt-4">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <h4 className="font-semibold text-slate-900">{participation.training_title}</h4>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {participation.training_date && (
-                <div className="flex items-center gap-1 text-sm text-slate-600">
-                  <Calendar className="h-3 w-3" />
-                  {format(new Date(participation.training_date), "dd/MM/yyyy")}
-                </div>
-              )}
-              {resolveTrainingType(participation) && (
-                <Badge variant="outline" className="text-xs">
-                  {typeLabels[resolveTrainingType(participation)] ||
-                    resolveTrainingType(participation)}
-                </Badge>
-              )}
-              {participation.attendance_percentage !== undefined && (
-                <div className="flex items-center gap-1 text-sm text-slate-600">
-                  <Clock className="h-3 w-3" />
-                  {participation.attendance_percentage}% presença
-                </div>
+  const resolveTrainingForCertificate = (participation) => {
+    if (!participation) return null;
+    const byId = trainingTypeMaps.byId;
+    let training = null;
+    if (participation.training_id) {
+      training = trainings.find((item) => item.id === participation.training_id);
+    }
+    if (!training && participation.training_title) {
+      const titleKey = normalizeText(participation.training_title);
+      training = trainings.find(
+        (item) => normalizeText(item.title) === titleKey
+      );
+    }
+
+    if (!training) {
+      return {
+        title: participation.training_title || "Treinamento",
+        dates: participation.training_date
+          ? [{ date: participation.training_date }]
+          : [],
+        duration_hours: null,
+        coordinator: "",
+        instructor: "",
+      };
+    }
+
+    if (!Array.isArray(training.dates) || training.dates.length === 0) {
+      return {
+        ...training,
+        dates: participation.training_date
+          ? [{ date: participation.training_date }]
+          : [],
+      };
+    }
+
+    return training;
+  };
+
+  const handleDownloadCertificate = (participation) => {
+    if (!participation) return;
+    if (participation.certificate_url) {
+      const link = document.createElement("a");
+      link.href = participation.certificate_url;
+      link.download = `certificado-${participation.professional_name || "participante"}.pdf`;
+      link.click();
+      return;
+    }
+
+    const training = resolveTrainingForCertificate(participation);
+    if (!training) return;
+    const pdf = generateParticipantCertificate(participation, training);
+    const fileName = `certificado-${participation.professional_name || "participante"}.pdf`;
+    pdf.save(fileName);
+  };
+
+  const renderTrainingCard = (participation) => {
+    const hasCertificate = participation.certificate_url || participation.certificate_issued;
+    return (
+      <Card key={participation.id} className="mb-3">
+        <CardContent className="pt-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <h4 className="font-semibold text-slate-900">{participation.training_title}</h4>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {participation.training_date && (
+                  <div className="flex items-center gap-1 text-sm text-slate-600">
+                    <Calendar className="h-3 w-3" />
+                    {format(new Date(participation.training_date), "dd/MM/yyyy")}
+                  </div>
+                )}
+                {resolveTrainingType(participation) && (
+                  <Badge variant="outline" className="text-xs">
+                    {typeLabels[resolveTrainingType(participation)] ||
+                      resolveTrainingType(participation)}
+                  </Badge>
+                )}
+                {participation.attendance_percentage !== undefined && (
+                  <div className="flex items-center gap-1 text-sm text-slate-600">
+                    <Clock className="h-3 w-3" />
+                    {participation.attendance_percentage}% presença
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {participation.enrollment_status && (
+                  <Badge variant="outline" className="text-xs">
+                    {participation.enrollment_status}
+                  </Badge>
+                )}
+                {participation.approved && (
+                  <Badge className="bg-green-100 text-green-700 text-xs">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Aprovado
+                  </Badge>
+                )}
+                {participation.certificate_issued && (
+                  <Badge className="bg-blue-100 text-blue-700 text-xs">
+                    <Award className="h-3 w-3 mr-1" />
+                    Certificado
+                  </Badge>
+                )}
+              </div>
+              {participation.validity_date && (
+                <p className="text-xs text-slate-500 mt-2">
+                  Válido até: {format(new Date(participation.validity_date), "dd/MM/yyyy")}
+                </p>
               )}
             </div>
-            <div className="flex gap-2 mt-2">
-              {participation.enrollment_status && (
-                <Badge variant="outline" className="text-xs">
-                  {participation.enrollment_status}
-                </Badge>
-              )}
-              {participation.approved && (
-                <Badge className="bg-green-100 text-green-700 text-xs">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Aprovado
-                </Badge>
-              )}
-              {participation.certificate_issued && (
-                <Badge className="bg-blue-100 text-blue-700 text-xs">
-                  <Award className="h-3 w-3 mr-1" />
-                  Certificado
-                </Badge>
-              )}
-            </div>
-            {participation.validity_date && (
-              <p className="text-xs text-slate-500 mt-2">
-                Válido até: {format(new Date(participation.validity_date), "dd/MM/yyyy")}
-              </p>
+            {hasCertificate && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleDownloadCertificate(participation)}
+              >
+                <FileText className="h-4 w-4 mr-1" />
+                Baixar PDF
+              </Button>
             )}
           </div>
-          {participation.certificate_url && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => window.open(participation.certificate_url, '_blank')}
-            >
-              <FileText className="h-4 w-4 mr-1" />
-              Ver Certificado
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
