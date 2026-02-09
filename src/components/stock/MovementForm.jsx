@@ -90,6 +90,8 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
       Papa.parse(text, {
         header: true,
         skipEmptyLines: true,
+        delimiter: "",
+        delimitersToGuess: [",", ";", "\t", "|"],
         complete: (result) => resolve(result.data || []),
         error: (error) => reject(error),
       });
@@ -113,6 +115,8 @@ export default function MovementForm({ type, materials, preselectedMaterial = nu
         row.municipio_de_residencia;
       const gve =
         row.gve ||
+        row.gve_nome ||
+        row.gve_name ||
         row.regional ||
         row.regional_saude ||
         row.gvs ||
