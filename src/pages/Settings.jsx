@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Palette, Check } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import DataExport from "@/components/settings/DataExport";

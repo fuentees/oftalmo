@@ -2,7 +2,7 @@ import React from "react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Clock, MapPin, User, Users, GraduationCap, FileText, Video } from "lucide-react";
+import { Calendar, MapPin, User, Users, GraduationCap, FileText, Video } from "lucide-react";
 import DataTable from "@/components/common/DataTable";
 
 export default function TrainingDetails({ training, participants }) {

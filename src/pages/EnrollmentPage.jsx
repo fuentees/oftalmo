@@ -23,14 +23,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { 
   GraduationCap, 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  User, 
   CheckCircle,
   AlertCircle,
   Loader2,
-  Video,
   Download,
   Trash2,
   Users,

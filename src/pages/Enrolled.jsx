@@ -4,8 +4,6 @@ import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
 import {
   UserPlus,
-  Calendar,
-  GraduationCap,
   CheckCircle,
   XCircle,
   Clock,

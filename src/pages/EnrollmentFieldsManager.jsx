@@ -31,7 +31,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
-import { Edit, Trash2, Plus, Settings } from "lucide-react";
+import { Edit, Trash2, Plus } from "lucide-react";
 
 export default function EnrollmentFieldsManager() {
   const [showForm, setShowForm] = useState(false);

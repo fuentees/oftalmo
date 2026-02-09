@@ -3,14 +3,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
 import {
-  GraduationCap,
-  Plus,
   Edit,
   Trash2,
   Eye,
   Users,
   Calendar,
-  Clock,
   MapPin,
   UserPlus,
   ClipboardCheck,
@@ -49,13 +46,11 @@ import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
 import TrainingForm from "@/components/trainings/TrainingForm";
 import TrainingDetails from "@/components/trainings/TrainingDetails";
-import ParticipantsManager from "@/components/trainings/ParticipantsManager";
 import EnrollmentManager from "@/components/trainings/EnrollmentManager";
 import AttendanceControl from "@/components/trainings/AttendanceControl";
 import CertificateManager from "@/components/trainings/CertificateManager";
 import SendLinkButton from "@/components/trainings/SendLinkButton";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
-import FeedbackForm from "@/components/trainings/FeedbackForm";
 
 export default function Trainings() {
   const [search, setSearch] = useState("");
@@ -64,7 +59,6 @@ export default function Trainings() {
   
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
-  const [showParticipants, setShowParticipants] = useState(false);
   const [showEnrollment, setShowEnrollment] = useState(false);
   const [showAttendance, setShowAttendance] = useState(false);
   const [showCertificates, setShowCertificates] = useState(false);
