@@ -7,6 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,7 +33,10 @@ import {
   Video,
   Download,
   Trash2,
-  Users
+  Users,
+  Plus,
+  Edit,
+  Link2
 } from "lucide-react";
 import { format } from "date-fns";
 import PageHeader from "@/components/common/PageHeader";
@@ -46,6 +53,9 @@ export default function EnrollmentPage() {
   const [submitted, setSubmitted] = useState(false);
   const [search, setSearch] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [fieldFormOpen, setFieldFormOpen] = useState(false);
+  const [editingField, setEditingField] = useState(null);
+  const [fieldDeleteConfirm, setFieldDeleteConfirm] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -63,7 +73,7 @@ export default function EnrollmentPage() {
     queryFn: async () => {
       const allFields = await dataClient.entities.EnrollmentField.list("order");
       return allFields.filter(f => 
-        f.is_active && (!f.training_id || f.training_id === trainingId)
+        !f.training_id || f.training_id === trainingId
       );
     },
     enabled: !!trainingId,
@@ -83,6 +93,51 @@ export default function EnrollmentPage() {
   };
 
   const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
+  const activeEnrollmentFields = enrollmentFields.filter((field) => field.is_active);
+
+  const getDefaultFieldData = () => ({
+    training_id: trainingId,
+    field_key: "",
+    label: "",
+    type: "text",
+    required: true,
+    placeholder: "",
+    section: "pessoais",
+    order: 0,
+    is_active: true,
+  });
+
+  const [fieldFormData, setFieldFormData] = useState(getDefaultFieldData());
+
+  const resetFieldForm = () => {
+    setFieldFormData(getDefaultFieldData());
+    setEditingField(null);
+    setFieldFormOpen(false);
+  };
+
+  const createField = useMutation({
+    mutationFn: (data) => dataClient.entities.EnrollmentField.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
+      resetFieldForm();
+    },
+  });
+
+  const updateField = useMutation({
+    mutationFn: ({ id, data }) => dataClient.entities.EnrollmentField.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
+      resetFieldForm();
+    },
+  });
+
+  const deleteField = useMutation({
+    mutationFn: (id) => dataClient.entities.EnrollmentField.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
+      setFieldDeleteConfirm(null);
+    },
+  });
 
   const enrollMutation = useMutation({
     mutationFn: async (data) => {
@@ -161,6 +216,37 @@ export default function EnrollmentPage() {
   const handleSubmit = (e) => {
     e.preventDefault();
     enrollMutation.mutate(formData);
+  };
+
+  const handleCopyEnrollmentLink = () => {
+    if (!trainingId) return;
+    const link = `${window.location.origin}/PublicEnrollment?training=${encodeURIComponent(trainingId)}`;
+    navigator.clipboard.writeText(link);
+    alert("Link de inscrição copiado!");
+  };
+
+  const handleEditField = (field) => {
+    setEditingField(field);
+    setFieldFormData({
+      ...field,
+      training_id: field.training_id ?? null,
+      order: field.order ?? 0,
+    });
+    setFieldFormOpen(true);
+  };
+
+  const handleSaveField = (e) => {
+    e.preventDefault();
+    const payload = {
+      ...fieldFormData,
+      training_id: fieldFormData.training_id || null,
+      order: Number(fieldFormData.order) || 0,
+    };
+    if (editingField) {
+      updateField.mutate({ id: editingField.id, data: payload });
+    } else {
+      createField.mutate(payload);
+    }
   };
 
   const handleExportExcel = () => {
@@ -322,6 +408,84 @@ export default function EnrollmentPage() {
 
   const isFullyBooked = training.max_participants && training.participants_count >= training.max_participants;
   const isCancelled = training.status === "cancelado";
+  const isFieldGlobal = fieldFormData.training_id == null;
+
+  const sectionLabels = {
+    pessoais: "Dados Pessoais",
+    instituicao: "Instituição",
+    enderecos: "Endereços",
+    contatos: "Contatos",
+  };
+
+  const typeLabels = {
+    text: "Texto",
+    email: "E-mail",
+    tel: "Telefone",
+    number: "Número",
+    date: "Data",
+  };
+
+  const fieldColumns = [
+    {
+      header: "Ordem",
+      accessor: "order",
+      cellClassName: "font-mono text-center",
+    },
+    {
+      header: "Campo",
+      accessor: "label",
+      cellClassName: "font-medium",
+      render: (row) => (
+        <div>
+          <p className="font-medium">{row.label}</p>
+          <p className="text-xs text-slate-500">{row.field_key}</p>
+        </div>
+      ),
+    },
+    {
+      header: "Seção",
+      render: (row) => (
+        <Badge variant="outline">{sectionLabels[row.section]}</Badge>
+      ),
+    },
+    {
+      header: "Tipo",
+      render: (row) => typeLabels[row.type],
+    },
+    {
+      header: "Obrigatório",
+      cellClassName: "text-center",
+      render: (row) => (row.required ? "✓" : "-"),
+    },
+    {
+      header: "Status",
+      render: (row) => (
+        <Badge className={row.is_active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700"}>
+          {row.is_active ? "Ativo" : "Inativo"}
+        </Badge>
+      ),
+    },
+    {
+      header: "Ações",
+      cellClassName: "text-right",
+      sortable: false,
+      render: (row) => (
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => handleEditField(row)}>
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setFieldDeleteConfirm(row)}
+            className="text-red-600 hover:text-red-700"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -329,6 +493,21 @@ export default function EnrollmentPage() {
         title={`Inscrições - ${training.title}`}
         subtitle="Gerencie as inscrições do treinamento"
       />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" onClick={handleCopyEnrollmentLink}>
+          <Link2 className="h-4 w-4 mr-2" />
+          Copiar Link de Inscrição
+        </Button>
+        <Button onClick={() => {
+          setEditingField(null);
+          setFieldFormData(getDefaultFieldData());
+          setFieldFormOpen(true);
+        }}>
+          <Plus className="h-4 w-4 mr-2" />
+          Novo Campo do Formulário
+        </Button>
+      </div>
 
       <Card>
         <CardHeader className="bg-blue-600 text-white">
@@ -359,7 +538,20 @@ export default function EnrollmentPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="form" className="mt-6">
+            <TabsContent value="form" className="mt-6 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Campos do Formulário</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DataTable
+                    columns={fieldColumns}
+                    data={enrollmentFields}
+                    emptyMessage="Nenhum campo cadastrado"
+                  />
+                </CardContent>
+              </Card>
+
               {(isFullyBooked || isCancelled) && (
                 <Alert className="border-red-200 bg-red-50 mb-6">
                   <AlertCircle className="h-4 w-4 text-red-600" />
@@ -381,7 +573,7 @@ export default function EnrollmentPage() {
               {!isFullyBooked && !isCancelled && (
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {["pessoais", "instituicao", "enderecos", "contatos"].map(section => {
-                    const sectionFields = enrollmentFields.filter(f => f.section === section);
+                    const sectionFields = activeEnrollmentFields.filter(f => f.section === section);
                     if (sectionFields.length === 0) return null;
                     
                     const sectionTitles = {
@@ -473,6 +665,176 @@ export default function EnrollmentPage() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteParticipant.mutate(deleteConfirm.id)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Field Form Dialog */}
+      <Dialog open={fieldFormOpen} onOpenChange={(open) => !open && resetFieldForm()}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingField ? "Editar Campo" : "Novo Campo"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveField} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2 col-span-2">
+                <Label htmlFor="field-label">Nome do campo</Label>
+                <Input
+                  id="field-label"
+                  value={fieldFormData.label}
+                  onChange={(e) => setFieldFormData({ ...fieldFormData, label: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="field-key">Chave (field_key)</Label>
+                <Input
+                  id="field-key"
+                  value={fieldFormData.field_key}
+                  onChange={(e) => setFieldFormData({ ...fieldFormData, field_key: e.target.value })}
+                  placeholder="ex: cpf, email, setor"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="field-order">Ordem</Label>
+                <Input
+                  id="field-order"
+                  type="number"
+                  value={fieldFormData.order}
+                  onChange={(e) => setFieldFormData({ ...fieldFormData, order: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select
+                  value={fieldFormData.type}
+                  onValueChange={(value) => setFieldFormData({ ...fieldFormData, type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">Texto</SelectItem>
+                    <SelectItem value="email">E-mail</SelectItem>
+                    <SelectItem value="tel">Telefone</SelectItem>
+                    <SelectItem value="number">Número</SelectItem>
+                    <SelectItem value="date">Data</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Seção</Label>
+                <Select
+                  value={fieldFormData.section}
+                  onValueChange={(value) => setFieldFormData({ ...fieldFormData, section: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pessoais">Dados Pessoais</SelectItem>
+                    <SelectItem value="instituicao">Instituição</SelectItem>
+                    <SelectItem value="enderecos">Endereços</SelectItem>
+                    <SelectItem value="contatos">Contatos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="field-placeholder">Placeholder</Label>
+                <Input
+                  id="field-placeholder"
+                  value={fieldFormData.placeholder || ""}
+                  onChange={(e) => setFieldFormData({ ...fieldFormData, placeholder: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Aplicação</Label>
+                <div className="flex items-center gap-2 pt-2">
+                  <Checkbox
+                    id="field-global"
+                    checked={isFieldGlobal}
+                    onCheckedChange={(checked) =>
+                      setFieldFormData({
+                        ...fieldFormData,
+                        training_id: checked ? null : trainingId,
+                      })
+                    }
+                  />
+                  <Label htmlFor="field-global" className="text-sm font-normal">
+                    Campo global (todos os treinamentos)
+                  </Label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="field-required"
+                  checked={fieldFormData.required}
+                  onCheckedChange={(checked) =>
+                    setFieldFormData({ ...fieldFormData, required: Boolean(checked) })
+                  }
+                />
+                <Label htmlFor="field-required" className="text-sm font-normal">
+                  Campo obrigatório
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="field-active"
+                  checked={fieldFormData.is_active}
+                  onCheckedChange={(checked) =>
+                    setFieldFormData({ ...fieldFormData, is_active: Boolean(checked) })
+                  }
+                />
+                <Label htmlFor="field-active" className="text-sm font-normal">
+                  Campo ativo
+                </Label>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={resetFieldForm}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={createField.isPending || updateField.isPending}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {editingField ? "Salvar Alterações" : "Criar Campo"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Field Delete Confirmation */}
+      <AlertDialog open={!!fieldDeleteConfirm} onOpenChange={() => setFieldDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir campo do formulário</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o campo "{fieldDeleteConfirm?.label}"?
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteField.mutate(fieldDeleteConfirm.id)}
               className="bg-red-600 hover:bg-red-700"
             >
               Excluir
