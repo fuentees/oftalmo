@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   User,
   GraduationCap,
@@ -13,8 +12,6 @@ import {
   Clock,
   CheckCircle,
   ArrowLeft,
-  Mail,
-  Building2,
   FileText
 } from "lucide-react";
 import { format } from "date-fns";
@@ -29,24 +26,152 @@ export default function ParticipantProfile() {
     setParticipantId(params.get("id"));
   }, []);
 
-  const { data: participant, isLoading: loadingParticipant } = useQuery({
-    queryKey: ["participant", participantId],
-    queryFn: async () => {
-      const participants = await dataClient.entities.TrainingParticipant.list();
-      return participants.find((p) => p.id === participantId);
-    },
-    enabled: !!participantId,
+  const { data: participants = [], isLoading: loadingParticipants } = useQuery({
+    queryKey: ["participants"],
+    queryFn: () => dataClient.entities.TrainingParticipant.list("-enrollment_date"),
   });
 
-  const { data: allParticipations = [], isLoading: loadingParticipations } = useQuery({
-    queryKey: ["all-participations", participant?.professional_id],
-    queryFn: () =>
-      dataClient.entities.TrainingParticipant.filter(
-        { professional_id: participant.professional_id },
-        "-enrollment_date"
-      ),
-    enabled: !!participant?.professional_id,
+  const { data: trainings = [], isLoading: loadingTrainings } = useQuery({
+    queryKey: ["trainings"],
+    queryFn: () => dataClient.entities.Training.list(),
   });
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, " ");
+
+  const normalizeEmail = (value) => String(value ?? "").trim().toLowerCase();
+
+  const normalizeRg = (value) =>
+    String(value ?? "")
+      .replace(/[^0-9a-zA-Z]/g, "")
+      .toUpperCase()
+      .trim();
+
+  const isSameParticipant = (base, candidate) => {
+    if (!base || !candidate) return false;
+    const baseName = normalizeText(base.professional_name);
+    const baseEmail = normalizeEmail(base.professional_email);
+    const baseRg = normalizeRg(base.professional_rg);
+    const candName = normalizeText(candidate.professional_name);
+    const candEmail = normalizeEmail(candidate.professional_email);
+    const candRg = normalizeRg(candidate.professional_rg);
+
+    const rgMatch = baseRg && candRg && baseRg === candRg;
+    if (rgMatch) return true;
+
+    let matches = 0;
+    if (baseName && candName && baseName === candName) matches += 1;
+    if (baseEmail && candEmail && baseEmail === candEmail) matches += 1;
+    if (baseRg && candRg && baseRg === candRg) matches += 1;
+    return matches >= 2;
+  };
+
+  const scoreParticipant = (participant) => {
+    if (!participant) return 0;
+    const fields = [
+      "professional_name",
+      "professional_rg",
+      "professional_cpf",
+      "professional_email",
+      "professional_registration",
+      "professional_sector",
+      "professional_formation",
+      "institution",
+      "state",
+      "health_region",
+      "municipality",
+      "unit_name",
+      "position",
+      "work_address",
+      "residential_address",
+      "commercial_phone",
+      "mobile_phone",
+    ];
+    return fields.reduce((acc, key) => (participant[key] ? acc + 1 : acc), 0);
+  };
+
+  const mergeParticipantData = (items) => {
+    if (!items.length) return {};
+    const sorted = [...items].sort(
+      (a, b) => scoreParticipant(b) - scoreParticipant(a)
+    );
+    const merged = { ...sorted[0] };
+    sorted.slice(1).forEach((participant) => {
+      Object.entries(participant || {}).forEach(([key, value]) => {
+        if (merged[key] === undefined || merged[key] === null || merged[key] === "") {
+          if (value !== undefined && value !== null && value !== "") {
+            merged[key] = value;
+          }
+        }
+      });
+    });
+    return merged;
+  };
+
+  const typeLabels = {
+    teorico: "Teórico",
+    pratico: "Prático",
+    teorico_pratico: "Teórico/Prático",
+    repadronizacao: "Repadronização",
+  };
+
+  const trainingTypeMaps = useMemo(() => {
+    const byId = new Map();
+    const byTitle = new Map();
+    trainings.forEach((training) => {
+      if (training.id) byId.set(training.id, training.type);
+      const titleKey = normalizeText(training.title);
+      if (titleKey) byTitle.set(titleKey, training.type);
+    });
+    return { byId, byTitle };
+  }, [trainings]);
+
+  const resolveTrainingType = (participation) => {
+    if (!participation) return null;
+    const byId = trainingTypeMaps.byId;
+    const byTitle = trainingTypeMaps.byTitle;
+    const typeFromId = byId.get(participation.training_id);
+    if (typeFromId) return typeFromId;
+    const typeFromTitle = byTitle.get(normalizeText(participation.training_title));
+    if (typeFromTitle) return typeFromTitle;
+    const title = String(participation.training_title || "").toLowerCase();
+    if (title.includes("teorico") || title.includes("teórico")) return "teorico";
+    if (title.includes("pratico") || title.includes("prático")) return "pratico";
+    if (title.includes("repadronizacao") || title.includes("repadronização")) {
+      return "repadronizacao";
+    }
+    return null;
+  };
+
+  const participant = useMemo(
+    () => participants.find((p) => p.id === participantId),
+    [participants, participantId]
+  );
+
+  const allParticipations = useMemo(() => {
+    if (!participant) return [];
+    return participants.filter((p) => isSameParticipant(participant, p));
+  }, [participants, participant]);
+
+  const mergedParticipant = useMemo(
+    () => mergeParticipantData(allParticipations),
+    [allParticipations]
+  );
+
+  const participationsSorted = useMemo(
+    () =>
+      [...allParticipations].sort((a, b) => {
+        const dateA = a.training_date ? new Date(a.training_date).getTime() : 0;
+        const dateB = b.training_date ? new Date(b.training_date).getTime() : 0;
+        return dateB - dateA;
+      }),
+    [allParticipations]
+  );
 
   if (!participantId) {
     return (
@@ -56,7 +181,7 @@ export default function ParticipantProfile() {
     );
   }
 
-  if (loadingParticipant || loadingParticipations) {
+  if (loadingParticipants || loadingTrainings) {
     return (
       <div className="text-center py-12">
         <p className="text-slate-500">Carregando...</p>
@@ -72,32 +197,15 @@ export default function ParticipantProfile() {
     );
   }
 
-  // Categorizar treinamentos por tipo
-  const trainings = {
-    teorico: allParticipations.filter((p) => {
-      const title = p.training_title?.toLowerCase() || "";
-      return title.includes("teórico") || title.includes("teorico");
-    }),
-    pratico: allParticipations.filter((p) => {
-      const title = p.training_title?.toLowerCase() || "";
-      return title.includes("prático") || title.includes("pratico");
-    }),
-    repadronizacao: allParticipations.filter((p) => {
-      const title = p.training_title?.toLowerCase() || "";
-      return title.includes("repadronização") || title.includes("repadronizacao");
-    }),
-    outros: allParticipations.filter((p) => {
-      const title = p.training_title?.toLowerCase() || "";
-      return !title.includes("teórico") && !title.includes("teorico") && 
-             !title.includes("prático") && !title.includes("pratico") &&
-             !title.includes("repadronização") && !title.includes("repadronizacao");
-    }),
-  };
-
   const approvedCount = allParticipations.filter((p) => p.approved).length;
   const certificatesCount = allParticipations.filter((p) => p.certificate_issued).length;
   const avgAttendance = allParticipations.length > 0
-    ? (allParticipations.reduce((acc, p) => acc + (p.attendance_percentage || 0), 0) / allParticipations.length).toFixed(1)
+    ? (
+        allParticipations.reduce(
+          (acc, p) => acc + (p.attendance_percentage || 0),
+          0
+        ) / allParticipations.length
+      ).toFixed(1)
     : 0;
 
   const renderTrainingCard = (participation) => (
@@ -112,6 +220,12 @@ export default function ParticipantProfile() {
                   <Calendar className="h-3 w-3" />
                   {format(new Date(participation.training_date), "dd/MM/yyyy")}
                 </div>
+              )}
+              {resolveTrainingType(participation) && (
+                <Badge variant="outline" className="text-xs">
+                  {typeLabels[resolveTrainingType(participation)] ||
+                    resolveTrainingType(participation)}
+                </Badge>
               )}
               {participation.attendance_percentage !== undefined && (
                 <div className="flex items-center gap-1 text-sm text-slate-600">
@@ -177,51 +291,36 @@ export default function ParticipantProfile() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5 text-blue-600" />
-            Informações Pessoais
+            Informações do Participante
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <p className="text-sm text-slate-500">Nome</p>
-              <p className="font-semibold">{participant.professional_name}</p>
-            </div>
-            {participant.professional_registration && (
-              <div>
-                <p className="text-sm text-slate-500">Matrícula</p>
-                <p className="font-semibold">{participant.professional_registration}</p>
-              </div>
-            )}
-            {participant.professional_cpf && (
-              <div>
-                <p className="text-sm text-slate-500">CPF</p>
-                <p className="font-semibold">{participant.professional_cpf}</p>
-              </div>
-            )}
-            {participant.professional_rg && (
-              <div>
-                <p className="text-sm text-slate-500">RG</p>
-                <p className="font-semibold">{participant.professional_rg}</p>
-              </div>
-            )}
-            {participant.professional_email && (
-              <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-slate-400" />
-                <div>
-                  <p className="text-sm text-slate-500">Email</p>
-                  <p className="font-semibold">{participant.professional_email}</p>
+            {[
+              { label: "Nome", value: mergedParticipant.professional_name },
+              { label: "RG", value: mergedParticipant.professional_rg },
+              { label: "CPF", value: mergedParticipant.professional_cpf },
+              { label: "E-mail", value: mergedParticipant.professional_email },
+              { label: "Celular", value: mergedParticipant.mobile_phone },
+              { label: "Telefone Comercial", value: mergedParticipant.commercial_phone },
+              { label: "Matrícula", value: mergedParticipant.professional_registration },
+              { label: "Formação Profissional", value: mergedParticipant.professional_formation },
+              { label: "Cargo", value: mergedParticipant.professional_sector },
+              { label: "Instituição", value: mergedParticipant.institution },
+              { label: "Unidade", value: mergedParticipant.unit_name },
+              { label: "Município", value: mergedParticipant.municipality },
+              { label: "GVE", value: mergedParticipant.health_region },
+              { label: "Estado", value: mergedParticipant.state },
+              { label: "Endereço de Trabalho", value: mergedParticipant.work_address },
+              { label: "Endereço Residencial", value: mergedParticipant.residential_address },
+            ]
+              .filter((item) => item.value)
+              .map((item) => (
+                <div key={item.label}>
+                  <p className="text-sm text-slate-500">{item.label}</p>
+                  <p className="font-semibold break-words">{item.value}</p>
                 </div>
-              </div>
-            )}
-            {participant.professional_sector && (
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-slate-400" />
-                <div>
-                  <p className="text-sm text-slate-500">Setor</p>
-                  <p className="font-semibold">{participant.professional_sector}</p>
-                </div>
-              </div>
-            )}
+              ))}
           </div>
         </CardContent>
       </Card>
@@ -294,75 +393,13 @@ export default function ParticipantProfile() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="todos">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="todos">
-                Todos ({allParticipations.length})
-              </TabsTrigger>
-              <TabsTrigger value="teorico">
-                Teórico ({trainings.teorico.length})
-              </TabsTrigger>
-              <TabsTrigger value="pratico">
-                Prático ({trainings.pratico.length})
-              </TabsTrigger>
-              <TabsTrigger value="repadronizacao">
-                Repadronização ({trainings.repadronizacao.length})
-              </TabsTrigger>
-              <TabsTrigger value="outros">
-                Outros ({trainings.outros.length})
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="todos" className="mt-4">
-              {allParticipations.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">
-                  Nenhum treinamento realizado
-                </p>
-              ) : (
-                allParticipations.map(renderTrainingCard)
-              )}
-            </TabsContent>
-
-            <TabsContent value="teorico" className="mt-4">
-              {trainings.teorico.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">
-                  Nenhum treinamento teórico
-                </p>
-              ) : (
-                trainings.teorico.map(renderTrainingCard)
-              )}
-            </TabsContent>
-
-            <TabsContent value="pratico" className="mt-4">
-              {trainings.pratico.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">
-                  Nenhum treinamento prático
-                </p>
-              ) : (
-                trainings.pratico.map(renderTrainingCard)
-              )}
-            </TabsContent>
-
-            <TabsContent value="repadronizacao" className="mt-4">
-              {trainings.repadronizacao.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">
-                  Nenhum treinamento de repadronização
-                </p>
-              ) : (
-                trainings.repadronizacao.map(renderTrainingCard)
-              )}
-            </TabsContent>
-
-            <TabsContent value="outros" className="mt-4">
-              {trainings.outros.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">
-                  Nenhum outro treinamento
-                </p>
-              ) : (
-                trainings.outros.map(renderTrainingCard)
-              )}
-            </TabsContent>
-          </Tabs>
+          {participationsSorted.length === 0 ? (
+            <p className="text-center text-slate-500 py-8">
+              Nenhum treinamento realizado
+            </p>
+          ) : (
+            participationsSorted.map(renderTrainingCard)
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,15 +1,12 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
 import {
-  Users,
   Upload,
   Download,
   FileSpreadsheet,
-  Calendar,
   CheckCircle,
-  XCircle,
   AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,12 +18,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
-import StatsCard from "@/components/dashboard/StatsCard";
+import { useNavigate } from "react-router-dom";
 
 export default function Participants() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [trainingFilter, setTrainingFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
@@ -42,6 +38,118 @@ export default function Participants() {
     queryKey: ["trainings"],
     queryFn: () => dataClient.entities.Training.list(),
   });
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, " ");
+
+  const normalizeEmail = (value) => String(value ?? "").trim().toLowerCase();
+
+  const normalizeRg = (value) =>
+    String(value ?? "")
+      .replace(/[^0-9a-zA-Z]/g, "")
+      .toUpperCase()
+      .trim();
+
+  const isSameParticipant = (base, candidate) => {
+    if (!base || !candidate) return false;
+    const baseName = normalizeText(base.professional_name);
+    const baseEmail = normalizeEmail(base.professional_email);
+    const baseRg = normalizeRg(base.professional_rg);
+    const candName = normalizeText(candidate.professional_name);
+    const candEmail = normalizeEmail(candidate.professional_email);
+    const candRg = normalizeRg(candidate.professional_rg);
+
+    const rgMatch = baseRg && candRg && baseRg === candRg;
+    if (rgMatch) return true;
+
+    let matches = 0;
+    if (baseName && candName && baseName === candName) matches += 1;
+    if (baseEmail && candEmail && baseEmail === candEmail) matches += 1;
+    if (baseRg && candRg && baseRg === candRg) matches += 1;
+    return matches >= 2;
+  };
+
+  const scoreParticipant = (participant) => {
+    if (!participant) return 0;
+    const fields = [
+      "professional_name",
+      "professional_rg",
+      "professional_cpf",
+      "professional_email",
+      "professional_registration",
+      "professional_sector",
+      "professional_formation",
+      "institution",
+      "state",
+      "health_region",
+      "municipality",
+      "unit_name",
+      "position",
+      "work_address",
+      "residential_address",
+      "commercial_phone",
+      "mobile_phone",
+    ];
+    return fields.reduce((acc, key) => (participant[key] ? acc + 1 : acc), 0);
+  };
+
+  const mergeParticipantData = (items) => {
+    if (!items.length) return {};
+    const sorted = [...items].sort(
+      (a, b) => scoreParticipant(b) - scoreParticipant(a)
+    );
+    const merged = { ...sorted[0] };
+    sorted.slice(1).forEach((participant) => {
+      Object.entries(participant || {}).forEach(([key, value]) => {
+        if (merged[key] === undefined || merged[key] === null || merged[key] === "") {
+          if (value !== undefined && value !== null && value !== "") {
+            merged[key] = value;
+          }
+        }
+      });
+    });
+    return merged;
+  };
+
+  const typeLabels = {
+    teorico: "Teórico",
+    pratico: "Prático",
+    teorico_pratico: "Teórico/Prático",
+    repadronizacao: "Repadronização",
+  };
+
+  const trainingTypeMaps = useMemo(() => {
+    const byId = new Map();
+    const byTitle = new Map();
+    trainings.forEach((training) => {
+      if (training.id) byId.set(training.id, training.type);
+      const titleKey = normalizeText(training.title);
+      if (titleKey) byTitle.set(titleKey, training.type);
+    });
+    return { byId, byTitle };
+  }, [trainings]);
+
+  const resolveTrainingType = (participant) => {
+    if (!participant) return null;
+    const byId = trainingTypeMaps.byId;
+    const byTitle = trainingTypeMaps.byTitle;
+    const typeFromId = byId.get(participant.training_id);
+    if (typeFromId) return typeFromId;
+    const typeFromTitle = byTitle.get(normalizeText(participant.training_title));
+    if (typeFromTitle) return typeFromTitle;
+    const title = String(participant.training_title || "").toLowerCase();
+    if (title.includes("teorico") || title.includes("teórico")) return "teorico";
+    if (title.includes("pratico") || title.includes("prático")) return "pratico";
+    if (title.includes("repadronizacao") || title.includes("repadronização")) {
+      return "repadronizacao";
+    }
+    return null;
+  };
 
   const normalizeDateValue = (value) => {
     if (value === undefined || value === null) return null;
@@ -188,102 +296,105 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     a.click();
   };
 
-  // Get unique trainings from participants
-  const uniqueTrainings = [...new Set(participants.map(p => p.training_title).filter(Boolean))];
-  const trainingOptions = uniqueTrainings.map(t => ({ value: t, label: t }));
+  const groupedParticipants = useMemo(() => {
+    const groups = [];
+    participants.forEach((participant) => {
+      const existingGroup = groups.find((group) =>
+        group.members.some((member) => isSameParticipant(member, participant))
+      );
+      if (existingGroup) {
+        existingGroup.members.push(participant);
+      } else {
+        groups.push({
+          id: participant.id,
+          members: [participant],
+        });
+      }
+    });
 
-  const filteredParticipants = participants.filter((p) => {
-    // Apenas participantes que concluíram o treinamento (aprovados ou com presença mínima)
-    const isConcluded = p.approved || (p.attendance_percentage && p.attendance_percentage >= 75);
-    if (!isConcluded) return false;
-    
-    const matchesSearch = 
-      p.professional_name?.toLowerCase().includes(search.toLowerCase()) ||
-      p.professional_registration?.toLowerCase().includes(search.toLowerCase()) ||
-      p.professional_cpf?.toLowerCase().includes(search.toLowerCase()) ||
-      p.training_title?.toLowerCase().includes(search.toLowerCase());
-    const matchesTraining = trainingFilter === "all" || p.training_title === trainingFilter;
-    const matchesStatus = statusFilter === "all" || 
-      (statusFilter === "aprovado" && p.approved) ||
-      (statusFilter === "reprovado" && !p.approved);
-    return matchesSearch && matchesTraining && matchesStatus;
-  });
+    return groups.map((group) => {
+      const profile = mergeParticipantData(group.members);
+      const typeSet = new Set();
+      group.members.forEach((member) => {
+        const type = resolveTrainingType(member);
+        if (type) typeSet.add(type);
+      });
+      return {
+        id: group.id,
+        profile,
+        members: group.members,
+        courseTypes: Array.from(typeSet),
+      };
+    });
+  }, [participants, trainingTypeMaps]);
 
-  const totalParticipants = participants.length;
-  const approvedCount = participants.filter(p => p.approved).length;
-  const presentCount = participants.filter(p => p.attendance === "presente").length;
+  const filteredParticipants = groupedParticipants
+    .filter((group) => {
+      if (!search) return true;
+      const searchTerm = normalizeText(search);
+      const courseLabel = group.courseTypes
+        .map((type) => typeLabels[type] || type)
+        .join(" ");
+      const haystack = normalizeText(
+        [
+          group.profile.professional_name,
+          group.profile.professional_email,
+          group.profile.professional_rg,
+          group.profile.municipality,
+          group.profile.health_region,
+          group.profile.mobile_phone,
+          courseLabel,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+      return haystack.includes(searchTerm);
+    })
+    .sort((a, b) =>
+      (a.profile.professional_name || "").localeCompare(
+        b.profile.professional_name || "",
+        "pt-BR",
+        { sensitivity: "base" }
+      )
+    );
 
   const columns = [
     {
-      header: "Data",
-      render: (row) => row.training_date ? format(new Date(row.training_date), "dd/MM/yyyy") : "-",
-    },
-    {
-      header: "Treinamento",
-      accessor: "training_title",
-      cellClassName: "font-medium",
-      render: (row) => row.training_title || "-",
-    },
-    {
-      header: "Participante",
+      header: "Nome",
       render: (row) => (
-        <div>
-          <p className="font-medium">{row.professional_name}</p>
-          {row.professional_registration && (
-            <p className="text-xs text-slate-500">Mat: {row.professional_registration}</p>
-          )}
-        </div>
+        <div className="font-medium">{row.profile.professional_name || "-"}</div>
       ),
     },
     {
-      header: "RG",
-      accessor: "professional_rg",
+      header: "Município",
+      render: (row) => row.profile.municipality || "-",
     },
     {
-      header: "CPF",
-      accessor: "professional_cpf",
+      header: "GVE",
+      render: (row) => row.profile.health_region || "-",
     },
     {
-      header: "Email",
-      accessor: "professional_email",
+      header: "E-mail",
+      render: (row) => row.profile.professional_email || "-",
     },
     {
-      header: "Setor",
-      accessor: "professional_sector",
+      header: "Celular",
+      render: (row) => row.profile.mobile_phone || "-",
     },
     {
-      header: "Presença",
+      header: "Tipo de Curso",
       render: (row) => {
-        const colors = {
-          presente: "bg-green-100 text-green-700",
-          ausente: "bg-red-100 text-red-700",
-          justificado: "bg-amber-100 text-amber-700",
-        };
-        const labels = {
-          presente: "Presente",
-          ausente: "Ausente",
-          justificado: "Justificado",
-        };
-        return <Badge className={colors[row.attendance]}>{labels[row.attendance]}</Badge>;
+        if (!row.courseTypes.length) return "-";
+        return (
+          <div className="flex flex-wrap gap-1">
+            {row.courseTypes.map((type) => (
+              <Badge key={type} variant="outline">
+                {typeLabels[type] || type}
+              </Badge>
+            ))}
+          </div>
+        );
       },
-    },
-    {
-      header: "Status",
-      render: (row) => (
-        <div className="flex items-center gap-1">
-          {row.approved ? (
-            <>
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="text-green-700 font-medium">Aprovado</span>
-            </>
-          ) : (
-            <>
-              <XCircle className="h-4 w-4 text-red-600" />
-              <span className="text-red-700 font-medium">Reprovado</span>
-            </>
-          )}
-        </div>
-      ),
     },
     {
       header: "Ações",
@@ -294,7 +405,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
           size="sm"
           onClick={(e) => {
             e.stopPropagation();
-            window.location.href = `/ParticipantProfile?id=${row.id}`;
+            navigate(`/ParticipantProfile?id=${row.id}`);
           }}
         >
           Ver Perfil
@@ -310,53 +421,12 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         subtitle="Todos os participantes de treinamentos"
       />
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatsCard
-          title="Total de Participantes"
-          value={totalParticipants}
-          icon={Users}
-          color="blue"
-        />
-        <StatsCard
-          title="Aprovados"
-          value={approvedCount}
-          icon={CheckCircle}
-          color="green"
-        />
-        <StatsCard
-          title="Presenças"
-          value={presentCount}
-          icon={Calendar}
-          color="purple"
-        />
-      </div>
-
       <div className="flex flex-col sm:flex-row gap-3 justify-between">
         <div className="flex-1">
           <SearchFilter
             searchValue={search}
             onSearchChange={setSearch}
-            searchPlaceholder="Buscar por nome, matrícula, CPF ou treinamento..."
-            filters={[
-              {
-                value: trainingFilter,
-                onChange: setTrainingFilter,
-                placeholder: "Treinamento",
-                allLabel: "Todos os treinamentos",
-                options: trainingOptions,
-              },
-              {
-                value: statusFilter,
-                onChange: setStatusFilter,
-                placeholder: "Status",
-                allLabel: "Todos",
-                options: [
-                  { value: "aprovado", label: "Aprovado" },
-                  { value: "reprovado", label: "Reprovado" },
-                ],
-              },
-            ]}
+            searchPlaceholder="Buscar por nome, RG, e-mail ou município..."
           />
         </div>
         <div className="flex gap-2">
