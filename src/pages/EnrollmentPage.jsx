@@ -56,6 +56,9 @@ export default function EnrollmentPage() {
   const [fieldFormOpen, setFieldFormOpen] = useState(false);
   const [editingField, setEditingField] = useState(null);
   const [fieldDeleteConfirm, setFieldDeleteConfirm] = useState(null);
+  const [fieldSearch, setFieldSearch] = useState("");
+  const [showInactiveFields, setShowInactiveFields] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
 
   const queryClient = useQueryClient();
 
@@ -68,7 +71,7 @@ export default function EnrollmentPage() {
     enabled: !!trainingId,
   });
 
-  const { data: enrollmentFields = [] } = useQuery({
+  const { data: enrollmentFields = [], isFetched: fieldsFetched } = useQuery({
     queryKey: ["enrollment-fields", trainingId],
     queryFn: async () => {
       const allFields = await dataClient.entities.EnrollmentField.list("order");
@@ -93,7 +96,147 @@ export default function EnrollmentPage() {
   };
 
   const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
-  const activeEnrollmentFields = enrollmentFields.filter((field) => field.is_active);
+  const activeEnrollmentFields = enrollmentFields
+    .filter((field) => field.is_active)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const defaultEnrollmentFields = [
+    {
+      field_key: "name",
+      label: "Nome",
+      type: "text",
+      required: true,
+      placeholder: "Nome completo",
+      section: "pessoais",
+      order: 1,
+    },
+    {
+      field_key: "cpf",
+      label: "CPF",
+      type: "text",
+      required: true,
+      placeholder: "000.000.000-00",
+      section: "pessoais",
+      order: 2,
+    },
+    {
+      field_key: "rg",
+      label: "RG",
+      type: "text",
+      required: true,
+      placeholder: "00.000.000-0",
+      section: "pessoais",
+      order: 3,
+    },
+    {
+      field_key: "email",
+      label: "E-mail",
+      type: "email",
+      required: true,
+      placeholder: "nome@email.com",
+      section: "pessoais",
+      order: 4,
+    },
+    {
+      field_key: "professional_formation",
+      label: "Formação Profissional",
+      type: "text",
+      required: false,
+      placeholder: "Ex: Enfermagem",
+      section: "instituicao",
+      order: 5,
+    },
+    {
+      field_key: "institution",
+      label: "Instituição que representa",
+      type: "text",
+      required: false,
+      placeholder: "Ex: Hospital X",
+      section: "instituicao",
+      order: 6,
+    },
+    {
+      field_key: "state",
+      label: "Estado",
+      type: "text",
+      required: false,
+      placeholder: "UF",
+      section: "instituicao",
+      order: 7,
+    },
+    {
+      field_key: "health_region",
+      label: "Regional de Saúde",
+      type: "text",
+      required: false,
+      placeholder: "Ex: Regional Norte",
+      section: "instituicao",
+      order: 8,
+    },
+    {
+      field_key: "municipality",
+      label: "Município",
+      type: "text",
+      required: false,
+      placeholder: "Cidade",
+      section: "instituicao",
+      order: 9,
+    },
+    {
+      field_key: "unit_name",
+      label: "Nome da Unidade",
+      type: "text",
+      required: false,
+      placeholder: "Unidade de saúde",
+      section: "instituicao",
+      order: 10,
+    },
+    {
+      field_key: "position",
+      label: "Cargo",
+      type: "text",
+      required: false,
+      placeholder: "Cargo/Função",
+      section: "instituicao",
+      order: 11,
+    },
+    {
+      field_key: "work_address",
+      label: "Endereço de Trabalho",
+      type: "text",
+      required: false,
+      placeholder: "Rua, número, bairro",
+      section: "enderecos",
+      order: 12,
+    },
+    {
+      field_key: "residential_address",
+      label: "Endereço Residencial",
+      type: "text",
+      required: false,
+      placeholder: "Rua, número, bairro",
+      section: "enderecos",
+      order: 13,
+    },
+    {
+      field_key: "commercial_phone",
+      label: "Telefone Comercial",
+      type: "tel",
+      required: false,
+      placeholder: "(00) 0000-0000",
+      section: "contatos",
+      order: 14,
+    },
+    {
+      field_key: "mobile_phone",
+      label: "Celular",
+      type: "tel",
+      required: false,
+      placeholder: "(00) 00000-0000",
+      section: "contatos",
+      order: 15,
+    },
+  ];
 
   const getDefaultFieldData = () => ({
     training_id: trainingId,
@@ -114,6 +257,29 @@ export default function EnrollmentPage() {
     setEditingField(null);
     setFieldFormOpen(false);
   };
+
+  const seedDefaults = useMutation({
+    mutationFn: (payload) => dataClient.entities.EnrollmentField.bulkCreate(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
+      if (trainingId) {
+        localStorage.setItem(`enrollment_defaults_seeded_${trainingId}`, "true");
+      }
+    },
+  });
+
+  React.useEffect(() => {
+    if (!trainingId || !fieldsFetched) return;
+    if (enrollmentFields.length > 0 || seedDefaults.isPending) return;
+    const seededFlag = localStorage.getItem(`enrollment_defaults_seeded_${trainingId}`);
+    if (seededFlag === "true") return;
+    const payload = defaultEnrollmentFields.map((field) => ({
+      ...field,
+      training_id: trainingId,
+      is_active: true,
+    }));
+    seedDefaults.mutate(payload);
+  }, [trainingId, fieldsFetched, enrollmentFields.length, seedDefaults.isPending]);
 
   const createField = useMutation({
     mutationFn: (data) => dataClient.entities.EnrollmentField.create(data),
@@ -179,6 +345,17 @@ export default function EnrollmentPage() {
         professional_email: data.email,
         professional_sector: data.sector,
         professional_registration: data.registration,
+        professional_formation: data.professional_formation,
+        institution: data.institution,
+        state: data.state,
+        health_region: data.health_region,
+        municipality: data.municipality,
+        unit_name: data.unit_name,
+        position: data.position,
+        work_address: data.work_address,
+        residential_address: data.residential_address,
+        commercial_phone: data.commercial_phone,
+        mobile_phone: data.mobile_phone,
         enrollment_status: "inscrito",
         enrollment_date: new Date().toISOString(),
         attendance_records: [],
@@ -215,6 +392,57 @@ export default function EnrollmentPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const errors = {};
+    activeEnrollmentFields.forEach((field) => {
+      const rawValue = formData[field.field_key];
+      const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
+
+      if (field.required && !value) {
+        errors[field.field_key] = "Campo obrigatório.";
+        return;
+      }
+
+      if (!value) return;
+
+      const lowerKey = field.field_key.toLowerCase();
+      const digits = String(value).replace(/\D/g, "");
+      if (lowerKey.includes("cpf")) {
+        const isValidCpf = (() => {
+          if (digits.length !== 11 || /^(\d)\1+$/.test(digits)) return false;
+          let sum = 0;
+          for (let i = 0; i < 9; i += 1) sum += Number(digits[i]) * (10 - i);
+          let check = (sum * 10) % 11;
+          if (check === 10) check = 0;
+          if (check !== Number(digits[9])) return false;
+          sum = 0;
+          for (let i = 0; i < 10; i += 1) sum += Number(digits[i]) * (11 - i);
+          check = (sum * 10) % 11;
+          if (check === 10) check = 0;
+          return check === Number(digits[10]);
+        })();
+        if (!isValidCpf) {
+          errors[field.field_key] = "CPF inválido.";
+        }
+        return;
+      }
+
+      if (field.type === "email" || lowerKey.includes("email")) {
+        const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value));
+        if (!isValidEmail) {
+          errors[field.field_key] = "E-mail inválido.";
+        }
+        return;
+      }
+
+      if (field.type === "tel" || lowerKey.includes("phone") || lowerKey.includes("celular")) {
+        if (digits.length < 10 || digits.length > 11) {
+          errors[field.field_key] = "Telefone inválido.";
+        }
+      }
+    });
+
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     enrollMutation.mutate(formData);
   };
 
@@ -252,7 +480,7 @@ export default function EnrollmentPage() {
   const handleExportExcel = () => {
     const headers = [
       "Nome", "CPF", "RG", "Email", "Setor", "Matrícula", "Formação Profissional",
-      "Instituição", "Estado", "Região de Saúde", "Município", "Nome da Unidade",
+      "Instituição", "Estado", "Região de Saúde", "Município", "Nome da Unidade", "Cargo",
       "Endereço de Trabalho", "Endereço Residencial", "Telefone Comercial", "Celular",
       "Data de Inscrição", "Status"
     ];
@@ -270,6 +498,7 @@ export default function EnrollmentPage() {
       p.health_region || "",
       p.municipality || "",
       p.unit_name || "",
+      p.position || "",
       p.work_address || "",
       p.residential_address || "",
       p.commercial_phone || "",
@@ -487,6 +716,23 @@ export default function EnrollmentPage() {
     },
   ];
 
+  const filteredFields = enrollmentFields.filter((field) => {
+    if (!showInactiveFields && !field.is_active) return false;
+    if (!fieldSearch) return true;
+    const searchTerm = fieldSearch.toLowerCase();
+    return (
+      field.label?.toLowerCase().includes(searchTerm) ||
+      field.field_key?.toLowerCase().includes(searchTerm) ||
+      field.section?.toLowerCase().includes(searchTerm)
+    );
+  });
+
+  const orderedFields = [...filteredFields].sort((a, b) => {
+    const orderDiff = (a.order ?? 0) - (b.order ?? 0);
+    if (orderDiff !== 0) return orderDiff;
+    return (a.label || "").localeCompare(b.label || "");
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -544,9 +790,26 @@ export default function EnrollmentPage() {
                   <CardTitle className="text-base">Campos do Formulário</CardTitle>
                 </CardHeader>
                 <CardContent>
+                  <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-4">
+                    <Input
+                      placeholder="Buscar campo..."
+                      value={fieldSearch}
+                      onChange={(e) => setFieldSearch(e.target.value)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="show-inactive-fields"
+                        checked={showInactiveFields}
+                        onCheckedChange={(checked) => setShowInactiveFields(Boolean(checked))}
+                      />
+                      <Label htmlFor="show-inactive-fields" className="text-sm font-normal">
+                        Mostrar inativos
+                      </Label>
+                    </div>
+                  </div>
                   <DataTable
                     columns={fieldColumns}
-                    data={enrollmentFields}
+                    data={orderedFields}
                     emptyMessage="Nenhum campo cadastrado"
                   />
                 </CardContent>
@@ -592,14 +855,23 @@ export default function EnrollmentPage() {
                               <Label htmlFor={field.field_key}>
                                 {field.label} {field.required && "*"}
                               </Label>
-                              <Input
+                          <Input
                                 id={field.field_key}
                                 type={field.type}
                                 value={formData[field.field_key] || ""}
-                                onChange={(e) => setFormData({...formData, [field.field_key]: e.target.value})}
+                            onChange={(e) => {
+                              const nextValue = e.target.value;
+                              setFormData({ ...formData, [field.field_key]: nextValue });
+                              if (formErrors[field.field_key]) {
+                                setFormErrors((prev) => ({ ...prev, [field.field_key]: null }));
+                              }
+                            }}
                                 placeholder={field.placeholder}
                                 required={field.required}
                               />
+                          {formErrors[field.field_key] && (
+                            <p className="text-xs text-red-600">{formErrors[field.field_key]}</p>
+                          )}
                             </div>
                           ))}
                         </div>

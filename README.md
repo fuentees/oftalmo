@@ -33,6 +33,10 @@ armazenamento de arquivos.
 
 1. Crie um projeto no Supabase.
 2. Execute o script `supabase/schema.sql` no SQL Editor para criar as tabelas.
+   Se as tabelas já existirem, adicione as colunas novas no
+   `training_participants` (ex.: `professional_formation`, `institution`,
+   `state`, `health_region`, `municipality`, `unit_name`, `position`,
+   `work_address`, `residential_address`, `commercial_phone`, `mobile_phone`).
 3. Crie o bucket de armazenamento `uploads` e deixe como **public** (ou adapte
    a lógica para URLs assinadas).
 4. Configure as políticas de RLS conforme sua necessidade. Para rotas públicas
