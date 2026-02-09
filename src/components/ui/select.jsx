@@ -26,6 +26,7 @@ const SelectValue = SelectPrimitive.Value
 /** @typedef {import("react").ElementRef<typeof SelectPrimitive.Separator>} SelectSeparatorElement */
 /** @typedef {import("react").ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>} SelectSeparatorProps */
 
+/** @type {import("react").ForwardRefExoticComponent<SelectTriggerProps & import("react").RefAttributes<SelectTriggerElement>>} */
 const SelectTrigger = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<SelectTriggerElement, SelectTriggerProps>} */
   ({ className, children, ...props }, ref) => (
@@ -45,6 +46,7 @@ const SelectTrigger = React.forwardRef(
 )
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<SelectScrollUpButtonProps & import("react").RefAttributes<SelectScrollButtonElement>>} */
 const SelectScrollUpButton = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<SelectScrollButtonElement, SelectScrollUpButtonProps>} */
   ({ className, ...props }, ref) => (
@@ -58,6 +60,7 @@ const SelectScrollUpButton = React.forwardRef(
 )
 SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<SelectScrollDownButtonProps & import("react").RefAttributes<SelectScrollButtonElement>>} */
 const SelectScrollDownButton = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<SelectScrollButtonElement, SelectScrollDownButtonProps>} */
   ({ className, ...props }, ref) => (
@@ -72,6 +75,7 @@ const SelectScrollDownButton = React.forwardRef(
 SelectScrollDownButton.displayName =
   SelectPrimitive.ScrollDownButton.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<SelectContentProps & import("react").RefAttributes<SelectContentElement>>} */
 const SelectContent = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<SelectContentElement, SelectContentProps>} */
   ({ className, children, position = "popper", ...props }, ref) => (
@@ -99,6 +103,7 @@ const SelectContent = React.forwardRef(
 )
 SelectContent.displayName = SelectPrimitive.Content.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<SelectLabelProps & import("react").RefAttributes<SelectLabelElement>>} */
 const SelectLabel = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<SelectLabelElement, SelectLabelProps>} */
   ({ className, ...props }, ref) => (
@@ -110,6 +115,7 @@ const SelectLabel = React.forwardRef(
 )
 SelectLabel.displayName = SelectPrimitive.Label.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<SelectItemProps & import("react").RefAttributes<SelectItemElement>>} */
 const SelectItem = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<SelectItemElement, SelectItemProps>} */
   ({ className, children, ...props }, ref) => (
@@ -131,6 +137,7 @@ const SelectItem = React.forwardRef(
 )
 SelectItem.displayName = SelectPrimitive.Item.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<SelectSeparatorProps & import("react").RefAttributes<SelectSeparatorElement>>} */
 const SelectSeparator = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<SelectSeparatorElement, SelectSeparatorProps>} */
   ({ className, ...props }, ref) => (

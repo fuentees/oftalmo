@@ -12,6 +12,7 @@ const Tabs = TabsPrimitive.Root
 /** @typedef {import("react").ElementRef<typeof TabsPrimitive.Content>} TabsContentElement */
 /** @typedef {import("react").ComponentPropsWithoutRef<typeof TabsPrimitive.Content>} TabsContentProps */
 
+/** @type {import("react").ForwardRefExoticComponent<TabsListProps & import("react").RefAttributes<TabsListElement>>} */
 const TabsList = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<TabsListElement, TabsListProps>} */
   ({ className, ...props }, ref) => (
@@ -26,6 +27,7 @@ const TabsList = React.forwardRef(
 )
 TabsList.displayName = TabsPrimitive.List.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<TabsTriggerProps & import("react").RefAttributes<TabsTriggerElement>>} */
 const TabsTrigger = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<TabsTriggerElement, TabsTriggerProps>} */
   ({ className, ...props }, ref) => (
@@ -40,6 +42,7 @@ const TabsTrigger = React.forwardRef(
 )
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<TabsContentProps & import("react").RefAttributes<TabsContentElement>>} */
 const TabsContent = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<TabsContentElement, TabsContentProps>} */
   ({ className, ...props }, ref) => (

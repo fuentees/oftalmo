@@ -33,6 +33,7 @@ const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
 /** @typedef {import("react").ElementRef<typeof DropdownMenuPrimitive.Separator>} DropdownMenuSeparatorElement */
 /** @typedef {import("react").ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>} DropdownMenuSeparatorProps */
 
+/** @type {import("react").ForwardRefExoticComponent<DropdownMenuSubTriggerProps & import("react").RefAttributes<DropdownMenuSubTriggerElement>>} */
 const DropdownMenuSubTrigger = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<DropdownMenuSubTriggerElement, DropdownMenuSubTriggerProps>} */
   ({ className, inset, children, ...props }, ref) => (
@@ -52,6 +53,7 @@ const DropdownMenuSubTrigger = React.forwardRef(
 DropdownMenuSubTrigger.displayName =
   DropdownMenuPrimitive.SubTrigger.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<DropdownMenuSubContentProps & import("react").RefAttributes<DropdownMenuSubContentElement>>} */
 const DropdownMenuSubContent = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<DropdownMenuSubContentElement, DropdownMenuSubContentProps>} */
   ({ className, ...props }, ref) => (
@@ -67,6 +69,7 @@ const DropdownMenuSubContent = React.forwardRef(
 DropdownMenuSubContent.displayName =
   DropdownMenuPrimitive.SubContent.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<DropdownMenuContentProps & import("react").RefAttributes<DropdownMenuContentElement>>} */
 const DropdownMenuContent = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<DropdownMenuContentElement, DropdownMenuContentProps>} */
   ({ className, sideOffset = 4, ...props }, ref) => (
@@ -85,6 +88,7 @@ const DropdownMenuContent = React.forwardRef(
 )
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<DropdownMenuItemProps & import("react").RefAttributes<DropdownMenuItemElement>>} */
 const DropdownMenuItem = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<DropdownMenuItemElement, DropdownMenuItemProps>} */
   ({ className, inset, ...props }, ref) => (
@@ -100,6 +104,7 @@ const DropdownMenuItem = React.forwardRef(
 )
 DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<DropdownMenuCheckboxItemProps & import("react").RefAttributes<DropdownMenuCheckboxItemElement>>} */
 const DropdownMenuCheckboxItem = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<DropdownMenuCheckboxItemElement, DropdownMenuCheckboxItemProps>} */
   ({ className, children, checked, ...props }, ref) => (
@@ -123,6 +128,7 @@ const DropdownMenuCheckboxItem = React.forwardRef(
 DropdownMenuCheckboxItem.displayName =
   DropdownMenuPrimitive.CheckboxItem.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<DropdownMenuRadioItemProps & import("react").RefAttributes<DropdownMenuRadioItemElement>>} */
 const DropdownMenuRadioItem = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<DropdownMenuRadioItemElement, DropdownMenuRadioItemProps>} */
   ({ className, children, ...props }, ref) => (
@@ -144,6 +150,7 @@ const DropdownMenuRadioItem = React.forwardRef(
 )
 DropdownMenuRadioItem.displayName = DropdownMenuPrimitive.RadioItem.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<DropdownMenuLabelProps & import("react").RefAttributes<DropdownMenuLabelElement>>} */
 const DropdownMenuLabel = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<DropdownMenuLabelElement, DropdownMenuLabelProps>} */
   ({ className, inset, ...props }, ref) => (
@@ -155,6 +162,7 @@ const DropdownMenuLabel = React.forwardRef(
 )
 DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName
 
+/** @type {import("react").ForwardRefExoticComponent<DropdownMenuSeparatorProps & import("react").RefAttributes<DropdownMenuSeparatorElement>>} */
 const DropdownMenuSeparator = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<DropdownMenuSeparatorElement, DropdownMenuSeparatorProps>} */
   ({ className, ...props }, ref) => (

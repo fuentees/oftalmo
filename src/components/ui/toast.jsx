@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 
 /** @typedef {import("react").HTMLAttributes<HTMLDivElement>} ToastDivProps */
 
+/** @type {import("react").ForwardRefExoticComponent<ToastDivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const ToastProvider = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, ToastDivProps>} */
   ({ ...props }, ref) => (
@@ -17,6 +18,7 @@ const ToastProvider = React.forwardRef(
 );
 ToastProvider.displayName = "ToastProvider";
 
+/** @type {import("react").ForwardRefExoticComponent<ToastDivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const ToastViewport = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, ToastDivProps>} */
   ({ ...props }, ref) => (
@@ -47,6 +49,7 @@ const toastVariants = cva(
 
 /** @typedef {import("react").HTMLAttributes<HTMLDivElement> & { variant?: string }} ToastProps */
 
+/** @type {import("react").ForwardRefExoticComponent<ToastProps & import("react").RefAttributes<HTMLDivElement>>} */
 const Toast = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, ToastProps>} */
   ({ className, variant, ...props }, ref) => {
@@ -61,6 +64,7 @@ const Toast = React.forwardRef(
 );
 Toast.displayName = "Toast";
 
+/** @type {import("react").ForwardRefExoticComponent<ToastDivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const ToastAction = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, ToastDivProps>} */
   ({ className, ...props }, ref) => (
@@ -76,6 +80,7 @@ const ToastAction = React.forwardRef(
 );
 ToastAction.displayName = "ToastAction";
 
+/** @type {import("react").ForwardRefExoticComponent<import("react").ButtonHTMLAttributes<HTMLButtonElement> & import("react").RefAttributes<HTMLButtonElement>>} */
 const ToastClose = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLButtonElement, import("react").ButtonHTMLAttributes<HTMLButtonElement>>} */
   ({ className, ...props }, ref) => (
@@ -94,6 +99,7 @@ const ToastClose = React.forwardRef(
 );
 ToastClose.displayName = "ToastClose";
 
+/** @type {import("react").ForwardRefExoticComponent<ToastDivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const ToastTitle = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, ToastDivProps>} */
   ({ className, ...props }, ref) => (
@@ -106,6 +112,7 @@ const ToastTitle = React.forwardRef(
 );
 ToastTitle.displayName = "ToastTitle";
 
+/** @type {import("react").ForwardRefExoticComponent<ToastDivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const ToastDescription = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, ToastDivProps>} */
   ({ className, ...props }, ref) => (

@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils"
 
 /** @typedef {import("react").HTMLAttributes<HTMLDivElement>} DivProps */
 
+/** @type {import("react").ForwardRefExoticComponent<DivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const Card = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, DivProps>} */
   ({ className, ...props }, ref) => (
@@ -15,6 +16,7 @@ const Card = React.forwardRef(
 )
 Card.displayName = "Card"
 
+/** @type {import("react").ForwardRefExoticComponent<DivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const CardHeader = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, DivProps>} */
   ({ className, ...props }, ref) => (
@@ -26,6 +28,7 @@ const CardHeader = React.forwardRef(
 )
 CardHeader.displayName = "CardHeader"
 
+/** @type {import("react").ForwardRefExoticComponent<DivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const CardTitle = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, DivProps>} */
   ({ className, ...props }, ref) => (
@@ -37,6 +40,7 @@ const CardTitle = React.forwardRef(
 )
 CardTitle.displayName = "CardTitle"
 
+/** @type {import("react").ForwardRefExoticComponent<DivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const CardDescription = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, DivProps>} */
   ({ className, ...props }, ref) => (
@@ -48,6 +52,7 @@ const CardDescription = React.forwardRef(
 )
 CardDescription.displayName = "CardDescription"
 
+/** @type {import("react").ForwardRefExoticComponent<DivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const CardContent = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, DivProps>} */
   ({ className, ...props }, ref) => (
@@ -56,6 +61,7 @@ const CardContent = React.forwardRef(
 )
 CardContent.displayName = "CardContent"
 
+/** @type {import("react").ForwardRefExoticComponent<DivProps & import("react").RefAttributes<HTMLDivElement>>} */
 const CardFooter = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLDivElement, DivProps>} */
   ({ className, ...props }, ref) => (

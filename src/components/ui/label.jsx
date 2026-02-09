@@ -11,6 +11,7 @@ const labelVariants = cva(
 /** @typedef {import("react").ElementRef<typeof LabelPrimitive.Root>} LabelElement */
 /** @typedef {import("react").ComponentPropsWithoutRef<typeof LabelPrimitive.Root>} LabelProps */
 
+/** @type {import("react").ForwardRefExoticComponent<LabelProps & import("react").RefAttributes<LabelElement>>} */
 const Label = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<LabelElement, LabelProps>} */
   ({ className, ...props }, ref) => (

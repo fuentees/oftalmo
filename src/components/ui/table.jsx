@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 /** @typedef {import("react").HTMLAttributes<HTMLTableCellElement>} TableCellProps */
 /** @typedef {import("react").HTMLAttributes<HTMLTableCaptionElement>} TableCaptionProps */
 
+/** @type {import("react").ForwardRefExoticComponent<TableProps & import("react").RefAttributes<HTMLTableElement>>} */
 const Table = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLTableElement, TableProps>} */
   ({ className, ...props }, ref) => (
@@ -21,6 +22,7 @@ const Table = React.forwardRef(
 )
 Table.displayName = "Table"
 
+/** @type {import("react").ForwardRefExoticComponent<TableSectionProps & import("react").RefAttributes<HTMLTableSectionElement>>} */
 const TableHeader = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLTableSectionElement, TableSectionProps>} */
   ({ className, ...props }, ref) => (
@@ -29,6 +31,7 @@ const TableHeader = React.forwardRef(
 )
 TableHeader.displayName = "TableHeader"
 
+/** @type {import("react").ForwardRefExoticComponent<TableSectionProps & import("react").RefAttributes<HTMLTableSectionElement>>} */
 const TableBody = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLTableSectionElement, TableSectionProps>} */
   ({ className, ...props }, ref) => (
@@ -40,6 +43,7 @@ const TableBody = React.forwardRef(
 )
 TableBody.displayName = "TableBody"
 
+/** @type {import("react").ForwardRefExoticComponent<TableSectionProps & import("react").RefAttributes<HTMLTableSectionElement>>} */
 const TableFooter = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLTableSectionElement, TableSectionProps>} */
   ({ className, ...props }, ref) => (
@@ -51,6 +55,7 @@ const TableFooter = React.forwardRef(
 )
 TableFooter.displayName = "TableFooter"
 
+/** @type {import("react").ForwardRefExoticComponent<TableRowProps & import("react").RefAttributes<HTMLTableRowElement>>} */
 const TableRow = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLTableRowElement, TableRowProps>} */
   ({ className, ...props }, ref) => (
@@ -65,6 +70,7 @@ const TableRow = React.forwardRef(
 )
 TableRow.displayName = "TableRow"
 
+/** @type {import("react").ForwardRefExoticComponent<TableCellProps & import("react").RefAttributes<HTMLTableCellElement>>} */
 const TableHead = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLTableCellElement, TableCellProps>} */
   ({ className, ...props }, ref) => (
@@ -79,6 +85,7 @@ const TableHead = React.forwardRef(
 )
 TableHead.displayName = "TableHead"
 
+/** @type {import("react").ForwardRefExoticComponent<TableCellProps & import("react").RefAttributes<HTMLTableCellElement>>} */
 const TableCell = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLTableCellElement, TableCellProps>} */
   ({ className, ...props }, ref) => (
@@ -93,6 +100,7 @@ const TableCell = React.forwardRef(
 )
 TableCell.displayName = "TableCell"
 
+/** @type {import("react").ForwardRefExoticComponent<TableCaptionProps & import("react").RefAttributes<HTMLTableCaptionElement>>} */
 const TableCaption = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<HTMLTableCaptionElement, TableCaptionProps>} */
   ({ className, ...props }, ref) => (

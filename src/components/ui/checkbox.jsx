@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 /** @typedef {import("react").ElementRef<typeof CheckboxPrimitive.Root>} CheckboxElement */
 /** @typedef {import("react").ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>} CheckboxProps */
 
+/** @type {import("react").ForwardRefExoticComponent<CheckboxProps & import("react").RefAttributes<CheckboxElement>>} */
 const Checkbox = React.forwardRef(
   /** @type {import("react").ForwardRefRenderFunction<CheckboxElement, CheckboxProps>} */
   ({ className, ...props }, ref) => (
