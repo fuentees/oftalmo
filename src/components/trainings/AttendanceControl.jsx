@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Table, 
   TableBody, 
@@ -13,7 +14,7 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
-import { UserCheck, UserX, Search, Calendar, Link as LinkIcon, Copy, CheckCircle } from "lucide-react";
+import { UserCheck, UserX, Search, Calendar, Link as LinkIcon, Copy, CheckCircle, Download } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -22,6 +23,9 @@ export default function AttendanceControl({ training, participants, onClose }) {
   const trainingDates = Array.isArray(training?.dates)
     ? training.dates.filter((dateItem) => dateItem?.date)
     : [];
+  const sortedTrainingDates = [...trainingDates].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
   const [selectedDate, setSelectedDate] = useState(
     trainingDates[0]?.date || null
   );
@@ -33,6 +37,13 @@ export default function AttendanceControl({ training, participants, onClose }) {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return "-";
     return format(parsed, pattern);
+  };
+
+  const getStatusLabel = (status) => {
+    if (status === "presente") return "Presente";
+    if (status === "justificado") return "Justificado";
+    if (status === "ausente") return "Ausente";
+    return "-";
   };
 
   const updateAttendance = useMutation({
@@ -117,6 +128,44 @@ export default function AttendanceControl({ training, participants, onClose }) {
     return records.find(r => r.date === date);
   };
 
+  const exportDailyAttendance = () => {
+    if (sortedTrainingDates.length === 0) return;
+    const headers = [
+      "Nome",
+      "RG",
+      "E-mail",
+      ...sortedTrainingDates.map((item) => formatDate(item.date)),
+    ];
+
+    const escapeValue = (value) =>
+      `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+    const rows = filteredParticipants.map((participant) => {
+      const base = [
+        participant.professional_name || "",
+        participant.professional_rg || "",
+        participant.professional_email || "",
+      ];
+      const attendance = sortedTrainingDates.map((item) => {
+        const record = getAttendanceForDate(participant, item.date);
+        return getStatusLabel(record?.status);
+      });
+      return [...base, ...attendance];
+    });
+
+    const csv = [
+      headers.map(escapeValue).join(";"),
+      ...rows.map((row) => row.map(escapeValue).join(";")),
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `frequencia_${training.title || "treinamento"}.csv`;
+    link.click();
+  };
+
   const stats = {
     total: filteredParticipants.length,
     present: filteredParticipants.filter(p => {
@@ -145,15 +194,22 @@ export default function AttendanceControl({ training, participants, onClose }) {
         </Button>
       </div>
 
-      {/* Date Selection */}
-      {trainingDates.length > 1 && (
+      <Tabs defaultValue="attendance" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="attendance">Presença</TabsTrigger>
+          <TabsTrigger value="daily">Frequência por dia</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="attendance" className="space-y-4 mt-4">
+          {/* Date Selection */}
+          {trainingDates.length > 1 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Selecione a Data</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex gap-2 flex-wrap">
-              {trainingDates.map((dateItem, index) => (
+                  {sortedTrainingDates.map((dateItem, index) => (
                 <Button
                   key={index}
                   variant={selectedDate === dateItem.date ? "default" : "outline"}
@@ -171,7 +227,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
             </div>
           </CardContent>
         </Card>
-      )}
+          )}
 
       {/* Link Generation */}
       <Card className="border-blue-200 bg-blue-50">
@@ -338,6 +394,79 @@ export default function AttendanceControl({ training, participants, onClose }) {
           </TableBody>
         </Table>
       </div>
-    </div>
+    </TabsContent>
+
+    <TabsContent value="daily" className="space-y-4 mt-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-medium text-slate-700">
+            Frequência por dia
+          </h4>
+          <p className="text-xs text-slate-500">
+            Nome, RG e e-mail com presença por data.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={exportDailyAttendance}
+          disabled={sortedTrainingDates.length === 0}
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Exportar Planilha
+        </Button>
+      </div>
+
+      {sortedTrainingDates.length === 0 ? (
+        <div className="rounded-lg border bg-white p-8 text-center text-slate-500">
+          Nenhuma data cadastrada para este treinamento.
+        </div>
+      ) : (
+        <div className="border rounded-lg overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50">
+                <TableHead className="font-semibold">Nome</TableHead>
+                <TableHead className="font-semibold">RG</TableHead>
+                <TableHead className="font-semibold">E-mail</TableHead>
+                {sortedTrainingDates.map((item, index) => (
+                  <TableHead key={`${item.date}-${index}`} className="font-semibold">
+                    {formatDate(item.date)}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredParticipants.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={3 + sortedTrainingDates.length} className="text-center py-8 text-slate-500">
+                    Nenhum participante encontrado.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredParticipants.map((participant) => (
+                  <TableRow key={`daily-${participant.id}`}>
+                    <TableCell className="font-medium">
+                      {participant.professional_name}
+                    </TableCell>
+                    <TableCell>{participant.professional_rg || "-"}</TableCell>
+                    <TableCell>{participant.professional_email || "-"}</TableCell>
+                    {sortedTrainingDates.map((item, index) => {
+                      const record = getAttendanceForDate(participant, item.date);
+                      return (
+                        <TableCell key={`${participant.id}-${index}`}>
+                          {getStatusLabel(record?.status)}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </TabsContent>
+  </Tabs>
+</div>
   );
 }

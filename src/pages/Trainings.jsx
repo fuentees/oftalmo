@@ -79,6 +79,7 @@ export default function Trainings() {
   const [importStatus, setImportStatus] = useState(null);
 
   const navigate = useNavigate();
+  const autoUpdatedRef = React.useRef(new Set());
 
   const queryClient = useQueryClient();
 
@@ -429,10 +430,68 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     setImportStatus(null);
   };
 
+  const getLastTrainingDate = (training) => {
+    if (!training) return null;
+    const dates = [];
+    if (Array.isArray(training.dates)) {
+      training.dates.forEach((item) => {
+        if (item?.date) dates.push(item.date);
+      });
+    }
+    if (training.date) dates.push(training.date);
+    if (dates.length === 0) return null;
+    const parsedDates = dates
+      .map((date) => new Date(date))
+      .filter((date) => !Number.isNaN(date.getTime()));
+    if (parsedDates.length === 0) return null;
+    return new Date(Math.max(...parsedDates.map((date) => date.getTime())));
+  };
+
+  const shouldMarkConcluded = (training) => {
+    if (!training) return false;
+    if (training.status === "concluido" || training.status === "cancelado") {
+      return false;
+    }
+    const lastDate = getLastTrainingDate(training);
+    if (!lastDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return lastDate.getTime() < today.getTime();
+  };
+
+  React.useEffect(() => {
+    if (!trainings.length) return;
+    const pending = trainings.filter(
+      (training) =>
+        training.id &&
+        shouldMarkConcluded(training) &&
+        !autoUpdatedRef.current.has(training.id)
+    );
+    if (pending.length === 0) return;
+    pending.forEach((training) => autoUpdatedRef.current.add(training.id));
+    Promise.all(
+      pending.map((training) =>
+        dataClient.entities.Training.update(training.id, {
+          status: "concluido",
+        })
+      )
+    )
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      })
+      .catch(() => {
+        // Se falhar (RLS), mantém apenas o status visual.
+      });
+  }, [trainings, queryClient]);
+
+  const getTrainingStatus = (training) =>
+    shouldMarkConcluded(training) ? "concluido" : training.status;
+
   const filteredTrainings = trainings.filter((t) => {
+    const effectiveStatus = getTrainingStatus(t);
     const matchesSearch = t.title?.toLowerCase().includes(search.toLowerCase()) ||
-                          t.instructor?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || t.status === statusFilter;
+                          t.coordinator?.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === "all" || effectiveStatus === statusFilter;
     const matchesType = typeFilter === "all" || t.type === typeFilter;
     return matchesSearch && matchesStatus && matchesType;
   });
@@ -501,8 +560,8 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       render: (row) => <Badge variant="outline">{typeLabels[row.type]}</Badge>,
     },
     {
-      header: "Instrutor",
-      accessor: "instructor",
+      header: "Coordenador",
+      accessor: "coordinator",
     },
     {
       header: "Local",
@@ -525,11 +584,14 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     },
     {
       header: "Status",
-      render: (row) => (
-        <Badge className={statusColors[row.status]}>
-          {statusLabels[row.status]}
-        </Badge>
-      ),
+      render: (row) => {
+        const effectiveStatus = getTrainingStatus(row);
+        return (
+          <Badge className={statusColors[effectiveStatus]}>
+            {statusLabels[effectiveStatus]}
+          </Badge>
+        );
+      },
     },
     {
       header: "Ações",
@@ -654,7 +716,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           <SearchFilter
             searchValue={search}
             onSearchChange={setSearch}
-            searchPlaceholder="Buscar por título ou instrutor..."
+            searchPlaceholder="Buscar por título ou coordenador..."
             filters={[
               {
                 value: statusFilter,

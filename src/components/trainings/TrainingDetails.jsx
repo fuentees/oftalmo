@@ -145,7 +145,7 @@ export default function TrainingDetails({ training, participants }) {
               )}
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-slate-400" />
-                <span>Instrutor: {training.instructor}</span>
+                <span>Coordenador: {training.coordinator || "-"}</span>
               </div>
             </div>
           </CardContent>
