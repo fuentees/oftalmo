@@ -49,7 +49,7 @@ export default function EnrollmentPage() {
   const urlParams = new URLSearchParams(queryString);
   const trainingId = urlParams.get("training");
   
-  const [formData, setFormData] = useState({});
+  const [formData, setFormData] = useState(/** @type {Record<string, any>} */ ({}));
   const [submitted, setSubmitted] = useState(false);
   const [search, setSearch] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -58,7 +58,7 @@ export default function EnrollmentPage() {
   const [fieldDeleteConfirm, setFieldDeleteConfirm] = useState(null);
   const [fieldSearch, setFieldSearch] = useState("");
   const [showInactiveFields, setShowInactiveFields] = useState(false);
-  const [formErrors, setFormErrors] = useState({});
+  const [formErrors, setFormErrors] = useState(/** @type {Record<string, string | null>} */ ({}));
 
   const queryClient = useQueryClient();
 

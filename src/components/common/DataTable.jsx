@@ -14,7 +14,7 @@ export default function DataTable({
   columns,
   data = [],
   isLoading = false,
-  onRowClick,
+  onRowClick = null,
   emptyMessage = "Nenhum registro encontrado",
 }) {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: null });

@@ -45,7 +45,24 @@ export default function PublicEnrollment() {
     mobile_phone: "",
   });
   const [submitted, setSubmitted] = useState(false);
-  const [formErrors, setFormErrors] = useState({});
+  const [formErrors, setFormErrors] = useState({
+    name: null,
+    cpf: null,
+    rg: null,
+    email: null,
+    sector: null,
+    registration: null,
+    professional_formation: null,
+    institution: null,
+    state: null,
+    health_region: null,
+    municipality: null,
+    unit_name: null,
+    work_address: null,
+    residential_address: null,
+    commercial_phone: null,
+    mobile_phone: null,
+  });
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],

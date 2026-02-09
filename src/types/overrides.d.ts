@@ -50,6 +50,16 @@ declare module "@/components/ui/select" {
   export const SelectScrollDownButton: any;
 }
 
+declare module "@/components/ui/alert" {
+  export const Alert: any;
+  export const AlertTitle: any;
+  export const AlertDescription: any;
+}
+
+declare module "@/components/ui/checkbox" {
+  export const Checkbox: any;
+}
+
 declare module "@/components/ui/dialog" {
   export const Dialog: any;
   export const DialogContent: any;
@@ -75,6 +85,24 @@ declare module "@/components/ui/alert-dialog" {
   export const AlertDialogTrigger: any;
 }
 
+declare module "@/components/ui/dropdown-menu" {
+  export const DropdownMenu: any;
+  export const DropdownMenuTrigger: any;
+  export const DropdownMenuContent: any;
+  export const DropdownMenuItem: any;
+  export const DropdownMenuCheckboxItem: any;
+  export const DropdownMenuRadioItem: any;
+  export const DropdownMenuLabel: any;
+  export const DropdownMenuSeparator: any;
+  export const DropdownMenuShortcut: any;
+  export const DropdownMenuGroup: any;
+  export const DropdownMenuPortal: any;
+  export const DropdownMenuSub: any;
+  export const DropdownMenuSubContent: any;
+  export const DropdownMenuSubTrigger: any;
+  export const DropdownMenuRadioGroup: any;
+}
+
 declare module "@/components/ui/table" {
   export const Table: any;
   export const TableBody: any;
@@ -86,4 +114,34 @@ declare module "@/components/ui/table" {
 
 declare module "@/components/ui/skeleton" {
   export const Skeleton: any;
+}
+
+declare module "@/components/ui/textarea" {
+  export const Textarea: any;
+}
+
+declare module "@/components/ui/toast" {
+  export const Toast: any;
+  export const ToastAction: any;
+  export const ToastClose: any;
+  export const ToastDescription: any;
+  export const ToastProvider: any;
+  export const ToastTitle: any;
+  export const ToastViewport: any;
+}
+
+declare module "@/components/ui/toaster" {
+  export const Toaster: any;
+}
+
+declare module "@/components/ui/tooltip" {
+  export const Tooltip: any;
+  export const TooltipContent: any;
+  export const TooltipProvider: any;
+  export const TooltipTrigger: any;
+}
+
+declare module "papaparse" {
+  const Papa: any;
+  export default Papa;
 }
