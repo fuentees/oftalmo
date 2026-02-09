@@ -13,7 +13,12 @@ import {
   ClipboardCheck,
   Award,
   MoreVertical,
-  FileText
+  FileText,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  AlertCircle,
+  CheckCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +45,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
@@ -61,6 +69,9 @@ export default function Trainings() {
   const [showMaterials, setShowMaterials] = useState(false);
   const [selectedTraining, setSelectedTraining] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importStatus, setImportStatus] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -107,6 +118,258 @@ export default function Trainings() {
     { value: "pratico", label: "Prático" },
     { value: "teorico_pratico", label: "Teórico/Prático" },
   ];
+
+  const normalizeHeader = (value) => {
+    if (value === null || value === undefined) return "";
+    return String(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  };
+
+  const normalizeRow = (row) => {
+    const normalized = {};
+    Object.entries(row || {}).forEach(([key, value]) => {
+      const normalizedKey = normalizeHeader(key);
+      if (!normalizedKey) return;
+      normalized[normalizedKey] = value;
+    });
+    return normalized;
+  };
+
+  const pickValue = (row, keys) => {
+    for (const key of keys) {
+      const value = row[key];
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return null;
+  };
+
+  const cleanValue = (value) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed ? trimmed : null;
+    }
+    return value;
+  };
+
+  const toNumber = (value) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    const normalized = String(value).replace(",", ".").trim();
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const toInteger = (value) => {
+    const numeric = toNumber(value);
+    return Number.isFinite(numeric) ? Math.trunc(numeric) : null;
+  };
+
+  const normalizeType = (value) => {
+    const normalized = normalizeHeader(value);
+    if (!normalized) return null;
+    if (normalized.includes("teorico") && normalized.includes("pratico")) {
+      return "teorico_pratico";
+    }
+    if (normalized.includes("teorico")) return "teorico";
+    if (normalized.includes("pratico")) return "pratico";
+    return normalized;
+  };
+
+  const normalizeStatus = (value) => {
+    const normalized = normalizeHeader(value);
+    if (!normalized) return null;
+    if (normalized.includes("agendado")) return "agendado";
+    if (normalized.includes("andamento")) return "em_andamento";
+    if (normalized.includes("concluido")) return "concluido";
+    if (normalized.includes("cancelado")) return "cancelado";
+    return normalized;
+  };
+
+  const normalizeDatesArray = (value) =>
+    (Array.isArray(value) ? value : [])
+      .map((item) => {
+        if (!item) return null;
+        if (typeof item === "string") return item;
+        if (typeof item === "object" && item.date) return item.date;
+        return null;
+      })
+      .filter(Boolean)
+      .map((date) => ({ date }));
+
+  const parseDatesField = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return normalizeDatesArray(value);
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      if (trimmed.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          return normalizeDatesArray(parsed);
+        } catch (error) {
+          // Ignora JSON inválido
+        }
+      }
+      return trimmed
+        .split(/[;,|]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((date) => ({ date }));
+    }
+    return [];
+  };
+
+  const importTrainings = useMutation({
+    mutationFn: async (/** @type {File} */ file) => {
+      setImportStatus({ type: "loading", message: "Processando planilha..." });
+
+      const { file_url } = await dataClient.integrations.Core.UploadFile({ file });
+      const result = await dataClient.integrations.Core.ExtractDataFromUploadedFile({
+        file_url,
+      });
+
+      if (result.status === "error") {
+        throw new Error(result.details || "Erro ao processar planilha");
+      }
+
+      const rows = result.output?.participants || result.output || [];
+      if (!Array.isArray(rows) || rows.length === 0) {
+        throw new Error("Nenhum dado encontrado na planilha.");
+      }
+
+      const payloads = rows
+        .map((rawRow) => {
+          const row = normalizeRow(rawRow);
+          const title = cleanValue(pickValue(row, ["title", "titulo"]));
+          if (!title) return null;
+
+          const dateValue = cleanValue(pickValue(row, ["date", "data"]));
+          const parsedDates = parseDatesField(pickValue(row, ["dates", "datas"]));
+          const dates = parsedDates.length
+            ? parsedDates
+            : dateValue
+            ? [{ date: dateValue }]
+            : [];
+
+          const payload = {
+            title,
+            code: cleanValue(pickValue(row, ["code", "codigo"])),
+            type: normalizeType(pickValue(row, ["type", "tipo"])),
+            category: cleanValue(pickValue(row, ["category", "categoria"])),
+            description: cleanValue(pickValue(row, ["description", "descricao"])),
+            duration_hours: toInteger(
+              pickValue(row, ["duration_hours", "duracao_horas", "duracao"])
+            ),
+            location: cleanValue(pickValue(row, ["location", "local"])),
+            online_link: cleanValue(
+              pickValue(row, ["online_link", "link_online", "link"])
+            ),
+            coordinator: cleanValue(pickValue(row, ["coordinator", "coordenador"])),
+            coordinator_email: cleanValue(
+              pickValue(row, [
+                "coordinator_email",
+                "coordenador_email",
+                "email_coordenador",
+              ])
+            ),
+            instructor: cleanValue(pickValue(row, ["instructor", "instrutor"])),
+            max_participants: toInteger(
+              pickValue(row, ["max_participants", "maximo_participantes"])
+            ),
+            status: normalizeStatus(pickValue(row, ["status", "situacao"])) || "agendado",
+            validity_months: toInteger(
+              pickValue(row, ["validity_months", "validade_meses"])
+            ),
+            notes: cleanValue(pickValue(row, ["notes", "observacoes", "obs"])),
+          };
+
+          if (dates.length > 0) {
+            payload.dates = dates;
+            payload.date = dateValue || dates[0]?.date || null;
+          } else if (dateValue) {
+            payload.date = dateValue;
+          }
+
+          return payload;
+        })
+        .filter(Boolean);
+
+      if (payloads.length === 0) {
+        throw new Error("Nenhum treinamento válido encontrado.");
+      }
+
+      await dataClient.entities.Training.bulkCreate(payloads);
+
+      const skipped = rows.length - payloads.length;
+      setImportStatus({
+        type: "success",
+        message: `${payloads.length} treinamento(s) importado(s) com sucesso${
+          skipped > 0 ? ` (${skipped} linha(s) ignoradas)` : ""
+        }.`,
+      });
+
+      return payloads;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      setTimeout(() => {
+        setShowImport(false);
+        setImportFile(null);
+        setImportStatus(null);
+      }, 2000);
+    },
+    onError: (error) => {
+      setImportStatus({
+        type: "error",
+        message: error.message || "Erro ao importar planilha",
+      });
+    },
+  });
+
+  const handleImportFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setImportFile(file);
+      setImportStatus(null);
+    }
+  };
+
+  const handleImport = () => {
+    if (importFile) {
+      importTrainings.mutate(importFile);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const template = `title,code,type,category,date,dates,duration_hours,location,online_link,coordinator,coordinator_email,instructor,max_participants,status,validity_months,notes
+NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria Silva,maria@email.com,João Santos,30,agendado,12,Turma manhã`;
+
+    const blob = new Blob([template], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "modelo_treinamentos.csv";
+    link.click();
+  };
+
+  const handleOpenImport = () => {
+    setImportFile(null);
+    setImportStatus(null);
+    setShowImport(true);
+  };
+
+  const handleCloseImport = () => {
+    setShowImport(false);
+    setImportFile(null);
+    setImportStatus(null);
+  };
 
   const filteredTrainings = trainings.filter((t) => {
     const matchesSearch = t.title?.toLowerCase().includes(search.toLowerCase()) ||
@@ -325,27 +588,48 @@ export default function Trainings() {
         actionLabel="Novo Treinamento"
       />
 
-      <SearchFilter
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Buscar por título ou instrutor..."
-        filters={[
-          {
-            value: statusFilter,
-            onChange: setStatusFilter,
-            placeholder: "Status",
-            allLabel: "Todos os status",
-            options: statusOptions,
-          },
-          {
-            value: typeFilter,
-            onChange: setTypeFilter,
-            placeholder: "Tipo",
-            allLabel: "Todos os tipos",
-            options: typeOptions,
-          },
-        ]}
-      />
+      <div className="flex flex-col lg:flex-row gap-3 justify-between">
+        <div className="flex-1">
+          <SearchFilter
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Buscar por título ou instrutor..."
+            filters={[
+              {
+                value: statusFilter,
+                onChange: setStatusFilter,
+                placeholder: "Status",
+                allLabel: "Todos os status",
+                options: statusOptions,
+              },
+              {
+                value: typeFilter,
+                onChange: setTypeFilter,
+                placeholder: "Tipo",
+                allLabel: "Todos os tipos",
+                options: typeOptions,
+              },
+            ]}
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={downloadTemplate}
+            className="flex items-center gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Modelo
+          </Button>
+          <Button
+            onClick={handleOpenImport}
+            className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            Importar Planilha
+          </Button>
+        </div>
+      </div>
 
       <DataTable
         columns={columns}
@@ -353,6 +637,121 @@ export default function Trainings() {
         isLoading={isLoading}
         emptyMessage="Nenhum treinamento cadastrado"
       />
+
+      {/* Import Dialog */}
+      <Dialog
+        open={showImport}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseImport();
+            return;
+          }
+          setShowImport(true);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Importar Treinamentos
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Baixe o modelo, preencha com os treinamentos e envie a planilha
+                para importar.
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex">
+              <Button
+                variant="outline"
+                onClick={downloadTemplate}
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Baixar modelo
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="training-import-file">
+                Selecione o arquivo (.xlsx, .csv)
+              </Label>
+              <Input
+                id="training-import-file"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleImportFileChange}
+              />
+              {importFile && (
+                <p className="text-sm text-slate-500">
+                  Arquivo selecionado: {importFile.name}
+                </p>
+              )}
+            </div>
+
+            {importStatus && (
+              <Alert
+                className={
+                  importStatus.type === "error"
+                    ? "border-red-200 bg-red-50"
+                    : importStatus.type === "success"
+                    ? "border-green-200 bg-green-50"
+                    : "border-blue-200 bg-blue-50"
+                }
+              >
+                {importStatus.type === "error" && (
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                )}
+                {importStatus.type === "success" && (
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                )}
+                {importStatus.type === "loading" && (
+                  <AlertCircle className="h-4 w-4 text-blue-600" />
+                )}
+                <AlertDescription
+                  className={
+                    importStatus.type === "error"
+                      ? "text-red-800"
+                      : importStatus.type === "success"
+                      ? "text-green-800"
+                      : "text-blue-800"
+                  }
+                >
+                  {importStatus.message}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={handleCloseImport}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleImport}
+                disabled={!importFile || importTrainings.isPending}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {importTrainings.isPending ? (
+                  <>
+                    <AlertCircle className="h-4 w-4 mr-2 animate-spin" />
+                    Importando...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Importar
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Training Form Dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>

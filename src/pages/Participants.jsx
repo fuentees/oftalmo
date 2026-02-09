@@ -316,14 +316,14 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
             className="flex items-center gap-2"
           >
             <Download className="h-4 w-4" />
-            Modelo Excel
+            Modelo
           </Button>
           <Button
             onClick={() => setShowUpload(true)}
             className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
           >
             <Upload className="h-4 w-4" />
-            Importar Excel
+            Importar Planilha
           </Button>
         </div>
       </div>
@@ -341,7 +341,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5" />
-              Importar Participantes por Excel
+              Importar Participantes por Planilha
             </DialogTitle>
           </DialogHeader>
           
@@ -349,12 +349,12 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                Faça o download do modelo Excel, preencha com os dados dos participantes e faça o upload aqui.
+                Faça o download do modelo, preencha com os dados dos participantes e faça o upload aqui.
               </AlertDescription>
             </Alert>
 
             <div className="space-y-2">
-              <Label htmlFor="file">Selecione o arquivo Excel (.xlsx, .csv)</Label>
+              <Label htmlFor="file">Selecione o arquivo (.xlsx, .csv)</Label>
               <Input
                 id="file"
                 type="file"
