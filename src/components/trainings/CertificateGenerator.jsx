@@ -220,7 +220,7 @@ const resolveSignature = (signature, training) => {
 };
 
 export const generateParticipantCertificate = (participant, training, templateOverride) => {
-  const template = templateOverride || loadCertificateTemplate("participant");
+  const template = templateOverride || loadCertificateTemplate();
   const pdf = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -298,13 +298,25 @@ export const generateParticipantCertificate = (participant, training, templateOv
     signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
     signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
   };
-  // Title
-  pdf.setFontSize(sizes.title);
-  pdf.setFont(fontFamily, "bold");
-  pdf.text(template.title || "CERTIFICADO", titlePosition.x, titlePosition.y, {
-    align: "center",
+  const titlePosition = getTextPosition(template, "title", {
+    x: pageWidth / 2,
+    y: titleY,
+    width: pageWidth - 40,
   });
-
+  const bodyPosition = getTextPosition(template, "body", {
+    x: pageWidth / 2,
+    y: titleY + 16,
+    width: pageWidth - 40,
+  });
+  const footerPosition = getTextPosition(template, "footer", {
+    x: pageWidth / 2,
+    y: pageHeight - 55,
+    width: pageWidth - 40,
+  });
+  const signatureDefaults = {
+    signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
+    signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
+  };
   const participantDate = Array.isArray(training.dates)
     ? formatDateSafe(training.dates[0]?.date)
     : null;
@@ -318,7 +330,17 @@ export const generateParticipantCertificate = (participant, training, templateOv
     entidade: template.entityName || "",
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
+    funcao: "participante",
+    tipo_certificado: "participante",
   };
+
+  // Title
+  pdf.setFontSize(sizes.title);
+  pdf.setFont(fontFamily, "bold");
+  const titleText = interpolateText(template.title || "CERTIFICADO", textData);
+  pdf.text(titleText, titlePosition.x, titlePosition.y, {
+    align: "center",
+  });
 
   const bodyText = interpolateText(template.body || "", textData).trim();
   const bodyWidth = bodyPosition.width || pageWidth - 40;
@@ -329,7 +351,6 @@ export const generateParticipantCertificate = (participant, training, templateOv
   const justifyBody = textOptions.bodyJustify !== false;
   const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
   const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
-  const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
   pdf.setFontSize(sizes.body);
@@ -385,7 +406,7 @@ export const generateParticipantCertificate = (participant, training, templateOv
 };
 
 export const generateMonitorCertificate = (monitor, training, templateOverride) => {
-  const template = templateOverride || loadCertificateTemplate("monitor");
+  const template = templateOverride || loadCertificateTemplate();
   const pdf = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -445,27 +466,26 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
 
   const titleY = 40 + (template.headerLines?.length || 0) * 3;
 
-  // Title
-  pdf.setFontSize(sizes.title);
-  pdf.setFont(fontFamily, "bold");
-  pdf.text(template.title || "CERTIFICADO DE MONITORIA", titlePosition.x, titlePosition.y, {
-    align: "center",
-  });
-
-  const monitorDate = Array.isArray(training.dates)
-    ? formatDateSafe(training.dates[0]?.date)
-    : null;
-
   const textData = {
     nome: monitor.name || "",
     rg: monitor.rg ? `RG ${monitor.rg}` : "",
     treinamento: training.title || "",
     carga_horaria: training.duration_hours || "",
-    data: monitorDate || formatDateSafe(new Date()),
+    data: formatDateSafe(training.dates?.[0]?.date) || formatDateSafe(new Date()),
     entidade: template.entityName || "",
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
+    funcao: "monitor",
+    tipo_certificado: "monitor",
   };
+
+  // Title
+  pdf.setFontSize(sizes.title);
+  pdf.setFont(fontFamily, "bold");
+  const titleText = interpolateText(template.title || "CERTIFICADO", textData);
+  pdf.text(titleText, titlePosition.x, titlePosition.y, {
+    align: "center",
+  });
 
   const bodyText = interpolateText(template.body || "", textData).trim();
   const bodyWidth = bodyPosition.width || pageWidth - 40;
@@ -476,6 +496,7 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
   const justifyBody = textOptions.bodyJustify !== false;
   const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
   const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
   pdf.setFontSize(sizes.body);
   pdf.setFont(fontFamily, "normal");
