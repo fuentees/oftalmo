@@ -44,6 +44,7 @@ import {
   resetCertificateTemplate,
   saveCertificateTemplate,
 } from "@/lib/certificateTemplate";
+import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
 
 export default function Settings() {
   const [selectedColor, setSelectedColor] = useState("blue");
@@ -617,6 +618,33 @@ export default function Settings() {
       type: "success",
       message: "Modelo padrão restaurado.",
     });
+  };
+
+  const normalizeRgValue = (value) =>
+    String(value || "")
+      .replace(/^rg\s*/i, "")
+      .trim();
+
+  const handlePreviewPdf = () => {
+    const participant = {
+      professional_name: previewData.nome,
+      professional_rg: normalizeRgValue(previewData.rg),
+      professional_email: "exemplo@email.com",
+    };
+    const training = {
+      title: previewData.treinamento,
+      dates: [{ date: new Date() }],
+      duration_hours: Number(previewData.carga_horaria) || 0,
+      coordinator: previewData.coordenador,
+      instructor: previewData.instrutor,
+    };
+    const pdf = generateParticipantCertificate(
+      participant,
+      training,
+      certificateTemplate
+    );
+    const blobUrl = pdf.output("bloburl");
+    window.open(blobUrl, "_blank");
   };
 
   const handleEmailSettingChange = (field, value) => {
@@ -1372,6 +1400,10 @@ export default function Settings() {
 
               <div className="flex flex-wrap gap-2">
                 <Button onClick={handleSaveCertificate}>Salvar</Button>
+                <Button variant="outline" onClick={handlePreviewPdf}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  Visualizar PDF
+                </Button>
                 <Button variant="outline" onClick={handleResetCertificate}>
                   Restaurar padrão
                 </Button>
@@ -1616,10 +1648,11 @@ export default function Settings() {
                               }
                             >
                               <div
-                                className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center text-slate-700 whitespace-pre-line"
+                                className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-slate-700 whitespace-pre-line"
                                 style={{
                                   fontFamily: previewFont,
                                   fontSize: certificateTemplate.fonts?.bodySize || 14,
+                                  textAlign: "justify",
                                 }}
                               >
                                 {previewBody}
