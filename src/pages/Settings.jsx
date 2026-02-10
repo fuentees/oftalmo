@@ -739,6 +739,7 @@ export default function Settings() {
     instrutor: "Instrutor(a) Responsável",
     funcao: "participante",
     tipo_certificado: "participante",
+    aula: "Aula de Exemplo",
   };
 
   const resolveSignature = (signature) => {
@@ -1140,7 +1141,7 @@ export default function Settings() {
                 <AlertDescription>
                   Variáveis disponíveis: {"{{nome}}"}, {"{{rg}}"}, {"{{treinamento}}"},
                   {"{{carga_horaria}}"}, {"{{data}}"}, {"{{entidade}}"},
-                  {"{{coordenador}}"}, {"{{instrutor}}"}, {"{{funcao}}"} e {"{{tipo_certificado}}"}.
+                  {"{{coordenador}}"}, {"{{instrutor}}"}, {"{{funcao}}"}, {"{{tipo_certificado}}"} e {"{{aula}}"}.
                 </AlertDescription>
               </Alert>
 

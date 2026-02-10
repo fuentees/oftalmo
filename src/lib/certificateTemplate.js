@@ -34,7 +34,7 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
     bodyJustify: true,
     bodyLineHeight: 1.2,
     bodyMaxWordSpacing: 3,
-    bodyIndent: 6,
+    bodyIndent: 12,
   },
   logos: {},
   logoPositions: {},
@@ -114,6 +114,11 @@ const mergeTemplate = (template) => {
       ...(template?.signature2 || {}),
     },
   };
+  const defaultIndent = Number(DEFAULT_CERTIFICATE_TEMPLATE.textOptions.bodyIndent) || 0;
+  const mergedIndent = Number(merged.textOptions?.bodyIndent);
+  if (!Number.isFinite(mergedIndent) || mergedIndent < defaultIndent) {
+    merged.textOptions.bodyIndent = defaultIndent;
+  }
   return cleanLegacyLogos(merged);
 };
 
