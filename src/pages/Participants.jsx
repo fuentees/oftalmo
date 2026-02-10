@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
@@ -7,7 +7,9 @@ import {
   Download,
   FileSpreadsheet,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +17,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
@@ -23,9 +32,13 @@ import { useNavigate } from "react-router-dom";
 export default function Participants() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [courseFilter, setCourseFilter] = useState("all");
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
 
   const queryClient = useQueryClient();
 
@@ -63,6 +76,15 @@ export default function Participants() {
     const candName = normalizeText(candidate.professional_name);
     const candEmail = normalizeEmail(candidate.professional_email);
     const candRg = normalizeRg(candidate.professional_rg);
+
+    const nameEmailMatch =
+      baseName &&
+      candName &&
+      baseName === candName &&
+      baseEmail &&
+      candEmail &&
+      baseEmail === candEmail;
+    if (nameEmailMatch) return true;
 
     const rgMatch = baseRg && candRg && baseRg === candRg;
     if (rgMatch) return true;
@@ -123,21 +145,25 @@ export default function Participants() {
     repadronizacao: "Repadronização",
   };
 
-  const trainingTypeMaps = useMemo(() => {
+  const trainingMaps = useMemo(() => {
     const byId = new Map();
     const byTitle = new Map();
+    const titleById = new Map();
     trainings.forEach((training) => {
       if (training.id) byId.set(training.id, training.type);
       const titleKey = normalizeText(training.title);
       if (titleKey) byTitle.set(titleKey, training.type);
+      if (training.id && training.title) {
+        titleById.set(training.id, training.title);
+      }
     });
-    return { byId, byTitle };
+    return { byId, byTitle, titleById };
   }, [trainings]);
 
   const resolveTrainingType = (participant) => {
     if (!participant) return null;
-    const byId = trainingTypeMaps.byId;
-    const byTitle = trainingTypeMaps.byTitle;
+    const byId = trainingMaps.byId;
+    const byTitle = trainingMaps.byTitle;
     const typeFromId = byId.get(participant.training_id);
     if (typeFromId) return typeFromId;
     const typeFromTitle = byTitle.get(normalizeText(participant.training_title));
@@ -315,23 +341,30 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     return groups.map((group) => {
       const profile = mergeParticipantData(group.members);
       const typeSet = new Set();
+      const titleSet = new Set();
       group.members.forEach((member) => {
         const type = resolveTrainingType(member);
         if (type) typeSet.add(type);
+        const title =
+          member.training_title ||
+          trainingMaps.titleById.get(member.training_id);
+        if (title) titleSet.add(title);
       });
       return {
         id: group.id,
         profile,
         members: group.members,
         courseTypes: Array.from(typeSet),
+        courseTitles: Array.from(titleSet),
       };
     });
-  }, [participants, trainingTypeMaps]);
+  }, [participants, trainingMaps]);
 
   const filteredParticipants = groupedParticipants
     .filter((group) => {
       if (!search) return true;
       const searchTerm = normalizeText(search);
+      const courseTitles = group.courseTitles.join(" ");
       const courseLabel = group.courseTypes
         .map((type) => typeLabels[type] || type)
         .join(" ");
@@ -344,11 +377,23 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
           group.profile.health_region,
           group.profile.mobile_phone,
           courseLabel,
+          courseTitles,
         ]
           .filter(Boolean)
           .join(" ")
       );
       return haystack.includes(searchTerm);
+    })
+    .filter((group) => {
+      if (typeFilter === "all") return true;
+      return group.courseTypes.includes(typeFilter);
+    })
+    .filter((group) => {
+      if (courseFilter === "all") return true;
+      const normalizedFilter = normalizeText(courseFilter);
+      return group.courseTitles.some(
+        (title) => normalizeText(title) === normalizedFilter
+      );
     })
     .sort((a, b) =>
       (a.profile.professional_name || "").localeCompare(
@@ -357,6 +402,51 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         { sensitivity: "base" }
       )
     );
+
+  const courseOptions = useMemo(() => {
+    const titles = new Set();
+    trainings.forEach((training) => {
+      if (training.title) titles.add(training.title);
+    });
+    participants.forEach((participant) => {
+      if (participant.training_title) {
+        titles.add(participant.training_title);
+        return;
+      }
+      if (participant.training_id) {
+        const title = trainingMaps.titleById.get(participant.training_id);
+        if (title) titles.add(title);
+      }
+    });
+    return Array.from(titles)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
+      .map((title) => ({ value: title, label: title }));
+  }, [participants, trainings, trainingMaps]);
+
+  const totalItems = filteredParticipants.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, typeFilter, courseFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const paginatedParticipants = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredParticipants.slice(start, start + pageSize);
+  }, [filteredParticipants, page, pageSize]);
+
+  const pageRangeLabel = () => {
+    if (totalItems === 0) return "0 de 0";
+    const start = (page - 1) * pageSize + 1;
+    const end = Math.min(page * pageSize, totalItems);
+    return `${start}-${end} de ${totalItems}`;
+  };
 
   const columns = [
     {
@@ -427,6 +517,27 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
             searchValue={search}
             onSearchChange={setSearch}
             searchPlaceholder="Buscar por nome, RG, e-mail ou município..."
+            filters={[
+              {
+                value: typeFilter,
+                onChange: setTypeFilter,
+                placeholder: "Tipo de curso",
+                allLabel: "Todos os tipos",
+                options: [
+                  { value: "teorico", label: "Teórico" },
+                  { value: "pratico", label: "Prático" },
+                  { value: "teorico_pratico", label: "Teórico/Prático" },
+                  { value: "repadronizacao", label: "Repadronização" },
+                ],
+              },
+              {
+                value: courseFilter,
+                onChange: setCourseFilter,
+                placeholder: "Curso",
+                allLabel: "Todos os cursos",
+                options: courseOptions,
+              },
+            ]}
           />
         </div>
         <div className="flex gap-2">
@@ -450,10 +561,59 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
 
       <DataTable
         columns={columns}
-        data={filteredParticipants}
+        data={paginatedParticipants}
         isLoading={isLoading}
         emptyMessage="Nenhum participante registrado"
       />
+
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm text-slate-600">
+          <span>Itens por página</span>
+          <Select
+            value={String(pageSize)}
+            onValueChange={(value) => {
+              setPageSize(Number(value));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[10, 20, 50].map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-slate-400">({pageRangeLabel()})</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            disabled={page <= 1}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Anterior
+          </Button>
+          <span className="text-sm text-slate-600">
+            Página {page} de {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={page >= totalPages}
+          >
+            Próxima
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+      </div>
 
       {/* Upload Dialog */}
       <Dialog open={showUpload} onOpenChange={setShowUpload}>

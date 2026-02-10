@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -44,6 +45,8 @@ export default function Settings() {
     DEFAULT_CERTIFICATE_TEMPLATE
   );
   const [certificateStatus, setCertificateStatus] = useState(null);
+  const [lockLogoRatio, setLockLogoRatio] = useState(false);
+  const [showLogoGrid, setShowLogoGrid] = useState(false);
 
   useEffect(() => {
     const savedColor = localStorage.getItem("theme-color") || "blue";
@@ -134,6 +137,212 @@ export default function Settings() {
     reader.readAsDataURL(file);
   };
 
+  const logoSlots = [
+    { key: "primary", label: "Logo 1" },
+    { key: "secondary", label: "Logo 2" },
+    { key: "tertiary", label: "Logo 3" },
+    { key: "quaternary", label: "Logo 4" },
+  ];
+
+  const defaultLogoPositions = useMemo(
+    () => ({
+      primary: { x: 20, y: 18, w: 30, h: 30 },
+      secondary: { x: 247, y: 18, w: 30, h: 30 },
+      tertiary: { x: 20, y: 160, w: 30, h: 30 },
+      quaternary: { x: 247, y: 160, w: 30, h: 30 },
+    }),
+    []
+  );
+
+  const previewRef = useRef(null);
+  const dragStateRef = useRef(null);
+  const MIN_LOGO_SIZE = 5;
+
+  const getLogoPosition = (key) => {
+    const base = defaultLogoPositions[key] || { x: 20, y: 18, w: 30, h: 30 };
+    const stored = certificateTemplate.logoPositions?.[key] || {};
+    return {
+      x: Number.isFinite(Number(stored.x)) ? Number(stored.x) : base.x,
+      y: Number.isFinite(Number(stored.y)) ? Number(stored.y) : base.y,
+      w: Number.isFinite(Number(stored.w)) ? Number(stored.w) : base.w,
+      h: Number.isFinite(Number(stored.h)) ? Number(stored.h) : base.h,
+    };
+  };
+
+  const clampLogoPosition = (pos) => {
+    let w = Math.max(MIN_LOGO_SIZE, Number(pos.w) || 0);
+    let h = Math.max(MIN_LOGO_SIZE, Number(pos.h) || 0);
+    let x = Number(pos.x) || 0;
+    let y = Number(pos.y) || 0;
+
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > previewPage.width - MIN_LOGO_SIZE) x = previewPage.width - MIN_LOGO_SIZE;
+    if (y > previewPage.height - MIN_LOGO_SIZE) y = previewPage.height - MIN_LOGO_SIZE;
+
+    if (x + w > previewPage.width) {
+      w = Math.max(MIN_LOGO_SIZE, previewPage.width - x);
+    }
+    if (y + h > previewPage.height) {
+      h = Math.max(MIN_LOGO_SIZE, previewPage.height - y);
+    }
+
+    return { x, y, w, h };
+  };
+
+  const updateLogoPosition = (key, next) => {
+    const clamped = clampLogoPosition(next);
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      logoPositions: {
+        ...defaultLogoPositions,
+        ...(prev.logoPositions || {}),
+        [key]: clamped,
+      },
+    }));
+  };
+
+  const handleLogoPositionChange = (key, field, value) => {
+    const numeric = Number(value);
+    const current = getLogoPosition(key);
+    updateLogoPosition(key, {
+      ...current,
+      [field]: Number.isFinite(numeric) ? numeric : 0,
+    });
+  };
+
+  const getRelativeMm = (event) => {
+    if (!previewRef.current) return null;
+    const rect = previewRef.current.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * previewPage.width;
+    const y = ((event.clientY - rect.top) / rect.height) * previewPage.height;
+    return {
+      x: Math.max(0, Math.min(previewPage.width, x)),
+      y: Math.max(0, Math.min(previewPage.height, y)),
+    };
+  };
+
+  const startMoveLogo = (event, key) => {
+    if (event.button !== 0) return;
+    const startPoint = getRelativeMm(event);
+    if (!startPoint) return;
+    event.preventDefault();
+    const startPos = getLogoPosition(key);
+    dragStateRef.current = { key, mode: "move", startPoint, startPos };
+
+    const handleMove = (moveEvent) => {
+      if (!dragStateRef.current) return;
+      const point = getRelativeMm(moveEvent);
+      if (!point) return;
+      const dx = point.x - startPoint.x;
+      const dy = point.y - startPoint.y;
+      updateLogoPosition(key, {
+        ...startPos,
+        x: startPos.x + dx,
+        y: startPos.y + dy,
+      });
+    };
+
+    const handleUp = () => {
+      dragStateRef.current = null;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  };
+
+  const startResizeLogo = (event, key, handle) => {
+    if (event.button !== 0) return;
+    const startPoint = getRelativeMm(event);
+    if (!startPoint) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startPos = getLogoPosition(key);
+    dragStateRef.current = {
+      key,
+      mode: "resize",
+      handle,
+      startPoint,
+      startPos,
+    };
+
+    const handleMove = (moveEvent) => {
+      if (!dragStateRef.current) return;
+      const point = getRelativeMm(moveEvent);
+      if (!point) return;
+      const dx = point.x - startPoint.x;
+      const dy = point.y - startPoint.y;
+      let { x, y, w, h } = startPos;
+
+      if (handle.includes("e")) w = startPos.w + dx;
+      if (handle.includes("s")) h = startPos.h + dy;
+      if (handle.includes("w")) {
+        x = startPos.x + dx;
+        w = startPos.w - dx;
+      }
+      if (handle.includes("n")) {
+        y = startPos.y + dy;
+        h = startPos.h - dy;
+      }
+
+      if (lockLogoRatio) {
+        const ratio = startPos.w / Math.max(startPos.h, 0.0001);
+        const isCorner = handle.length === 2;
+        const preferWidth = Math.abs(dx) >= Math.abs(dy);
+
+        if (isCorner) {
+          if (preferWidth) {
+            h = w / ratio;
+          } else {
+            w = h * ratio;
+          }
+          if (handle.includes("w")) {
+            x = startPos.x + (startPos.w - w);
+          }
+          if (handle.includes("n")) {
+            y = startPos.y + (startPos.h - h);
+          }
+        } else if (handle.includes("e") || handle.includes("w")) {
+          h = w / ratio;
+          if (handle.includes("n")) {
+            y = startPos.y + (startPos.h - h);
+          }
+        } else if (handle.includes("n") || handle.includes("s")) {
+          w = h * ratio;
+          if (handle.includes("w")) {
+            x = startPos.x + (startPos.w - w);
+          }
+        }
+      }
+
+      if (w < MIN_LOGO_SIZE) {
+        if (handle.includes("w")) {
+          x = startPos.x + (startPos.w - MIN_LOGO_SIZE);
+        }
+        w = MIN_LOGO_SIZE;
+      }
+      if (h < MIN_LOGO_SIZE) {
+        if (handle.includes("n")) {
+          y = startPos.y + (startPos.h - MIN_LOGO_SIZE);
+        }
+        h = MIN_LOGO_SIZE;
+      }
+
+      updateLogoPosition(key, { x, y, w, h });
+    };
+
+    const handleUp = () => {
+      dragStateRef.current = null;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  };
+
   const handleSaveCertificate = () => {
     saveCertificateTemplate(certificateTemplate);
     setCertificateStatus({
@@ -198,6 +407,22 @@ export default function Settings() {
     : "";
   const signature1 = resolveSignature(certificateTemplate.signature1);
   const signature2 = resolveSignature(certificateTemplate.signature2);
+
+  const previewPage = { width: 297, height: 210 };
+  const toPercent = (value, total) => `${(value / total) * 100}%`;
+
+  const logoPreviewItems = useMemo(
+    () =>
+      logoSlots.map((slot) => {
+        const position = getLogoPosition(slot.key);
+        return {
+          ...slot,
+          position,
+          dataUrl: certificateTemplate.logos?.[slot.key] || "",
+        };
+      }),
+    [certificateTemplate, logoSlots]
+  );
 
   const normalizeHeader = (value) =>
     String(value ?? "")
@@ -348,7 +573,7 @@ export default function Settings() {
       />
 
       <Tabs defaultValue="tema" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 gap-2 lg:grid-cols-6">
+        <TabsList className="grid w-full grid-cols-2 gap-2 lg:grid-cols-5">
           <TabsTrigger value="tema" className="gap-2">
             <Palette className="h-4 w-4" />
             Tema
@@ -360,10 +585,6 @@ export default function Settings() {
           <TabsTrigger value="certificados" className="gap-2">
             <FileText className="h-4 w-4" />
             Certificados
-          </TabsTrigger>
-          <TabsTrigger value="preview" className="gap-2">
-            <Eye className="h-4 w-4" />
-            Visualização
           </TabsTrigger>
           <TabsTrigger value="exportacao" className="gap-2">
             <Database className="h-4 w-4" />
@@ -409,6 +630,164 @@ export default function Settings() {
                     )}
                   </button>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5 text-slate-700" />
+                Visualização do Certificado
+              </CardTitle>
+              <CardDescription>
+                Pré-visualize o modelo com dados de exemplo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-center gap-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="lock-logo-ratio"
+                    checked={lockLogoRatio}
+                    onCheckedChange={(checked) => setLockLogoRatio(Boolean(checked))}
+                  />
+                  <Label htmlFor="lock-logo-ratio" className="text-sm font-normal">
+                    Travar proporção ao redimensionar
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show-logo-grid"
+                    checked={showLogoGrid}
+                    onCheckedChange={(checked) => setShowLogoGrid(Boolean(checked))}
+                  />
+                  <Label htmlFor="show-logo-grid" className="text-sm font-normal">
+                    Mostrar grade/guia
+                  </Label>
+                </div>
+              </div>
+              <div className="w-full">
+                <div
+                  ref={previewRef}
+                  className="relative w-full overflow-hidden rounded-lg border bg-white shadow-sm"
+                  style={{
+                    paddingTop: `${(previewPage.height / previewPage.width) * 100}%`,
+                    touchAction: "none",
+                  }}
+                >
+                  {showLogoGrid && (
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(to right, rgba(148,163,184,0.25) 1px, transparent 1px), " +
+                          "linear-gradient(to bottom, rgba(148,163,184,0.25) 1px, transparent 1px)",
+                        backgroundSize: "10% 10%",
+                      }}
+                    />
+                  )}
+                  <div className="absolute inset-0">
+                    {logoPreviewItems.map((logo) => {
+                      const left = toPercent(logo.position.x, previewPage.width);
+                      const top = toPercent(logo.position.y, previewPage.height);
+                      const width = toPercent(logo.position.w, previewPage.width);
+                      const height = toPercent(logo.position.h, previewPage.height);
+                      return (
+                        <div
+                          key={logo.key}
+                          className="absolute text-[10px] text-slate-400"
+                          style={{ left, top, width, height, touchAction: "none" }}
+                          onPointerDown={(event) => startMoveLogo(event, logo.key)}
+                        >
+                          <div className="relative h-full w-full">
+                            {logo.dataUrl ? (
+                              <img
+                                src={logo.dataUrl}
+                                alt={logo.label}
+                                className="h-full w-full object-contain pointer-events-none select-none"
+                                draggable={false}
+                              />
+                            ) : (
+                              <div className="h-full w-full rounded border border-dashed border-slate-300 flex items-center justify-center text-[9px]">
+                                {logo.label}
+                              </div>
+                            )}
+                            <div className="absolute inset-0 border border-dashed border-blue-400" />
+                            {["n", "s", "e", "w", "nw", "ne", "sw", "se"].map((handle) => {
+                              const handleClasses = {
+                                n: "left-1/2 top-[-6px] -translate-x-1/2 cursor-ns-resize",
+                                s: "left-1/2 bottom-[-6px] -translate-x-1/2 cursor-ns-resize",
+                                e: "right-[-6px] top-1/2 -translate-y-1/2 cursor-ew-resize",
+                                w: "left-[-6px] top-1/2 -translate-y-1/2 cursor-ew-resize",
+                                nw: "left-[-6px] top-[-6px] cursor-nwse-resize",
+                                ne: "right-[-6px] top-[-6px] cursor-nesw-resize",
+                                sw: "left-[-6px] bottom-[-6px] cursor-nesw-resize",
+                                se: "right-[-6px] bottom-[-6px] cursor-nwse-resize",
+                              };
+                              const size = "h-3 w-3";
+                              return (
+                                <div
+                                  key={handle}
+                                  className={`absolute ${size} rounded-full bg-blue-500 ${handleClasses[handle]}`}
+                                  onPointerDown={(event) =>
+                                    startResizeLogo(event, logo.key, handle)
+                                  }
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="absolute inset-0 z-10 flex flex-col items-center text-center px-10 pt-10 pointer-events-none">
+                      {previewHeaderLines.length > 0 && (
+                        <div className="space-y-1 text-xs font-semibold text-slate-700">
+                          {previewHeaderLines.map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                        </div>
+                      )}
+
+                      <h2 className="mt-6 text-xl font-bold text-slate-900">
+                        {previewTitle}
+                      </h2>
+
+                      <p className="mt-4 text-sm text-slate-700 whitespace-pre-line max-w-3xl">
+                        {previewBody}
+                      </p>
+
+                      {previewFooter && (
+                        <p className="mt-6 text-sm text-slate-700">{previewFooter}</p>
+                      )}
+
+                      <div className="mt-auto w-full pb-8">
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                          {[signature1, signature2].map((signature, index) => (
+                            <div
+                              key={`signature-${index}`}
+                              className="text-center text-xs text-slate-700"
+                            >
+                              <div className="h-8 border-b border-slate-300" />
+                              {signature?.name && (
+                                <p className="mt-2 font-semibold">{signature.name}</p>
+                              )}
+                              {signature?.role && (
+                                <p className="text-[10px] text-slate-500">{signature.role}</p>
+                              )}
+                              {!signature && (
+                                <p className="mt-2 text-[10px] text-slate-400">
+                                  Sem assinatura
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -633,38 +1012,75 @@ export default function Settings() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Logo principal</Label>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {logoSlots.map((slot) => {
+              const position = getLogoPosition(slot.key);
+              return (
+                <div key={slot.key} className="space-y-3 rounded-md border p-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="font-semibold">{slot.label}</Label>
+                    <span className="text-xs text-slate-500">
+                      {position.w}x{position.h} mm
+                    </span>
+                  </div>
                   <Input
                     type="file"
                     accept=".png,.jpg,.jpeg"
-                    onChange={(e) => handleLogoUpload("primary", e)}
+                    onChange={(e) => handleLogoUpload(slot.key, e)}
                   />
-                  {certificateTemplate.logos?.primary && (
+                  {certificateTemplate.logos?.[slot.key] && (
                     <img
-                      src={certificateTemplate.logos.primary}
-                      alt="Logo principal"
+                      src={certificateTemplate.logos[slot.key]}
+                      alt={slot.label}
                       className="h-16 object-contain border rounded-md p-2"
                     />
                   )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">X (mm)</Label>
+                      <Input
+                        type="number"
+                        value={position.x}
+                        onChange={(e) =>
+                          handleLogoPositionChange(slot.key, "x", e.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Y (mm)</Label>
+                      <Input
+                        type="number"
+                        value={position.y}
+                        onChange={(e) =>
+                          handleLogoPositionChange(slot.key, "y", e.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Largura (mm)</Label>
+                      <Input
+                        type="number"
+                        value={position.w}
+                        onChange={(e) =>
+                          handleLogoPositionChange(slot.key, "w", e.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Altura (mm)</Label>
+                      <Input
+                        type="number"
+                        value={position.h}
+                        onChange={(e) =>
+                          handleLogoPositionChange(slot.key, "h", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Logo secundário</Label>
-                  <Input
-                    type="file"
-                    accept=".png,.jpg,.jpeg"
-                    onChange={(e) => handleLogoUpload("secondary", e)}
-                  />
-                  {certificateTemplate.logos?.secondary && (
-                    <img
-                      src={certificateTemplate.logos.secondary}
-                      alt="Logo secundário"
-                      className="h-16 object-contain border rounded-md p-2"
-                    />
-                  )}
-                </div>
-              </div>
+              );
+            })}
+          </div>
 
               <div className="flex flex-wrap gap-2">
                 <Button onClick={handleSaveCertificate}>Salvar</Button>
@@ -692,90 +1108,6 @@ export default function Settings() {
                   </AlertDescription>
                 </Alert>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="preview" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Eye className="h-5 w-5 text-slate-700" />
-                Visualização do Certificado
-              </CardTitle>
-              <CardDescription>
-                Pré-visualize o modelo com dados de exemplo.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-white border rounded-lg p-8 shadow-sm">
-                <div className="flex items-center justify-between gap-4">
-                  {certificateTemplate.logos?.primary ? (
-                    <img
-                      src={certificateTemplate.logos.primary}
-                      alt="Logo principal"
-                      className="h-16 object-contain"
-                    />
-                  ) : (
-                    <div className="h-16 w-28 rounded-md border border-dashed border-slate-300 flex items-center justify-center text-xs text-slate-400">
-                      Logo principal
-                    </div>
-                  )}
-                  {certificateTemplate.logos?.secondary ? (
-                    <img
-                      src={certificateTemplate.logos.secondary}
-                      alt="Logo secundário"
-                      className="h-16 object-contain"
-                    />
-                  ) : (
-                    <div className="h-16 w-28 rounded-md border border-dashed border-slate-300 flex items-center justify-center text-xs text-slate-400">
-                      Logo secundário
-                    </div>
-                  )}
-                </div>
-
-                {previewHeaderLines.length > 0 && (
-                  <div className="mt-6 space-y-1 text-center text-sm font-semibold text-slate-700">
-                    {previewHeaderLines.map((line) => (
-                      <p key={line}>{line}</p>
-                    ))}
-                  </div>
-                )}
-
-                <h2 className="mt-8 text-2xl font-bold text-center text-slate-900">
-                  {previewTitle}
-                </h2>
-
-                <p className="mt-6 text-center text-slate-700 whitespace-pre-line">
-                  {previewBody}
-                </p>
-
-                {previewFooter && (
-                  <p className="mt-8 text-center text-slate-700">{previewFooter}</p>
-                )}
-
-                <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
-                  {[signature1, signature2].map((signature, index) => (
-                    <div
-                      key={`signature-${index}`}
-                      className="text-center text-sm text-slate-700"
-                    >
-                      <div className="h-10 border-b border-slate-300" />
-                      {signature?.name && (
-                        <p className="mt-2 font-semibold">{signature.name}</p>
-                      )}
-                      {signature?.role && (
-                        <p className="text-xs text-slate-500">{signature.role}</p>
-                      )}
-                      {!signature && (
-                        <p className="mt-2 text-xs text-slate-400">
-                          Sem assinatura
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>

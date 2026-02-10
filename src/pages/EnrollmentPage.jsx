@@ -46,6 +46,9 @@ export default function EnrollmentPage() {
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
   const trainingId = urlParams.get("training");
+  const sectionStorageKey = trainingId
+    ? `enrollment_sections_${trainingId}`
+    : "enrollment_sections_global";
   
   const [formData, setFormData] = useState(/** @type {Record<string, any>} */ ({}));
   const [submitted, setSubmitted] = useState(false);
@@ -61,6 +64,14 @@ export default function EnrollmentPage() {
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
   const [gveMapping, setGveMapping] = useState([]);
+  const [sectionName, setSectionName] = useState("");
+  const [sectionStatus, setSectionStatus] = useState(null);
+  const [customSections, setCustomSections] = useState(/** @type {Array<{key: string, label: string}>} */ ([]));
+  const [editParticipant, setEditParticipant] = useState(null);
+  const [editFormData, setEditFormData] = useState(/** @type {Record<string, any>} */ ({}));
+  const [editFormErrors, setEditFormErrors] = useState(/** @type {Record<string, string | null>} */ ({}));
+  const [editStatus, setEditStatus] = useState(null);
+  const [showEditParticipant, setShowEditParticipant] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -115,6 +126,28 @@ export default function EnrollmentPage() {
       // Ignora erro de leitura
     }
   }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!trainingId) return;
+    try {
+      const stored = window.localStorage.getItem(sectionStorageKey);
+      if (!stored) {
+        setCustomSections([]);
+        return;
+      }
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setCustomSections(
+          parsed
+            .filter((item) => item?.key && item?.label)
+            .map((item) => ({ key: String(item.key), label: String(item.label) }))
+        );
+      }
+    } catch (error) {
+      // Ignora erro de leitura
+    }
+  }, [trainingId, sectionStorageKey]);
 
   const normalizeHeader = (value) =>
     String(value ?? "")
@@ -194,6 +227,107 @@ export default function EnrollmentPage() {
   const getGveByMunicipio = (municipio) =>
     gveMap.get(normalizeText(municipio)) || "";
 
+  const sections = React.useMemo(() => {
+    const seen = new Set();
+    const list = [];
+
+    defaultSections.forEach((section) => {
+      if (seen.has(section.key)) return;
+      seen.add(section.key);
+      list.push(section);
+    });
+
+    customSections.forEach((section) => {
+      if (!section?.key || seen.has(section.key)) return;
+      seen.add(section.key);
+      list.push(section);
+    });
+
+    enrollmentFields.forEach((field) => {
+      const key = field.section;
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      list.push({ key, label: formatSectionLabel(key) });
+    });
+
+    return list;
+  }, [customSections, enrollmentFields]);
+
+  const sectionLabels = React.useMemo(
+    () =>
+      sections.reduce((acc, section) => {
+        acc[section.key] = section.label || formatSectionLabel(section.key);
+        return acc;
+      }, {}),
+    [sections]
+  );
+
+  const sectionOrder = React.useMemo(
+    () => sections.map((section) => section.key),
+    [sections]
+  );
+
+  const sectionUsage = React.useMemo(() => {
+    return enrollmentFields.reduce((acc, field) => {
+      const key = field.section || "";
+      if (!key) return acc;
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+  }, [enrollmentFields]);
+
+  const handleAddSection = () => {
+    const label = sectionName.trim();
+    if (!label) {
+      setSectionStatus({ type: "error", message: "Informe o nome da seção." });
+      return;
+    }
+    const key = normalizeHeader(label);
+    if (!key) {
+      setSectionStatus({ type: "error", message: "Nome de seção inválido." });
+      return;
+    }
+    if (sectionLabels[key]) {
+      setSectionStatus({ type: "error", message: "Essa seção já existe." });
+      return;
+    }
+    const next = [...customSections, { key, label }];
+    setCustomSections(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(sectionStorageKey, JSON.stringify(next));
+    }
+    setSectionName("");
+    setSectionStatus({ type: "success", message: "Seção criada com sucesso." });
+  };
+
+  const handleRemoveSection = (key) => {
+    const isCustom = customSections.some((section) => section.key === key);
+    if (!isCustom) return;
+    if (sectionUsage[key]) {
+      setSectionStatus({
+        type: "error",
+        message: "Não é possível remover: há campos nesta seção.",
+      });
+      return;
+    }
+    const next = customSections.filter((section) => section.key !== key);
+    setCustomSections(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(sectionStorageKey, JSON.stringify(next));
+    }
+    setSectionStatus({ type: "success", message: "Seção removida." });
+  };
+
+  React.useEffect(() => {
+    if (!sectionOrder.length) return;
+    if (!sectionOrder.includes(fieldFormData.section)) {
+      setFieldFormData((prev) => ({
+        ...prev,
+        section: sectionOrder[0],
+      }));
+    }
+  }, [sectionOrder, fieldFormData.section]);
+
   const getLatestTrainingDate = () => {
     const dates = [
       training?.date,
@@ -253,6 +387,61 @@ export default function EnrollmentPage() {
       return formatPhone(value);
     }
     return value;
+  };
+
+  const fixMojibake = (value) => {
+    if (typeof value !== "string") return value;
+    if (!/[ÃÂ�]/.test(value)) return value;
+    try {
+      const bytes = Uint8Array.from(value, (char) => char.charCodeAt(0));
+      return new TextDecoder("utf-8").decode(bytes);
+    } catch (error) {
+      return value;
+    }
+  };
+
+  const normalizeImportedValue = (value) => {
+    if (value === undefined || value === null) return value;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return "";
+      return fixMojibake(trimmed);
+    }
+    return value;
+  };
+
+  const defaultSections = [
+    { key: "pessoais", label: "Dados Pessoais" },
+    { key: "instituicao", label: "Instituição" },
+    { key: "enderecos", label: "Endereços" },
+    { key: "contatos", label: "Contatos" },
+  ];
+
+  const formatSectionLabel = (value) => {
+    if (!value) return "";
+    return String(value)
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const participantFieldMap = {
+    name: "professional_name",
+    cpf: "professional_cpf",
+    rg: "professional_rg",
+    email: "professional_email",
+    sector: "professional_sector",
+    registration: "professional_registration",
+    professional_formation: "professional_formation",
+    institution: "institution",
+    state: "state",
+    health_region: "health_region",
+    municipality: "municipality",
+    unit_name: "unit_name",
+    position: "position",
+    work_address: "work_address",
+    residential_address: "residential_address",
+    commercial_phone: "commercial_phone",
+    mobile_phone: "mobile_phone",
   };
 
   const defaultEnrollmentFields = [
@@ -550,6 +739,32 @@ export default function EnrollmentPage() {
     },
   });
 
+  const updateParticipant = useMutation({
+    mutationFn: async (/** @type {{ id: string, data: Record<string, any> }} */ payload) =>
+      dataClient.entities.TrainingParticipant.update(payload.id, payload.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
+      queryClient.invalidateQueries({ queryKey: ["training"] });
+      setEditStatus({
+        type: "success",
+        message: "Inscrito atualizado com sucesso.",
+      });
+      setTimeout(() => {
+        setShowEditParticipant(false);
+        setEditParticipant(null);
+        setEditFormData({});
+        setEditFormErrors({});
+        setEditStatus(null);
+      }, 1200);
+    },
+    onError: (error) => {
+      setEditStatus({
+        type: "error",
+        message: error.message || "Erro ao atualizar inscrito.",
+      });
+    },
+  });
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const errors = /** @type {Record<string, string | null>} */ ({});
@@ -794,7 +1009,9 @@ export default function EnrollmentPage() {
             return candidate;
           }, null);
           if (value !== null && value !== undefined && value !== "") {
-            data[field.field_key] = value;
+            const cleanedValue = normalizeImportedValue(value);
+            const formattedValue = formatFieldValue(field, cleanedValue);
+            data[field.field_key] = formattedValue;
           }
         });
 
@@ -904,6 +1121,60 @@ export default function EnrollmentPage() {
     }
   };
 
+  const handleEditParticipant = (participant) => {
+    if (!participant) return;
+    const data = {};
+    templateFields.forEach((field) => {
+      const participantKey = participantFieldMap[field.field_key];
+      const rawValue = participantKey ? participant[participantKey] : participant[field.field_key];
+      if (rawValue !== undefined && rawValue !== null) {
+        data[field.field_key] = normalizeImportedValue(rawValue);
+      }
+    });
+    setEditParticipant(participant);
+    setEditFormData(data);
+    setEditFormErrors({});
+    setEditStatus(null);
+    setShowEditParticipant(true);
+  };
+
+  const handleSaveParticipant = () => {
+    if (!editParticipant) return;
+    const errors = /** @type {Record<string, string | null>} */ ({});
+
+    templateFields.forEach((field) => {
+      const rawValue = editFormData[field.field_key];
+      const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
+      if (field.required && !value) {
+        errors[field.field_key] = "Campo obrigatório.";
+      }
+    });
+
+    setEditFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    const payload = {};
+    templateFields.forEach((field) => {
+      const participantKey = participantFieldMap[field.field_key];
+      if (!participantKey) return;
+      const rawValue = editFormData[field.field_key];
+      const cleanedValue = normalizeImportedValue(rawValue);
+      const formattedValue =
+        cleanedValue !== null && cleanedValue !== undefined && cleanedValue !== ""
+          ? formatFieldValue(field, cleanedValue)
+          : cleanedValue;
+      payload[participantKey] =
+        formattedValue !== undefined && formattedValue !== "" ? formattedValue : null;
+    });
+
+    if (!payload.health_region && editFormData.municipality) {
+      const gveValue = getGveByMunicipio(editFormData.municipality);
+      if (gveValue) payload.health_region = gveValue;
+    }
+
+    updateParticipant.mutate({ id: editParticipant.id, data: payload });
+  };
+
   const filteredParticipants = allParticipants.filter(p => 
     p.professional_name?.toLowerCase().includes(search.toLowerCase()) ||
     p.professional_cpf?.toLowerCase().includes(search.toLowerCase()) ||
@@ -942,14 +1213,23 @@ export default function EnrollmentPage() {
       cellClassName: "text-right",
       sortable: false,
       render: (row) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setDeleteConfirm(row)}
-          className="text-red-600 hover:text-red-700"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleEditParticipant(row)}
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setDeleteConfirm(row)}
+            className="text-red-600 hover:text-red-700"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -1023,14 +1303,6 @@ export default function EnrollmentPage() {
   const isCancelled = training.status === "cancelado";
   const isFieldGlobal = fieldFormData.training_id == null;
 
-  const sectionLabels = {
-    pessoais: "Dados Pessoais",
-    instituicao: "Instituição",
-    enderecos: "Endereços",
-    contatos: "Contatos",
-  };
-  const sectionOrder = ["pessoais", "instituicao", "enderecos", "contatos"];
-
   const typeLabels = {
     text: "Texto",
     email: "E-mail",
@@ -1059,7 +1331,9 @@ export default function EnrollmentPage() {
     {
       header: "Seção",
       render: (row) => (
-        <Badge variant="outline">{sectionLabels[row.section]}</Badge>
+        <Badge variant="outline">
+          {sectionLabels[row.section] || formatSectionLabel(row.section)}
+        </Badge>
       ),
     },
     {
@@ -1098,6 +1372,51 @@ export default function EnrollmentPage() {
           </Button>
         </div>
       ),
+    },
+  ];
+
+  const sectionColumns = [
+    {
+      header: "Seção",
+      render: (row) => (
+        <div className="font-medium">
+          {row.label || formatSectionLabel(row.key)}
+        </div>
+      ),
+    },
+    {
+      header: "Chave",
+      render: (row) => (
+        <span className="text-xs font-mono text-slate-500">{row.key}</span>
+      ),
+    },
+    {
+      header: "Campos",
+      render: (row) => sectionUsage[row.key] || 0,
+      cellClassName: "text-center",
+    },
+    {
+      header: "Ações",
+      cellClassName: "text-right",
+      sortable: false,
+      render: (row) => {
+        const isCustom = customSections.some((section) => section.key === row.key);
+        if (!isCustom) {
+          return <span className="text-xs text-slate-400">Padrão</span>;
+        }
+        const isDisabled = (sectionUsage[row.key] || 0) > 0;
+        return (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleRemoveSection(row.key)}
+            disabled={isDisabled}
+            className="text-red-600 hover:text-red-700"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        );
+      },
     },
   ];
 
@@ -1164,56 +1483,121 @@ export default function EnrollmentPage() {
             </TabsList>
 
             <TabsContent value="mask" className="mt-6 space-y-6">
-              <div className="flex flex-wrap items-center gap-3">
-                <Button variant="outline" onClick={handleCopyEnrollmentLink}>
-                  <Link2 className="h-4 w-4 mr-2" />
-                  Copiar Link de Inscrição
-                </Button>
-                <Button variant="outline" onClick={handleAddDefaultFields}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Aplicar Campos Padrão
-                </Button>
-                <Button
-                  onClick={() => {
-                    setEditingField(null);
-                    setFieldFormData(getDefaultFieldData());
-                    setFieldFormOpen(true);
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Novo Campo do Formulário
-                </Button>
-              </div>
+              <Tabs defaultValue="fields" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="fields">Campos</TabsTrigger>
+                  <TabsTrigger value="sections">Seções</TabsTrigger>
+                </TabsList>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Campos do Formulário</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-4">
-                    <Input
-                      placeholder="Buscar campo..."
-                      value={fieldSearch}
-                      onChange={(e) => setFieldSearch(e.target.value)}
-                    />
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="show-inactive-fields"
-                        checked={showInactiveFields}
-                        onCheckedChange={(checked) => setShowInactiveFields(Boolean(checked))}
-                      />
-                      <Label htmlFor="show-inactive-fields" className="text-sm font-normal">
-                        Mostrar inativos
-                      </Label>
-                    </div>
+                <TabsContent value="fields" className="mt-6 space-y-6">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button variant="outline" onClick={handleCopyEnrollmentLink}>
+                      <Link2 className="h-4 w-4 mr-2" />
+                      Copiar Link de Inscrição
+                    </Button>
+                    <Button variant="outline" onClick={handleAddDefaultFields}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Aplicar Campos Padrão
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setEditingField(null);
+                        setFieldFormData(getDefaultFieldData());
+                        setFieldFormOpen(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Novo Campo do Formulário
+                    </Button>
                   </div>
-                  <DataTable
-                    columns={fieldColumns}
-                    data={orderedFields}
-                    emptyMessage="Nenhum campo cadastrado"
-                  />
-                </CardContent>
-              </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Campos do Formulário</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-4">
+                        <Input
+                          placeholder="Buscar campo..."
+                          value={fieldSearch}
+                          onChange={(e) => setFieldSearch(e.target.value)}
+                        />
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="show-inactive-fields"
+                            checked={showInactiveFields}
+                            onCheckedChange={(checked) => setShowInactiveFields(Boolean(checked))}
+                          />
+                          <Label htmlFor="show-inactive-fields" className="text-sm font-normal">
+                            Mostrar inativos
+                          </Label>
+                        </div>
+                      </div>
+                      <DataTable
+                        columns={fieldColumns}
+                        data={orderedFields}
+                        emptyMessage="Nenhum campo cadastrado"
+                      />
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="sections" className="mt-6 space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Seções do Formulário</CardTitle>
+                      <p className="text-sm text-slate-500">
+                        Crie novas seções para organizar os campos como desejar.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <Input
+                          placeholder="Nome da seção"
+                          value={sectionName}
+                          onChange={(e) => setSectionName(e.target.value)}
+                        />
+                        <Button type="button" onClick={handleAddSection}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Adicionar
+                        </Button>
+                      </div>
+                      {sectionStatus && (
+                        <Alert
+                          className={
+                            sectionStatus.type === "error"
+                              ? "border-red-200 bg-red-50"
+                              : "border-green-200 bg-green-50"
+                          }
+                        >
+                          <AlertDescription
+                            className={
+                              sectionStatus.type === "error"
+                                ? "text-red-800"
+                                : "text-green-800"
+                            }
+                          >
+                            {sectionStatus.message}
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Seções cadastradas</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <DataTable
+                        columns={sectionColumns}
+                        data={sections}
+                        emptyMessage="Nenhuma seção cadastrada"
+                      />
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
             </TabsContent>
 
             <TabsContent value="form" className="mt-6 space-y-6">
@@ -1252,7 +1636,7 @@ export default function EnrollmentPage() {
                           {index > 0 && <div className="border-t border-slate-200" />}
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="text-lg font-semibold text-slate-900">
-                              {sectionLabels[section]}
+                              {sectionLabels[section] || formatSectionLabel(section)}
                             </h3>
                             {sectionFields.length > 0 && (
                               <span className="text-xs text-slate-500">
@@ -1498,6 +1882,175 @@ export default function EnrollmentPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Participant Dialog */}
+      <Dialog
+        open={showEditParticipant}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowEditParticipant(false);
+            setEditParticipant(null);
+            setEditFormErrors({});
+            setEditStatus(null);
+          } else {
+            setShowEditParticipant(true);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Editar Inscrito</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
+            {municipalityOptions.length > 0 && (
+              <datalist id="municipios-list-edit">
+                {municipalityOptions.map((municipio) => (
+                  <option key={municipio} value={municipio} />
+                ))}
+              </datalist>
+            )}
+
+            <div className="space-y-6">
+              {sectionOrder.map((section, index) => {
+                const sectionFields = fieldsBySection[section];
+                return (
+                  <div key={section} className="space-y-4">
+                    {index > 0 && <div className="border-t border-slate-200" />}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold text-slate-900">
+                        {sectionLabels[section] || formatSectionLabel(section)}
+                      </h3>
+                      {sectionFields.length > 0 && (
+                        <span className="text-xs text-slate-500">
+                          ({sectionFields.length})
+                        </span>
+                      )}
+                    </div>
+                    {sectionFields.length === 0 ? (
+                      <p className="text-sm text-slate-500">
+                        Nenhum campo configurado para esta seção.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {sectionFields.map((field) => {
+                          const fieldKey = field.field_key || "";
+                          const lowerKey = fieldKey.toLowerCase();
+                          const isMunicipalityField =
+                            lowerKey.includes("municipio") || lowerKey.includes("municipality");
+                          const isGveField =
+                            lowerKey === "health_region" ||
+                            lowerKey.includes("gve") ||
+                            lowerKey.includes("regional");
+                          const resolvedGve = getGveByMunicipio(editFormData.municipality);
+                          const fieldValue =
+                            isGveField && resolvedGve
+                              ? resolvedGve
+                              : editFormData[fieldKey] || "";
+
+                          return (
+                            <div key={field.id} className="space-y-2">
+                              <Label htmlFor={`edit-${fieldKey}`}>
+                                {field.label} {field.required && "*"}
+                              </Label>
+                              <Input
+                                id={`edit-${fieldKey}`}
+                                type={field.type}
+                                value={fieldValue}
+                                list={
+                                  isMunicipalityField && municipalityOptions.length > 0
+                                    ? "municipios-list-edit"
+                                    : undefined
+                                }
+                                readOnly={isGveField && Boolean(resolvedGve)}
+                                onChange={(e) => {
+                                  const nextValue = formatFieldValue(field, e.target.value);
+                                  if (isMunicipalityField) {
+                                    const gveValue = getGveByMunicipio(nextValue);
+                                    setEditFormData((prev) => ({
+                                      ...prev,
+                                      [fieldKey]: nextValue,
+                                      health_region: gveValue || prev.health_region,
+                                    }));
+                                    if (editFormErrors[fieldKey]) {
+                                      setEditFormErrors((prev) => ({
+                                        ...prev,
+                                        [fieldKey]: null,
+                                      }));
+                                    }
+                                    if (gveValue && editFormErrors.health_region) {
+                                      setEditFormErrors((prev) => ({
+                                        ...prev,
+                                        health_region: null,
+                                      }));
+                                    }
+                                    return;
+                                  }
+
+                                  setEditFormData((prev) => ({
+                                    ...prev,
+                                    [fieldKey]: nextValue,
+                                  }));
+                                  if (editFormErrors[fieldKey]) {
+                                    setEditFormErrors((prev) => ({
+                                      ...prev,
+                                      [fieldKey]: null,
+                                    }));
+                                  }
+                                }}
+                                placeholder={field.placeholder}
+                                required={field.required}
+                              />
+                              {editFormErrors[fieldKey] && (
+                                <p className="text-xs text-red-600">
+                                  {editFormErrors[fieldKey]}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {editStatus && (
+              <Alert
+                className={
+                  editStatus.type === "error"
+                    ? "border-red-200 bg-red-50"
+                    : "border-green-200 bg-green-50"
+                }
+              >
+                <AlertDescription
+                  className={
+                    editStatus.type === "error" ? "text-red-800" : "text-green-800"
+                  }
+                >
+                  {editStatus.message}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowEditParticipant(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSaveParticipant}
+                disabled={updateParticipant.isPending}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {updateParticipant.isPending ? "Salvando..." : "Salvar alterações"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Field Form Dialog */}
       <Dialog open={fieldFormOpen} onOpenChange={(open) => !open && resetFieldForm()}>
         <DialogContent className="max-w-2xl">
@@ -1565,10 +2118,11 @@ export default function EnrollmentPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pessoais">Dados Pessoais</SelectItem>
-                    <SelectItem value="instituicao">Instituição</SelectItem>
-                    <SelectItem value="enderecos">Endereços</SelectItem>
-                    <SelectItem value="contatos">Contatos</SelectItem>
+                    {sections.map((section) => (
+                      <SelectItem key={section.key} value={section.key}>
+                        {section.label || formatSectionLabel(section.key)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
