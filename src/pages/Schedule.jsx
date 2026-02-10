@@ -19,7 +19,17 @@ import {
   Circle,
   ExternalLink
 } from "lucide-react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isToday } from "date-fns";
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  isToday,
+  startOfWeek,
+  endOfWeek,
+} from "date-fns";
 import { ptBR } from "date-fns/locale";
 import PageHeader from "../components/common/PageHeader";
 import EventForm from "../components/schedule/EventForm";
@@ -76,7 +86,12 @@ export default function Schedule() {
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
-  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
+  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const daysInMonth = eachDayOfInterval({
+    start: calendarStart,
+    end: calendarEnd,
+  });
 
   const typeIcons = {
     viagem: Plane,
