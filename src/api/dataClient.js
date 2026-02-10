@@ -308,13 +308,27 @@ const ExtractDataFromUploadedFile = async ({ file_url }) => {
   }
 };
 
-const isValidWebhookUrl = (value) =>
-  typeof value === "string" && /^https?:\/\//i.test(value.trim());
+const getWebhookUrl = (value) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  try {
+    const url = new URL(trimmed);
+    if (typeof window !== "undefined" && url.origin === window.location.origin) {
+      return null;
+    }
+    return url.toString();
+  } catch (error) {
+    return null;
+  }
+};
 
 const SendEmail = async ({ to, subject, body }) => {
   const payload = { to, subject, html: body };
-  if (isValidWebhookUrl(EMAIL_WEBHOOK_URL)) {
-    const response = await fetch(EMAIL_WEBHOOK_URL, {
+  const webhookUrl = getWebhookUrl(EMAIL_WEBHOOK_URL);
+  if (webhookUrl) {
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

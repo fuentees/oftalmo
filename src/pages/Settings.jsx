@@ -634,163 +634,6 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Eye className="h-5 w-5 text-slate-700" />
-                Visualização do Certificado
-              </CardTitle>
-              <CardDescription>
-                Pré-visualize o modelo com dados de exemplo.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap items-center gap-4 mb-4">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="lock-logo-ratio"
-                    checked={lockLogoRatio}
-                    onCheckedChange={(checked) => setLockLogoRatio(Boolean(checked))}
-                  />
-                  <Label htmlFor="lock-logo-ratio" className="text-sm font-normal">
-                    Travar proporção ao redimensionar
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="show-logo-grid"
-                    checked={showLogoGrid}
-                    onCheckedChange={(checked) => setShowLogoGrid(Boolean(checked))}
-                  />
-                  <Label htmlFor="show-logo-grid" className="text-sm font-normal">
-                    Mostrar grade/guia
-                  </Label>
-                </div>
-              </div>
-              <div className="w-full">
-                <div
-                  ref={previewRef}
-                  className="relative w-full overflow-hidden rounded-lg border bg-white shadow-sm"
-                  style={{
-                    paddingTop: `${(previewPage.height / previewPage.width) * 100}%`,
-                    touchAction: "none",
-                  }}
-                >
-                  {showLogoGrid && (
-                    <div
-                      className="absolute inset-0 pointer-events-none"
-                      style={{
-                        backgroundImage:
-                          "linear-gradient(to right, rgba(148,163,184,0.25) 1px, transparent 1px), " +
-                          "linear-gradient(to bottom, rgba(148,163,184,0.25) 1px, transparent 1px)",
-                        backgroundSize: "10% 10%",
-                      }}
-                    />
-                  )}
-                  <div className="absolute inset-0">
-                    {logoPreviewItems.map((logo) => {
-                      const left = toPercent(logo.position.x, previewPage.width);
-                      const top = toPercent(logo.position.y, previewPage.height);
-                      const width = toPercent(logo.position.w, previewPage.width);
-                      const height = toPercent(logo.position.h, previewPage.height);
-                      return (
-                        <div
-                          key={logo.key}
-                          className="absolute text-[10px] text-slate-400"
-                          style={{ left, top, width, height, touchAction: "none" }}
-                          onPointerDown={(event) => startMoveLogo(event, logo.key)}
-                        >
-                          <div className="relative h-full w-full">
-                            {logo.dataUrl ? (
-                              <img
-                                src={logo.dataUrl}
-                                alt={logo.label}
-                                className="h-full w-full object-contain pointer-events-none select-none"
-                                draggable={false}
-                              />
-                            ) : (
-                              <div className="h-full w-full rounded border border-dashed border-slate-300 flex items-center justify-center text-[9px]">
-                                {logo.label}
-                              </div>
-                            )}
-                            <div className="absolute inset-0 border border-dashed border-blue-400" />
-                            {["n", "s", "e", "w", "nw", "ne", "sw", "se"].map((handle) => {
-                              const handleClasses = {
-                                n: "left-1/2 top-[-6px] -translate-x-1/2 cursor-ns-resize",
-                                s: "left-1/2 bottom-[-6px] -translate-x-1/2 cursor-ns-resize",
-                                e: "right-[-6px] top-1/2 -translate-y-1/2 cursor-ew-resize",
-                                w: "left-[-6px] top-1/2 -translate-y-1/2 cursor-ew-resize",
-                                nw: "left-[-6px] top-[-6px] cursor-nwse-resize",
-                                ne: "right-[-6px] top-[-6px] cursor-nesw-resize",
-                                sw: "left-[-6px] bottom-[-6px] cursor-nesw-resize",
-                                se: "right-[-6px] bottom-[-6px] cursor-nwse-resize",
-                              };
-                              const size = "h-3 w-3";
-                              return (
-                                <div
-                                  key={handle}
-                                  className={`absolute ${size} rounded-full bg-blue-500 ${handleClasses[handle]}`}
-                                  onPointerDown={(event) =>
-                                    startResizeLogo(event, logo.key, handle)
-                                  }
-                                />
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    <div className="absolute inset-0 z-10 flex flex-col items-center text-center px-10 pt-10 pointer-events-none">
-                      {previewHeaderLines.length > 0 && (
-                        <div className="space-y-1 text-xs font-semibold text-slate-700">
-                          {previewHeaderLines.map((line) => (
-                            <p key={line}>{line}</p>
-                          ))}
-                        </div>
-                      )}
-
-                      <h2 className="mt-6 text-xl font-bold text-slate-900">
-                        {previewTitle}
-                      </h2>
-
-                      <p className="mt-4 text-sm text-slate-700 whitespace-pre-line max-w-3xl">
-                        {previewBody}
-                      </p>
-
-                      {previewFooter && (
-                        <p className="mt-6 text-sm text-slate-700">{previewFooter}</p>
-                      )}
-
-                      <div className="mt-auto w-full pb-8">
-                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                          {[signature1, signature2].map((signature, index) => (
-                            <div
-                              key={`signature-${index}`}
-                              className="text-center text-xs text-slate-700"
-                            >
-                              <div className="h-8 border-b border-slate-300" />
-                              {signature?.name && (
-                                <p className="mt-2 font-semibold">{signature.name}</p>
-                              )}
-                              {signature?.role && (
-                                <p className="text-[10px] text-slate-500">{signature.role}</p>
-                              )}
-                              {!signature && (
-                                <p className="mt-2 text-[10px] text-slate-400">
-                                  Sem assinatura
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="planilhas" className="mt-6">
@@ -873,17 +716,24 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="certificados" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-blue-600" />
-                Modelo de Certificado
-              </CardTitle>
-              <CardDescription>
-                Configure textos, assinaturas e logos do certificado padrão.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <Tabs defaultValue="criar" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="criar">Criação</TabsTrigger>
+              <TabsTrigger value="visualizar">Visualização</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="criar" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-blue-600" />
+                    Modelo de Certificado
+                  </CardTitle>
+                  <CardDescription>
+                    Configure textos, assinaturas e logos do certificado padrão.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
               <Alert>
                 <AlertDescription>
                   Variáveis disponíveis: {"{{nome}}"}, {"{{rg}}"}, {"{{treinamento}}"},
@@ -1111,6 +961,168 @@ export default function Settings() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="visualizar" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5 text-slate-700" />
+                Visualização do Certificado
+              </CardTitle>
+              <CardDescription>
+                Pré-visualize o modelo com dados de exemplo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-center gap-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="lock-logo-ratio"
+                    checked={lockLogoRatio}
+                    onCheckedChange={(checked) => setLockLogoRatio(Boolean(checked))}
+                  />
+                  <Label htmlFor="lock-logo-ratio" className="text-sm font-normal">
+                    Travar proporção ao redimensionar
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show-logo-grid"
+                    checked={showLogoGrid}
+                    onCheckedChange={(checked) => setShowLogoGrid(Boolean(checked))}
+                  />
+                  <Label htmlFor="show-logo-grid" className="text-sm font-normal">
+                    Mostrar grade/guia
+                  </Label>
+                </div>
+              </div>
+              <div className="w-full">
+                <div
+                  ref={previewRef}
+                  className="relative w-full overflow-hidden rounded-lg border bg-white shadow-sm"
+                  style={{
+                    paddingTop: `${(previewPage.height / previewPage.width) * 100}%`,
+                    touchAction: "none",
+                  }}
+                >
+                  {showLogoGrid && (
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(to right, rgba(148,163,184,0.25) 1px, transparent 1px), " +
+                          "linear-gradient(to bottom, rgba(148,163,184,0.25) 1px, transparent 1px)",
+                        backgroundSize: "10% 10%",
+                      }}
+                    />
+                  )}
+                  <div className="absolute inset-0">
+                    {logoPreviewItems.map((logo) => {
+                      const left = toPercent(logo.position.x, previewPage.width);
+                      const top = toPercent(logo.position.y, previewPage.height);
+                      const width = toPercent(logo.position.w, previewPage.width);
+                      const height = toPercent(logo.position.h, previewPage.height);
+                      return (
+                        <div
+                          key={logo.key}
+                          className="absolute text-[10px] text-slate-400"
+                          style={{ left, top, width, height, touchAction: "none" }}
+                          onPointerDown={(event) => startMoveLogo(event, logo.key)}
+                        >
+                          <div className="relative h-full w-full">
+                            {logo.dataUrl ? (
+                              <img
+                                src={logo.dataUrl}
+                                alt={logo.label}
+                                className="h-full w-full object-contain pointer-events-none select-none"
+                                draggable={false}
+                              />
+                            ) : (
+                              <div className="h-full w-full rounded border border-dashed border-slate-300 flex items-center justify-center text-[9px]">
+                                {logo.label}
+                              </div>
+                            )}
+                            <div className="absolute inset-0 border border-dashed border-blue-400" />
+                            {["n", "s", "e", "w", "nw", "ne", "sw", "se"].map((handle) => {
+                              const handleClasses = {
+                                n: "left-1/2 top-[-6px] -translate-x-1/2 cursor-ns-resize",
+                                s: "left-1/2 bottom-[-6px] -translate-x-1/2 cursor-ns-resize",
+                                e: "right-[-6px] top-1/2 -translate-y-1/2 cursor-ew-resize",
+                                w: "left-[-6px] top-1/2 -translate-y-1/2 cursor-ew-resize",
+                                nw: "left-[-6px] top-[-6px] cursor-nwse-resize",
+                                ne: "right-[-6px] top-[-6px] cursor-nesw-resize",
+                                sw: "left-[-6px] bottom-[-6px] cursor-nesw-resize",
+                                se: "right-[-6px] bottom-[-6px] cursor-nwse-resize",
+                              };
+                              const size = "h-3 w-3";
+                              return (
+                                <div
+                                  key={handle}
+                                  className={`absolute ${size} rounded-full bg-blue-500 ${handleClasses[handle]}`}
+                                  onPointerDown={(event) =>
+                                    startResizeLogo(event, logo.key, handle)
+                                  }
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="absolute inset-0 z-10 flex flex-col items-center text-center px-10 pt-10 pointer-events-none">
+                      {previewHeaderLines.length > 0 && (
+                        <div className="space-y-1 text-xs font-semibold text-slate-700">
+                          {previewHeaderLines.map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                        </div>
+                      )}
+
+                      <h2 className="mt-6 text-xl font-bold text-slate-900">
+                        {previewTitle}
+                      </h2>
+
+                      <p className="mt-4 text-sm text-slate-700 whitespace-pre-line max-w-3xl">
+                        {previewBody}
+                      </p>
+
+                      {previewFooter && (
+                        <p className="mt-6 text-sm text-slate-700">{previewFooter}</p>
+                      )}
+
+                      <div className="mt-auto w-full pb-8">
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                          {[signature1, signature2].map((signature, index) => (
+                            <div
+                              key={`signature-${index}`}
+                              className="text-center text-xs text-slate-700"
+                            >
+                              <div className="h-8 border-b border-slate-300" />
+                              {signature?.name && (
+                                <p className="mt-2 font-semibold">{signature.name}</p>
+                              )}
+                              {signature?.role && (
+                                <p className="text-[10px] text-slate-500">{signature.role}</p>
+                              )}
+                              {!signature && (
+                                <p className="mt-2 text-[10px] text-slate-400">
+                                  Sem assinatura
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </TabsContent>
 
         <TabsContent value="exportacao" className="mt-6">
           <DataExport />
