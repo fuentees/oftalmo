@@ -159,12 +159,28 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     }
     const startDate = parseDateInput(basePayload.start_date);
     if (!startDate) return [basePayload];
-    const endDate = basePayload.end_date ? parseDateInput(basePayload.end_date) : null;
-    const durationDays = endDate
-      ? Math.round((endDate.getTime() - startDate.getTime()) / 86400000)
-      : 0;
-    const weekStart = startOfWeek(startDate, 1);
+    const rangeEnd = basePayload.end_date
+      ? parseDateInput(basePayload.end_date)
+      : null;
+
     const occurrences = [];
+
+    if (rangeEnd && rangeEnd >= startDate) {
+      let cursor = new Date(startDate);
+      while (cursor <= rangeEnd) {
+        if (repeatConfig.days.includes(cursor.getDay())) {
+          occurrences.push({
+            ...basePayload,
+            start_date: formatDate(cursor),
+            end_date: formatDate(cursor),
+          });
+        }
+        cursor = addDays(cursor, 1);
+      }
+      return occurrences.length > 0 ? occurrences : [basePayload];
+    }
+
+    const weekStart = startOfWeek(startDate, 1);
     const weeks = Math.max(1, Number(repeatConfig.weeks) || 1);
 
     for (let weekIndex = 0; weekIndex < weeks; weekIndex += 1) {
@@ -173,11 +189,10 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
         const offset = (weekday - 1 + 7) % 7;
         const occurrenceStart = addDays(baseWeek, offset);
         if (weekIndex === 0 && occurrenceStart < startDate) return;
-        const occurrenceEnd = endDate ? addDays(occurrenceStart, durationDays) : null;
         occurrences.push({
           ...basePayload,
           start_date: formatDate(occurrenceStart),
-          end_date: occurrenceEnd ? formatDate(occurrenceEnd) : null,
+          end_date: formatDate(occurrenceStart),
         });
       });
     }
@@ -437,6 +452,11 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
             value={formData.end_date}
             onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
           />
+          {repeatConfig.enabled && (
+            <p className="text-xs text-slate-500">
+              Com repetição ativa, esta data define o período final.
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -501,7 +521,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
                     />
                   </div>
                   <p className="text-xs text-slate-500 flex items-end">
-                    Ex: selecione Segunda e Sexta para repetir nas próximas semanas.
+                    Com Data Fim preenchida, repete apenas dentro do período.
                   </p>
                 </div>
               </div>
