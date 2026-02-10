@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,6 +151,10 @@ export default function Settings() {
     []
   );
 
+  const previewRef = useRef(null);
+  const dragStateRef = useRef(null);
+  const MIN_LOGO_SIZE = 5;
+
   const getLogoPosition = (key) => {
     const base = defaultLogoPositions[key] || { x: 20, y: 18, w: 30, h: 30 };
     const stored = certificateTemplate.logoPositions?.[key] || {};
@@ -162,20 +166,148 @@ export default function Settings() {
     };
   };
 
-  const handleLogoPositionChange = (key, field, value) => {
-    const numeric = Number(value);
+  const clampLogoPosition = (pos) => {
+    let w = Math.max(MIN_LOGO_SIZE, Number(pos.w) || 0);
+    let h = Math.max(MIN_LOGO_SIZE, Number(pos.h) || 0);
+    let x = Number(pos.x) || 0;
+    let y = Number(pos.y) || 0;
+
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > previewPage.width - MIN_LOGO_SIZE) x = previewPage.width - MIN_LOGO_SIZE;
+    if (y > previewPage.height - MIN_LOGO_SIZE) y = previewPage.height - MIN_LOGO_SIZE;
+
+    if (x + w > previewPage.width) {
+      w = Math.max(MIN_LOGO_SIZE, previewPage.width - x);
+    }
+    if (y + h > previewPage.height) {
+      h = Math.max(MIN_LOGO_SIZE, previewPage.height - y);
+    }
+
+    return { x, y, w, h };
+  };
+
+  const updateLogoPosition = (key, next) => {
+    const clamped = clampLogoPosition(next);
     setCertificateTemplate((prev) => ({
       ...prev,
       logoPositions: {
         ...defaultLogoPositions,
         ...(prev.logoPositions || {}),
-        [key]: {
-          ...defaultLogoPositions[key],
-          ...(prev.logoPositions?.[key] || {}),
-          [field]: Number.isFinite(numeric) ? numeric : 0,
-        },
+        [key]: clamped,
       },
     }));
+  };
+
+  const handleLogoPositionChange = (key, field, value) => {
+    const numeric = Number(value);
+    const current = getLogoPosition(key);
+    updateLogoPosition(key, {
+      ...current,
+      [field]: Number.isFinite(numeric) ? numeric : 0,
+    });
+  };
+
+  const getRelativeMm = (event) => {
+    if (!previewRef.current) return null;
+    const rect = previewRef.current.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * previewPage.width;
+    const y = ((event.clientY - rect.top) / rect.height) * previewPage.height;
+    return {
+      x: Math.max(0, Math.min(previewPage.width, x)),
+      y: Math.max(0, Math.min(previewPage.height, y)),
+    };
+  };
+
+  const startMoveLogo = (event, key) => {
+    if (event.button !== 0) return;
+    const startPoint = getRelativeMm(event);
+    if (!startPoint) return;
+    event.preventDefault();
+    const startPos = getLogoPosition(key);
+    dragStateRef.current = { key, mode: "move", startPoint, startPos };
+
+    const handleMove = (moveEvent) => {
+      if (!dragStateRef.current) return;
+      const point = getRelativeMm(moveEvent);
+      if (!point) return;
+      const dx = point.x - startPoint.x;
+      const dy = point.y - startPoint.y;
+      updateLogoPosition(key, {
+        ...startPos,
+        x: startPos.x + dx,
+        y: startPos.y + dy,
+      });
+    };
+
+    const handleUp = () => {
+      dragStateRef.current = null;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  };
+
+  const startResizeLogo = (event, key, handle) => {
+    if (event.button !== 0) return;
+    const startPoint = getRelativeMm(event);
+    if (!startPoint) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startPos = getLogoPosition(key);
+    dragStateRef.current = {
+      key,
+      mode: "resize",
+      handle,
+      startPoint,
+      startPos,
+    };
+
+    const handleMove = (moveEvent) => {
+      if (!dragStateRef.current) return;
+      const point = getRelativeMm(moveEvent);
+      if (!point) return;
+      const dx = point.x - startPoint.x;
+      const dy = point.y - startPoint.y;
+      let { x, y, w, h } = startPos;
+
+      if (handle.includes("e")) w = startPos.w + dx;
+      if (handle.includes("s")) h = startPos.h + dy;
+      if (handle.includes("w")) {
+        x = startPos.x + dx;
+        w = startPos.w - dx;
+      }
+      if (handle.includes("n")) {
+        y = startPos.y + dy;
+        h = startPos.h - dy;
+      }
+
+      if (w < MIN_LOGO_SIZE) {
+        if (handle.includes("w")) {
+          x = startPos.x + (startPos.w - MIN_LOGO_SIZE);
+        }
+        w = MIN_LOGO_SIZE;
+      }
+      if (h < MIN_LOGO_SIZE) {
+        if (handle.includes("n")) {
+          y = startPos.y + (startPos.h - MIN_LOGO_SIZE);
+        }
+        h = MIN_LOGO_SIZE;
+      }
+
+      updateLogoPosition(key, { x, y, w, h });
+    };
+
+    const handleUp = () => {
+      dragStateRef.current = null;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
   };
 
   const handleSaveCertificate = () => {
@@ -482,9 +614,11 @@ export default function Settings() {
             <CardContent>
               <div className="w-full">
                 <div
+                  ref={previewRef}
                   className="relative w-full overflow-hidden rounded-lg border bg-white shadow-sm"
                   style={{
                     paddingTop: `${(previewPage.height / previewPage.width) * 100}%`,
+                    touchAction: "none",
                   }}
                 >
                   <div className="absolute inset-0">
@@ -496,25 +630,47 @@ export default function Settings() {
                       return (
                         <div
                           key={logo.key}
-                          className="absolute flex items-center justify-center text-[10px] text-slate-400"
-                          style={{ left, top, width, height }}
+                          className="absolute text-[10px] text-slate-400"
+                          style={{ left, top, width, height, touchAction: "none" }}
+                          onPointerDown={(event) => startMoveLogo(event, logo.key)}
                         >
-                          {logo.dataUrl ? (
-                            <img
-                              src={logo.dataUrl}
-                              alt={logo.label}
-                              className="h-full w-full object-contain"
-                            />
-                          ) : (
-                            <div className="h-full w-full rounded border border-dashed border-slate-300 flex items-center justify-center text-[9px]">
-                              {logo.label}
-                            </div>
-                          )}
+                          <div className="relative h-full w-full">
+                            {logo.dataUrl ? (
+                              <img
+                                src={logo.dataUrl}
+                                alt={logo.label}
+                                className="h-full w-full object-contain pointer-events-none select-none"
+                                draggable={false}
+                              />
+                            ) : (
+                              <div className="h-full w-full rounded border border-dashed border-slate-300 flex items-center justify-center text-[9px]">
+                                {logo.label}
+                              </div>
+                            )}
+                            <div className="absolute inset-0 border border-dashed border-blue-400" />
+                            {["nw", "ne", "sw", "se"].map((handle) => {
+                              const handleClasses = {
+                                nw: "left-[-6px] top-[-6px] cursor-nwse-resize",
+                                ne: "right-[-6px] top-[-6px] cursor-nesw-resize",
+                                sw: "left-[-6px] bottom-[-6px] cursor-nesw-resize",
+                                se: "right-[-6px] bottom-[-6px] cursor-nwse-resize",
+                              };
+                              return (
+                                <div
+                                  key={handle}
+                                  className={`absolute h-3 w-3 rounded-full bg-blue-500 ${handleClasses[handle]}`}
+                                  onPointerDown={(event) =>
+                                    startResizeLogo(event, logo.key, handle)
+                                  }
+                                />
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}
 
-                    <div className="absolute inset-0 z-10 flex flex-col items-center text-center px-10 pt-10">
+                    <div className="absolute inset-0 z-10 flex flex-col items-center text-center px-10 pt-10 pointer-events-none">
                       {previewHeaderLines.length > 0 && (
                         <div className="space-y-1 text-xs font-semibold text-slate-700">
                           {previewHeaderLines.map((line) => (
