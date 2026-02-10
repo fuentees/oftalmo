@@ -92,8 +92,8 @@ const resolveSignature = (signature, training) => {
   return null;
 };
 
-export const generateParticipantCertificate = (participant, training) => {
-  const template = loadCertificateTemplate();
+export const generateParticipantCertificate = (participant, training, templateOverride) => {
+  const template = templateOverride || loadCertificateTemplate();
   const pdf = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -178,20 +178,6 @@ export const generateParticipantCertificate = (participant, training) => {
     align: "center",
   });
 
-  // Body
-  pdf.setFontSize(sizes.body);
-  pdf.setFont(fontFamily, "normal");
-  pdf.text("Certificamos que", bodyPosition.x, bodyPosition.y, { align: "center" });
-
-  pdf.setFontSize(sizes.name);
-  pdf.setFont(fontFamily, "bold");
-  pdf.text(participant.professional_name, bodyPosition.x, bodyPosition.y + 15, {
-    align: "center",
-  });
-
-  pdf.setFontSize(sizes.body);
-  pdf.setFont(fontFamily, "normal");
-
   const participantDate = Array.isArray(training.dates)
     ? formatDateSafe(training.dates[0]?.date)
     : null;
@@ -213,7 +199,9 @@ export const generateParticipantCertificate = (participant, training) => {
     ? bodyPosition.x - bodyWidth / 2
     : 20;
   const bodyLines = pdf.splitTextToSize(bodyText, bodyWidth);
-  pdf.text(bodyLines, bodyLeft, bodyPosition.y + 34, {
+  pdf.setFontSize(sizes.body);
+  pdf.setFont(fontFamily, "normal");
+  pdf.text(bodyLines, bodyLeft, bodyPosition.y, {
     align: "justify",
     maxWidth: bodyWidth,
   });
