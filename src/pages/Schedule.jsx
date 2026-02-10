@@ -304,99 +304,94 @@ export default function Schedule() {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Calendar */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="border-b">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-xl">
-                {format(currentDate, "MMMM yyyy", { locale: ptBR })}
-              </CardTitle>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleToday}>
-                  Hoje
-                </Button>
-                <Button variant="outline" size="sm" onClick={handlePrevMonth}>
-                  ←
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleNextMonth}>
-                  →
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="grid grid-cols-7 border-b">
-              {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
-                <div
-                  key={day}
-                  className="p-2 text-center text-xs font-semibold text-slate-600 border-r last:border-r-0"
-                >
-                  {day}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Calendar */}
+          <Card>
+            <CardHeader className="border-b">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xl">
+                  {format(currentDate, "MMMM yyyy", { locale: ptBR })}
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleToday}>
+                    Hoje
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handlePrevMonth}>
+                    ←
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleNextMonth}>
+                    →
+                  </Button>
                 </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7">
-              {daysInMonth.map((day, index) => {
-                const dayEvents = getEventsForDate(day);
-                const isSelected = selectedDate && isSameDay(day, selectedDate);
-                const isTodayDate = isToday(day);
-
-                return (
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="grid grid-cols-7 border-b">
+                {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
                   <div
-                    key={index}
-                    onClick={() => handleDayClick(day)}
-                    className={`min-h-24 p-2 border-r border-b last:border-r-0 cursor-pointer hover:bg-slate-50 transition-colors ${
-                      !isSameMonth(day, currentDate) ? "bg-slate-50" : ""
-                    } ${isSelected ? "bg-blue-50" : ""}`}
+                    key={day}
+                    className="p-2 text-center text-xs font-semibold text-slate-600 border-r last:border-r-0"
                   >
-                    <div
-                      className={`text-sm font-medium mb-1 ${
-                        isTodayDate
-                          ? "w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center"
-                          : ""
-                      }`}
-                    >
-                      {format(day, "d")}
-                    </div>
-                    <div className="space-y-1">
-                      {dayEvents.slice(0, 2).map((event) => {
-                        const Icon = typeIcons[event.type] || Circle;
-                        return (
-                          <div
-                            key={event.id}
-                            className="text-xs p-1 rounded truncate flex items-center gap-1"
-                            style={{
-                              backgroundColor: event.color + "20",
-                              color: event.color,
-                            }}
-                          >
-                            <Icon className="h-3 w-3 flex-shrink-0" />
-                            <span className="truncate">{event.title}</span>
-                          </div>
-                        );
-                      })}
-                      {dayEvents.length > 2 && (
-                        <div className="text-xs text-slate-500 pl-1">
-                          +{dayEvents.length - 2} mais
-                        </div>
-                      )}
-                    </div>
+                    {day}
                   </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+              </div>
+              <div className="grid grid-cols-7">
+                {daysInMonth.map((day, index) => {
+                  const dayEvents = getEventsForDate(day);
+                  const isSelected = selectedDate && isSameDay(day, selectedDate);
+                  const isTodayDate = isToday(day);
 
-        {/* Events List */}
-        <Card>
-          <CardHeader className="border-b">
-            <CardTitle className="text-lg">
-              {selectedDate ? format(selectedDate, "dd 'de' MMMM", { locale: ptBR }) : "Eventos"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 space-y-3 max-h-[600px] overflow-y-auto">
-            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  return (
+                    <div
+                      key={index}
+                      onClick={() => handleDayClick(day)}
+                      className={`min-h-24 p-2 border-r border-b last:border-r-0 cursor-pointer hover:bg-slate-50 transition-colors ${
+                        !isSameMonth(day, currentDate) ? "bg-slate-50" : ""
+                      } ${isSelected ? "bg-blue-50" : ""}`}
+                    >
+                      <div
+                        className={`text-sm font-medium mb-1 ${
+                          isTodayDate
+                            ? "w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center"
+                            : ""
+                        }`}
+                      >
+                        {format(day, "d")}
+                      </div>
+                      <div className="space-y-1">
+                        {dayEvents.slice(0, 2).map((event) => {
+                          const Icon = typeIcons[event.type] || Circle;
+                          return (
+                            <div
+                              key={event.id}
+                              className="text-xs p-1 rounded truncate flex items-center gap-1"
+                              style={{
+                                backgroundColor: event.color + "20",
+                                color: event.color,
+                              }}
+                            >
+                              <Icon className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">{event.title}</span>
+                            </div>
+                          );
+                        })}
+                        {dayEvents.length > 2 && (
+                          <div className="text-xs text-slate-500 pl-1">
+                            +{dayEvents.length - 2} mais
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Legenda */}
+          <Card>
+            <CardContent className="p-4">
               <p className="text-xs font-semibold text-slate-600 mb-2">Legenda</p>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(typeLabels).map(([key, label]) => (
@@ -412,7 +407,18 @@ export default function Schedule() {
                   </div>
                 ))}
               </div>
-            </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Events List */}
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle className="text-lg">
+              {selectedDate ? format(selectedDate, "dd 'de' MMMM", { locale: ptBR }) : "Eventos"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 space-y-3 max-h-[600px] overflow-y-auto">
             {selectedDateEvents.length === 0 ? (
               <p className="text-sm text-slate-500 text-center py-8">
                 {selectedDate ? "Nenhum evento nesta data" : "Selecione uma data"}
