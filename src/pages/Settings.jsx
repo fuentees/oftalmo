@@ -47,6 +47,7 @@ export default function Settings() {
   const [certificateStatus, setCertificateStatus] = useState(null);
   const [lockLogoRatio, setLockLogoRatio] = useState(false);
   const [showLogoGrid, setShowLogoGrid] = useState(false);
+  const [editLayer, setEditLayer] = useState("logos");
 
   useEffect(() => {
     const savedColor = localStorage.getItem("theme-color") || "blue";
@@ -143,6 +144,16 @@ export default function Settings() {
     { key: "tertiary", label: "Logo 3" },
     { key: "quaternary", label: "Logo 4" },
   ];
+  const fontOptions = [
+    { value: "helvetica", label: "Helvetica" },
+    { value: "times", label: "Times" },
+    { value: "courier", label: "Courier" },
+  ];
+  const previewFontFamily = {
+    helvetica: "Helvetica, Arial, sans-serif",
+    times: "\"Times New Roman\", Times, serif",
+    courier: "\"Courier New\", Courier, monospace",
+  };
 
   const defaultLogoPositions = useMemo(
     () => ({
@@ -296,6 +307,27 @@ export default function Settings() {
       ...current,
       [field]: Number.isFinite(numeric) ? numeric : 0,
     });
+  };
+
+  const handleFontChange = (field, value) => {
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      fonts: {
+        ...(prev.fonts || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleFontNumberChange = (field, value) => {
+    const numeric = Number(value);
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      fonts: {
+        ...(prev.fonts || {}),
+        [field]: Number.isFinite(numeric) ? numeric : 0,
+      },
+    }));
   };
 
   const getRelativeMm = (event) => {
@@ -556,6 +588,8 @@ export default function Settings() {
     : "";
   const signature1 = resolveSignature(certificateTemplate.signature1);
   const signature2 = resolveSignature(certificateTemplate.signature2);
+  const fontFamilyValue = certificateTemplate.fonts?.family || "helvetica";
+  const previewFont = previewFontFamily[fontFamilyValue] || previewFontFamily.helvetica;
 
   const previewPage = { width: 297, height: 210 };
   const toPercent = (value, total) => `${(value / total) * 100}%`;
@@ -902,6 +936,86 @@ export default function Settings() {
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="space-y-2">
+                  <Label>Fonte do certificado</Label>
+                  <Select
+                    value={fontFamilyValue}
+                    onValueChange={(value) => handleFontChange("family", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fontOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Cabeçalho</Label>
+                  <Input
+                    type="number"
+                    value={certificateTemplate.fonts?.headerSize || 10}
+                    onChange={(e) => handleFontNumberChange("headerSize", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Título</Label>
+                  <Input
+                    type="number"
+                    value={certificateTemplate.fonts?.titleSize || 28}
+                    onChange={(e) => handleFontNumberChange("titleSize", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Nome</Label>
+                  <Input
+                    type="number"
+                    value={certificateTemplate.fonts?.nameSize || 24}
+                    onChange={(e) => handleFontNumberChange("nameSize", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Texto</Label>
+                  <Input
+                    type="number"
+                    value={certificateTemplate.fonts?.bodySize || 14}
+                    onChange={(e) => handleFontNumberChange("bodySize", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Rodapé</Label>
+                  <Input
+                    type="number"
+                    value={certificateTemplate.fonts?.footerSize || 12}
+                    onChange={(e) => handleFontNumberChange("footerSize", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Assinatura</Label>
+                  <Input
+                    type="number"
+                    value={certificateTemplate.fonts?.signatureSize || 11}
+                    onChange={(e) => handleFontNumberChange("signatureSize", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Cargo</Label>
+                  <Input
+                    type="number"
+                    value={certificateTemplate.fonts?.signatureRoleSize || 9}
+                    onChange={(e) => handleFontNumberChange("signatureRoleSize", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <Label>Título</Label>
                   <Input
                     value={certificateTemplate.title}
@@ -1125,6 +1239,27 @@ export default function Settings() {
             <CardContent>
               <div className="flex flex-wrap items-center gap-4 mb-4">
                 <div className="flex items-center gap-2">
+                  <Label className="text-sm font-normal">Editar:</Label>
+                  <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+                    {[
+                      { value: "logos", label: "Logos" },
+                      { value: "textos", label: "Textos" },
+                      { value: "assinaturas", label: "Assinaturas" },
+                    ].map((option) => (
+                      <Button
+                        key={option.value}
+                        type="button"
+                        size="sm"
+                        variant={editLayer === option.value ? "default" : "ghost"}
+                        onClick={() => setEditLayer(option.value)}
+                        className="h-8"
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
                   <Checkbox
                     id="lock-logo-ratio"
                     checked={lockLogoRatio}
@@ -1175,8 +1310,19 @@ export default function Settings() {
                         <div
                           key={logo.key}
                           className="absolute text-[10px] text-slate-400"
-                          style={{ left, top, width, height, touchAction: "none" }}
-                          onPointerDown={(event) => startMoveLogo(event, logo.key)}
+                          style={{
+                            left,
+                            top,
+                            width,
+                            height,
+                            touchAction: "none",
+                            pointerEvents: editLayer === "logos" ? "auto" : "none",
+                          }}
+                          onPointerDown={
+                            editLayer === "logos"
+                              ? (event) => startMoveLogo(event, logo.key)
+                              : undefined
+                          }
                         >
                           <div className="relative h-full w-full">
                             {logo.dataUrl ? (
@@ -1208,8 +1354,10 @@ export default function Settings() {
                                 <div
                                   key={handle}
                                   className={`absolute ${size} rounded-full bg-blue-500 ${handleClasses[handle]}`}
-                                  onPointerDown={(event) =>
-                                    startResizeLogo(event, logo.key, handle)
+                                  onPointerDown={
+                                    editLayer === "logos"
+                                      ? (event) => startResizeLogo(event, logo.key, handle)
+                                      : undefined
                                   }
                                 />
                               );
@@ -1248,10 +1396,21 @@ export default function Settings() {
                                 top: toPercent(titlePos.y, previewPage.height),
                                 width: toPercent(titlePos.width, previewPage.width),
                                 transform: "translate(-50%, -50%)",
+                                pointerEvents: editLayer === "textos" ? "auto" : "none",
                               }}
-                              onPointerDown={(event) => startMoveText(event, "title")}
+                              onPointerDown={
+                                editLayer === "textos"
+                                  ? (event) => startMoveText(event, "title")
+                                  : undefined
+                              }
                             >
-                              <div className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center text-sm font-bold text-slate-900">
+                              <div
+                                className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center font-bold text-slate-900"
+                                style={{
+                                  fontFamily: previewFont,
+                                  fontSize: certificateTemplate.fonts?.titleSize || 28,
+                                }}
+                              >
                                 {previewTitle}
                               </div>
                             </div>
@@ -1263,10 +1422,21 @@ export default function Settings() {
                                 top: toPercent(bodyPos.y, previewPage.height),
                                 width: toPercent(bodyPos.width, previewPage.width),
                                 transform: "translate(-50%, -50%)",
+                                pointerEvents: editLayer === "textos" ? "auto" : "none",
                               }}
-                              onPointerDown={(event) => startMoveText(event, "body")}
+                              onPointerDown={
+                                editLayer === "textos"
+                                  ? (event) => startMoveText(event, "body")
+                                  : undefined
+                              }
                             >
-                              <div className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center text-xs text-slate-700 whitespace-pre-line">
+                              <div
+                                className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center text-slate-700 whitespace-pre-line"
+                                style={{
+                                  fontFamily: previewFont,
+                                  fontSize: certificateTemplate.fonts?.bodySize || 14,
+                                }}
+                              >
                                 {previewBody}
                               </div>
                             </div>
@@ -1279,10 +1449,21 @@ export default function Settings() {
                                   top: toPercent(footerPos.y, previewPage.height),
                                   width: toPercent(footerPos.width, previewPage.width),
                                   transform: "translate(-50%, -50%)",
+                                  pointerEvents: editLayer === "textos" ? "auto" : "none",
                                 }}
-                                onPointerDown={(event) => startMoveText(event, "footer")}
+                                onPointerDown={
+                                  editLayer === "textos"
+                                    ? (event) => startMoveText(event, "footer")
+                                    : undefined
+                                }
                               >
-                                <div className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center text-xs text-slate-700">
+                                <div
+                                  className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center text-slate-700"
+                                  style={{
+                                    fontFamily: previewFont,
+                                    fontSize: certificateTemplate.fonts?.footerSize || 12,
+                                  }}
+                                >
                                   {previewFooter}
                                 </div>
                               </div>
@@ -1300,16 +1481,35 @@ export default function Settings() {
                                     top: toPercent(pos.y, previewPage.height),
                                     width,
                                     transform: "translate(-50%, 0)",
+                                    pointerEvents:
+                                      editLayer === "assinaturas" ? "auto" : "none",
                                   }}
-                                  onPointerDown={(event) => startMoveSignature(event, item.key)}
+                                  onPointerDown={
+                                    editLayer === "assinaturas"
+                                      ? (event) => startMoveSignature(event, item.key)
+                                      : undefined
+                                  }
                                 >
                                   <div className="border-b border-slate-400" />
-                                  <div className="mt-1 text-center text-[10px] text-slate-700">
+                                  <div
+                                    className="mt-1 text-center text-slate-700"
+                                    style={{
+                                      fontFamily: previewFont,
+                                      fontSize: certificateTemplate.fonts?.signatureSize || 11,
+                                    }}
+                                  >
                                     <p className="font-semibold">
                                       {item.data?.name || item.label}
                                     </p>
                                     {item.data?.role && (
-                                      <p className="text-[9px] text-slate-500">
+                                      <p
+                                        className="text-slate-500"
+                                        style={{
+                                          fontFamily: previewFont,
+                                          fontSize:
+                                            certificateTemplate.fonts?.signatureRoleSize || 9,
+                                        }}
+                                      >
                                         {item.data.role}
                                       </p>
                                     )}
