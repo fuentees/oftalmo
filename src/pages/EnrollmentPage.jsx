@@ -208,6 +208,20 @@ export default function EnrollmentPage() {
       .toLowerCase()
       .trim();
 
+  const defaultSections = [
+    { key: "pessoais", label: "Dados Pessoais" },
+    { key: "instituicao", label: "Instituição" },
+    { key: "enderecos", label: "Endereços" },
+    { key: "contatos", label: "Contatos" },
+  ];
+
+  const formatSectionLabel = (value) => {
+    if (!value) return "";
+    return String(value)
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
   const gveMap = React.useMemo(() => {
     const map = new Map();
     gveMapping.forEach((item) => {
@@ -408,20 +422,6 @@ export default function EnrollmentPage() {
       return fixMojibake(trimmed);
     }
     return value;
-  };
-
-  const defaultSections = [
-    { key: "pessoais", label: "Dados Pessoais" },
-    { key: "instituicao", label: "Instituição" },
-    { key: "enderecos", label: "Endereços" },
-    { key: "contatos", label: "Contatos" },
-  ];
-
-  const formatSectionLabel = (value) => {
-    if (!value) return "";
-    return String(value)
-      .replace(/[_-]+/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
   const participantFieldMap = {
