@@ -39,12 +39,16 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
 import {
+  CERTIFICATE_TEMPLATE_TYPES,
   DEFAULT_CERTIFICATE_TEMPLATE,
   loadCertificateTemplate,
   resetCertificateTemplate,
   saveCertificateTemplate,
 } from "@/lib/certificateTemplate";
-import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
+import {
+  generateParticipantCertificate,
+  generateMonitorCertificate,
+} from "@/components/trainings/CertificateGenerator";
 
 export default function Settings() {
   const [selectedColor, setSelectedColor] = useState("blue");
@@ -52,6 +56,9 @@ export default function Settings() {
   const [mappingStatus, setMappingStatus] = useState(null);
   const [certificateTemplate, setCertificateTemplate] = useState(
     DEFAULT_CERTIFICATE_TEMPLATE
+  );
+  const [certificateTemplateType, setCertificateTemplateType] = useState(
+    "participant"
   );
   const [certificateStatus, setCertificateStatus] = useState(null);
   const [emailSettings, setEmailSettings] = useState({
@@ -71,9 +78,9 @@ export default function Settings() {
   }, []);
 
   useEffect(() => {
-    const template = loadCertificateTemplate();
+    const template = loadCertificateTemplate(certificateTemplateType);
     setCertificateTemplate(template);
-  }, []);
+  }, [certificateTemplateType]);
 
   useEffect(() => {
     try {
@@ -236,6 +243,12 @@ export default function Settings() {
     { value: "helvetica", label: "Helvetica" },
     { value: "times", label: "Times" },
     { value: "courier", label: "Courier" },
+  ];
+  const certificateTemplateOptions = [
+    { value: "participant", label: "Participante" },
+    { value: "monitor", label: "Monitor" },
+    { value: "coordinator", label: "Coordenador" },
+    { value: "speaker", label: "Palestrante" },
   ];
   const previewFontFamily = {
     helvetica: "Helvetica, Arial, sans-serif",
@@ -604,7 +617,7 @@ export default function Settings() {
   };
 
   const handleSaveCertificate = () => {
-    saveCertificateTemplate(certificateTemplate);
+    saveCertificateTemplate(certificateTemplate, certificateTemplateType);
     setCertificateStatus({
       type: "success",
       message: "Modelo de certificado salvo com sucesso.",
@@ -612,7 +625,7 @@ export default function Settings() {
   };
 
   const handleResetCertificate = () => {
-    const reset = resetCertificateTemplate();
+    const reset = resetCertificateTemplate(certificateTemplateType);
     setCertificateTemplate(reset);
     setCertificateStatus({
       type: "success",
@@ -638,11 +651,18 @@ export default function Settings() {
       coordinator: previewData.coordenador,
       instructor: previewData.instrutor,
     };
-    const pdf = generateParticipantCertificate(
-      participant,
-      training,
-      certificateTemplate
-    );
+    const pdf =
+      certificateTemplateType === "monitor"
+        ? generateMonitorCertificate(
+            {
+              name: participant.professional_name,
+              email: participant.professional_email,
+              rg: participant.professional_rg,
+            },
+            training,
+            certificateTemplate
+          )
+        : generateParticipantCertificate(participant, training, certificateTemplate);
     const blobUrl = pdf.output("bloburl");
     window.open(blobUrl, "_blank");
   };
@@ -1060,6 +1080,31 @@ export default function Settings() {
                   {"{{coordenador}}"} e {"{{instrutor}}"}.
                 </AlertDescription>
               </Alert>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Modelo</Label>
+                  <Select
+                    value={certificateTemplateType}
+                    onValueChange={(value) => {
+                      if (!CERTIFICATE_TEMPLATE_TYPES.includes(value)) return;
+                      setCertificateTemplateType(value);
+                      setCertificateStatus(null);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {certificateTemplateOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
               <Accordion
                 type="multiple"
