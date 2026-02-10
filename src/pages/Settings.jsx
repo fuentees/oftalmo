@@ -39,16 +39,12 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
 import {
-  CERTIFICATE_TEMPLATE_TYPES,
   DEFAULT_CERTIFICATE_TEMPLATE,
   loadCertificateTemplate,
   resetCertificateTemplate,
   saveCertificateTemplate,
 } from "@/lib/certificateTemplate";
-import {
-  generateParticipantCertificate,
-  generateMonitorCertificate,
-} from "@/components/trainings/CertificateGenerator";
+import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
 
 export default function Settings() {
   const [selectedColor, setSelectedColor] = useState("blue");
@@ -56,9 +52,6 @@ export default function Settings() {
   const [mappingStatus, setMappingStatus] = useState(null);
   const [certificateTemplate, setCertificateTemplate] = useState(
     DEFAULT_CERTIFICATE_TEMPLATE
-  );
-  const [certificateTemplateType, setCertificateTemplateType] = useState(
-    "participant"
   );
   const [certificateStatus, setCertificateStatus] = useState(null);
   const [emailSettings, setEmailSettings] = useState({
@@ -79,9 +72,9 @@ export default function Settings() {
   }, []);
 
   useEffect(() => {
-    const template = loadCertificateTemplate(certificateTemplateType);
+    const template = loadCertificateTemplate();
     setCertificateTemplate(template);
-  }, [certificateTemplateType]);
+  }, []);
 
   useEffect(() => {
     try {
@@ -254,12 +247,6 @@ export default function Settings() {
     { value: "helvetica", label: "Helvetica" },
     { value: "times", label: "Times" },
     { value: "courier", label: "Courier" },
-  ];
-  const certificateTemplateOptions = [
-    { value: "participant", label: "Participante" },
-    { value: "monitor", label: "Monitor" },
-    { value: "coordinator", label: "Coordenador" },
-    { value: "speaker", label: "Palestrante" },
   ];
   const previewFontFamily = {
     helvetica: "Helvetica, Arial, sans-serif",
@@ -668,7 +655,7 @@ export default function Settings() {
   };
 
   const handleSaveCertificate = () => {
-    saveCertificateTemplate(certificateTemplate, certificateTemplateType);
+    saveCertificateTemplate(certificateTemplate);
     setCertificateStatus({
       type: "success",
       message: "Modelo de certificado salvo com sucesso.",
@@ -676,7 +663,7 @@ export default function Settings() {
   };
 
   const handleResetCertificate = () => {
-    const reset = resetCertificateTemplate(certificateTemplateType);
+    const reset = resetCertificateTemplate();
     setCertificateTemplate(reset);
     setCertificateStatus({
       type: "success",
@@ -702,18 +689,7 @@ export default function Settings() {
       coordinator: previewData.coordenador,
       instructor: previewData.instrutor,
     };
-    const pdf =
-      certificateTemplateType === "monitor"
-        ? generateMonitorCertificate(
-            {
-              name: participant.professional_name,
-              email: participant.professional_email,
-              rg: participant.professional_rg,
-            },
-            training,
-            certificateTemplate
-          )
-        : generateParticipantCertificate(participant, training, certificateTemplate);
+    const pdf = generateParticipantCertificate(participant, training, certificateTemplate);
     const blobUrl = pdf.output("bloburl");
     window.open(blobUrl, "_blank");
   };
@@ -761,6 +737,8 @@ export default function Settings() {
     entidade: certificateTemplate.entityName || "Entidade",
     coordenador: "Coordenador(a) Responsável",
     instrutor: "Instrutor(a) Responsável",
+    funcao: "participante",
+    tipo_certificado: "participante",
   };
 
   const resolveSignature = (signature) => {
@@ -787,7 +765,10 @@ export default function Settings() {
   };
 
   const previewHeaderLines = certificateTemplate.headerLines || [];
-  const previewTitle = certificateTemplate.title || "CERTIFICADO";
+  const previewTitle = interpolateText(
+    certificateTemplate.title || "CERTIFICADO",
+    previewData
+  );
   const previewBody = interpolateText(certificateTemplate.body || "", previewData);
   const previewFooter = certificateTemplate.footer
     ? interpolateText(certificateTemplate.footer, previewData)
@@ -1159,34 +1140,9 @@ export default function Settings() {
                 <AlertDescription>
                   Variáveis disponíveis: {"{{nome}}"}, {"{{rg}}"}, {"{{treinamento}}"},
                   {"{{carga_horaria}}"}, {"{{data}}"}, {"{{entidade}}"},
-                  {"{{coordenador}}"} e {"{{instrutor}}"}.
+                  {"{{coordenador}}"}, {"{{instrutor}}"}, {"{{funcao}}"} e {"{{tipo_certificado}}"}.
                 </AlertDescription>
               </Alert>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Modelo</Label>
-                  <Select
-                    value={certificateTemplateType}
-                    onValueChange={(value) => {
-                      if (!CERTIFICATE_TEMPLATE_TYPES.includes(value)) return;
-                      setCertificateTemplateType(value);
-                      setCertificateStatus(null);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {certificateTemplateOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
 
               <Accordion
                 type="multiple"
@@ -1389,6 +1345,22 @@ export default function Settings() {
                             handleTextOptionChange(
                               "bodyMaxWordSpacing",
                               Number(e.target.value) || 3
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Recuo do parágrafo (mm)</Label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="30"
+                          value={certificateTemplate.textOptions?.bodyIndent || 0}
+                          onChange={(e) =>
+                            handleTextOptionChange(
+                              "bodyIndent",
+                              Number(e.target.value) || 0
                             )
                           }
                         />
@@ -1599,7 +1571,7 @@ export default function Settings() {
               </Accordion>
 
               <div className="flex flex-wrap gap-2">
-                <Button onClick={handleSaveCertificate}>Salvar</Button>
+                <Button onClick={handleSaveCertificate}>Salvar modelo</Button>
                 <Button variant="outline" onClick={handlePreviewPdf}>
                   <Eye className="h-4 w-4 mr-2" />
                   Visualizar PDF
@@ -1854,6 +1826,11 @@ export default function Settings() {
                                   fontSize: certificateTemplate.fonts?.bodySize || 14,
                                   textAlign: "justify",
                                   lineHeight: certificateTemplate.textOptions?.bodyLineHeight || 1.2,
+                                  textIndent: `${
+                                    ((certificateTemplate.textOptions?.bodyIndent || 0) /
+                                      previewPage.width) *
+                                    100
+                                  }%`,
                                 }}
                               >
                                 {renderFormattedText(previewBody)}

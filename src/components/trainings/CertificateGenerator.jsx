@@ -43,11 +43,14 @@ const parseFormattedText = (value) => {
   return tokens;
 };
 
-const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth) => {
+const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth, firstLineIndent = 0) => {
   const lines = [];
   let current = [];
   let lineWidth = 0;
   let pendingSpace = false;
+  let lineIndex = 0;
+  const getMaxWidth = () =>
+    maxWidth - (lineIndex === 0 ? firstLineIndent : 0);
 
   const pushLine = () => {
     if (current.length > 0) {
@@ -56,6 +59,7 @@ const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth) => {
     current = [];
     lineWidth = 0;
     pendingSpace = false;
+    lineIndex = lines.length;
   };
 
   tokens.forEach((token) => {
@@ -72,7 +76,7 @@ const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth) => {
       }
       const wordWidth = measureWord(part, token.bold);
       const spaceWidth = pendingSpace && current.length > 0 ? baseSpaceWidth : 0;
-      if (current.length > 0 && lineWidth + spaceWidth + wordWidth > maxWidth) {
+      if (current.length > 0 && lineWidth + spaceWidth + wordWidth > getMaxWidth()) {
         pushLine();
       }
       if (pendingSpace && current.length > 0) {
@@ -102,6 +106,7 @@ const drawFormattedText = (
     fontSize,
     justify = true,
     maxWordSpacing = 3,
+    indent = 0,
   } = options || {};
   pdf.setFontSize(fontSize);
   pdf.setFont(fontFamily, "normal");
@@ -112,7 +117,7 @@ const drawFormattedText = (
     pdf.setFont(fontFamily, isBold ? "bold" : "normal");
     return pdf.getTextWidth(word);
   };
-  const lines = buildLines(tokens, maxWidth, measureWord, baseSpaceWidth);
+  const lines = buildLines(tokens, maxWidth, measureWord, baseSpaceWidth, indent);
   lines.forEach((words, index) => {
     if (words.length === 0) return;
     const isLast = index === lines.length - 1;
@@ -120,13 +125,14 @@ const drawFormattedText = (
     const wordsWidth = wordWidths.reduce((sum, width) => sum + width, 0);
     const gaps = words.length - 1;
     let spaceWidth = baseSpaceWidth;
+    const availableWidth = maxWidth - (index === 0 ? indent : 0);
     if (justify && !isLast && gaps > 0) {
-      const proposed = (maxWidth - wordsWidth) / gaps;
+      const proposed = (availableWidth - wordsWidth) / gaps;
       if (Number.isFinite(proposed) && proposed >= baseSpaceWidth && proposed <= maxSpaceWidth) {
         spaceWidth = proposed;
       }
     }
-    let cursorX = x;
+    let cursorX = x + (index === 0 ? indent : 0);
     words.forEach((word, idx) => {
       pdf.setFont(fontFamily, word.bold ? "bold" : "normal");
       pdf.text(word.text, cursorX, y + index * lineHeight);
@@ -214,7 +220,7 @@ const resolveSignature = (signature, training) => {
 };
 
 export const generateParticipantCertificate = (participant, training, templateOverride) => {
-  const template = templateOverride || loadCertificateTemplate("participant");
+  const template = templateOverride || loadCertificateTemplate();
   const pdf = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -292,13 +298,25 @@ export const generateParticipantCertificate = (participant, training, templateOv
     signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
     signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
   };
-  // Title
-  pdf.setFontSize(sizes.title);
-  pdf.setFont(fontFamily, "bold");
-  pdf.text(template.title || "CERTIFICADO", titlePosition.x, titlePosition.y, {
-    align: "center",
+  const titlePosition = getTextPosition(template, "title", {
+    x: pageWidth / 2,
+    y: titleY,
+    width: pageWidth - 40,
   });
-
+  const bodyPosition = getTextPosition(template, "body", {
+    x: pageWidth / 2,
+    y: titleY + 16,
+    width: pageWidth - 40,
+  });
+  const footerPosition = getTextPosition(template, "footer", {
+    x: pageWidth / 2,
+    y: pageHeight - 55,
+    width: pageWidth - 40,
+  });
+  const signatureDefaults = {
+    signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
+    signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
+  };
   const participantDate = Array.isArray(training.dates)
     ? formatDateSafe(training.dates[0]?.date)
     : null;
@@ -312,7 +330,17 @@ export const generateParticipantCertificate = (participant, training, templateOv
     entidade: template.entityName || "",
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
+    funcao: "participante",
+    tipo_certificado: "participante",
   };
+
+  // Title
+  pdf.setFontSize(sizes.title);
+  pdf.setFont(fontFamily, "bold");
+  const titleText = interpolateText(template.title || "CERTIFICADO", textData);
+  pdf.text(titleText, titlePosition.x, titlePosition.y, {
+    align: "center",
+  });
 
   const bodyText = interpolateText(template.body || "", textData).trim();
   const bodyWidth = bodyPosition.width || pageWidth - 40;
@@ -323,6 +351,7 @@ export const generateParticipantCertificate = (participant, training, templateOv
   const justifyBody = textOptions.bodyJustify !== false;
   const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
   const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
   pdf.setFontSize(sizes.body);
   pdf.setFont(fontFamily, "normal");
@@ -331,6 +360,7 @@ export const generateParticipantCertificate = (participant, training, templateOv
     fontSize: sizes.body,
     justify: justifyBody,
     maxWordSpacing,
+    indent: bodyIndent,
   });
 
   if (template.footer) {
@@ -376,7 +406,7 @@ export const generateParticipantCertificate = (participant, training, templateOv
 };
 
 export const generateMonitorCertificate = (monitor, training, templateOverride) => {
-  const template = templateOverride || loadCertificateTemplate("monitor");
+  const template = templateOverride || loadCertificateTemplate();
   const pdf = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -436,27 +466,26 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
 
   const titleY = 40 + (template.headerLines?.length || 0) * 3;
 
-  // Title
-  pdf.setFontSize(sizes.title);
-  pdf.setFont(fontFamily, "bold");
-  pdf.text(template.title || "CERTIFICADO DE MONITORIA", titlePosition.x, titlePosition.y, {
-    align: "center",
-  });
-
-  const monitorDate = Array.isArray(training.dates)
-    ? formatDateSafe(training.dates[0]?.date)
-    : null;
-
   const textData = {
     nome: monitor.name || "",
     rg: monitor.rg ? `RG ${monitor.rg}` : "",
     treinamento: training.title || "",
     carga_horaria: training.duration_hours || "",
-    data: monitorDate || formatDateSafe(new Date()),
+    data: formatDateSafe(training.dates?.[0]?.date) || formatDateSafe(new Date()),
     entidade: template.entityName || "",
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
+    funcao: "monitor",
+    tipo_certificado: "monitor",
   };
+
+  // Title
+  pdf.setFontSize(sizes.title);
+  pdf.setFont(fontFamily, "bold");
+  const titleText = interpolateText(template.title || "CERTIFICADO", textData);
+  pdf.text(titleText, titlePosition.x, titlePosition.y, {
+    align: "center",
+  });
 
   const bodyText = interpolateText(template.body || "", textData).trim();
   const bodyWidth = bodyPosition.width || pageWidth - 40;
@@ -467,6 +496,7 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
   const justifyBody = textOptions.bodyJustify !== false;
   const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
   const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
   pdf.setFontSize(sizes.body);
   pdf.setFont(fontFamily, "normal");
@@ -475,6 +505,7 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
     fontSize: sizes.body,
     justify: justifyBody,
     maxWordSpacing,
+    indent: bodyIndent,
   });
 
   if (template.footer) {

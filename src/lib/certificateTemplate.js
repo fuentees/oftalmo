@@ -1,16 +1,4 @@
 export const CERTIFICATE_TEMPLATE_KEY = "certificateTemplate";
-export const CERTIFICATE_TEMPLATE_TYPES = [
-  "participant",
-  "monitor",
-  "coordinator",
-  "speaker",
-];
-
-const normalizeTemplateType = (value) =>
-  CERTIFICATE_TEMPLATE_TYPES.includes(value) ? value : "participant";
-
-const getTemplateStorageKey = (type) =>
-  `${CERTIFICATE_TEMPLATE_KEY}:${normalizeTemplateType(type)}`;
 
 export const DEFAULT_CERTIFICATE_TEMPLATE = {
   headerLines: [
@@ -46,6 +34,7 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
     bodyJustify: true,
     bodyLineHeight: 1.2,
     bodyMaxWordSpacing: 3,
+    bodyIndent: 6,
   },
   logos: {},
   logoPositions: {},
@@ -59,34 +48,6 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
     signature2: { x: 227, y: 170, lineWidth: 60 },
   },
 };
-
-const DEFAULT_TEMPLATES_BY_TYPE = {
-  participant: DEFAULT_CERTIFICATE_TEMPLATE,
-  monitor: {
-    ...DEFAULT_CERTIFICATE_TEMPLATE,
-    title: "CERTIFICADO DE MONITORIA",
-    body:
-      "Certificamos que {{nome}} {{rg}}, atuou como monitor(a) no treinamento \"{{treinamento}}\" promovido por {{entidade}}, com carga horária de {{carga_horaria}} horas, realizado em {{data}}.",
-  },
-  coordinator: {
-    ...DEFAULT_CERTIFICATE_TEMPLATE,
-    title: "CERTIFICADO DE COORDENAÇÃO",
-    body:
-      "Certificamos que {{nome}} {{rg}}, coordenou o treinamento \"{{treinamento}}\" promovido por {{entidade}}, com carga horária de {{carga_horaria}} horas, realizado em {{data}}.",
-  },
-  speaker: {
-    ...DEFAULT_CERTIFICATE_TEMPLATE,
-    title: "CERTIFICADO DE PALESTRA",
-    body:
-      "Certificamos que {{nome}} {{rg}}, ministrou o treinamento \"{{treinamento}}\" promovido por {{entidade}}, com carga horária de {{carga_horaria}} horas, realizado em {{data}}.",
-  },
-};
-
-const cloneTemplate = (template) =>
-  JSON.parse(JSON.stringify(template || DEFAULT_CERTIFICATE_TEMPLATE));
-
-const getDefaultTemplateForType = (type) =>
-  cloneTemplate(DEFAULT_TEMPLATES_BY_TYPE[type] || DEFAULT_CERTIFICATE_TEMPLATE);
 
 const cleanLegacyLogos = (merged) => {
   const logoKeys = Object.keys(merged.logos || {});
@@ -118,9 +79,9 @@ const cleanLegacyLogos = (merged) => {
   return merged;
 };
 
-const mergeTemplate = (template, type = "participant") => {
+const mergeTemplate = (template) => {
   const merged = {
-    ...getDefaultTemplateForType(type),
+    ...DEFAULT_CERTIFICATE_TEMPLATE,
     ...template,
     logos: {
       ...(template?.logos || {}),
@@ -156,53 +117,32 @@ const mergeTemplate = (template, type = "participant") => {
   return cleanLegacyLogos(merged);
 };
 
-export const loadCertificateTemplate = (type = "participant") => {
+export const loadCertificateTemplate = () => {
   if (typeof window === "undefined") return DEFAULT_CERTIFICATE_TEMPLATE;
-  const normalizedType = normalizeTemplateType(type);
-  const storageKey = getTemplateStorageKey(normalizedType);
   try {
-    const stored = window.localStorage.getItem(storageKey);
-    if (!stored && normalizedType === "participant") {
-      const legacy = window.localStorage.getItem(CERTIFICATE_TEMPLATE_KEY);
-      if (legacy) {
-        const parsedLegacy = JSON.parse(legacy);
-        return mergeTemplate(parsedLegacy, normalizedType);
-      }
-    }
-    if (!stored) return getDefaultTemplateForType(normalizedType);
+    const stored = window.localStorage.getItem(CERTIFICATE_TEMPLATE_KEY);
+    if (!stored) return DEFAULT_CERTIFICATE_TEMPLATE;
     const parsed = JSON.parse(stored);
-    return mergeTemplate(parsed, normalizedType);
+    return mergeTemplate(parsed);
   } catch (error) {
-    return getDefaultTemplateForType(normalizedType);
+    return DEFAULT_CERTIFICATE_TEMPLATE;
   }
 };
 
-export const saveCertificateTemplate = (template, type = "participant") => {
+export const saveCertificateTemplate = (template) => {
   if (typeof window === "undefined") return;
-  const payload = mergeTemplate(template, type);
-  const storageKey = getTemplateStorageKey(type);
-  window.localStorage.setItem(storageKey, JSON.stringify(payload));
-  if (normalizeTemplateType(type) === "participant") {
-    window.localStorage.setItem(
-      CERTIFICATE_TEMPLATE_KEY,
-      JSON.stringify(payload)
-    );
-  }
+  const payload = mergeTemplate(template);
+  window.localStorage.setItem(
+    CERTIFICATE_TEMPLATE_KEY,
+    JSON.stringify(payload)
+  );
 };
 
-export const resetCertificateTemplate = (type = "participant") => {
+export const resetCertificateTemplate = () => {
   if (typeof window === "undefined") return DEFAULT_CERTIFICATE_TEMPLATE;
-  const storageKey = getTemplateStorageKey(type);
-  const defaultTemplate = getDefaultTemplateForType(type);
   window.localStorage.setItem(
-    storageKey,
-    JSON.stringify(defaultTemplate)
+    CERTIFICATE_TEMPLATE_KEY,
+    JSON.stringify(DEFAULT_CERTIFICATE_TEMPLATE)
   );
-  if (normalizeTemplateType(type) === "participant") {
-    window.localStorage.setItem(
-      CERTIFICATE_TEMPLATE_KEY,
-      JSON.stringify(defaultTemplate)
-    );
-  }
-  return defaultTemplate;
+  return DEFAULT_CERTIFICATE_TEMPLATE;
 };
