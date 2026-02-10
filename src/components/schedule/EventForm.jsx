@@ -20,6 +20,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     end_time: "",
     municipality: "",
     gve: "",
+    online_link: "",
     professional_ids: [],
     professional_names: [],
     status: "planejado",
@@ -27,6 +28,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     notes: "",
   });
   const [gveMapping, setGveMapping] = useState([]);
+  const ONLINE_LINK_PREFIX = "link_online:";
 
   const queryClient = useQueryClient();
 
@@ -104,9 +106,44 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     return cleanMunicipality || (cleanGve ? `GVE ${cleanGve}` : "");
   };
 
+  const extractOnlineLink = (value) => {
+    if (!value) return "";
+    const lines = String(value).split("\n");
+    const match = lines.find((line) =>
+      line.trim().toLowerCase().startsWith(ONLINE_LINK_PREFIX)
+    );
+    if (!match) return "";
+    return match.slice(ONLINE_LINK_PREFIX.length).trim();
+  };
+
+  const stripOnlineLink = (value) => {
+    if (!value) return "";
+    return String(value)
+      .split("\n")
+      .filter(
+        (line) => !line.trim().toLowerCase().startsWith(ONLINE_LINK_PREFIX)
+      )
+      .join("\n")
+      .trim();
+  };
+
+  const mergeNotesWithLink = (notes, link) => {
+    const cleanNotes = stripOnlineLink(notes);
+    const cleanLink = String(link || "").trim();
+    if (!cleanLink) return cleanNotes;
+    return [cleanNotes, `${ONLINE_LINK_PREFIX} ${cleanLink}`]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+  };
+
   useEffect(() => {
     if (event) {
       const parsed = parseLocation(event.location);
+      const linkFromNotes = extractOnlineLink(event.notes);
+      const cleanNotes = stripOnlineLink(event.notes);
+      const link =
+        String(event.online_link || "").trim() || linkFromNotes || "";
       setFormData({
         title: event.title || "",
         type: event.type || "outro",
@@ -117,11 +154,12 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
         end_time: event.end_time || "",
         municipality: parsed.municipality || event.location || "",
         gve: parsed.gve || "",
+        online_link: link,
         professional_ids: event.professional_ids || [],
         professional_names: event.professional_names || [],
         status: event.status || "planejado",
         color: event.color || "#3b82f6",
-        notes: event.notes || "",
+        notes: cleanNotes || "",
       });
     }
   }, [event]);
@@ -152,13 +190,16 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     const location = formatLocation(formData.municipality, formData.gve);
+    const notes = mergeNotesWithLink(formData.notes, formData.online_link);
     const payload = {
       ...formData,
       location,
+      notes,
       end_date: formData.end_date || null,
     };
     delete payload.municipality;
     delete payload.gve;
+    delete payload.online_link;
     saveMutation.mutate(payload);
   };
 
@@ -321,6 +362,18 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
             }
             placeholder="GVE"
             readOnly={Boolean(getGveByMunicipio(formData.municipality))}
+          />
+        </div>
+
+        <div className="col-span-2 space-y-2">
+          <Label htmlFor="online_link">Link do evento online</Label>
+          <Input
+            id="online_link"
+            value={formData.online_link}
+            onChange={(e) =>
+              setFormData({ ...formData, online_link: e.target.value })
+            }
+            placeholder="https://zoom.us/j/... ou https://teams.microsoft.com/..."
           />
         </div>
 
