@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,8 @@ export default function Schedule() {
   const [showEventForm, setShowEventForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [deleteEvent, setDeleteEvent] = useState(null);
+  const [prefillDate, setPrefillDate] = useState(null);
+  const statusUpdateRef = useRef(new Map());
 
   const queryClient = useQueryClient();
 
@@ -60,6 +62,14 @@ export default function Schedule() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["events"] });
       setDeleteEvent(null);
+    },
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: (payload) =>
+      dataClient.entities.Event.update(payload.id, { status: payload.status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["events"] });
     },
   });
 
@@ -109,6 +119,43 @@ export default function Schedule() {
     });
   };
 
+  const parseDateTime = (dateValue, timeValue, isEnd) => {
+    if (!dateValue) return null;
+    const base = new Date(dateValue);
+    if (Number.isNaN(base.getTime())) return null;
+    const time = String(timeValue || "").trim();
+    if (time) {
+      const [hourPart, minutePart] = time.split(":");
+      const hours = Number(hourPart);
+      const minutes = Number(minutePart);
+      if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+        base.setHours(hours, minutes, 0, 0);
+        return base;
+      }
+    }
+    if (isEnd) {
+      base.setHours(23, 59, 59, 999);
+    } else {
+      base.setHours(0, 0, 0, 0);
+    }
+    return base;
+  };
+
+  const getEffectiveStatus = (event) => {
+    if (!event) return "planejado";
+    if (event.status === "cancelado") return "cancelado";
+    if (event.status === "concluido") return "concluido";
+    const startDate = event.start_date;
+    const endDate = event.end_date || event.start_date;
+    const start = parseDateTime(startDate, event.start_time, false);
+    const end = parseDateTime(endDate, event.end_time, true);
+    if (!start || !end) return event.status || "planejado";
+    const now = new Date();
+    if (now < start) return event.status || "planejado";
+    if (now >= start && now <= end) return "em_andamento";
+    return "concluido";
+  };
+
   const selectedDateEvents = selectedDate ? getEventsForDate(selectedDate) : [];
 
   const handlePrevMonth = () => {
@@ -130,8 +177,45 @@ export default function Schedule() {
 
   const handleNewEvent = () => {
     setEditingEvent(null);
+    setPrefillDate(
+      selectedDate ? format(selectedDate, "yyyy-MM-dd") : null
+    );
     setShowEventForm(true);
   };
+
+  const handleDayClick = (day) => {
+    setSelectedDate(day);
+    setEditingEvent(null);
+    setPrefillDate(format(day, "yyyy-MM-dd"));
+    setShowEventForm(true);
+  };
+
+  React.useEffect(() => {
+    const syncStatuses = async () => {
+      if (!events || events.length === 0) return;
+      const updates = [];
+      events.forEach((event) => {
+        const effective = getEffectiveStatus(event);
+        if (!effective || effective === event.status) return;
+        const lastStatus = statusUpdateRef.current.get(event.id);
+        if (lastStatus === effective) return;
+        if (event.status === "cancelado") return;
+        updates.push({ id: event.id, status: effective });
+        statusUpdateRef.current.set(event.id, effective);
+      });
+      if (updates.length === 0) return;
+      await Promise.all(
+        updates.map((payload) =>
+          dataClient.entities.Event.update(payload.id, { status: payload.status })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+    };
+
+    syncStatuses();
+    const timer = window.setInterval(syncStatuses, 60000);
+    return () => window.clearInterval(timer);
+  }, [events, queryClient]);
 
   return (
     <div className="space-y-6">
@@ -184,7 +268,7 @@ export default function Schedule() {
                 return (
                   <div
                     key={index}
-                    onClick={() => setSelectedDate(day)}
+                    onClick={() => handleDayClick(day)}
                     className={`min-h-24 p-2 border-r border-b last:border-r-0 cursor-pointer hover:bg-slate-50 transition-colors ${
                       !isSameMonth(day, currentDate) ? "bg-slate-50" : ""
                     } ${isSelected ? "bg-blue-50" : ""}`}
@@ -243,6 +327,8 @@ export default function Schedule() {
             ) : (
               selectedDateEvents.map((event) => {
                 const Icon = typeIcons[event.type] || Circle;
+                const effectiveStatus = getEffectiveStatus(event);
+                const showPlanActions = event.status === "planejado";
                 return (
                   <Card key={event.id} className="border shadow-sm">
                     <CardContent className="p-3 space-y-2">
@@ -281,6 +367,39 @@ export default function Schedule() {
                         <p className="text-xs text-slate-600">{event.description}</p>
                       )}
 
+                      {showPlanActions && (
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              updateStatusMutation.mutate({
+                                id: event.id,
+                                status: "confirmado",
+                              })
+                            }
+                            className="h-7 px-2 text-xs"
+                          >
+                            Confirmar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              updateStatusMutation.mutate({
+                                id: event.id,
+                                status: "cancelado",
+                              })
+                            }
+                            className="h-7 px-2 text-xs text-red-600 border-red-200"
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      )}
+
                       <div className="space-y-1 text-xs text-slate-500">
                         {event.start_time && (
                           <div className="flex items-center gap-1">
@@ -303,8 +422,8 @@ export default function Schedule() {
                         )}
                       </div>
 
-                      <Badge className={statusColors[event.status]}>
-                        {statusLabels[event.status]}
+                      <Badge className={statusColors[effectiveStatus]}>
+                        {statusLabels[effectiveStatus]}
                       </Badge>
                     </CardContent>
                   </Card>
@@ -323,6 +442,7 @@ export default function Schedule() {
           </DialogHeader>
           <EventForm
             event={editingEvent}
+            initialDate={prefillDate}
             onClose={() => {
               setShowEventForm(false);
               setEditingEvent(null);
