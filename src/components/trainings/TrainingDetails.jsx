@@ -1,12 +1,85 @@
-import React from "react";
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Calendar, MapPin, User, Users, GraduationCap, FileText, Video } from "lucide-react";
+import { Download, Trash2, Upload } from "lucide-react";
 import DataTable from "@/components/common/DataTable";
 
 export default function TrainingDetails({ training, participants }) {
   if (!training) return null;
+  const queryClient = useQueryClient();
+  const [reportFile, setReportFile] = useState(null);
+  const [reportStatus, setReportStatus] = useState(null);
+  const REPORT_NAME = "Relatório do Evento";
+
+  const { data: user } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => dataClient.auth.me(),
+  });
+
+  const { data: reports = [] } = useQuery({
+    queryKey: ["trainingReports", training?.id],
+    queryFn: () => dataClient.entities.TrainingMaterial.list(),
+    select: (data) =>
+      (data || [])
+        .filter(
+          (item) => item.training_id === training?.id && item.name === REPORT_NAME
+        )
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    enabled: !!training?.id,
+  });
+
+  const currentReport = reports[0] || null;
+
+  const uploadReport = useMutation({
+    mutationFn: async (file) => {
+      if (!file) throw new Error("Selecione um arquivo de relatório.");
+      if (currentReport?.id) {
+        await dataClient.entities.TrainingMaterial.delete(currentReport.id);
+      }
+      const { file_url } = await dataClient.integrations.Core.UploadFile({ file });
+      const ext = file.name?.split(".").pop() || "";
+      return dataClient.entities.TrainingMaterial.create({
+        training_id: training.id,
+        training_title: training.title,
+        name: REPORT_NAME,
+        description: "Relatório do evento",
+        file_url,
+        file_type: ext,
+        uploaded_by: user?.email || "sistema",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trainingReports", training?.id] });
+      setReportFile(null);
+      setReportStatus({ type: "success", message: "Relatório enviado." });
+    },
+    onError: (error) => {
+      setReportStatus({
+        type: "error",
+        message: error.message || "Erro ao enviar relatório.",
+      });
+    },
+  });
+
+  const deleteReport = useMutation({
+    mutationFn: (id) => dataClient.entities.TrainingMaterial.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trainingReports", training?.id] });
+      setReportStatus({ type: "success", message: "Relatório removido." });
+    },
+    onError: (error) => {
+      setReportStatus({
+        type: "error",
+        message: error.message || "Erro ao remover relatório.",
+      });
+    },
+  });
 
   const formatDate = (value, pattern = "dd/MM/yyyy") => {
     if (!value) return "-";
@@ -232,6 +305,74 @@ export default function TrainingDetails({ training, participants }) {
         </Card>
       )}
 
+      {/* Event Report */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Relatório do Evento
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {currentReport ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">
+                {currentReport.file_type
+                  ? `Relatório (${currentReport.file_type.toUpperCase()})`
+                  : "Relatório anexado"}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.open(currentReport.file_url, "_blank")}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Baixar
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-red-600"
+                onClick={() => deleteReport.mutate(currentReport.id)}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Remover
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">Nenhum relatório enviado.</p>
+          )}
+
+          <div className="grid gap-2">
+            <Input
+              type="file"
+              onChange={(e) => setReportFile(e.target.files?.[0] || null)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!reportFile || uploadReport.isPending}
+              onClick={() => uploadReport.mutate(reportFile)}
+              className="w-full sm:w-auto"
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              {uploadReport.isPending ? "Enviando..." : "Enviar relatório"}
+            </Button>
+          </div>
+
+          {reportStatus && (
+            <p
+              className={
+                reportStatus.type === "error"
+                  ? "text-sm text-red-700"
+                  : "text-sm text-green-700"
+              }
+            >
+              {reportStatus.message}
+            </p>
+          )}
+        </CardContent>
+      </Card>
       {training.speakers && training.speakers.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -255,7 +396,6 @@ export default function TrainingDetails({ training, participants }) {
           </CardContent>
         </Card>
       )}
-
       {/* Participants */}
       <Card>
         <CardHeader className="pb-2">
