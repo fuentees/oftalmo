@@ -313,6 +313,8 @@ export default function ParticipantProfile() {
         validity_date: validityDate,
       });
 
+      pdf.save(fileName);
+
       await queryClient.invalidateQueries({ queryKey: ["participants"] });
       setRegenStatus({
         type: "success",
