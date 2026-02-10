@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, X } from "lucide-react";
+import { format } from "date-fns";
 
 export default function EventForm({ event, onClose, onSuccess, initialDate }) {
   const [formData, setFormData] = useState({
@@ -33,6 +34,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     weeks: 4,
     days: [],
   });
+  const [vacationDays, setVacationDays] = useState(null);
   const ONLINE_LINK_PREFIX = "link_online:";
   const weekDays = [
     { value: 0, label: "Dom" },
@@ -247,6 +249,16 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
       const cleanNotes = stripOnlineLink(event.notes);
       const link =
         String(event.online_link || "").trim() || linkFromNotes || "";
+      if (event.type === "ferias" && event.start_date && event.end_date) {
+        const start = parseDateInput(event.start_date);
+        const end = parseDateInput(event.end_date);
+        if (start && end) {
+          const diff = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+          if (diff === 15 || diff === 30) {
+            setVacationDays(diff);
+          }
+        }
+      }
       setFormData({
         title: event.title || "",
         type: event.type || "outro",
@@ -274,6 +286,25 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
       start_date: prev.start_date || initialDate,
     }));
   }, [event, initialDate]);
+
+  useEffect(() => {
+    if (formData.type !== "ferias") {
+      if (vacationDays) setVacationDays(null);
+      return;
+    }
+    if (!vacationDays) return;
+    if (!formData.start_date) return;
+    const start = parseDateInput(formData.start_date);
+    if (!start) return;
+    const end = addDays(start, vacationDays - 1);
+    const nextEnd = formatDate(end);
+    if (nextEnd !== formData.end_date) {
+      setFormData((prev) => ({
+        ...prev,
+        end_date: nextEnd,
+      }));
+    }
+  }, [formData.type, formData.start_date, vacationDays, formData.end_date]);
 
   useEffect(() => {
     if (event || !repeatConfig.enabled) return;
@@ -444,20 +475,48 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="end_date">Data Fim</Label>
-          <Input
-            id="end_date"
-            type="date"
-            value={formData.end_date}
-            onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-          />
-          {repeatConfig.enabled && (
-            <p className="text-xs text-slate-500">
-              Com repetição ativa, esta data define o período final.
-            </p>
-          )}
-        </div>
+        {formData.type !== "ferias" ? (
+          <div className="space-y-2">
+            <Label htmlFor="end_date">Data Fim</Label>
+            <Input
+              id="end_date"
+              type="date"
+              value={formData.end_date}
+              onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+            />
+            {repeatConfig.enabled && (
+              <p className="text-xs text-slate-500">
+                Com repetição ativa, esta data define o período final.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label>Período de Férias</Label>
+            <div className="flex flex-wrap gap-2">
+              {[15, 30].map((days) => (
+                <Button
+                  key={days}
+                  type="button"
+                  variant={vacationDays === days ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setVacationDays(days)}
+                >
+                  {days} dias
+                </Button>
+              ))}
+            </div>
+            {formData.start_date && vacationDays && (
+              <p className="text-xs text-slate-500">
+                Fim automático:{" "}
+                {format(
+                  addDays(parseDateInput(formData.start_date), vacationDays - 1),
+                  "dd/MM/yyyy"
+                )}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="start_time">Horário Início</Label>
