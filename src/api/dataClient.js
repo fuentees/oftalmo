@@ -308,9 +308,12 @@ const ExtractDataFromUploadedFile = async ({ file_url }) => {
   }
 };
 
+const isValidWebhookUrl = (value) =>
+  typeof value === "string" && /^https?:\/\//i.test(value.trim());
+
 const SendEmail = async ({ to, subject, body }) => {
   const payload = { to, subject, html: body };
-  if (EMAIL_WEBHOOK_URL) {
+  if (isValidWebhookUrl(EMAIL_WEBHOOK_URL)) {
     const response = await fetch(EMAIL_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

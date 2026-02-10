@@ -45,21 +45,25 @@ export default function CertificateManager({ training, participants, onClose }) 
           // Upload PDF
           const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
-          // Send email
-          await dataClient.integrations.Core.SendEmail({
-            to: monitor.email,
-            subject: `Certificado de Monitoria - ${training.title}`,
-            body: `
-              <h2>Certificado de Monitoria</h2>
-              <p>Olá ${monitor.name},</p>
-              <p>Segue em anexo seu certificado de monitoria do treinamento <strong>${training.title}</strong>.</p>
-              <p>Você pode baixar o certificado através do link: <a href="${file_url}">Baixar Certificado</a></p>
-              <br>
-              <p>Atenciosamente,<br>Equipe de Treinamentos</p>
-            `
-          });
+          let warning = null;
+          try {
+            await dataClient.integrations.Core.SendEmail({
+              to: monitor.email,
+              subject: `Certificado de Monitoria - ${training.title}`,
+              body: `
+                <h2>Certificado de Monitoria</h2>
+                <p>Olá ${monitor.name},</p>
+                <p>Segue em anexo seu certificado de monitoria do treinamento <strong>${training.title}</strong>.</p>
+                <p>Você pode baixar o certificado através do link: <a href="${file_url}">Baixar Certificado</a></p>
+                <br>
+                <p>Atenciosamente,<br>Equipe de Treinamentos</p>
+              `
+            });
+          } catch (error) {
+            warning = error.message || "Falha ao enviar e-mail.";
+          }
 
-          results.push({ name: monitor.name, status: 'success' });
+          results.push({ name: monitor.name, status: warning ? 'warning' : 'success', warning });
         } catch (error) {
           results.push({ name: monitor.name, status: 'error', error: error.message });
         }
@@ -67,9 +71,17 @@ export default function CertificateManager({ training, participants, onClose }) 
 
       return results;
     },
-    onSuccess: () => {
+    onSuccess: (results) => {
       setProcessing(false);
-      setResult({ success: true, message: "Certificados de monitoria enviados!" });
+      const successCount = results.filter(r => r.status === "success").length;
+      const warningCount = results.filter(r => r.status === "warning").length;
+      const failCount = results.filter(r => r.status === "error").length;
+      const warningMessage = warningCount > 0 ? `, ${warningCount} aviso(s) de e-mail` : "";
+      const failMessage = failCount > 0 ? `, ${failCount} falha(s)` : "!";
+      setResult({
+        success: failCount === 0,
+        message: `${successCount} certificado(s) emitido(s)${warningMessage}${failMessage}`,
+      });
     },
     onError: (error) => {
       setProcessing(false);
@@ -98,33 +110,43 @@ export default function CertificateManager({ training, participants, onClose }) 
           // Upload PDF
           const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
-          // Send email to participant
+          const warnings = [];
+
+          // Send email to participant (best effort)
           if (participant.professional_email) {
-            await dataClient.integrations.Core.SendEmail({
-              to: participant.professional_email,
-              subject: `Certificado de Conclusão - ${training.title}`,
-              body: `
-                <h2>Certificado de Conclusão</h2>
-                <p>Olá ${participant.professional_name},</p>
-                <p>Parabéns pela conclusão do treinamento <strong>${training.title}</strong>!</p>
-                <p>Segue em anexo seu certificado. Você pode baixar através do link: <a href="${file_url}">Baixar Certificado</a></p>
-                <br>
-                <p>Atenciosamente,<br>Equipe de Treinamentos</p>
-              `
-            });
+            try {
+              await dataClient.integrations.Core.SendEmail({
+                to: participant.professional_email,
+                subject: `Certificado de Conclusão - ${training.title}`,
+                body: `
+                  <h2>Certificado de Conclusão</h2>
+                  <p>Olá ${participant.professional_name},</p>
+                  <p>Parabéns pela conclusão do treinamento <strong>${training.title}</strong>!</p>
+                  <p>Segue em anexo seu certificado. Você pode baixar através do link: <a href="${file_url}">Baixar Certificado</a></p>
+                  <br>
+                  <p>Atenciosamente,<br>Equipe de Treinamentos</p>
+                `
+              });
+            } catch (error) {
+              warnings.push(error.message || "Falha ao enviar e-mail ao participante.");
+            }
           }
 
-          // Send copy to coordinator if exists
+          // Send copy to coordinator if exists (best effort)
           if (training.coordinator_email) {
-            await dataClient.integrations.Core.SendEmail({
-              to: training.coordinator_email,
-              subject: `Cópia: Certificado emitido - ${participant.professional_name}`,
-              body: `
-                <h2>Certificado Emitido</h2>
-                <p>O certificado de <strong>${participant.professional_name}</strong> foi emitido para o treinamento ${training.title}.</p>
-                <p>Link: <a href="${file_url}">Ver Certificado</a></p>
-              `
-            });
+            try {
+              await dataClient.integrations.Core.SendEmail({
+                to: training.coordinator_email,
+                subject: `Cópia: Certificado emitido - ${participant.professional_name}`,
+                body: `
+                  <h2>Certificado Emitido</h2>
+                  <p>O certificado de <strong>${participant.professional_name}</strong> foi emitido para o treinamento ${training.title}.</p>
+                  <p>Link: <a href="${file_url}">Ver Certificado</a></p>
+                `
+              });
+            } catch (error) {
+              warnings.push(error.message || "Falha ao enviar e-mail ao coordenador.");
+            }
           }
 
           // Update participant with validity date
@@ -139,7 +161,7 @@ export default function CertificateManager({ training, participants, onClose }) 
             validity_date: validityDate,
           });
 
-          results.push({ name: participant.professional_name, success: true });
+          results.push({ name: participant.professional_name, success: true, warnings });
         } catch (error) {
           results.push({ name: participant.professional_name, success: false, error: error.message });
         }
@@ -151,10 +173,12 @@ export default function CertificateManager({ training, participants, onClose }) 
       setProcessing(false);
       const successCount = results.filter(r => r.success).length;
       const failCount = results.filter(r => !r.success).length;
+      const warningCount = results.reduce((acc, r) => acc + (r.warnings?.length || 0), 0);
+      const warningMessage = warningCount > 0 ? `, ${warningCount} aviso(s) de e-mail` : "";
       
       setResult({
         success: true,
-        message: `${successCount} certificado(s) enviado(s)${failCount > 0 ? `, ${failCount} falha(s)` : '!'}`,
+        message: `${successCount} certificado(s) emitido(s)${failCount > 0 ? `, ${failCount} falha(s)` : '!'}` + warningMessage,
         details: results,
       });
       
