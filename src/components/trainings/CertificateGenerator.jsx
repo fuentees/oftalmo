@@ -14,6 +14,43 @@ const interpolateText = (text, data) =>
     data[key] !== undefined && data[key] !== null ? String(data[key]) : ""
   );
 
+const drawJustifiedText = (pdf, text, x, y, maxWidth, lineHeight) => {
+  if (!text) return;
+  const lines = pdf.splitTextToSize(text, maxWidth);
+  const spacingThreshold = maxWidth * 0.6;
+  lines.forEach((line, index) => {
+    const lineText = String(line || "").trim();
+    const lineY = y + index * lineHeight;
+    if (!lineText) return;
+    const words = lineText.split(/\s+/);
+    const isLast = index === lines.length - 1;
+    if (isLast || words.length <= 1) {
+      pdf.text(lineText, x, lineY);
+      return;
+    }
+    const wordsWidth = words.reduce((sum, word) => sum + pdf.getTextWidth(word), 0);
+    if (!Number.isFinite(wordsWidth) || wordsWidth <= 0) {
+      pdf.text(lineText, x, lineY);
+      return;
+    }
+    if (wordsWidth < spacingThreshold) {
+      pdf.text(lineText, x, lineY);
+      return;
+    }
+    const gaps = words.length - 1;
+    const spaceWidth = (maxWidth - wordsWidth) / gaps;
+    if (!Number.isFinite(spaceWidth) || spaceWidth < 0) {
+      pdf.text(lineText, x, lineY);
+      return;
+    }
+    let cursorX = x;
+    words.forEach((word, idx) => {
+      pdf.text(word, cursorX, lineY);
+      cursorX += pdf.getTextWidth(word) + (idx < gaps ? spaceWidth : 0);
+    });
+  });
+};
+
 const getImageFormat = (dataUrl) => {
   if (!dataUrl) return null;
   if (dataUrl.includes("image/png")) return "PNG";
@@ -93,7 +130,7 @@ const resolveSignature = (signature, training) => {
 };
 
 export const generateParticipantCertificate = (participant, training, templateOverride) => {
-  const template = templateOverride || loadCertificateTemplate();
+  const template = templateOverride || loadCertificateTemplate("participant");
   const pdf = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -171,6 +208,25 @@ export const generateParticipantCertificate = (participant, training, templateOv
     signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
     signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
   };
+  const titlePosition = getTextPosition(template, "title", {
+    x: pageWidth / 2,
+    y: titleY,
+    width: pageWidth - 40,
+  });
+  const bodyPosition = getTextPosition(template, "body", {
+    x: pageWidth / 2,
+    y: titleY + 16,
+    width: pageWidth - 40,
+  });
+  const footerPosition = getTextPosition(template, "footer", {
+    x: pageWidth / 2,
+    y: pageHeight - 55,
+    width: pageWidth - 40,
+  });
+  const signatureDefaults = {
+    signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
+    signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
+  };
   // Title
   pdf.setFontSize(sizes.title);
   pdf.setFont(fontFamily, "bold");
@@ -198,13 +254,10 @@ export const generateParticipantCertificate = (participant, training, templateOv
   const bodyLeft = Number.isFinite(bodyPosition.x)
     ? bodyPosition.x - bodyWidth / 2
     : 20;
-  const bodyLines = pdf.splitTextToSize(bodyText, bodyWidth);
+  const lineHeight = pdf.getTextDimensions("Mg").h * 1.2;
   pdf.setFontSize(sizes.body);
   pdf.setFont(fontFamily, "normal");
-  pdf.text(bodyLines, bodyLeft, bodyPosition.y, {
-    align: "justify",
-    maxWidth: bodyWidth,
-  });
+  drawJustifiedText(pdf, bodyText, bodyLeft, bodyPosition.y, bodyWidth, lineHeight);
 
   if (template.footer) {
     pdf.setFontSize(sizes.footer);
@@ -248,8 +301,8 @@ export const generateParticipantCertificate = (participant, training, templateOv
   return pdf;
 };
 
-export const generateMonitorCertificate = (monitor, training) => {
-  const template = loadCertificateTemplate();
+export const generateMonitorCertificate = (monitor, training, templateOverride) => {
+  const template = templateOverride || loadCertificateTemplate("monitor");
   const pdf = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -312,58 +365,13 @@ export const generateMonitorCertificate = (monitor, training) => {
   // Title
   pdf.setFontSize(sizes.title);
   pdf.setFont(fontFamily, "bold");
-  pdf.text("CERTIFICADO DE MONITORIA", titlePosition.x, titlePosition.y, {
+  pdf.text(template.title || "CERTIFICADO DE MONITORIA", titlePosition.x, titlePosition.y, {
     align: "center",
   });
-
-  // Body
-  pdf.setFontSize(sizes.body);
-  pdf.setFont(fontFamily, "normal");
-  pdf.text("Certificamos que", bodyPosition.x, bodyPosition.y, {
-    align: "center",
-  });
-
-  pdf.setFontSize(sizes.name);
-  pdf.setFont(fontFamily, "bold");
-  pdf.text(monitor.name, bodyPosition.x, bodyPosition.y + 15, { align: "center" });
-
-  pdf.setFontSize(sizes.body);
-  pdf.setFont(fontFamily, "normal");
-  
-  pdf.text(
-    "atuou como MONITOR no treinamento",
-    bodyPosition.x,
-    bodyPosition.y + 30,
-    { align: "center" }
-  );
-  
-  pdf.setFontSize(Math.max(sizes.body + 4, sizes.body));
-  pdf.setFont(fontFamily, "bold");
-  pdf.text(`"${training.title}"`, bodyPosition.x, bodyPosition.y + 43, {
-    align: "center",
-  });
-
-  pdf.setFontSize(sizes.body);
-  pdf.setFont(fontFamily, "normal");
-  
-  if (training.duration_hours) {
-    pdf.text(
-      `ministrando aulas com carga horária de ${training.duration_hours} horas,`,
-      bodyPosition.x,
-      bodyPosition.y + 55,
-      { align: "center" }
-    );
-  }
 
   const monitorDate = Array.isArray(training.dates)
     ? formatDateSafe(training.dates[0]?.date)
     : null;
-  if (monitorDate) {
-    const dateText = `realizado em ${monitorDate}.`;
-    pdf.text(dateText, bodyPosition.x, bodyPosition.y + 65, {
-      align: "center",
-    });
-  }
 
   const textData = {
     nome: monitor.name || "",
@@ -375,6 +383,16 @@ export const generateMonitorCertificate = (monitor, training) => {
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
   };
+
+  const bodyText = interpolateText(template.body || "", textData).trim();
+  const bodyWidth = bodyPosition.width || pageWidth - 40;
+  const bodyLeft = Number.isFinite(bodyPosition.x)
+    ? bodyPosition.x - bodyWidth / 2
+    : 20;
+  const lineHeight = pdf.getTextDimensions("Mg").h * 1.2;
+  pdf.setFontSize(sizes.body);
+  pdf.setFont(fontFamily, "normal");
+  drawJustifiedText(pdf, bodyText, bodyLeft, bodyPosition.y, bodyWidth, lineHeight);
 
   if (template.footer) {
     pdf.setFontSize(sizes.footer);
