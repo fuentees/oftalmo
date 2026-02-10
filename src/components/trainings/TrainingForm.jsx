@@ -20,7 +20,6 @@ export default function TrainingForm({ training, onClose }) {
     title: "",
     code: "",
     type: "teorico",
-    category: "tecnico",
     description: "",
     dates: [{ date: format(new Date(), "yyyy-MM-dd"), start_time: "08:00", end_time: "12:00" }],
     duration_hours: 4,
@@ -56,7 +55,6 @@ export default function TrainingForm({ training, onClose }) {
         title: training.title || "",
         code: training.code || "",
         type: training.type || "teorico",
-        category: training.category || "tecnico",
         description: training.description || "",
         dates: normalizedDates.length > 0 ? normalizedDates : defaultDates,
         duration_hours: training.duration_hours || 4,
@@ -235,22 +233,6 @@ export default function TrainingForm({ training, onClose }) {
               <SelectItem value="pratico">Prático</SelectItem>
               <SelectItem value="teorico_pratico">Teórico e Prático</SelectItem>
               <SelectItem value="repadronizacao">Repadronização</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Categoria</Label>
-          <Select value={formData.category} onValueChange={(v) => handleChange("category", v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="NR">NR (Norma Regulamentadora)</SelectItem>
-              <SelectItem value="tecnico">Técnico</SelectItem>
-              <SelectItem value="comportamental">Comportamental</SelectItem>
-              <SelectItem value="integracao">Integração</SelectItem>
-              <SelectItem value="reciclagem">Reciclagem</SelectItem>
-              <SelectItem value="outros">Outros</SelectItem>
             </SelectContent>
           </Select>
         </div>
