@@ -233,10 +233,13 @@ export default function Schedule() {
   };
 
   const handleDayClick = (day) => {
+    if (selectedDate && isSameDay(day, selectedDate)) {
+      setEditingEvent(null);
+      setPrefillDate(format(day, "yyyy-MM-dd"));
+      setShowEventForm(true);
+      return;
+    }
     setSelectedDate(day);
-    setEditingEvent(null);
-    setPrefillDate(format(day, "yyyy-MM-dd"));
-    setShowEventForm(true);
   };
 
   React.useEffect(() => {
