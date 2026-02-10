@@ -5,18 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Plus, 
-  MapPin, 
-  Clock, 
-  Edit, 
+import {
+  Plus,
+  MapPin,
+  Clock,
+  Edit,
   Trash2,
   Plane,
   Briefcase,
   GraduationCap,
   Umbrella,
   Users,
-  Circle
+  Circle,
+  ExternalLink
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -111,18 +112,66 @@ export default function Schedule() {
     cancelado: "bg-red-100 text-red-700",
   };
 
+  const ONLINE_LINK_PREFIX = "link_online:";
+
+  const parseLocalDate = (value) => {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const parts = trimmed.split("-");
+      if (parts.length === 3) {
+        const year = Number(parts[0]);
+        const month = Number(parts[1]);
+        const day = Number(parts[2]);
+        if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+          return new Date(year, month - 1, day);
+        }
+      }
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) {
+        return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+      }
+    }
+    return null;
+  };
+
+  const extractOnlineLink = (value) => {
+    if (!value) return "";
+    const lines = String(value).split("\n");
+    const match = lines.find((line) =>
+      line.trim().toLowerCase().startsWith(ONLINE_LINK_PREFIX)
+    );
+    if (!match) return "";
+    return match.slice(ONLINE_LINK_PREFIX.length).trim();
+  };
+
+  const getOnlineLink = (event) => {
+    if (!event) return "";
+    const direct = String(event.online_link || "").trim();
+    if (direct) return direct;
+    const fromNotes = extractOnlineLink(event.notes);
+    if (fromNotes) return fromNotes;
+    const fromDescription = extractOnlineLink(event.description);
+    return fromDescription;
+  };
+
   const getEventsForDate = (date) => {
     return events.filter((event) => {
-      const eventStart = new Date(event.start_date);
-      const eventEnd = event.end_date ? new Date(event.end_date) : eventStart;
+      const eventStart = parseLocalDate(event.start_date);
+      const eventEnd = parseLocalDate(event.end_date || event.start_date);
+      if (!eventStart || !eventEnd) return false;
       return date >= eventStart && date <= eventEnd;
     });
   };
 
   const parseDateTime = (dateValue, timeValue, isEnd) => {
     if (!dateValue) return null;
-    const base = new Date(dateValue);
-    if (Number.isNaN(base.getTime())) return null;
+    const base = parseLocalDate(dateValue);
+    if (!base) return null;
     const time = String(timeValue || "").trim();
     if (time) {
       const [hourPart, minutePart] = time.split(":");
@@ -365,6 +414,19 @@ export default function Schedule() {
 
                       {event.description && (
                         <p className="text-xs text-slate-600">{event.description}</p>
+                      )}
+
+                      {getOnlineLink(event) && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(getOnlineLink(event), "_blank")}
+                          className="h-7 px-2 text-xs"
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          Evento online
+                        </Button>
                       )}
 
                       {showPlanActions && (
