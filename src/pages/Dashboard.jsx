@@ -393,7 +393,7 @@ export default function Dashboard() {
       </div>
 
       {/* Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Próximos eventos em destaque */}
         <Card className="border-slate-200 shadow-lg hover:shadow-xl transition-shadow flex flex-col">
           <CardHeader className="flex flex-col gap-3 pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
