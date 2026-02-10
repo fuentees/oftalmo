@@ -45,10 +45,45 @@ export default function Professionals() {
     queryFn: () => dataClient.entities.TrainingParticipant.list(),
   });
 
+  const { data: trainings = [] } = useQuery({
+    queryKey: ["trainings"],
+    queryFn: () => dataClient.entities.Training.list(),
+  });
+
   const { data: events = [] } = useQuery({
     queryKey: ["events"],
     queryFn: () => dataClient.entities.Event.list(),
   });
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const normalizeEmail = (value) => String(value ?? "").trim().toLowerCase();
+
+  const normalizeRg = (value) => String(value ?? "").replace(/\D/g, "");
+
+  const matchesProfessional = (participant, professional) => {
+    if (!participant || !professional) return false;
+    if (participant.professional_id && participant.professional_id === professional.id) {
+      return true;
+    }
+    const nameMatch =
+      normalizeText(participant.professional_name) === normalizeText(professional.name);
+    const emailMatch =
+      normalizeEmail(participant.professional_email) === normalizeEmail(professional.email);
+    const rgMatch =
+      normalizeRg(participant.professional_rg) === normalizeRg(professional.rg);
+
+    if (emailMatch || rgMatch) return true;
+    if (!normalizeEmail(professional.email) && !normalizeRg(professional.rg)) {
+      return nameMatch;
+    }
+    return nameMatch && (emailMatch || rgMatch);
+  };
 
   const deleteProfessional = useMutation({
     mutationFn: (id) => dataClient.entities.Professional.delete(id),
@@ -202,8 +237,19 @@ export default function Professionals() {
           </DialogHeader>
           <ProfessionalDetails
             professional={selectedProfessional}
-            trainings={participants.filter(p => p.professional_id === selectedProfessional?.id)}
-            events={events.filter(e => e.professional_ids?.includes(selectedProfessional?.id))}
+            participations={participants.filter((p) =>
+              matchesProfessional(p, selectedProfessional)
+            )}
+            trainings={trainings}
+            events={events.filter((event) => {
+              const hasId = event.professional_ids?.includes(selectedProfessional?.id);
+              if (hasId) return true;
+              const normalizedName = normalizeText(selectedProfessional?.name);
+              if (!normalizedName) return false;
+              return (event.professional_names || []).some(
+                (name) => normalizeText(name) === normalizedName
+              );
+            })}
           />
         </DialogContent>
       </Dialog>

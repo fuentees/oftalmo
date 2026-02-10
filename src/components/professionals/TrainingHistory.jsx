@@ -8,17 +8,25 @@ import { GraduationCap, Calendar, Award, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-export default function TrainingHistory({ professional }) {
+export default function TrainingHistory({ professional, entries }) {
   const [filter, setFilter] = useState("all");
+
+  const hasEntries = Array.isArray(entries);
 
   const { data: participations = [], isLoading } = useQuery({
     queryKey: ["training-history", professional.id],
     queryFn: () => dataClient.entities.TrainingParticipant.filter({ 
       professional_id: professional.id 
     }, "-created_date"),
+    enabled: !hasEntries,
   });
 
+  const data = hasEntries ? entries : participations;
+
   const getStatusBadge = (participant) => {
+    if (participant.engagement_type === "role") {
+      return <Badge className="bg-purple-100 text-purple-700">Atuação</Badge>;
+    }
     if (participant.certificate_issued) {
       return <Badge className="bg-green-100 text-green-700">Certificado Emitido</Badge>;
     }
@@ -43,19 +51,29 @@ export default function TrainingHistory({ professional }) {
     return <Badge className="bg-green-100 text-green-700">Válido</Badge>;
   };
 
-  const filteredData = participations.filter(p => {
+  const filteredData = data.filter((p) => {
+    if (p.engagement_type === "role") {
+      return filter === "all";
+    }
     if (filter === "certified") return p.certificate_issued;
     if (filter === "approved") return p.approved && !p.certificate_issued;
     if (filter === "pending") return !p.approved;
     return true;
   });
 
+  const participantEntries = data.filter((p) => p.engagement_type !== "role");
+
   const stats = {
-    total: participations.length,
-    certified: participations.filter(p => p.certificate_issued).length,
-    approved: participations.filter(p => p.approved).length,
-    attendance: participations.length > 0 
-      ? (participations.reduce((sum, p) => sum + (p.attendance_percentage || 0), 0) / participations.length).toFixed(1)
+    total: data.length,
+    certified: participantEntries.filter((p) => p.certificate_issued).length,
+    approved: participantEntries.filter((p) => p.approved).length,
+    attendance: participantEntries.length > 0
+      ? (
+          participantEntries.reduce(
+            (sum, p) => sum + (p.attendance_percentage || 0),
+            0
+          ) / participantEntries.length
+        ).toFixed(1)
       : 0
   };
 
@@ -108,7 +126,7 @@ export default function TrainingHistory({ professional }) {
           size="sm"
           onClick={() => setFilter("all")}
         >
-          Todos ({participations.length})
+          Todos ({data.length})
         </Button>
         <Button
           variant={filter === "certified" ? "default" : "outline"}
@@ -129,7 +147,7 @@ export default function TrainingHistory({ professional }) {
           size="sm"
           onClick={() => setFilter("pending")}
         >
-          Pendentes ({participations.length - stats.approved})
+          Pendentes ({participantEntries.length - stats.approved})
         </Button>
       </div>
 
@@ -154,6 +172,14 @@ export default function TrainingHistory({ professional }) {
                     <div className="flex flex-wrap gap-2 mt-3">
                       {getStatusBadge(participant)}
                       {getValidityStatus(participant)}
+                      {participant.roles?.map((role) => (
+                        <Badge
+                          key={`${participant.id}-${role}`}
+                          className="bg-slate-100 text-slate-700"
+                        >
+                          {role}
+                        </Badge>
+                      ))}
                     </div>
                   </div>
                 </div>

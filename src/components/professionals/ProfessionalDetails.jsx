@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,8 +8,116 @@ import DataTable from "@/components/common/DataTable";
 import TrainingHistory from "./TrainingHistory";
 import CertificatesPanel from "./CertificatesPanel";
 
-export default function ProfessionalDetails({ professional, trainings, events }) {
+export default function ProfessionalDetails({ professional, participations, trainings, events }) {
   if (!professional) return null;
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const normalizeEmail = (value) =>
+    String(value ?? "").trim().toLowerCase();
+
+  const normalizedName = normalizeText(professional.name);
+  const normalizedEmail = normalizeEmail(professional.email);
+
+  const matchesName = (value) =>
+    normalizedName && normalizeText(value) === normalizedName;
+
+  const matchesEmail = (value) =>
+    normalizedEmail && normalizeEmail(value) === normalizedEmail;
+
+  const getTrainingDate = (training) => {
+    if (!training) return null;
+    if (training.date) return training.date;
+    const dates = Array.isArray(training.dates)
+      ? training.dates.map((item) => item?.date).filter(Boolean)
+      : [];
+    if (dates.length === 0) return null;
+    const parsed = dates
+      .map((date) => new Date(date))
+      .filter((date) => !Number.isNaN(date.getTime()));
+    if (parsed.length === 0) return null;
+    const earliest = new Date(Math.min(...parsed.map((date) => date.getTime())));
+    return earliest.toISOString().split("T")[0];
+  };
+
+  const trainingEngagements = useMemo(() => {
+    const map = new Map();
+
+    (participations || []).forEach((participant) => {
+      const key = participant.training_id || `participant-${participant.id}`;
+      map.set(key, {
+        ...participant,
+        roles: participant.roles || [],
+        engagement_type: "participant",
+      });
+    });
+
+    (trainings || []).forEach((training) => {
+      if (!training) return;
+      const roles = [];
+
+      if (matchesName(training.coordinator) || matchesEmail(training.coordinator_email)) {
+        roles.push("Coordenador");
+      }
+      if (matchesName(training.instructor) || matchesEmail(training.instructor_email)) {
+        roles.push("Palestrante");
+      }
+
+      const monitors = Array.isArray(training.monitors) ? training.monitors : [];
+      const isMonitor = monitors.some((monitor) => {
+        if (!monitor) return false;
+        if (typeof monitor === "string") return matchesName(monitor);
+        return matchesName(monitor.name) || matchesEmail(monitor.email);
+      });
+      if (isMonitor) roles.push("Monitor");
+
+      if (roles.length === 0) return;
+
+      const key = training.id || training.code || training.title;
+      if (!key) return;
+
+      const existing = map.get(key);
+      const trainingDate = getTrainingDate(training);
+      if (existing) {
+        const mergedRoles = new Set([...(existing.roles || []), ...roles]);
+        existing.roles = Array.from(mergedRoles);
+        if (!existing.training_title && training.title) {
+          existing.training_title = training.title;
+        }
+        if (!existing.training_date && trainingDate) {
+          existing.training_date = trainingDate;
+        }
+        return;
+      }
+
+      map.set(key, {
+        id: `role-${training.id || training.code || training.title}`,
+        training_id: training.id,
+        training_title: training.title || "Treinamento",
+        training_date: trainingDate,
+        roles,
+        engagement_type: "role",
+      });
+    });
+
+    const toTimestamp = (value) => {
+      if (!value) return 0;
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return 0;
+      return parsed.getTime();
+    };
+
+    return Array.from(map.values()).sort((a, b) => {
+      const aTime = toTimestamp(a.training_date || a.created_date || a.date);
+      const bTime = toTimestamp(b.training_date || b.created_date || b.date);
+      return bTime - aTime;
+    });
+  }, [participations, trainings, normalizedName, normalizedEmail]);
 
   const trainingColumns = [
     {
@@ -137,7 +245,9 @@ export default function ProfessionalDetails({ professional, trainings, events })
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4">
         <Card className="text-center py-4">
-          <p className="text-3xl font-bold text-purple-600">{trainings.length}</p>
+          <p className="text-3xl font-bold text-purple-600">
+            {trainingEngagements.length}
+          </p>
           <p className="text-sm text-slate-500">Total de Treinamentos</p>
         </Card>
         <Card className="text-center py-4">
@@ -164,7 +274,7 @@ export default function ProfessionalDetails({ professional, trainings, events })
         </TabsList>
 
         <TabsContent value="trainings" className="mt-6">
-          <TrainingHistory professional={professional} />
+          <TrainingHistory professional={professional} entries={trainingEngagements} />
         </TabsContent>
 
         <TabsContent value="certificates" className="mt-6">
