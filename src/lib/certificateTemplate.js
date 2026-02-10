@@ -42,6 +42,11 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
     signatureSize: 11,
     signatureRoleSize: 9,
   },
+  textOptions: {
+    bodyJustify: true,
+    bodyLineHeight: 1.2,
+    bodyMaxWordSpacing: 3,
+  },
   logos: {},
   logoPositions: {},
   textPositions: {
@@ -134,6 +139,10 @@ const mergeTemplate = (template, type = "participant") => {
     fonts: {
       ...DEFAULT_CERTIFICATE_TEMPLATE.fonts,
       ...(template?.fonts || {}),
+    },
+    textOptions: {
+      ...DEFAULT_CERTIFICATE_TEMPLATE.textOptions,
+      ...(template?.textOptions || {}),
     },
     signature1: {
       ...DEFAULT_CERTIFICATE_TEMPLATE.signature1,

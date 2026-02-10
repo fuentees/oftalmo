@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Calendar, MapPin, User, Users, GraduationCap, FileText, Video } from "lucide-react";
 import { Download, Trash2, Upload } from "lucide-react";
 
-export default function TrainingDetails({ training }) {
+export default function TrainingDetails({ training, participants = [] }) {
   if (!training) return null;
   const queryClient = useQueryClient();
   const [reportFile, setReportFile] = useState(null);
@@ -149,6 +149,22 @@ export default function TrainingDetails({ training }) {
     outros: "Outros",
   };
 
+  const trainingParticipants = Array.isArray(participants) ? participants : [];
+  const activeParticipants = trainingParticipants.filter(
+    (item) => item.enrollment_status !== "cancelado"
+  );
+  const totalParticipants = activeParticipants.length;
+  const approvedCount = activeParticipants.filter((item) => item.approved).length;
+  const failedCount = activeParticipants.filter(
+    (item) => item.approved === false
+  ).length;
+  const pendingCount = activeParticipants.filter(
+    (item) => item.approved !== true && item.approved !== false
+  ).length;
+  const canceledCount = trainingParticipants.filter(
+    (item) => item.enrollment_status === "cancelado"
+  ).length;
+
   return (
     <div className="space-y-6">
       {/* Training Info */}
@@ -258,6 +274,48 @@ export default function TrainingDetails({ training }) {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-slate-500">
+            Resumo de Participantes
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center text-sm">
+            <div>
+              <p className="text-2xl font-semibold text-slate-900">
+                {totalParticipants}
+              </p>
+              <p className="text-slate-500">Inscritos</p>
+            </div>
+            <div>
+              <p className="text-2xl font-semibold text-green-700">
+                {approvedCount}
+              </p>
+              <p className="text-slate-500">Aprovados</p>
+            </div>
+            <div>
+              <p className="text-2xl font-semibold text-red-700">
+                {failedCount}
+              </p>
+              <p className="text-slate-500">Reprovados</p>
+            </div>
+            <div>
+              <p className="text-2xl font-semibold text-amber-700">
+                {pendingCount}
+              </p>
+              <p className="text-slate-500">Pendentes</p>
+            </div>
+            <div>
+              <p className="text-2xl font-semibold text-slate-500">
+                {canceledCount}
+              </p>
+              <p className="text-slate-500">Cancelados</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Description */}
       {training.description && (
