@@ -313,6 +313,7 @@ export const generateParticipantCertificate = (participant, training, templateOv
     instrutor: training.instructor || "",
     funcao: "participante",
     tipo_certificado: "participante",
+    aula: "",
   };
 
   // Title
@@ -446,6 +447,25 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
   }
 
   const titleY = 40 + (template.headerLines?.length || 0) * 3;
+  const titlePosition = getTextPosition(template, "title", {
+    x: pageWidth / 2,
+    y: titleY,
+    width: pageWidth - 40,
+  });
+  const bodyPosition = getTextPosition(template, "body", {
+    x: pageWidth / 2,
+    y: titleY + 16,
+    width: pageWidth - 40,
+  });
+  const footerPosition = getTextPosition(template, "footer", {
+    x: pageWidth / 2,
+    y: pageHeight - 55,
+    width: pageWidth - 40,
+  });
+  const signatureDefaults = {
+    signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
+    signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
+  };
 
   const textData = {
     nome: monitor.name || "",
@@ -458,6 +478,172 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
     instrutor: training.instructor || "",
     funcao: "monitor",
     tipo_certificado: "monitor",
+    aula: monitor.lecture || "",
+  };
+
+  // Title
+  pdf.setFontSize(sizes.title);
+  pdf.setFont(fontFamily, "bold");
+  const titleText = interpolateText(template.title || "CERTIFICADO", textData);
+  pdf.text(titleText, titlePosition.x, titlePosition.y, {
+    align: "center",
+  });
+
+  const bodyText = interpolateText(template.body || "", textData).trim();
+  const bodyWidth = bodyPosition.width || pageWidth - 40;
+  const bodyLeft = Number.isFinite(bodyPosition.x)
+    ? bodyPosition.x - bodyWidth / 2
+    : 20;
+  const textOptions = template.textOptions || {};
+  const justifyBody = textOptions.bodyJustify !== false;
+  const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
+  const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const bodyIndent = Number(textOptions.bodyIndent) || 0;
+  const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
+  pdf.setFontSize(sizes.body);
+  pdf.setFont(fontFamily, "normal");
+  drawFormattedText(pdf, bodyText, bodyLeft, bodyPosition.y, bodyWidth, lineHeight, {
+    fontFamily,
+    fontSize: sizes.body,
+    justify: justifyBody,
+    maxWordSpacing,
+    indent: bodyIndent,
+  });
+
+  if (template.footer) {
+    pdf.setFontSize(sizes.footer);
+    const footerText = interpolateText(template.footer, textData);
+    pdf.text(footerText, footerPosition.x, footerPosition.y, { align: "center" });
+  }
+
+  // Footer - Signatures
+  pdf.setFontSize(sizes.signature);
+  const signature1 = resolveSignature(template.signature1, training);
+  const signature2 = resolveSignature(template.signature2, training);
+
+  if (signature1?.name) {
+    const pos = getSignaturePosition(
+      template,
+      "signature1",
+      signatureDefaults.signature1
+    );
+    const half = (pos.lineWidth || 60) / 2;
+    pdf.line(pos.x - half, pos.y, pos.x + half, pos.y);
+    pdf.text(signature1.name, pos.x, pos.y + 5, { align: "center" });
+    pdf.setFontSize(sizes.signatureRole);
+    pdf.text(signature1.role || "", pos.x, pos.y + 10, { align: "center" });
+    pdf.setFontSize(sizes.signature);
+  }
+
+  if (signature2?.name) {
+    const pos = getSignaturePosition(
+      template,
+      "signature2",
+      signatureDefaults.signature2
+    );
+    const half = (pos.lineWidth || 60) / 2;
+    pdf.line(pos.x - half, pos.y, pos.x + half, pos.y);
+    pdf.text(signature2.name, pos.x, pos.y + 5, { align: "center" });
+    pdf.setFontSize(sizes.signatureRole);
+    pdf.text(signature2.role || "", pos.x, pos.y + 10, { align: "center" });
+    pdf.setFontSize(sizes.signature);
+  }
+
+  return pdf;
+};
+
+export const generateSpeakerCertificate = (speaker, training, templateOverride) => {
+  const template = templateOverride || loadCertificateTemplate();
+  const pdf = new jsPDF({
+    orientation: "landscape",
+    unit: "mm",
+    format: "a4"
+  });
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const fonts = template.fonts || {};
+  const fontFamily = fonts.family || "helvetica";
+  const sizes = {
+    header: Number(fonts.headerSize) || 10,
+    title: Number(fonts.titleSize) || 28,
+    name: Number(fonts.nameSize) || 24,
+    body: Number(fonts.bodySize) || 14,
+    footer: Number(fonts.footerSize) || 12,
+    signature: Number(fonts.signatureSize) || 11,
+    signatureRole: Number(fonts.signatureRoleSize) || 9,
+  };
+
+  // Background/Border
+  pdf.setDrawColor(139, 92, 246);
+  pdf.setLineWidth(2);
+  pdf.rect(10, 10, pageWidth - 20, pageHeight - 20);
+
+  pdf.setLineWidth(0.5);
+  pdf.rect(15, 15, pageWidth - 30, pageHeight - 30);
+
+  // Logos
+  const logoEntries = Array.isArray(template.logos)
+    ? template.logos.map((logo, index) => [
+        logo?.id || `logo_${index + 1}`,
+        logo?.dataUrl || logo?.url || logo,
+        logo,
+      ])
+    : Object.entries(template.logos || {}).map(([key, value]) => [
+        key,
+        value,
+        null,
+      ]);
+  logoEntries.forEach(([key, dataUrl, logoItem], index) => {
+    if (!dataUrl) return;
+    const format = getImageFormat(dataUrl);
+    if (!format) return;
+    const pos = getLogoPosition(template, key, index, pageWidth, pageHeight, logoItem);
+    pdf.addImage(dataUrl, format, pos.x, pos.y, pos.w, pos.h);
+  });
+
+  // Header lines
+  if (Array.isArray(template.headerLines) && template.headerLines.length > 0) {
+    pdf.setFontSize(sizes.header);
+    pdf.setFont(fontFamily, "bold");
+    template.headerLines.forEach((line, index) => {
+      pdf.text(line, pageWidth / 2, 24 + index * 5, { align: "center" });
+    });
+  }
+
+  const titleY = 40 + (template.headerLines?.length || 0) * 3;
+  const titlePosition = getTextPosition(template, "title", {
+    x: pageWidth / 2,
+    y: titleY,
+    width: pageWidth - 40,
+  });
+  const bodyPosition = getTextPosition(template, "body", {
+    x: pageWidth / 2,
+    y: titleY + 16,
+    width: pageWidth - 40,
+  });
+  const footerPosition = getTextPosition(template, "footer", {
+    x: pageWidth / 2,
+    y: pageHeight - 55,
+    width: pageWidth - 40,
+  });
+  const signatureDefaults = {
+    signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
+    signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
+  };
+
+  const textData = {
+    nome: speaker.name || "",
+    rg: speaker.rg ? `RG ${speaker.rg}` : "",
+    treinamento: training.title || "",
+    carga_horaria: training.duration_hours || "",
+    data: formatDateSafe(training.dates?.[0]?.date) || formatDateSafe(new Date()),
+    entidade: template.entityName || "",
+    coordenador: training.coordinator || "",
+    instrutor: training.instructor || "",
+    funcao: "palestrante",
+    tipo_certificado: "palestrante",
+    aula: speaker.lecture || "",
   };
 
   // Title

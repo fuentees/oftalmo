@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { format, addMonths } from "date-fns";
-import { generateParticipantCertificate, generateMonitorCertificate } from "./CertificateGenerator";
+import { generateParticipantCertificate, generateMonitorCertificate, generateSpeakerCertificate } from "./CertificateGenerator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -111,6 +111,80 @@ export default function CertificateManager({ training, participants, onClose }) 
       setResult({
         success: failCount === 0,
         message: `${successCount} certificado(s) emitido(s)${warningMessage}${failMessage}`,
+      });
+    },
+    onError: (error) => {
+      setProcessing(false);
+      setResult({ success: false, message: error.message });
+    },
+  });
+
+  const issueSpeakerCertificates = useMutation({
+    mutationFn: async () => {
+      if (!training.speakers || training.speakers.length === 0) {
+        throw new Error("Nenhum palestrante cadastrado");
+      }
+
+      setProcessing(true);
+      const results = [];
+
+      for (const speaker of training.speakers) {
+        if (!speaker.name || !speaker.email) continue;
+
+        try {
+          const pdf = generateSpeakerCertificate(speaker, training);
+          const pdfBlob = pdf.output("blob");
+          const pdfFileName = `certificado-palestrante-${speaker.name}.pdf`;
+          const pdfFile = new File([pdfBlob], pdfFileName, { type: "application/pdf" });
+          const attachmentBase64 = await blobToBase64(pdfBlob);
+          if (!attachmentBase64) {
+            throw new Error("Falha ao gerar anexo do certificado.");
+          }
+          const attachment = {
+            filename: pdfFileName,
+            contentType: "application/pdf",
+            content: attachmentBase64,
+          };
+
+          await dataClient.integrations.Core.UploadFile({ file: pdfFile });
+
+          let warning = null;
+          try {
+            const lectureLabel = speaker.lecture ? ` (Aula: ${speaker.lecture})` : "";
+            await dataClient.integrations.Core.SendEmail({
+              to: speaker.email,
+              subject: `Certificado de Palestra - ${training.title}`,
+              body: `
+                <h2>Certificado de Palestra</h2>
+                <p>Olá ${speaker.name},</p>
+                <p>Segue em anexo seu certificado de palestra do treinamento <strong>${training.title}</strong>${lectureLabel}.</p>
+                <br>
+                <p>Atenciosamente,<br>Equipe de Treinamentos</p>
+              `,
+              attachments: [attachment],
+            });
+          } catch (error) {
+            warning = error.message || "Falha ao enviar e-mail.";
+          }
+
+          results.push({ name: speaker.name, status: warning ? "warning" : "success", warning });
+        } catch (error) {
+          results.push({ name: speaker.name, status: "error", error: error.message });
+        }
+      }
+
+      return results;
+    },
+    onSuccess: (results) => {
+      setProcessing(false);
+      const successCount = results.filter(r => r.status === "success").length;
+      const warningCount = results.filter(r => r.status === "warning").length;
+      const failCount = results.filter(r => r.status === "error").length;
+      const warningMessage = warningCount > 0 ? `, ${warningCount} aviso(s) de e-mail` : "";
+      const failMessage = failCount > 0 ? `, ${failCount} falha(s)` : "!";
+      setResult({
+        success: failCount === 0,
+        message: `${successCount} certificado(s) de palestrante emitido(s)${warningMessage}${failMessage}`,
       });
     },
     onError: (error) => {
@@ -372,6 +446,16 @@ export default function CertificateManager({ training, participants, onClose }) 
             >
               <Award className="h-4 w-4 mr-2" />
               Emitir Certificados Monitores
+            </Button>
+          )}
+          {training.speakers && training.speakers.length > 0 && (
+            <Button
+              onClick={() => issueSpeakerCertificates.mutate()}
+              disabled={processing}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              <Award className="h-4 w-4 mr-2" />
+              Emitir Certificados Palestrantes
             </Button>
           )}
         </div>
