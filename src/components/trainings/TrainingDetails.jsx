@@ -8,9 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar, MapPin, User, Users, GraduationCap, FileText, Video } from "lucide-react";
 import { Download, Trash2, Upload } from "lucide-react";
-import DataTable from "@/components/common/DataTable";
 
-export default function TrainingDetails({ training, participants }) {
+export default function TrainingDetails({ training }) {
   if (!training) return null;
   const queryClient = useQueryClient();
   const [reportFile, setReportFile] = useState(null);
@@ -149,36 +148,6 @@ export default function TrainingDetails({ training, participants }) {
     reciclagem: "Reciclagem",
     outros: "Outros",
   };
-
-  const participantColumns = [
-    { header: "Nome", accessor: "professional_name", cellClassName: "font-medium" },
-    { header: "Matrícula", accessor: "professional_registration" },
-    { header: "Setor", accessor: "professional_sector" },
-    {
-      header: "Presença",
-      render: (row) => {
-        const colors = {
-          presente: "bg-green-100 text-green-700",
-          ausente: "bg-red-100 text-red-700",
-          justificado: "bg-amber-100 text-amber-700",
-        };
-        const labels = {
-          presente: "Presente",
-          ausente: "Ausente",
-          justificado: "Justificado",
-        };
-        return <Badge className={colors[row.attendance]}>{labels[row.attendance]}</Badge>;
-      },
-    },
-    {
-      header: "Aprovado",
-      render: (row) => (
-        <Badge className={row.approved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>
-          {row.approved ? "Sim" : "Não"}
-        </Badge>
-      ),
-    },
-  ];
 
   return (
     <div className="space-y-6">
@@ -397,22 +366,6 @@ export default function TrainingDetails({ training, participants }) {
           </CardContent>
         </Card>
       )}
-      {/* Participants */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-slate-500">
-            Lista de Participantes ({participants.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <DataTable
-            columns={participantColumns}
-            data={participants}
-            emptyMessage="Nenhum participante registrado"
-          />
-        </CardContent>
-      </Card>
-
       {/* Notes */}
       {training.notes && (
         <Card>
