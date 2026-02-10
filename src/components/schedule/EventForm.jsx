@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, X } from "lucide-react";
 
-export default function EventForm({ event, onClose, onSuccess }) {
+export default function EventForm({ event, onClose, onSuccess, initialDate }) {
   const [formData, setFormData] = useState({
     title: "",
     type: "outro",
@@ -125,6 +125,14 @@ export default function EventForm({ event, onClose, onSuccess }) {
       });
     }
   }, [event]);
+
+  useEffect(() => {
+    if (event || !initialDate) return;
+    setFormData((prev) => ({
+      ...prev,
+      start_date: prev.start_date || initialDate,
+    }));
+  }, [event, initialDate]);
 
   const saveMutation = useMutation({
     mutationFn: async (/** @type {any} */ data) => {
