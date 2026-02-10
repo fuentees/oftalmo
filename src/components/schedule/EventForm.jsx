@@ -28,7 +28,21 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     notes: "",
   });
   const [gveMapping, setGveMapping] = useState([]);
+  const [repeatConfig, setRepeatConfig] = useState({
+    enabled: false,
+    weeks: 4,
+    days: [],
+  });
   const ONLINE_LINK_PREFIX = "link_online:";
+  const weekDays = [
+    { value: 0, label: "Dom" },
+    { value: 1, label: "Seg" },
+    { value: 2, label: "Ter" },
+    { value: 3, label: "Qua" },
+    { value: 4, label: "Qui" },
+    { value: 5, label: "Sex" },
+    { value: 6, label: "Sáb" },
+  ];
 
   const queryClient = useQueryClient();
 
@@ -95,6 +109,80 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
       };
     }
     return { municipality: raw, gve: "" };
+  };
+
+  const parseDateInput = (value) => {
+    if (!value) return null;
+    const parts = String(value).split("-");
+    if (parts.length !== 3) return null;
+    const year = Number(parts[0]);
+    const month = Number(parts[1]);
+    const day = Number(parts[2]);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+      return null;
+    }
+    return new Date(year, month - 1, day);
+  };
+
+  const formatDate = (date) => {
+    if (!date) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const addDays = (date, days) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+  };
+
+  const getWeekday = (dateValue) => {
+    const parsed = parseDateInput(dateValue);
+    if (!parsed) return null;
+    return parsed.getDay();
+  };
+
+  const startOfWeek = (date, weekStartsOn = 1) => {
+    const day = date.getDay();
+    const diff = (day - weekStartsOn + 7) % 7;
+    const start = new Date(date);
+    start.setDate(date.getDate() - diff);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  };
+
+  const buildRecurringEvents = (basePayload) => {
+    if (!repeatConfig.enabled || repeatConfig.days.length === 0) {
+      return [basePayload];
+    }
+    const startDate = parseDateInput(basePayload.start_date);
+    if (!startDate) return [basePayload];
+    const endDate = basePayload.end_date ? parseDateInput(basePayload.end_date) : null;
+    const durationDays = endDate
+      ? Math.round((endDate.getTime() - startDate.getTime()) / 86400000)
+      : 0;
+    const weekStart = startOfWeek(startDate, 1);
+    const occurrences = [];
+    const weeks = Math.max(1, Number(repeatConfig.weeks) || 1);
+
+    for (let weekIndex = 0; weekIndex < weeks; weekIndex += 1) {
+      const baseWeek = addDays(weekStart, weekIndex * 7);
+      repeatConfig.days.forEach((weekday) => {
+        const offset = (weekday - 1 + 7) % 7;
+        const occurrenceStart = addDays(baseWeek, offset);
+        if (weekIndex === 0 && occurrenceStart < startDate) return;
+        const occurrenceEnd = endDate ? addDays(occurrenceStart, durationDays) : null;
+        occurrences.push({
+          ...basePayload,
+          start_date: formatDate(occurrenceStart),
+          end_date: occurrenceEnd ? formatDate(occurrenceEnd) : null,
+        });
+      });
+    }
+
+    return occurrences.length > 0 ? occurrences : [basePayload];
   };
 
   const formatLocation = (municipality, gve) => {
@@ -172,13 +260,27 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     }));
   }, [event, initialDate]);
 
+  useEffect(() => {
+    if (event || !repeatConfig.enabled) return;
+    if (repeatConfig.days.length > 0) return;
+    const weekday = getWeekday(formData.start_date);
+    if (weekday === null) return;
+    setRepeatConfig((prev) => ({
+      ...prev,
+      days: [weekday],
+    }));
+  }, [event, repeatConfig.enabled, repeatConfig.days.length, formData.start_date]);
+
   const saveMutation = useMutation({
     mutationFn: async (/** @type {any} */ data) => {
       if (event) {
-        return dataClient.entities.Event.update(event.id, data);
-      } else {
-        return dataClient.entities.Event.create(data);
+        const payload = data?.data || data;
+        return dataClient.entities.Event.update(event.id, payload);
       }
+      if (data?.mode === "bulk") {
+        return dataClient.entities.Event.bulkCreate(data.items || []);
+      }
+      return dataClient.entities.Event.create(data?.data || data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["events"] });
@@ -200,7 +302,38 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     delete payload.municipality;
     delete payload.gve;
     delete payload.online_link;
-    saveMutation.mutate(payload);
+    if (!event && repeatConfig.enabled && repeatConfig.days.length > 0) {
+      const items = buildRecurringEvents(payload);
+      saveMutation.mutate({ mode: "bulk", items });
+      return;
+    }
+    saveMutation.mutate({ mode: "single", data: payload });
+  };
+
+  const toggleRepeatDay = (weekday) => {
+    setRepeatConfig((prev) => {
+      const exists = prev.days.includes(weekday);
+      const nextDays = exists
+        ? prev.days.filter((day) => day !== weekday)
+        : [...prev.days, weekday];
+      return { ...prev, days: nextDays };
+    });
+  };
+
+  const handleRepeatToggle = (checked) => {
+    const enabled = Boolean(checked);
+    setRepeatConfig((prev) => {
+      if (!enabled) {
+        return { ...prev, enabled: false };
+      }
+      const nextDays = prev.days.length
+        ? prev.days
+        : (() => {
+            const weekday = getWeekday(formData.start_date);
+            return weekday === null ? [] : [weekday];
+          })();
+      return { ...prev, enabled: true, days: nextDays };
+    });
   };
 
   const typeColors = {
@@ -325,6 +458,56 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
             onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
           />
         </div>
+
+        {!event && (
+          <div className="col-span-2 space-y-2 border rounded-lg p-3 bg-slate-50">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="repeat-week"
+                checked={repeatConfig.enabled}
+                onCheckedChange={handleRepeatToggle}
+              />
+              <Label htmlFor="repeat-week" className="text-sm">
+                Repetir em dias da semana
+              </Label>
+            </div>
+            {repeatConfig.enabled && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
+                  {weekDays.map((day) => (
+                    <label key={day.value} className="flex items-center gap-2 text-xs">
+                      <Checkbox
+                        checked={repeatConfig.days.includes(day.value)}
+                        onCheckedChange={() => toggleRepeatDay(day.value)}
+                      />
+                      {day.label}
+                    </label>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Semanas</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="52"
+                      value={repeatConfig.weeks}
+                      onChange={(e) =>
+                        setRepeatConfig((prev) => ({
+                          ...prev,
+                          weeks: Number(e.target.value) || 1,
+                        }))
+                      }
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 flex items-end">
+                    Ex: selecione Segunda e Sexta para repetir nas próximas semanas.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="col-span-2 space-y-2">
           <Label htmlFor="municipality">Município</Label>
