@@ -153,6 +153,21 @@ export default function Settings() {
     }),
     []
   );
+  const defaultTextPositions = useMemo(
+    () => ({
+      title: { x: 148.5, y: 40, width: 257 },
+      body: { x: 148.5, y: 62, width: 257 },
+      footer: { x: 148.5, y: 155, width: 257 },
+    }),
+    []
+  );
+  const defaultSignaturePositions = useMemo(
+    () => ({
+      signature1: { x: 70, y: 170, lineWidth: 60 },
+      signature2: { x: 227, y: 170, lineWidth: 60 },
+    }),
+    []
+  );
 
   const previewRef = useRef(null);
   const dragStateRef = useRef(null);
@@ -166,6 +181,28 @@ export default function Settings() {
       y: Number.isFinite(Number(stored.y)) ? Number(stored.y) : base.y,
       w: Number.isFinite(Number(stored.w)) ? Number(stored.w) : base.w,
       h: Number.isFinite(Number(stored.h)) ? Number(stored.h) : base.h,
+    };
+  };
+
+  const getTextPosition = (key) => {
+    const base = defaultTextPositions[key] || { x: 148.5, y: 40, width: 257 };
+    const stored = certificateTemplate.textPositions?.[key] || {};
+    return {
+      x: Number.isFinite(Number(stored.x)) ? Number(stored.x) : base.x,
+      y: Number.isFinite(Number(stored.y)) ? Number(stored.y) : base.y,
+      width: Number.isFinite(Number(stored.width)) ? Number(stored.width) : base.width,
+    };
+  };
+
+  const getSignaturePosition = (key) => {
+    const base = defaultSignaturePositions[key] || { x: 70, y: 170, lineWidth: 60 };
+    const stored = certificateTemplate.signaturePositions?.[key] || {};
+    return {
+      x: Number.isFinite(Number(stored.x)) ? Number(stored.x) : base.x,
+      y: Number.isFinite(Number(stored.y)) ? Number(stored.y) : base.y,
+      lineWidth: Number.isFinite(Number(stored.lineWidth))
+        ? Number(stored.lineWidth)
+        : base.lineWidth,
     };
   };
 
@@ -190,6 +227,32 @@ export default function Settings() {
     return { x, y, w, h };
   };
 
+  const clampTextPosition = (pos) => {
+    let x = Number(pos.x) || 0;
+    let y = Number(pos.y) || 0;
+    let width = Number(pos.width) || defaultTextPositions.body.width;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > previewPage.width) x = previewPage.width;
+    if (y > previewPage.height) y = previewPage.height;
+    if (width < 20) width = 20;
+    if (width > previewPage.width) width = previewPage.width;
+    return { x, y, width };
+  };
+
+  const clampSignaturePosition = (pos) => {
+    let x = Number(pos.x) || 0;
+    let y = Number(pos.y) || 0;
+    let lineWidth = Number(pos.lineWidth) || 60;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > previewPage.width) x = previewPage.width;
+    if (y > previewPage.height) y = previewPage.height;
+    if (lineWidth < 20) lineWidth = 20;
+    if (lineWidth > previewPage.width) lineWidth = previewPage.width;
+    return { x, y, lineWidth };
+  };
+
   const updateLogoPosition = (key, next) => {
     const clamped = clampLogoPosition(next);
     setCertificateTemplate((prev) => ({
@@ -197,6 +260,30 @@ export default function Settings() {
       logoPositions: {
         ...defaultLogoPositions,
         ...(prev.logoPositions || {}),
+        [key]: clamped,
+      },
+    }));
+  };
+
+  const updateTextPosition = (key, next) => {
+    const clamped = clampTextPosition(next);
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      textPositions: {
+        ...defaultTextPositions,
+        ...(prev.textPositions || {}),
+        [key]: clamped,
+      },
+    }));
+  };
+
+  const updateSignaturePosition = (key, next) => {
+    const clamped = clampSignaturePosition(next);
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      signaturePositions: {
+        ...defaultSignaturePositions,
+        ...(prev.signaturePositions || {}),
         [key]: clamped,
       },
     }));
@@ -331,6 +418,68 @@ export default function Settings() {
       }
 
       updateLogoPosition(key, { x, y, w, h });
+    };
+
+    const handleUp = () => {
+      dragStateRef.current = null;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  };
+
+  const startMoveText = (event, key) => {
+    if (event.button !== 0) return;
+    const startPoint = getRelativeMm(event);
+    if (!startPoint) return;
+    event.preventDefault();
+    const startPos = getTextPosition(key);
+    dragStateRef.current = { key, mode: "move-text", startPoint, startPos };
+
+    const handleMove = (moveEvent) => {
+      if (!dragStateRef.current) return;
+      const point = getRelativeMm(moveEvent);
+      if (!point) return;
+      const dx = point.x - startPoint.x;
+      const dy = point.y - startPoint.y;
+      updateTextPosition(key, {
+        ...startPos,
+        x: startPos.x + dx,
+        y: startPos.y + dy,
+      });
+    };
+
+    const handleUp = () => {
+      dragStateRef.current = null;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  };
+
+  const startMoveSignature = (event, key) => {
+    if (event.button !== 0) return;
+    const startPoint = getRelativeMm(event);
+    if (!startPoint) return;
+    event.preventDefault();
+    const startPos = getSignaturePosition(key);
+    dragStateRef.current = { key, mode: "move-signature", startPoint, startPos };
+
+    const handleMove = (moveEvent) => {
+      if (!dragStateRef.current) return;
+      const point = getRelativeMm(moveEvent);
+      if (!point) return;
+      const dx = point.x - startPoint.x;
+      const dy = point.y - startPoint.y;
+      updateSignaturePosition(key, {
+        ...startPos,
+        x: startPos.x + dx,
+        y: startPos.y + dy,
+      });
     };
 
     const handleUp = () => {
@@ -1070,50 +1219,107 @@ export default function Settings() {
                       );
                     })}
 
-                    <div className="absolute inset-0 z-10 flex flex-col items-center text-center px-10 pt-10 pointer-events-none">
+                    <div className="absolute inset-0 z-10 pointer-events-none">
                       {previewHeaderLines.length > 0 && (
-                        <div className="space-y-1 text-xs font-semibold text-slate-700">
+                        <div className="absolute left-1/2 top-4 -translate-x-1/2 text-center space-y-1 text-[10px] font-semibold text-slate-700">
                           {previewHeaderLines.map((line) => (
                             <p key={line}>{line}</p>
                           ))}
                         </div>
                       )}
+                    </div>
 
-                      <h2 className="mt-6 text-xl font-bold text-slate-900">
-                        {previewTitle}
-                      </h2>
+                    <div className="absolute inset-0 z-20">
+                      {(() => {
+                        const titlePos = getTextPosition("title");
+                        const bodyPos = getTextPosition("body");
+                        const footerPos = getTextPosition("footer");
+                        const signatureItems = [
+                          { key: "signature1", label: "Assinatura 1", data: signature1 },
+                          { key: "signature2", label: "Assinatura 2", data: signature2 },
+                        ];
 
-                      <p className="mt-4 text-sm text-slate-700 whitespace-pre-line max-w-3xl">
-                        {previewBody}
-                      </p>
-
-                      {previewFooter && (
-                        <p className="mt-6 text-sm text-slate-700">{previewFooter}</p>
-                      )}
-
-                      <div className="mt-auto w-full pb-8">
-                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                          {[signature1, signature2].map((signature, index) => (
+                        return (
+                          <>
                             <div
-                              key={`signature-${index}`}
-                              className="text-center text-xs text-slate-700"
+                              className="absolute cursor-move"
+                              style={{
+                                left: toPercent(titlePos.x, previewPage.width),
+                                top: toPercent(titlePos.y, previewPage.height),
+                                width: toPercent(titlePos.width, previewPage.width),
+                                transform: "translate(-50%, -50%)",
+                              }}
+                              onPointerDown={(event) => startMoveText(event, "title")}
                             >
-                              <div className="h-8 border-b border-slate-300" />
-                              {signature?.name && (
-                                <p className="mt-2 font-semibold">{signature.name}</p>
-                              )}
-                              {signature?.role && (
-                                <p className="text-[10px] text-slate-500">{signature.role}</p>
-                              )}
-                              {!signature && (
-                                <p className="mt-2 text-[10px] text-slate-400">
-                                  Sem assinatura
-                                </p>
-                              )}
+                              <div className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center text-sm font-bold text-slate-900">
+                                {previewTitle}
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
+
+                            <div
+                              className="absolute cursor-move"
+                              style={{
+                                left: toPercent(bodyPos.x, previewPage.width),
+                                top: toPercent(bodyPos.y, previewPage.height),
+                                width: toPercent(bodyPos.width, previewPage.width),
+                                transform: "translate(-50%, -50%)",
+                              }}
+                              onPointerDown={(event) => startMoveText(event, "body")}
+                            >
+                              <div className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center text-xs text-slate-700 whitespace-pre-line">
+                                {previewBody}
+                              </div>
+                            </div>
+
+                            {previewFooter && (
+                              <div
+                                className="absolute cursor-move"
+                                style={{
+                                  left: toPercent(footerPos.x, previewPage.width),
+                                  top: toPercent(footerPos.y, previewPage.height),
+                                  width: toPercent(footerPos.width, previewPage.width),
+                                  transform: "translate(-50%, -50%)",
+                                }}
+                                onPointerDown={(event) => startMoveText(event, "footer")}
+                              >
+                                <div className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center text-xs text-slate-700">
+                                  {previewFooter}
+                                </div>
+                              </div>
+                            )}
+
+                            {signatureItems.map((item) => {
+                              const pos = getSignaturePosition(item.key);
+                              const width = toPercent(pos.lineWidth, previewPage.width);
+                              return (
+                                <div
+                                  key={item.key}
+                                  className="absolute cursor-move"
+                                  style={{
+                                    left: toPercent(pos.x, previewPage.width),
+                                    top: toPercent(pos.y, previewPage.height),
+                                    width,
+                                    transform: "translate(-50%, 0)",
+                                  }}
+                                  onPointerDown={(event) => startMoveSignature(event, item.key)}
+                                >
+                                  <div className="border-b border-slate-400" />
+                                  <div className="mt-1 text-center text-[10px] text-slate-700">
+                                    <p className="font-semibold">
+                                      {item.data?.name || item.label}
+                                    </p>
+                                    {item.data?.role && (
+                                      <p className="text-[9px] text-slate-500">
+                                        {item.data.role}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

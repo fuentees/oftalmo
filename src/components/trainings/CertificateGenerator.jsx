@@ -40,6 +40,26 @@ const getLogoPosition = (template, key, pageWidth, pageHeight) => {
   };
 };
 
+const getTextPosition = (template, key, defaults) => {
+  const stored = template.textPositions?.[key] || {};
+  return {
+    x: Number.isFinite(Number(stored.x)) ? Number(stored.x) : defaults.x,
+    y: Number.isFinite(Number(stored.y)) ? Number(stored.y) : defaults.y,
+    width: Number.isFinite(Number(stored.width)) ? Number(stored.width) : defaults.width,
+  };
+};
+
+const getSignaturePosition = (template, key, defaults) => {
+  const stored = template.signaturePositions?.[key] || {};
+  return {
+    x: Number.isFinite(Number(stored.x)) ? Number(stored.x) : defaults.x,
+    y: Number.isFinite(Number(stored.y)) ? Number(stored.y) : defaults.y,
+    lineWidth: Number.isFinite(Number(stored.lineWidth))
+      ? Number(stored.lineWidth)
+      : defaults.lineWidth,
+  };
+};
+
 const resolveSignature = (signature, training) => {
   if (!signature || signature.source === "none") return null;
   if (signature.source === "coordinator") {
@@ -103,22 +123,60 @@ export const generateParticipantCertificate = (participant, training) => {
   }
 
   const titleY = 40 + (template.headerLines?.length || 0) * 3;
+  const titlePosition = getTextPosition(template, "title", {
+    x: pageWidth / 2,
+    y: titleY,
+    width: pageWidth - 40,
+  });
+  const bodyPosition = getTextPosition(template, "body", {
+    x: pageWidth / 2,
+    y: titleY + 16,
+    width: pageWidth - 40,
+  });
+  const footerPosition = getTextPosition(template, "footer", {
+    x: pageWidth / 2,
+    y: pageHeight - 55,
+    width: pageWidth - 40,
+  });
+  const signatureDefaults = {
+    signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
+    signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
+  };
+  const titlePosition = getTextPosition(template, "title", {
+    x: pageWidth / 2,
+    y: titleY,
+    width: pageWidth - 40,
+  });
+  const bodyPosition = getTextPosition(template, "body", {
+    x: pageWidth / 2,
+    y: titleY + 16,
+    width: pageWidth - 40,
+  });
+  const footerPosition = getTextPosition(template, "footer", {
+    x: pageWidth / 2,
+    y: pageHeight - 55,
+    width: pageWidth - 40,
+  });
+  const signatureDefaults = {
+    signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
+    signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
+  };
 
   // Title
   pdf.setFontSize(28);
   pdf.setFont("helvetica", "bold");
-  pdf.text(template.title || "CERTIFICADO", pageWidth / 2, titleY, {
+  pdf.text(template.title || "CERTIFICADO", titlePosition.x, titlePosition.y, {
     align: "center",
   });
 
   // Body
   pdf.setFontSize(14);
   pdf.setFont("helvetica", "normal");
-  pdf.text("Certificamos que", pageWidth / 2, titleY + 16, { align: "center" });
+  pdf.text("Certificamos que", bodyPosition.x, bodyPosition.y, { align: "center" });
 
   pdf.setFontSize(24);
   pdf.setFont("helvetica", "bold");
-  pdf.text(participant.professional_name, pageWidth / 2, titleY + 31, {
+  pdf.text(participant.professional_name, bodyPosition.x, bodyPosition.y + 15, {
     align: "center",
   });
 
@@ -141,46 +199,49 @@ export const generateParticipantCertificate = (participant, training) => {
   };
 
   const bodyText = interpolateText(template.body || "", textData).trim();
-  const bodyLines = pdf.splitTextToSize(bodyText, pageWidth - 40);
-  pdf.text(bodyLines, pageWidth / 2, titleY + 50, { align: "center" });
+  const bodyLines = pdf.splitTextToSize(
+    bodyText,
+    bodyPosition.width || pageWidth - 40
+  );
+  pdf.text(bodyLines, bodyPosition.x, bodyPosition.y + 34, { align: "center" });
 
   if (template.footer) {
     pdf.setFontSize(12);
     const footerText = interpolateText(template.footer, textData);
-    pdf.text(footerText, pageWidth / 2, pageHeight - 55, { align: "center" });
+    pdf.text(footerText, footerPosition.x, footerPosition.y, { align: "center" });
   }
 
   // Footer - Signatures
   pdf.setFontSize(11);
-  const yPos = pageHeight - 40;
+  const signature1 = resolveSignature(template.signature1, training);
+  const signature2 = resolveSignature(template.signature2, training);
 
-  const signatureItems = [
-    resolveSignature(template.signature1, training),
-    resolveSignature(template.signature2, training),
-  ].filter((signature) => signature?.name);
-
-  if (signatureItems.length === 1) {
-    const signature = signatureItems[0];
-    pdf.line(pageWidth / 2 - 30, yPos, pageWidth / 2 + 30, yPos);
-    pdf.text(signature.name, pageWidth / 2, yPos + 5, { align: "center" });
+  if (signature1?.name) {
+    const pos = getSignaturePosition(
+      template,
+      "signature1",
+      signatureDefaults.signature1
+    );
+    const half = (pos.lineWidth || 60) / 2;
+    pdf.line(pos.x - half, pos.y, pos.x + half, pos.y);
+    pdf.text(signature1.name, pos.x, pos.y + 5, { align: "center" });
     pdf.setFontSize(9);
-    pdf.text(signature.role || "", pageWidth / 2, yPos + 10, {
-      align: "center",
-    });
-  } else if (signatureItems.length >= 2) {
-    const [left, right] = signatureItems;
-    pdf.line(40, yPos, 100, yPos);
-    pdf.text(left.name, 70, yPos + 5, { align: "center" });
-    pdf.setFontSize(9);
-    pdf.text(left.role || "", 70, yPos + 10, { align: "center" });
-
+    pdf.text(signature1.role || "", pos.x, pos.y + 10, { align: "center" });
     pdf.setFontSize(11);
-    pdf.line(pageWidth - 100, yPos, pageWidth - 40, yPos);
-    pdf.text(right.name, pageWidth - 70, yPos + 5, { align: "center" });
+  }
+
+  if (signature2?.name) {
+    const pos = getSignaturePosition(
+      template,
+      "signature2",
+      signatureDefaults.signature2
+    );
+    const half = (pos.lineWidth || 60) / 2;
+    pdf.line(pos.x - half, pos.y, pos.x + half, pos.y);
+    pdf.text(signature2.name, pos.x, pos.y + 5, { align: "center" });
     pdf.setFontSize(9);
-    pdf.text(right.role || "", pageWidth - 70, yPos + 10, {
-      align: "center",
-    });
+    pdf.text(signature2.role || "", pos.x, pos.y + 10, { align: "center" });
+    pdf.setFontSize(11);
   }
 
   return pdf;
@@ -230,31 +291,47 @@ export const generateMonitorCertificate = (monitor, training) => {
   // Title
   pdf.setFontSize(28);
   pdf.setFont("helvetica", "bold");
-  pdf.text("CERTIFICADO DE MONITORIA", pageWidth / 2, titleY, { align: "center" });
+  pdf.text("CERTIFICADO DE MONITORIA", titlePosition.x, titlePosition.y, {
+    align: "center",
+  });
 
   // Body
   pdf.setFontSize(14);
   pdf.setFont("helvetica", "normal");
-  pdf.text("Certificamos que", pageWidth / 2, titleY + 16, { align: "center" });
+  pdf.text("Certificamos que", bodyPosition.x, bodyPosition.y, {
+    align: "center",
+  });
 
   pdf.setFontSize(24);
   pdf.setFont("helvetica", "bold");
-  pdf.text(monitor.name, pageWidth / 2, titleY + 31, { align: "center" });
+  pdf.text(monitor.name, bodyPosition.x, bodyPosition.y + 15, { align: "center" });
 
   pdf.setFontSize(14);
   pdf.setFont("helvetica", "normal");
   
-  pdf.text(`atuou como MONITOR no treinamento`, pageWidth / 2, titleY + 46, { align: "center" });
+  pdf.text(
+    "atuou como MONITOR no treinamento",
+    bodyPosition.x,
+    bodyPosition.y + 30,
+    { align: "center" }
+  );
   
   pdf.setFontSize(18);
   pdf.setFont("helvetica", "bold");
-  pdf.text(`"${training.title}"`, pageWidth / 2, titleY + 59, { align: "center" });
+  pdf.text(`"${training.title}"`, bodyPosition.x, bodyPosition.y + 43, {
+    align: "center",
+  });
 
   pdf.setFontSize(14);
   pdf.setFont("helvetica", "normal");
   
   if (training.duration_hours) {
-    pdf.text(`ministrando aulas com carga horária de ${training.duration_hours} horas,`, pageWidth / 2, titleY + 71, { align: "center" });
+    pdf.text(
+      `ministrando aulas com carga horária de ${training.duration_hours} horas,`,
+      bodyPosition.x,
+      bodyPosition.y + 55,
+      { align: "center" }
+    );
   }
 
   const monitorDate = Array.isArray(training.dates)
@@ -262,40 +339,59 @@ export const generateMonitorCertificate = (monitor, training) => {
     : null;
   if (monitorDate) {
     const dateText = `realizado em ${monitorDate}.`;
-    pdf.text(dateText, pageWidth / 2, titleY + 81, { align: "center" });
+    pdf.text(dateText, bodyPosition.x, bodyPosition.y + 65, {
+      align: "center",
+    });
+  }
+
+  const textData = {
+    nome: monitor.name || "",
+    rg: monitor.rg ? `RG ${monitor.rg}` : "",
+    treinamento: training.title || "",
+    carga_horaria: training.duration_hours || "",
+    data: monitorDate || formatDateSafe(new Date()),
+    entidade: template.entityName || "",
+    coordenador: training.coordinator || "",
+    instrutor: training.instructor || "",
+  };
+
+  if (template.footer) {
+    pdf.setFontSize(12);
+    const footerText = interpolateText(template.footer, textData);
+    pdf.text(footerText, footerPosition.x, footerPosition.y, { align: "center" });
   }
 
   // Footer - Signatures
   pdf.setFontSize(11);
-  const yPos = pageHeight - 40;
+  const signature1 = resolveSignature(template.signature1, training);
+  const signature2 = resolveSignature(template.signature2, training);
 
-  const signatureItems = [
-    resolveSignature(template.signature1, training),
-    resolveSignature(template.signature2, training),
-  ].filter((signature) => signature?.name);
-
-  if (signatureItems.length === 1) {
-    const signature = signatureItems[0];
-    pdf.line(pageWidth / 2 - 30, yPos, pageWidth / 2 + 30, yPos);
-    pdf.text(signature.name, pageWidth / 2, yPos + 5, { align: "center" });
+  if (signature1?.name) {
+    const pos = getSignaturePosition(
+      template,
+      "signature1",
+      signatureDefaults.signature1
+    );
+    const half = (pos.lineWidth || 60) / 2;
+    pdf.line(pos.x - half, pos.y, pos.x + half, pos.y);
+    pdf.text(signature1.name, pos.x, pos.y + 5, { align: "center" });
     pdf.setFontSize(9);
-    pdf.text(signature.role || "", pageWidth / 2, yPos + 10, {
-      align: "center",
-    });
-  } else if (signatureItems.length >= 2) {
-    const [left, right] = signatureItems;
-    pdf.line(40, yPos, 100, yPos);
-    pdf.text(left.name, 70, yPos + 5, { align: "center" });
-    pdf.setFontSize(9);
-    pdf.text(left.role || "", 70, yPos + 10, { align: "center" });
-
+    pdf.text(signature1.role || "", pos.x, pos.y + 10, { align: "center" });
     pdf.setFontSize(11);
-    pdf.line(pageWidth - 100, yPos, pageWidth - 40, yPos);
-    pdf.text(right.name, pageWidth - 70, yPos + 5, { align: "center" });
+  }
+
+  if (signature2?.name) {
+    const pos = getSignaturePosition(
+      template,
+      "signature2",
+      signatureDefaults.signature2
+    );
+    const half = (pos.lineWidth || 60) / 2;
+    pdf.line(pos.x - half, pos.y, pos.x + half, pos.y);
+    pdf.text(signature2.name, pos.x, pos.y + 5, { align: "center" });
     pdf.setFontSize(9);
-    pdf.text(right.role || "", pageWidth - 70, yPos + 10, {
-      align: "center",
-    });
+    pdf.text(signature2.role || "", pos.x, pos.y + 10, { align: "center" });
+    pdf.setFontSize(11);
   }
 
   return pdf;
