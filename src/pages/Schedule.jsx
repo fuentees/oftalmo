@@ -102,6 +102,15 @@ export default function Schedule() {
     outro: Circle,
   };
 
+  const typeColors = {
+    viagem: "#10b981",
+    trabalho_campo: "#f59e0b",
+    treinamento: "#6366f1",
+    ferias: "#ec4899",
+    reuniao: "#8b5cf6",
+    outro: "#64748b",
+  };
+
   const typeLabels = {
     viagem: "Viagem",
     trabalho_campo: "Trabalho de Campo",
@@ -387,6 +396,23 @@ export default function Schedule() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 space-y-3 max-h-[600px] overflow-y-auto">
+            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <p className="text-xs font-semibold text-slate-600 mb-2">Legenda</p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(typeLabels).map(([key, label]) => (
+                  <div
+                    key={key}
+                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: typeColors[key] }}
+                    />
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
             {selectedDateEvents.length === 0 ? (
               <p className="text-sm text-slate-500 text-center py-8">
                 {selectedDate ? "Nenhum evento nesta data" : "Selecione uma data"}
@@ -495,9 +521,13 @@ export default function Schedule() {
                           </div>
                         )}
                         {event.professional_names && event.professional_names.length > 0 && (
-                          <div className="flex items-center gap-1">
-                            <Users className="h-3 w-3" />
-                            {event.professional_names.join(", ")}
+                          <div className="flex items-start gap-1">
+                            <Users className="h-3 w-3 mt-0.5" />
+                            <ul className="list-disc pl-4 space-y-0.5">
+                              {event.professional_names.map((name) => (
+                                <li key={name}>{name}</li>
+                              ))}
+                            </ul>
                           </div>
                         )}
                       </div>
