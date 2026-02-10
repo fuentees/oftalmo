@@ -23,15 +23,24 @@ const getImageFormat = (dataUrl) => {
   return "PNG";
 };
 
-const getLogoPosition = (template, key, pageWidth, pageHeight) => {
-  const defaults = {
+const getLogoPosition = (template, key, index, pageWidth, pageHeight, logoItem) => {
+  const defaultsByKey = {
     primary: { x: 20, y: 18, w: 30, h: 30 },
     secondary: { x: pageWidth - 50, y: 18, w: 30, h: 30 },
     tertiary: { x: 20, y: pageHeight - 50, w: 30, h: 30 },
     quaternary: { x: pageWidth - 50, y: pageHeight - 50, w: 30, h: 30 },
   };
-  const stored = template.logoPositions?.[key] || {};
-  const base = defaults[key] || { x: 20, y: 18, w: 30, h: 30 };
+  const defaultsByIndex = [
+    { x: 20, y: 18, w: 30, h: 30 },
+    { x: pageWidth - 50, y: 18, w: 30, h: 30 },
+    { x: 20, y: pageHeight - 50, w: 30, h: 30 },
+    { x: pageWidth - 50, y: pageHeight - 50, w: 30, h: 30 },
+  ];
+  const base =
+    defaultsByKey[key] ||
+    defaultsByIndex[index] || { x: 20, y: 18, w: 30, h: 30 };
+  const stored =
+    logoItem?.position || template.logoPositions?.[key] || {};
   return {
     x: Number.isFinite(Number(stored.x)) ? Number(stored.x) : base.x,
     y: Number.isFinite(Number(stored.y)) ? Number(stored.y) : base.y,
@@ -114,13 +123,22 @@ export const generateParticipantCertificate = (participant, training) => {
   pdf.rect(15, 15, pageWidth - 30, pageHeight - 30);
 
   // Logos
-  const logoKeys = ["primary", "secondary", "tertiary", "quaternary"];
-  logoKeys.forEach((key) => {
-    const dataUrl = template.logos?.[key];
+  const logoEntries = Array.isArray(template.logos)
+    ? template.logos.map((logo, index) => [
+        logo?.id || `logo_${index + 1}`,
+        logo?.dataUrl || logo?.url || logo,
+        logo,
+      ])
+    : Object.entries(template.logos || {}).map(([key, value]) => [
+        key,
+        value,
+        null,
+      ]);
+  logoEntries.forEach(([key, dataUrl, logoItem], index) => {
     if (!dataUrl) return;
     const format = getImageFormat(dataUrl);
     if (!format) return;
-    const pos = getLogoPosition(template, key, pageWidth, pageHeight);
+    const pos = getLogoPosition(template, key, index, pageWidth, pageHeight, logoItem);
     pdf.addImage(dataUrl, format, pos.x, pos.y, pos.w, pos.h);
   });
 
@@ -269,13 +287,22 @@ export const generateMonitorCertificate = (monitor, training) => {
   pdf.rect(15, 15, pageWidth - 30, pageHeight - 30);
 
   // Logos
-  const logoKeys = ["primary", "secondary", "tertiary", "quaternary"];
-  logoKeys.forEach((key) => {
-    const dataUrl = template.logos?.[key];
+  const logoEntries = Array.isArray(template.logos)
+    ? template.logos.map((logo, index) => [
+        logo?.id || `logo_${index + 1}`,
+        logo?.dataUrl || logo?.url || logo,
+        logo,
+      ])
+    : Object.entries(template.logos || {}).map(([key, value]) => [
+        key,
+        value,
+        null,
+      ]);
+  logoEntries.forEach(([key, dataUrl, logoItem], index) => {
     if (!dataUrl) return;
     const format = getImageFormat(dataUrl);
     if (!format) return;
-    const pos = getLogoPosition(template, key, pageWidth, pageHeight);
+    const pos = getLogoPosition(template, key, index, pageWidth, pageHeight, logoItem);
     pdf.addImage(dataUrl, format, pos.x, pos.y, pos.w, pos.h);
   });
 
