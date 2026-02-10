@@ -338,7 +338,7 @@ const getStoredEmailSettings = () => {
   }
 };
 
-const SendEmail = async ({ to, subject, body }) => {
+const SendEmail = async ({ to, subject, body, attachments }) => {
   const settings = getStoredEmailSettings();
   const fromEmail =
     typeof settings.fromEmail === "string" ? settings.fromEmail.trim() : "";
@@ -352,6 +352,30 @@ const SendEmail = async ({ to, subject, body }) => {
     payload.from = fromData;
     if (fromEmail) payload.from_email = fromEmail;
     if (fromName) payload.from_name = fromName;
+  }
+
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    const normalizedAttachments = attachments
+      .map((attachment) => {
+        if (!attachment || typeof attachment !== "object") return null;
+        const filename = String(attachment.filename || attachment.name || "").trim();
+        const content = String(attachment.content || attachment.contentBytes || "").trim();
+        const contentType = String(
+          attachment.contentType || attachment.type || "application/pdf"
+        ).trim();
+        if (!filename || !content) return null;
+        return { filename, content, contentType };
+      })
+      .filter(Boolean);
+    if (normalizedAttachments.length > 0) {
+      payload.attachments = normalizedAttachments;
+      if (normalizedAttachments.length === 1) {
+        payload.attachment = normalizedAttachments[0];
+        payload.attachment_base64 = normalizedAttachments[0].content;
+        payload.attachment_name = normalizedAttachments[0].filename;
+        payload.attachment_type = normalizedAttachments[0].contentType;
+      }
+    }
   }
 
   const webhookUrl =

@@ -24,6 +24,26 @@ export default function CertificateManager({ training, participants, onClose }) 
   
   const queryClient = useQueryClient();
 
+  const blobToBase64 = (blob) =>
+    new Promise((resolve, reject) => {
+      if (!blob) {
+        resolve("");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result;
+        if (typeof result !== "string") {
+          resolve("");
+          return;
+        }
+        const base64 = result.split(",")[1] || "";
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error("Falha ao ler anexo."));
+      reader.readAsDataURL(blob);
+    });
+
   const issueMonitorCertificates = useMutation({
     mutationFn: async () => {
       if (!training.monitors || training.monitors.length === 0) {
@@ -40,7 +60,17 @@ export default function CertificateManager({ training, participants, onClose }) 
           // Generate PDF
           const pdf = generateMonitorCertificate(monitor, training);
           const pdfBlob = pdf.output('blob');
-          const pdfFile = new File([pdfBlob], `certificado-monitor-${monitor.name}.pdf`, { type: 'application/pdf' });
+          const pdfFileName = `certificado-monitor-${monitor.name}.pdf`;
+          const pdfFile = new File([pdfBlob], pdfFileName, { type: 'application/pdf' });
+          const attachmentBase64 = await blobToBase64(pdfBlob);
+          if (!attachmentBase64) {
+            throw new Error("Falha ao gerar anexo do certificado.");
+          }
+          const attachment = {
+            filename: pdfFileName,
+            contentType: "application/pdf",
+            content: attachmentBase64,
+          };
 
           // Upload PDF
           const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
@@ -54,10 +84,10 @@ export default function CertificateManager({ training, participants, onClose }) 
                 <h2>Certificado de Monitoria</h2>
                 <p>Olá ${monitor.name},</p>
                 <p>Segue em anexo seu certificado de monitoria do treinamento <strong>${training.title}</strong>.</p>
-                <p>Você pode baixar o certificado através do link: <a href="${file_url}">Baixar Certificado</a></p>
                 <br>
                 <p>Atenciosamente,<br>Equipe de Treinamentos</p>
-              `
+              `,
+              attachments: [attachment],
             });
           } catch (error) {
             warning = error.message || "Falha ao enviar e-mail.";
@@ -105,7 +135,17 @@ export default function CertificateManager({ training, participants, onClose }) 
           // Generate PDF
           const pdf = generateParticipantCertificate(participant, training);
           const pdfBlob = pdf.output('blob');
-          const pdfFile = new File([pdfBlob], `certificado-${participant.professional_name}.pdf`, { type: 'application/pdf' });
+          const pdfFileName = `certificado-${participant.professional_name}.pdf`;
+          const pdfFile = new File([pdfBlob], pdfFileName, { type: 'application/pdf' });
+          const attachmentBase64 = await blobToBase64(pdfBlob);
+          if (!attachmentBase64) {
+            throw new Error("Falha ao gerar anexo do certificado.");
+          }
+          const attachment = {
+            filename: pdfFileName,
+            contentType: "application/pdf",
+            content: attachmentBase64,
+          };
 
           // Upload PDF
           const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
@@ -122,10 +162,11 @@ export default function CertificateManager({ training, participants, onClose }) 
                   <h2>Certificado de Conclusão</h2>
                   <p>Olá ${participant.professional_name},</p>
                   <p>Parabéns pela conclusão do treinamento <strong>${training.title}</strong>!</p>
-                  <p>Segue em anexo seu certificado. Você pode baixar através do link: <a href="${file_url}">Baixar Certificado</a></p>
+                  <p>Segue em anexo seu certificado.</p>
                   <br>
                   <p>Atenciosamente,<br>Equipe de Treinamentos</p>
-                `
+                `,
+                attachments: [attachment],
               });
             } catch (error) {
               warnings.push(error.message || "Falha ao enviar e-mail ao participante.");
@@ -141,8 +182,9 @@ export default function CertificateManager({ training, participants, onClose }) 
                 body: `
                   <h2>Certificado Emitido</h2>
                   <p>O certificado de <strong>${participant.professional_name}</strong> foi emitido para o treinamento ${training.title}.</p>
-                  <p>Link: <a href="${file_url}">Ver Certificado</a></p>
-                `
+                  <p>Segue o PDF do certificado em anexo.</p>
+                `,
+                attachments: [attachment],
               });
             } catch (error) {
               warnings.push(error.message || "Falha ao enviar e-mail ao coordenador.");
