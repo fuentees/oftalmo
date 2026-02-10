@@ -886,6 +886,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           </DialogHeader>
           <TrainingForm
             training={selectedTraining}
+            professionals={professionals}
             onClose={() => {
               setShowForm(false);
               setSelectedTraining(null);

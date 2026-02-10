@@ -634,7 +634,6 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             <option key={prof.id} value={prof.rg} />
           ))}
       </datalist>
-
       <div className="space-y-1.5">
         <Label htmlFor="max_participants">Capacidade Máxima</Label>
         <Input

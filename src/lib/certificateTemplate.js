@@ -20,6 +20,16 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
     name: "",
     role: "Instrutor",
   },
+  fonts: {
+    family: "helvetica",
+    headerSize: 10,
+    titleSize: 28,
+    nameSize: 24,
+    bodySize: 14,
+    footerSize: 12,
+    signatureSize: 11,
+    signatureRoleSize: 9,
+  },
   logos: {
     primary: "",
     secondary: "",
@@ -61,6 +71,10 @@ const mergeTemplate = (template) => ({
   signaturePositions: {
     ...DEFAULT_CERTIFICATE_TEMPLATE.signaturePositions,
     ...(template?.signaturePositions || {}),
+  },
+  fonts: {
+    ...DEFAULT_CERTIFICATE_TEMPLATE.fonts,
+    ...(template?.fonts || {}),
   },
   signature1: {
     ...DEFAULT_CERTIFICATE_TEMPLATE.signature1,

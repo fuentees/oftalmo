@@ -7,6 +7,7 @@ const STORAGE_BUCKET =
 const EMAIL_FUNCTION_NAME =
   import.meta.env.VITE_SUPABASE_EMAIL_FUNCTION || "send-email";
 const EMAIL_WEBHOOK_URL = import.meta.env.VITE_EMAIL_WEBHOOK_URL;
+const EMAIL_SETTINGS_KEY = "emailSettings";
 
 const toSnakeCase = (value) =>
   value.replace(/([A-Z])/g, "_$1").toLowerCase();
@@ -325,9 +326,37 @@ const getWebhookUrl = (value) => {
   }
 };
 
+const getStoredEmailSettings = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(EMAIL_SETTINGS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed;
+  } catch (error) {
+    return {};
+  }
+};
+
 const SendEmail = async ({ to, subject, body }) => {
+  const settings = getStoredEmailSettings();
+  const fromEmail =
+    typeof settings.fromEmail === "string" ? settings.fromEmail.trim() : "";
+  const fromName =
+    typeof settings.fromName === "string" ? settings.fromName.trim() : "";
   const payload = { to, subject, html: body };
-  const webhookUrl = getWebhookUrl(EMAIL_WEBHOOK_URL);
+  const fromData = {};
+  if (fromEmail) fromData.email = fromEmail;
+  if (fromName) fromData.name = fromName;
+  if (Object.keys(fromData).length > 0) {
+    payload.from = fromData;
+    if (fromEmail) payload.from_email = fromEmail;
+    if (fromName) payload.from_name = fromName;
+  }
+
+  const webhookUrl =
+    getWebhookUrl(settings.webhookUrl) || getWebhookUrl(EMAIL_WEBHOOK_URL);
   if (webhookUrl) {
     const response = await fetch(webhookUrl, {
       method: "POST",
