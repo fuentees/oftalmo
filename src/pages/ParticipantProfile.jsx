@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
 import { Button } from "@/components/ui/button";
@@ -13,14 +13,19 @@ import {
   Clock,
   CheckCircle,
   ArrowLeft,
-  FileText
+  FileText,
+  RefreshCw,
+  Loader2
 } from "lucide-react";
-import { format } from "date-fns";
+import { addMonths, format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 
 export default function ParticipantProfile() {
   const navigate = useNavigate();
   const [participantId, setParticipantId] = useState(null);
+  const [regeneratingId, setRegeneratingId] = useState(null);
+  const [regenStatus, setRegenStatus] = useState(null);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -122,6 +127,14 @@ export default function ParticipantProfile() {
     });
     return merged;
   };
+
+  const toSafeFileName = (value) =>
+    String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9._-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
 
   const typeLabels = {
     teorico: "Teórico",
@@ -273,6 +286,48 @@ export default function ParticipantProfile() {
     pdf.save(fileName);
   };
 
+  const handleRegenerateCertificate = async (participation) => {
+    if (!participation) return;
+    if (regeneratingId) return;
+    setRegenStatus(null);
+    setRegeneratingId(participation.id);
+    try {
+      const training = resolveTrainingForCertificate(participation);
+      if (!training) {
+        throw new Error("Treinamento não encontrado para regenerar.");
+      }
+      const pdf = generateParticipantCertificate(participation, training);
+      const pdfBlob = pdf.output("blob");
+      const safeName = toSafeFileName(participation.professional_name || "participante");
+      const fileName = `certificado-${safeName || "participante"}.pdf`;
+      const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
+      const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
+      const validityDate = training.validity_months
+        ? addMonths(new Date(), training.validity_months).toISOString().split("T")[0]
+        : participation.validity_date || null;
+
+      await dataClient.entities.TrainingParticipant.update(participation.id, {
+        certificate_url: file_url,
+        certificate_issued: true,
+        certificate_sent_date: new Date().toISOString(),
+        validity_date: validityDate,
+      });
+
+      await queryClient.invalidateQueries({ queryKey: ["participants"] });
+      setRegenStatus({
+        type: "success",
+        message: "PDF regenerado com sucesso.",
+      });
+    } catch (error) {
+      setRegenStatus({
+        type: "error",
+        message: error.message || "Erro ao regenerar o PDF.",
+      });
+    } finally {
+      setRegeneratingId(null);
+    }
+  };
+
   const renderTrainingCard = (participation) => {
     const hasCertificate = participation.certificate_url || participation.certificate_issued;
     return (
@@ -327,14 +382,29 @@ export default function ParticipantProfile() {
               )}
             </div>
             {hasCertificate && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleDownloadCertificate(participation)}
-              >
-                <FileText className="h-4 w-4 mr-1" />
-                Baixar PDF
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleDownloadCertificate(participation)}
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  Baixar PDF
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleRegenerateCertificate(participation)}
+                  disabled={regeneratingId === participation.id}
+                >
+                  {regeneratingId === participation.id ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                  )}
+                  Regenerar PDF
+                </Button>
+              </div>
             )}
           </div>
         </CardContent>
@@ -451,6 +521,22 @@ export default function ParticipantProfile() {
           </CardContent>
         </Card>
       </div>
+
+      {regenStatus && (
+        <Card className={regenStatus.type === "error" ? "border-red-200" : "border-green-200"}>
+          <CardContent className="pt-4">
+            <p
+              className={
+                regenStatus.type === "error"
+                  ? "text-sm text-red-700"
+                  : "text-sm text-green-700"
+              }
+            >
+              {regenStatus.message}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Treinamentos por Tipo */}
       <Card>
