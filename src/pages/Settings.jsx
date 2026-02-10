@@ -24,6 +24,7 @@ import {
   Eye,
   Database,
   Info,
+  Mail,
 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import DataExport from "@/components/settings/DataExport";
@@ -45,6 +46,12 @@ export default function Settings() {
     DEFAULT_CERTIFICATE_TEMPLATE
   );
   const [certificateStatus, setCertificateStatus] = useState(null);
+  const [emailSettings, setEmailSettings] = useState({
+    fromEmail: "",
+    fromName: "",
+    webhookUrl: "",
+  });
+  const [emailStatus, setEmailStatus] = useState(null);
   const [lockLogoRatio, setLockLogoRatio] = useState(false);
   const [showLogoGrid, setShowLogoGrid] = useState(false);
   const [editLayer, setEditLayer] = useState("logos");
@@ -58,6 +65,22 @@ export default function Settings() {
   useEffect(() => {
     const template = loadCertificateTemplate();
     setCertificateTemplate(template);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("emailSettings");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (!parsed || typeof parsed !== "object") return;
+      setEmailSettings({
+        fromEmail: parsed.fromEmail || "",
+        fromName: parsed.fromName || "",
+        webhookUrl: parsed.webhookUrl || "",
+      });
+    } catch (error) {
+      // Ignora erro de leitura
+    }
   }, []);
 
   useEffect(() => {
@@ -538,6 +561,35 @@ export default function Settings() {
     setCertificateStatus({
       type: "success",
       message: "Modelo padrão restaurado.",
+    });
+  };
+
+  const handleEmailSettingChange = (field, value) => {
+    setEmailSettings((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSaveEmailSettings = () => {
+    const payload = {
+      fromEmail: String(emailSettings.fromEmail || "").trim(),
+      fromName: String(emailSettings.fromName || "").trim(),
+      webhookUrl: String(emailSettings.webhookUrl || "").trim(),
+    };
+    localStorage.setItem("emailSettings", JSON.stringify(payload));
+    setEmailStatus({
+      type: "success",
+      message: "Configurações de e-mail salvas.",
+    });
+  };
+
+  const handleClearEmailSettings = () => {
+    localStorage.removeItem("emailSettings");
+    setEmailSettings({ fromEmail: "", fromName: "", webhookUrl: "" });
+    setEmailStatus({
+      type: "success",
+      message: "Configurações de e-mail removidas.",
     });
   };
 
@@ -1528,6 +1580,97 @@ export default function Settings() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5 text-slate-700" />
+            Envio de e-mails
+          </CardTitle>
+          <CardDescription>
+            Configure o remetente e o webhook para envio dos certificados.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert>
+            <AlertDescription>
+              Para Outlook, use um webhook (ex: Power Automate ou Microsoft Graph).
+              O serviço precisa permitir o remetente informado.
+            </AlertDescription>
+          </Alert>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="email-from">E-mail de envio</Label>
+              <Input
+                id="email-from"
+                type="email"
+                placeholder="exemplo@dominio.com"
+                value={emailSettings.fromEmail}
+                onChange={(e) =>
+                  handleEmailSettingChange("fromEmail", e.target.value)
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email-name">Nome do remetente</Label>
+              <Input
+                id="email-name"
+                placeholder="Equipe de Treinamentos"
+                value={emailSettings.fromName}
+                onChange={(e) =>
+                  handleEmailSettingChange("fromName", e.target.value)
+                }
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="email-webhook">Webhook de e-mail</Label>
+            <Input
+              id="email-webhook"
+              type="url"
+              placeholder="https://seu-webhook.com/send-email"
+              value={emailSettings.webhookUrl}
+              onChange={(e) =>
+                handleEmailSettingChange("webhookUrl", e.target.value)
+              }
+            />
+            <p className="text-xs text-slate-500">
+              Se vazio, será usada a função do Supabase configurada no ambiente.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={handleSaveEmailSettings}>
+              Salvar
+            </Button>
+            <Button type="button" variant="outline" onClick={handleClearEmailSettings}>
+              Limpar
+            </Button>
+          </div>
+
+          {emailStatus && (
+            <Alert
+              className={
+                emailStatus.type === "error"
+                  ? "border-red-200 bg-red-50"
+                  : "border-green-200 bg-green-50"
+              }
+            >
+              <AlertDescription
+                className={
+                  emailStatus.type === "error"
+                    ? "text-red-800"
+                    : "text-green-800"
+                }
+              >
+                {emailStatus.message}
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
     </TabsContent>
 
         <TabsContent value="exportacao" className="mt-6">
