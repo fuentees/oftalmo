@@ -8,6 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -25,6 +31,7 @@ import {
   Database,
   Info,
   Mail,
+  Plus,
 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import DataExport from "@/components/settings/DataExport";
@@ -144,29 +151,86 @@ export default function Settings() {
     }));
   };
 
-  const handleLogoUpload = (field, event) => {
+  const logoBasePositions = useMemo(
+    () => [
+      { x: 20, y: 18, w: 30, h: 30 },
+      { x: 247, y: 18, w: 30, h: 30 },
+      { x: 20, y: 160, w: 30, h: 30 },
+      { x: 247, y: 160, w: 30, h: 30 },
+    ],
+    []
+  );
+
+  const getDefaultLogoPosition = (index) => {
+    if (logoBasePositions[index]) return logoBasePositions[index];
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    return {
+      x: col === 0 ? 20 : 247,
+      y: 18 + row * 35,
+      w: 30,
+      h: 30,
+    };
+  };
+
+  const logoOrder = useMemo(
+    () => Object.keys(certificateTemplate.logos || {}),
+    [certificateTemplate.logos]
+  );
+
+  const handleAddLogo = () => {
+    const key = `logo_${Date.now()}`;
+    setCertificateTemplate((prev) => {
+      const nextLogos = { ...(prev.logos || {}), [key]: "" };
+      const nextPositions = {
+        ...(prev.logoPositions || {}),
+        [key]: getDefaultLogoPosition(Object.keys(nextLogos).length - 1),
+      };
+      return {
+        ...prev,
+        logos: nextLogos,
+        logoPositions: nextPositions,
+      };
+    });
+  };
+
+  const handleRemoveLogo = (key) => {
+    setCertificateTemplate((prev) => {
+      const nextLogos = { ...(prev.logos || {}) };
+      const nextPositions = { ...(prev.logoPositions || {}) };
+      delete nextLogos[key];
+      delete nextPositions[key];
+      return {
+        ...prev,
+        logos: nextLogos,
+        logoPositions: nextPositions,
+      };
+    });
+  };
+
+  const handleLogoUpload = (key, event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result;
-      setCertificateTemplate((prev) => ({
-        ...prev,
-        logos: {
-          ...prev.logos,
-          [field]: dataUrl,
-        },
-      }));
+      setCertificateTemplate((prev) => {
+        const nextLogos = { ...(prev.logos || {}), [key]: dataUrl };
+        const nextPositions = { ...(prev.logoPositions || {}) };
+        if (!nextPositions[key]) {
+          nextPositions[key] = getDefaultLogoPosition(
+            Object.keys(nextLogos).indexOf(key)
+          );
+        }
+        return {
+          ...prev,
+          logos: nextLogos,
+          logoPositions: nextPositions,
+        };
+      });
     };
     reader.readAsDataURL(file);
   };
-
-  const logoSlots = [
-    { key: "primary", label: "Logo 1" },
-    { key: "secondary", label: "Logo 2" },
-    { key: "tertiary", label: "Logo 3" },
-    { key: "quaternary", label: "Logo 4" },
-  ];
   const fontOptions = [
     { value: "helvetica", label: "Helvetica" },
     { value: "times", label: "Times" },
@@ -178,15 +242,6 @@ export default function Settings() {
     courier: "\"Courier New\", Courier, monospace",
   };
 
-  const defaultLogoPositions = useMemo(
-    () => ({
-      primary: { x: 20, y: 18, w: 30, h: 30 },
-      secondary: { x: 247, y: 18, w: 30, h: 30 },
-      tertiary: { x: 20, y: 160, w: 30, h: 30 },
-      quaternary: { x: 247, y: 160, w: 30, h: 30 },
-    }),
-    []
-  );
   const defaultTextPositions = useMemo(
     () => ({
       title: { x: 148.5, y: 40, width: 257 },
@@ -208,7 +263,8 @@ export default function Settings() {
   const MIN_LOGO_SIZE = 5;
 
   const getLogoPosition = (key) => {
-    const base = defaultLogoPositions[key] || { x: 20, y: 18, w: 30, h: 30 };
+    const index = Math.max(logoOrder.indexOf(key), 0);
+    const base = getDefaultLogoPosition(index);
     const stored = certificateTemplate.logoPositions?.[key] || {};
     return {
       x: Number.isFinite(Number(stored.x)) ? Number(stored.x) : base.x,
@@ -292,7 +348,6 @@ export default function Settings() {
     setCertificateTemplate((prev) => ({
       ...prev,
       logoPositions: {
-        ...defaultLogoPositions,
         ...(prev.logoPositions || {}),
         [key]: clamped,
       },
@@ -648,15 +703,16 @@ export default function Settings() {
 
   const logoPreviewItems = useMemo(
     () =>
-      logoSlots.map((slot) => {
-        const position = getLogoPosition(slot.key);
+      logoOrder.map((key, index) => {
+        const position = getLogoPosition(key);
         return {
-          ...slot,
+          key,
+          label: `Logo ${index + 1}`,
           position,
-          dataUrl: certificateTemplate.logos?.[slot.key] || "",
+          dataUrl: certificateTemplate.logos?.[key] || "",
         };
       }),
-    [certificateTemplate, logoSlots]
+    [certificateTemplate.logos, certificateTemplate.logoPositions, logoOrder]
   );
 
   const normalizeHeader = (value) =>
@@ -977,275 +1033,342 @@ export default function Settings() {
                 </AlertDescription>
               </Alert>
 
-              <div className="space-y-2">
-                <Label>Texto do cabeçalho (uma linha por item)</Label>
-                <Textarea
-                  value={(certificateTemplate.headerLines || []).join("\n")}
-                  onChange={(e) => handleCertificateHeaderChange(e.target.value)}
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Fonte do certificado</Label>
-                  <Select
-                    value={fontFamilyValue}
-                    onValueChange={(value) => handleFontChange("family", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {fontOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Cabeçalho</Label>
-                  <Input
-                    type="number"
-                    value={certificateTemplate.fonts?.headerSize || 10}
-                    onChange={(e) => handleFontNumberChange("headerSize", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Título</Label>
-                  <Input
-                    type="number"
-                    value={certificateTemplate.fonts?.titleSize || 28}
-                    onChange={(e) => handleFontNumberChange("titleSize", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Nome</Label>
-                  <Input
-                    type="number"
-                    value={certificateTemplate.fonts?.nameSize || 24}
-                    onChange={(e) => handleFontNumberChange("nameSize", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Texto</Label>
-                  <Input
-                    type="number"
-                    value={certificateTemplate.fonts?.bodySize || 14}
-                    onChange={(e) => handleFontNumberChange("bodySize", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Rodapé</Label>
-                  <Input
-                    type="number"
-                    value={certificateTemplate.fonts?.footerSize || 12}
-                    onChange={(e) => handleFontNumberChange("footerSize", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Assinatura</Label>
-                  <Input
-                    type="number"
-                    value={certificateTemplate.fonts?.signatureSize || 11}
-                    onChange={(e) => handleFontNumberChange("signatureSize", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Cargo</Label>
-                  <Input
-                    type="number"
-                    value={certificateTemplate.fonts?.signatureRoleSize || 9}
-                    onChange={(e) => handleFontNumberChange("signatureRoleSize", e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Título</Label>
-                  <Input
-                    value={certificateTemplate.title}
-                    onChange={(e) => handleCertificateChange("title", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Entidade</Label>
-                  <Input
-                    value={certificateTemplate.entityName}
-                    onChange={(e) => handleCertificateChange("entityName", e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Texto do certificado</Label>
-                <Textarea
-                  value={certificateTemplate.body}
-                  onChange={(e) => handleCertificateChange("body", e.target.value)}
-                  rows={4}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Rodapé (cidade/data)</Label>
-                <Input
-                  value={certificateTemplate.footer}
-                  onChange={(e) => handleCertificateChange("footer", e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Assinatura 1</Label>
-                  <Select
-                    value={certificateTemplate.signature1.source}
-                    onValueChange={(value) =>
-                      handleSignatureChange("signature1", "source", value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="coordinator">Coordenador</SelectItem>
-                      <SelectItem value="instructor">Instrutor</SelectItem>
-                      <SelectItem value="custom">Outro (manual)</SelectItem>
-                      <SelectItem value="none">Sem assinatura</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {certificateTemplate.signature1.source === "custom" && (
+              <Accordion
+                type="multiple"
+                defaultValue={["textos", "fontes", "assinaturas", "logos"]}
+                className="w-full"
+              >
+                <AccordionItem value="textos">
+                  <AccordionTrigger>Textos do certificado</AccordionTrigger>
+                  <AccordionContent className="space-y-4">
                     <div className="space-y-2">
-                      <Input
-                        placeholder="Nome"
-                        value={certificateTemplate.signature1.name}
-                        onChange={(e) =>
-                          handleSignatureChange("signature1", "name", e.target.value)
-                        }
-                      />
-                      <Input
-                        placeholder="Cargo"
-                        value={certificateTemplate.signature1.role}
-                        onChange={(e) =>
-                          handleSignatureChange("signature1", "role", e.target.value)
-                        }
+                      <Label>Texto do cabeçalho (uma linha por item)</Label>
+                      <Textarea
+                        value={(certificateTemplate.headerLines || []).join("\n")}
+                        onChange={(e) => handleCertificateHeaderChange(e.target.value)}
+                        rows={3}
                       />
                     </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label>Assinatura 2</Label>
-                  <Select
-                    value={certificateTemplate.signature2.source}
-                    onValueChange={(value) =>
-                      handleSignatureChange("signature2", "source", value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="coordinator">Coordenador</SelectItem>
-                      <SelectItem value="instructor">Instrutor</SelectItem>
-                      <SelectItem value="custom">Outro (manual)</SelectItem>
-                      <SelectItem value="none">Sem assinatura</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {certificateTemplate.signature2.source === "custom" && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Título</Label>
+                        <Input
+                          value={certificateTemplate.title}
+                          onChange={(e) => handleCertificateChange("title", e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Entidade</Label>
+                        <Input
+                          value={certificateTemplate.entityName}
+                          onChange={(e) => handleCertificateChange("entityName", e.target.value)}
+                        />
+                      </div>
+                    </div>
                     <div className="space-y-2">
-                      <Input
-                        placeholder="Nome"
-                        value={certificateTemplate.signature2.name}
-                        onChange={(e) =>
-                          handleSignatureChange("signature2", "name", e.target.value)
-                        }
-                      />
-                      <Input
-                        placeholder="Cargo"
-                        value={certificateTemplate.signature2.role}
-                        onChange={(e) =>
-                          handleSignatureChange("signature2", "role", e.target.value)
-                        }
+                      <Label>Texto do certificado</Label>
+                      <Textarea
+                        value={certificateTemplate.body}
+                        onChange={(e) => handleCertificateChange("body", e.target.value)}
+                        rows={4}
                       />
                     </div>
-                  )}
-                </div>
-              </div>
+                    <div className="space-y-2">
+                      <Label>Rodapé (cidade/data)</Label>
+                      <Input
+                        value={certificateTemplate.footer}
+                        onChange={(e) => handleCertificateChange("footer", e.target.value)}
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {logoSlots.map((slot) => {
-              const position = getLogoPosition(slot.key);
-              return (
-                <div key={slot.key} className="space-y-3 rounded-md border p-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="font-semibold">{slot.label}</Label>
-                    <span className="text-xs text-slate-500">
-                      {position.w}x{position.h} mm
-                    </span>
-                  </div>
-                  <Input
-                    type="file"
-                    accept=".png,.jpg,.jpeg"
-                    onChange={(e) => handleLogoUpload(slot.key, e)}
-                  />
-                  {certificateTemplate.logos?.[slot.key] && (
-                    <img
-                      src={certificateTemplate.logos[slot.key]}
-                      alt={slot.label}
-                      className="h-16 object-contain border rounded-md p-2"
-                    />
-                  )}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">X (mm)</Label>
-                      <Input
-                        type="number"
-                        value={position.x}
-                        onChange={(e) =>
-                          handleLogoPositionChange(slot.key, "x", e.target.value)
-                        }
-                      />
+                <AccordionItem value="fontes">
+                  <AccordionTrigger>Fonte e tamanhos</AccordionTrigger>
+                  <AccordionContent className="space-y-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Fonte do certificado</Label>
+                        <Select
+                          value={fontFamilyValue}
+                          onValueChange={(value) => handleFontChange("family", value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {fontOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Y (mm)</Label>
-                      <Input
-                        type="number"
-                        value={position.y}
-                        onChange={(e) =>
-                          handleLogoPositionChange(slot.key, "y", e.target.value)
-                        }
-                      />
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Cabeçalho</Label>
+                        <Input
+                          type="number"
+                          value={certificateTemplate.fonts?.headerSize || 10}
+                          onChange={(e) =>
+                            handleFontNumberChange("headerSize", e.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Título</Label>
+                        <Input
+                          type="number"
+                          value={certificateTemplate.fonts?.titleSize || 28}
+                          onChange={(e) =>
+                            handleFontNumberChange("titleSize", e.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Nome</Label>
+                        <Input
+                          type="number"
+                          value={certificateTemplate.fonts?.nameSize || 24}
+                          onChange={(e) =>
+                            handleFontNumberChange("nameSize", e.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Texto</Label>
+                        <Input
+                          type="number"
+                          value={certificateTemplate.fonts?.bodySize || 14}
+                          onChange={(e) =>
+                            handleFontNumberChange("bodySize", e.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Rodapé</Label>
+                        <Input
+                          type="number"
+                          value={certificateTemplate.fonts?.footerSize || 12}
+                          onChange={(e) =>
+                            handleFontNumberChange("footerSize", e.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Assinatura</Label>
+                        <Input
+                          type="number"
+                          value={certificateTemplate.fonts?.signatureSize || 11}
+                          onChange={(e) =>
+                            handleFontNumberChange("signatureSize", e.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Cargo</Label>
+                        <Input
+                          type="number"
+                          value={certificateTemplate.fonts?.signatureRoleSize || 9}
+                          onChange={(e) =>
+                            handleFontNumberChange("signatureRoleSize", e.target.value)
+                          }
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Largura (mm)</Label>
-                      <Input
-                        type="number"
-                        value={position.w}
-                        onChange={(e) =>
-                          handleLogoPositionChange(slot.key, "w", e.target.value)
-                        }
-                      />
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="assinaturas">
+                  <AccordionTrigger>Assinaturas</AccordionTrigger>
+                  <AccordionContent className="space-y-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Assinatura 1</Label>
+                        <Select
+                          value={certificateTemplate.signature1.source}
+                          onValueChange={(value) =>
+                            handleSignatureChange("signature1", "source", value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="coordinator">Coordenador</SelectItem>
+                            <SelectItem value="instructor">Instrutor</SelectItem>
+                            <SelectItem value="custom">Outro (manual)</SelectItem>
+                            <SelectItem value="none">Sem assinatura</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {certificateTemplate.signature1.source === "custom" && (
+                          <div className="space-y-2">
+                            <Input
+                              placeholder="Nome"
+                              value={certificateTemplate.signature1.name}
+                              onChange={(e) =>
+                                handleSignatureChange("signature1", "name", e.target.value)
+                              }
+                            />
+                            <Input
+                              placeholder="Cargo"
+                              value={certificateTemplate.signature1.role}
+                              onChange={(e) =>
+                                handleSignatureChange("signature1", "role", e.target.value)
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Assinatura 2</Label>
+                        <Select
+                          value={certificateTemplate.signature2.source}
+                          onValueChange={(value) =>
+                            handleSignatureChange("signature2", "source", value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="coordinator">Coordenador</SelectItem>
+                            <SelectItem value="instructor">Instrutor</SelectItem>
+                            <SelectItem value="custom">Outro (manual)</SelectItem>
+                            <SelectItem value="none">Sem assinatura</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {certificateTemplate.signature2.source === "custom" && (
+                          <div className="space-y-2">
+                            <Input
+                              placeholder="Nome"
+                              value={certificateTemplate.signature2.name}
+                              onChange={(e) =>
+                                handleSignatureChange("signature2", "name", e.target.value)
+                              }
+                            />
+                            <Input
+                              placeholder="Cargo"
+                              value={certificateTemplate.signature2.role}
+                              onChange={(e) =>
+                                handleSignatureChange("signature2", "role", e.target.value)
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Altura (mm)</Label>
-                      <Input
-                        type="number"
-                        value={position.h}
-                        onChange={(e) =>
-                          handleLogoPositionChange(slot.key, "h", e.target.value)
-                        }
-                      />
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="logos">
+                  <AccordionTrigger>Logos</AccordionTrigger>
+                  <AccordionContent className="space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="font-semibold">Logos</Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleAddLogo}
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Adicionar logo
+                        </Button>
+                      </div>
+                      {logoPreviewItems.length === 0 ? (
+                        <p className="text-sm text-slate-500">
+                          Nenhum logo adicionado.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          {logoPreviewItems.map((slot) => {
+                            const position = getLogoPosition(slot.key);
+                            return (
+                              <div key={slot.key} className="space-y-3 rounded-md border p-4">
+                                <div className="flex items-center justify-between">
+                                  <Label className="font-semibold">{slot.label}</Label>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-500">
+                                      {position.w}x{position.h} mm
+                                    </span>
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="ghost"
+                                      className="text-red-600"
+                                      onClick={() => handleRemoveLogo(slot.key)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                <Input
+                                  type="file"
+                                  accept=".png,.jpg,.jpeg"
+                                  onChange={(e) => handleLogoUpload(slot.key, e)}
+                                />
+                                {certificateTemplate.logos?.[slot.key] && (
+                                  <img
+                                    src={certificateTemplate.logos[slot.key]}
+                                    alt={slot.label}
+                                    className="h-16 object-contain border rounded-md p-2"
+                                  />
+                                )}
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">X (mm)</Label>
+                                    <Input
+                                      type="number"
+                                      value={position.x}
+                                      onChange={(e) =>
+                                        handleLogoPositionChange(slot.key, "x", e.target.value)
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Y (mm)</Label>
+                                    <Input
+                                      type="number"
+                                      value={position.y}
+                                      onChange={(e) =>
+                                        handleLogoPositionChange(slot.key, "y", e.target.value)
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Largura (mm)</Label>
+                                    <Input
+                                      type="number"
+                                      value={position.w}
+                                      onChange={(e) =>
+                                        handleLogoPositionChange(slot.key, "w", e.target.value)
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Altura (mm)</Label>
+                                    <Input
+                                      type="number"
+                                      value={position.h}
+                                      onChange={(e) =>
+                                        handleLogoPositionChange(slot.key, "h", e.target.value)
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
 
               <div className="flex flex-wrap gap-2">
                 <Button onClick={handleSaveCertificate}>Salvar</Button>
@@ -1421,7 +1544,14 @@ export default function Settings() {
 
                     <div className="absolute inset-0 z-10 pointer-events-none">
                       {previewHeaderLines.length > 0 && (
-                        <div className="absolute left-1/2 top-4 -translate-x-1/2 text-center space-y-1 text-[10px] font-semibold text-slate-700">
+                        <div
+                          className="absolute left-1/2 top-4 -translate-x-1/2 text-center space-y-1 font-semibold text-slate-700"
+                          style={{
+                            fontFamily: previewFont,
+                            fontSize: certificateTemplate.fonts?.headerSize || 10,
+                            lineHeight: 1.2,
+                          }}
+                        >
                           {previewHeaderLines.map((line) => (
                             <p key={line}>{line}</p>
                           ))}
@@ -1429,7 +1559,10 @@ export default function Settings() {
                       )}
                     </div>
 
-                    <div className="absolute inset-0 z-20">
+                    <div
+                      className="absolute inset-0 z-20"
+                      style={{ pointerEvents: editLayer === "logos" ? "none" : "auto" }}
+                    >
                       {(() => {
                         const titlePos = getTextPosition("title");
                         const bodyPos = getTextPosition("body");

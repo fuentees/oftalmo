@@ -30,18 +30,8 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
     signatureSize: 11,
     signatureRoleSize: 9,
   },
-  logos: {
-    primary: "",
-    secondary: "",
-    tertiary: "",
-    quaternary: "",
-  },
-  logoPositions: {
-    primary: { x: 20, y: 18, w: 30, h: 30 },
-    secondary: { x: 247, y: 18, w: 30, h: 30 },
-    tertiary: { x: 20, y: 160, w: 30, h: 30 },
-    quaternary: { x: 247, y: 160, w: 30, h: 30 },
-  },
+  logos: {},
+  logoPositions: {},
   textPositions: {
     title: { x: 148.5, y: 40 },
     body: { x: 148.5, y: 62, width: 257 },
@@ -53,38 +43,69 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
   },
 };
 
-const mergeTemplate = (template) => ({
-  ...DEFAULT_CERTIFICATE_TEMPLATE,
-  ...template,
-  logos: {
-    ...DEFAULT_CERTIFICATE_TEMPLATE.logos,
-    ...(template?.logos || {}),
-  },
-  logoPositions: {
-    ...DEFAULT_CERTIFICATE_TEMPLATE.logoPositions,
-    ...(template?.logoPositions || {}),
-  },
-  textPositions: {
-    ...DEFAULT_CERTIFICATE_TEMPLATE.textPositions,
-    ...(template?.textPositions || {}),
-  },
-  signaturePositions: {
-    ...DEFAULT_CERTIFICATE_TEMPLATE.signaturePositions,
-    ...(template?.signaturePositions || {}),
-  },
-  fonts: {
-    ...DEFAULT_CERTIFICATE_TEMPLATE.fonts,
-    ...(template?.fonts || {}),
-  },
-  signature1: {
-    ...DEFAULT_CERTIFICATE_TEMPLATE.signature1,
-    ...(template?.signature1 || {}),
-  },
-  signature2: {
-    ...DEFAULT_CERTIFICATE_TEMPLATE.signature2,
-    ...(template?.signature2 || {}),
-  },
-});
+const cleanLegacyLogos = (merged) => {
+  const logoKeys = Object.keys(merged.logos || {});
+  const legacyKeys = ["primary", "secondary", "tertiary", "quaternary"];
+  const onlyLegacy = logoKeys.length > 0 && logoKeys.every((key) => legacyKeys.includes(key));
+  const allEmpty = logoKeys.length > 0 && logoKeys.every((key) => !merged.logos?.[key]);
+  if (onlyLegacy && allEmpty) {
+    return {
+      ...merged,
+      logos: {},
+      logoPositions: {},
+    };
+  }
+  if (onlyLegacy) {
+    const cleanedLogos = { ...merged.logos };
+    const cleanedPositions = { ...(merged.logoPositions || {}) };
+    legacyKeys.forEach((key) => {
+      if (!merged.logos?.[key]) {
+        delete cleanedLogos[key];
+        delete cleanedPositions[key];
+      }
+    });
+    return {
+      ...merged,
+      logos: cleanedLogos,
+      logoPositions: cleanedPositions,
+    };
+  }
+  return merged;
+};
+
+const mergeTemplate = (template) => {
+  const merged = {
+    ...DEFAULT_CERTIFICATE_TEMPLATE,
+    ...template,
+    logos: {
+      ...(template?.logos || {}),
+    },
+    logoPositions: {
+      ...(template?.logoPositions || {}),
+    },
+    textPositions: {
+      ...DEFAULT_CERTIFICATE_TEMPLATE.textPositions,
+      ...(template?.textPositions || {}),
+    },
+    signaturePositions: {
+      ...DEFAULT_CERTIFICATE_TEMPLATE.signaturePositions,
+      ...(template?.signaturePositions || {}),
+    },
+    fonts: {
+      ...DEFAULT_CERTIFICATE_TEMPLATE.fonts,
+      ...(template?.fonts || {}),
+    },
+    signature1: {
+      ...DEFAULT_CERTIFICATE_TEMPLATE.signature1,
+      ...(template?.signature1 || {}),
+    },
+    signature2: {
+      ...DEFAULT_CERTIFICATE_TEMPLATE.signature2,
+      ...(template?.signature2 || {}),
+    },
+  };
+  return cleanLegacyLogos(merged);
+};
 
 export const loadCertificateTemplate = () => {
   if (typeof window === "undefined") return DEFAULT_CERTIFICATE_TEMPLATE;
