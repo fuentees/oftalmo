@@ -73,7 +73,6 @@ export default function Layout({ children, currentPageName }) {
     { name: "Participantes", page: "Participants", icon: Users },
     { name: "Relatórios", page: "Reports", icon: FileText },
     { name: "Logs", page: "AuditLogs", icon: FileText },
-    { name: "Campos de Inscrição", page: "EnrollmentFieldsManager", icon: Settings },
     { name: "Configurações", page: "Settings", icon: Settings },
   ];
 
