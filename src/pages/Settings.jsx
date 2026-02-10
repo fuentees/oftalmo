@@ -70,6 +70,7 @@ export default function Settings() {
   const [lockLogoRatio, setLockLogoRatio] = useState(false);
   const [showLogoGrid, setShowLogoGrid] = useState(false);
   const [editLayer, setEditLayer] = useState("logos");
+  const bodyTextRef = useRef(null);
 
   useEffect(() => {
     const savedColor = localStorage.getItem("theme-color") || "blue";
@@ -146,6 +147,16 @@ export default function Settings() {
     setCertificateTemplate((prev) => ({
       ...prev,
       [field]: value,
+    }));
+  };
+
+  const handleTextOptionChange = (field, value) => {
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      textOptions: {
+        ...(prev.textOptions || {}),
+        [field]: value,
+      },
     }));
   };
 
@@ -420,6 +431,46 @@ export default function Settings() {
         [field]: Number.isFinite(numeric) ? numeric : 0,
       },
     }));
+  };
+
+  const handleBodyFormatting = (prefix, suffix = prefix) => {
+    const textarea = bodyTextRef.current;
+    if (!textarea) return;
+    const currentValue = certificateTemplate.body || "";
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? start;
+    const selected = currentValue.slice(start, end);
+    const nextValue =
+      currentValue.slice(0, start) + prefix + selected + suffix + currentValue.slice(end);
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      body: nextValue,
+    }));
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const cursorStart = start + prefix.length;
+      const cursorEnd = end + prefix.length;
+      textarea.setSelectionRange(cursorStart, cursorEnd);
+    });
+  };
+
+  const insertBodyText = (value) => {
+    const textarea = bodyTextRef.current;
+    if (!textarea) return;
+    const currentValue = certificateTemplate.body || "";
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? start;
+    const nextValue =
+      currentValue.slice(0, start) + value + currentValue.slice(end);
+    setCertificateTemplate((prev) => ({
+      ...prev,
+      body: nextValue,
+    }));
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const cursor = start + value.length;
+      textarea.setSelectionRange(cursor, cursor);
+    });
   };
 
   const getRelativeMm = (event) => {
@@ -745,6 +796,37 @@ export default function Settings() {
   const signature2 = resolveSignature(certificateTemplate.signature2);
   const fontFamilyValue = certificateTemplate.fonts?.family || "helvetica";
   const previewFont = previewFontFamily[fontFamilyValue] || previewFontFamily.helvetica;
+
+  const renderFormattedText = (value) => {
+    const content = String(value || "");
+    const parts = [];
+    let bold = false;
+    let buffer = "";
+    const flush = () => {
+      if (!buffer) return;
+      parts.push({ text: buffer, bold });
+      buffer = "";
+    };
+    for (let i = 0; i < content.length; i += 1) {
+      const char = content[i];
+      const next = content[i + 1];
+      if (char === "*" && next === "*") {
+        flush();
+        bold = !bold;
+        i += 1;
+        continue;
+      }
+      buffer += char;
+    }
+    flush();
+    return parts.map((part, index) =>
+      part.bold ? (
+        <strong key={`bold-${index}`}>{part.text}</strong>
+      ) : (
+        <span key={`text-${index}`}>{part.text}</span>
+      )
+    );
+  };
 
   const previewPage = { width: 297, height: 210 };
   const toPercent = (value, total) => `${(value / total) * 100}%`;
@@ -1140,7 +1222,34 @@ export default function Settings() {
                     </div>
                     <div className="space-y-2">
                       <Label>Texto do certificado</Label>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleBodyFormatting("**", "**")}
+                        >
+                          <strong>Negrito</strong>
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => insertBodyText("\n")}
+                        >
+                          Quebra de linha
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => insertBodyText("\n\n")}
+                        >
+                          Novo parágrafo
+                        </Button>
+                      </div>
                       <Textarea
+                        ref={bodyTextRef}
                         value={certificateTemplate.body}
                         onChange={(e) => handleCertificateChange("body", e.target.value)}
                         rows={4}
@@ -1249,6 +1358,52 @@ export default function Settings() {
                             handleFontNumberChange("signatureRoleSize", e.target.value)
                           }
                         />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Espaçamento entre linhas</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          max="3"
+                          value={certificateTemplate.textOptions?.bodyLineHeight || 1.2}
+                          onChange={(e) =>
+                            handleTextOptionChange(
+                              "bodyLineHeight",
+                              Number(e.target.value) || 1.2
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Máx. espaço entre palavras</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          max="6"
+                          value={certificateTemplate.textOptions?.bodyMaxWordSpacing || 3}
+                          onChange={(e) =>
+                            handleTextOptionChange(
+                              "bodyMaxWordSpacing",
+                              Number(e.target.value) || 3
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 mt-6">
+                        <Checkbox
+                          id="justify-body"
+                          checked={certificateTemplate.textOptions?.bodyJustify !== false}
+                          onCheckedChange={(checked) =>
+                            handleTextOptionChange("bodyJustify", Boolean(checked))
+                          }
+                        />
+                        <Label htmlFor="justify-body" className="text-xs">
+                          Justificar texto
+                        </Label>
                       </div>
                     </div>
                   </AccordionContent>
@@ -1698,9 +1853,10 @@ export default function Settings() {
                                   fontFamily: previewFont,
                                   fontSize: certificateTemplate.fonts?.bodySize || 14,
                                   textAlign: "justify",
+                                  lineHeight: certificateTemplate.textOptions?.bodyLineHeight || 1.2,
                                 }}
                               >
-                                {previewBody}
+                                {renderFormattedText(previewBody)}
                               </div>
                             </div>
 

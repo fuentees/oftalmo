@@ -14,39 +14,123 @@ const interpolateText = (text, data) =>
     data[key] !== undefined && data[key] !== null ? String(data[key]) : ""
   );
 
-const drawJustifiedText = (pdf, text, x, y, maxWidth, lineHeight) => {
+const parseFormattedText = (value) => {
+  const tokens = [];
+  let bold = false;
+  let buffer = "";
+  const flush = () => {
+    if (!buffer) return;
+    tokens.push({ type: "text", text: buffer, bold });
+    buffer = "";
+  };
+  for (let i = 0; i < String(value || "").length; i += 1) {
+    const char = value[i];
+    const next = value[i + 1];
+    if (char === "*" && next === "*") {
+      flush();
+      bold = !bold;
+      i += 1;
+      continue;
+    }
+    if (char === "\n") {
+      flush();
+      tokens.push({ type: "newline" });
+      continue;
+    }
+    buffer += char;
+  }
+  flush();
+  return tokens;
+};
+
+const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth) => {
+  const lines = [];
+  let current = [];
+  let lineWidth = 0;
+  let pendingSpace = false;
+
+  const pushLine = () => {
+    if (current.length > 0) {
+      lines.push(current);
+    }
+    current = [];
+    lineWidth = 0;
+    pendingSpace = false;
+  };
+
+  tokens.forEach((token) => {
+    if (token.type === "newline") {
+      pushLine();
+      return;
+    }
+    const parts = String(token.text || "").split(/(\s+)/);
+    parts.forEach((part) => {
+      if (!part) return;
+      if (/^\s+$/.test(part)) {
+        pendingSpace = true;
+        return;
+      }
+      const wordWidth = measureWord(part, token.bold);
+      const spaceWidth = pendingSpace && current.length > 0 ? baseSpaceWidth : 0;
+      if (current.length > 0 && lineWidth + spaceWidth + wordWidth > maxWidth) {
+        pushLine();
+      }
+      if (pendingSpace && current.length > 0) {
+        lineWidth += baseSpaceWidth;
+      }
+      current.push({ text: part, bold: token.bold });
+      lineWidth += wordWidth;
+      pendingSpace = false;
+    });
+  });
+  if (current.length > 0) lines.push(current);
+  return lines;
+};
+
+const drawFormattedText = (
+  pdf,
+  text,
+  x,
+  y,
+  maxWidth,
+  lineHeight,
+  options
+) => {
   if (!text) return;
-  const lines = pdf.splitTextToSize(text, maxWidth);
-  const spacingThreshold = maxWidth * 0.6;
-  lines.forEach((line, index) => {
-    const lineText = String(line || "").trim();
-    const lineY = y + index * lineHeight;
-    if (!lineText) return;
-    const words = lineText.split(/\s+/);
+  const {
+    fontFamily,
+    fontSize,
+    justify = true,
+    maxWordSpacing = 3,
+  } = options || {};
+  pdf.setFontSize(fontSize);
+  pdf.setFont(fontFamily, "normal");
+  const baseSpaceWidth = pdf.getTextWidth(" ");
+  const maxSpaceWidth = baseSpaceWidth * maxWordSpacing;
+  const tokens = parseFormattedText(text);
+  const measureWord = (word, isBold) => {
+    pdf.setFont(fontFamily, isBold ? "bold" : "normal");
+    return pdf.getTextWidth(word);
+  };
+  const lines = buildLines(tokens, maxWidth, measureWord, baseSpaceWidth);
+  lines.forEach((words, index) => {
+    if (words.length === 0) return;
     const isLast = index === lines.length - 1;
-    if (isLast || words.length <= 1) {
-      pdf.text(lineText, x, lineY);
-      return;
-    }
-    const wordsWidth = words.reduce((sum, word) => sum + pdf.getTextWidth(word), 0);
-    if (!Number.isFinite(wordsWidth) || wordsWidth <= 0) {
-      pdf.text(lineText, x, lineY);
-      return;
-    }
-    if (wordsWidth < spacingThreshold) {
-      pdf.text(lineText, x, lineY);
-      return;
-    }
+    const wordWidths = words.map((word) => measureWord(word.text, word.bold));
+    const wordsWidth = wordWidths.reduce((sum, width) => sum + width, 0);
     const gaps = words.length - 1;
-    const spaceWidth = (maxWidth - wordsWidth) / gaps;
-    if (!Number.isFinite(spaceWidth) || spaceWidth < 0) {
-      pdf.text(lineText, x, lineY);
-      return;
+    let spaceWidth = baseSpaceWidth;
+    if (justify && !isLast && gaps > 0) {
+      const proposed = (maxWidth - wordsWidth) / gaps;
+      if (Number.isFinite(proposed) && proposed >= baseSpaceWidth && proposed <= maxSpaceWidth) {
+        spaceWidth = proposed;
+      }
     }
     let cursorX = x;
     words.forEach((word, idx) => {
-      pdf.text(word, cursorX, lineY);
-      cursorX += pdf.getTextWidth(word) + (idx < gaps ? spaceWidth : 0);
+      pdf.setFont(fontFamily, word.bold ? "bold" : "normal");
+      pdf.text(word.text, cursorX, y + index * lineHeight);
+      cursorX += wordWidths[idx] + (idx < gaps ? spaceWidth : 0);
     });
   });
 };
@@ -235,10 +319,19 @@ export const generateParticipantCertificate = (participant, training, templateOv
   const bodyLeft = Number.isFinite(bodyPosition.x)
     ? bodyPosition.x - bodyWidth / 2
     : 20;
-  const lineHeight = pdf.getTextDimensions("Mg").h * 1.2;
+  const textOptions = template.textOptions || {};
+  const justifyBody = textOptions.bodyJustify !== false;
+  const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
+  const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
   pdf.setFontSize(sizes.body);
   pdf.setFont(fontFamily, "normal");
-  drawJustifiedText(pdf, bodyText, bodyLeft, bodyPosition.y, bodyWidth, lineHeight);
+  drawFormattedText(pdf, bodyText, bodyLeft, bodyPosition.y, bodyWidth, lineHeight, {
+    fontFamily,
+    fontSize: sizes.body,
+    justify: justifyBody,
+    maxWordSpacing,
+  });
 
   if (template.footer) {
     pdf.setFontSize(sizes.footer);
@@ -370,10 +463,19 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
   const bodyLeft = Number.isFinite(bodyPosition.x)
     ? bodyPosition.x - bodyWidth / 2
     : 20;
-  const lineHeight = pdf.getTextDimensions("Mg").h * 1.2;
+  const textOptions = template.textOptions || {};
+  const justifyBody = textOptions.bodyJustify !== false;
+  const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
+  const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
   pdf.setFontSize(sizes.body);
   pdf.setFont(fontFamily, "normal");
-  drawJustifiedText(pdf, bodyText, bodyLeft, bodyPosition.y, bodyWidth, lineHeight);
+  drawFormattedText(pdf, bodyText, bodyLeft, bodyPosition.y, bodyWidth, lineHeight, {
+    fontFamily,
+    fontSize: sizes.body,
+    justify: justifyBody,
+    maxWordSpacing,
+  });
 
   if (template.footer) {
     pdf.setFontSize(sizes.footer);
