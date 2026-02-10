@@ -364,7 +364,14 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
           attachment.contentType || attachment.type || "application/pdf"
         ).trim();
         if (!filename || !content) return null;
-        return { filename, content, contentType };
+        return {
+          filename,
+          name: filename,
+          content,
+          contentBytes: content,
+          contentType,
+          type: contentType,
+        };
       })
       .filter(Boolean);
     if (normalizedAttachments.length > 0) {
