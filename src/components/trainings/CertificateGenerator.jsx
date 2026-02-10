@@ -208,25 +208,6 @@ export const generateParticipantCertificate = (participant, training, templateOv
     signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
     signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
   };
-  const titlePosition = getTextPosition(template, "title", {
-    x: pageWidth / 2,
-    y: titleY,
-    width: pageWidth - 40,
-  });
-  const bodyPosition = getTextPosition(template, "body", {
-    x: pageWidth / 2,
-    y: titleY + 16,
-    width: pageWidth - 40,
-  });
-  const footerPosition = getTextPosition(template, "footer", {
-    x: pageWidth / 2,
-    y: pageHeight - 55,
-    width: pageWidth - 40,
-  });
-  const signatureDefaults = {
-    signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
-    signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
-  };
   // Title
   pdf.setFontSize(sizes.title);
   pdf.setFont(fontFamily, "bold");
