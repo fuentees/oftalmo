@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 import { Loader2, X, Video, Plus, XCircle } from "lucide-react";
 import { format, addDays, addWeeks } from "date-fns";
 
-export default function TrainingForm({ training, onClose }) {
+export default function TrainingForm({ training, onClose, professionals = [] }) {
   const [formData, setFormData] = useState({
     title: "",
     code: "",
@@ -26,6 +26,7 @@ export default function TrainingForm({ training, onClose }) {
     location: "",
     online_link: "",
     coordinator: "",
+    instructor: "",
     monitors: [],
     max_participants: "",
     status: "agendado",
@@ -61,6 +62,7 @@ export default function TrainingForm({ training, onClose }) {
         location: training.location || "",
         online_link: training.online_link || "",
         coordinator: training.coordinator || "",
+        instructor: training.instructor || "",
         monitors: training.monitors || [],
         max_participants: training.max_participants || "",
         status: training.status || "agendado",
@@ -132,6 +134,56 @@ export default function TrainingForm({ training, onClose }) {
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const professionalOptions = useMemo(() => {
+    const map = new Map();
+    (professionals || []).forEach((professional) => {
+      const name = String(professional?.name || "").trim();
+      if (!name) return;
+      const key = normalizeText(name);
+      if (map.has(key)) return;
+      map.set(key, {
+        id: professional?.id || key,
+        name,
+        email: professional?.email || "",
+      });
+    });
+    return Array.from(map.values());
+  }, [professionals]);
+
+  const professionalListId = "professionals-name-list";
+
+  const findProfessionalByName = (value) => {
+    const normalized = normalizeText(value);
+    if (!normalized) return null;
+    return (
+      professionalOptions.find(
+        (professional) => normalizeText(professional.name) === normalized
+      ) || null
+    );
+  };
+
+  const updateMonitor = (index, field, value) => {
+    setFormData((prev) => {
+      const newMonitors = [...prev.monitors];
+      const current = { ...(newMonitors[index] || {}), [field]: value };
+      if (field === "name") {
+        const match = findProfessionalByName(value);
+        if (match?.email && !current.email) {
+          current.email = match.email;
+        }
+      }
+      newMonitors[index] = current;
+      return { ...prev, monitors: newMonitors };
+    });
   };
 
   const addDate = () => {
@@ -386,6 +438,14 @@ export default function TrainingForm({ training, onClose }) {
         />
       </div>
 
+      {professionalOptions.length > 0 && (
+        <datalist id={professionalListId}>
+          {professionalOptions.map((professional) => (
+            <option key={professional.id} value={professional.name} />
+          ))}
+        </datalist>
+      )}
+
       <div className="space-y-1.5">
         <Label htmlFor="coordinator">Coordenador</Label>
         <Input
@@ -393,6 +453,7 @@ export default function TrainingForm({ training, onClose }) {
           value={formData.coordinator}
           onChange={(e) => handleChange("coordinator", e.target.value)}
           placeholder="Nome do coordenador"
+          list={professionalListId}
         />
       </div>
 
@@ -413,21 +474,14 @@ export default function TrainingForm({ training, onClose }) {
           <div key={index} className="flex gap-2 p-2 border rounded-lg">
             <Input
               value={monitor.name}
-              onChange={(e) => {
-                const newMonitors = [...formData.monitors];
-                newMonitors[index].name = e.target.value;
-                handleChange("monitors", newMonitors);
-              }}
+              onChange={(e) => updateMonitor(index, "name", e.target.value)}
               placeholder="Nome do monitor"
+              list={professionalListId}
             />
             <Input
               type="email"
               value={monitor.email}
-              onChange={(e) => {
-                const newMonitors = [...formData.monitors];
-                newMonitors[index].email = e.target.value;
-                handleChange("monitors", newMonitors);
-              }}
+              onChange={(e) => updateMonitor(index, "email", e.target.value)}
               placeholder="Email do monitor"
             />
             <Button
@@ -444,6 +498,17 @@ export default function TrainingForm({ training, onClose }) {
             </Button>
           </div>
         ))}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="instructor">Palestrante</Label>
+        <Input
+          id="instructor"
+          value={formData.instructor}
+          onChange={(e) => handleChange("instructor", e.target.value)}
+          placeholder="Nome do palestrante"
+          list={professionalListId}
+        />
       </div>
 
       <div className="space-y-1.5">
