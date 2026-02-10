@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -44,6 +45,8 @@ export default function Settings() {
     DEFAULT_CERTIFICATE_TEMPLATE
   );
   const [certificateStatus, setCertificateStatus] = useState(null);
+  const [lockLogoRatio, setLockLogoRatio] = useState(false);
+  const [showLogoGrid, setShowLogoGrid] = useState(false);
 
   useEffect(() => {
     const savedColor = localStorage.getItem("theme-color") || "blue";
@@ -282,6 +285,36 @@ export default function Settings() {
       if (handle.includes("n")) {
         y = startPos.y + dy;
         h = startPos.h - dy;
+      }
+
+      if (lockLogoRatio) {
+        const ratio = startPos.w / Math.max(startPos.h, 0.0001);
+        const isCorner = handle.length === 2;
+        const preferWidth = Math.abs(dx) >= Math.abs(dy);
+
+        if (isCorner) {
+          if (preferWidth) {
+            h = w / ratio;
+          } else {
+            w = h * ratio;
+          }
+          if (handle.includes("w")) {
+            x = startPos.x + (startPos.w - w);
+          }
+          if (handle.includes("n")) {
+            y = startPos.y + (startPos.h - h);
+          }
+        } else if (handle.includes("e") || handle.includes("w")) {
+          h = w / ratio;
+          if (handle.includes("n")) {
+            y = startPos.y + (startPos.h - h);
+          }
+        } else if (handle.includes("n") || handle.includes("s")) {
+          w = h * ratio;
+          if (handle.includes("w")) {
+            x = startPos.x + (startPos.w - w);
+          }
+        }
       }
 
       if (w < MIN_LOGO_SIZE) {
@@ -612,6 +645,28 @@ export default function Settings() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="flex flex-wrap items-center gap-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="lock-logo-ratio"
+                    checked={lockLogoRatio}
+                    onCheckedChange={(checked) => setLockLogoRatio(Boolean(checked))}
+                  />
+                  <Label htmlFor="lock-logo-ratio" className="text-sm font-normal">
+                    Travar proporção ao redimensionar
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show-logo-grid"
+                    checked={showLogoGrid}
+                    onCheckedChange={(checked) => setShowLogoGrid(Boolean(checked))}
+                  />
+                  <Label htmlFor="show-logo-grid" className="text-sm font-normal">
+                    Mostrar grade/guia
+                  </Label>
+                </div>
+              </div>
               <div className="w-full">
                 <div
                   ref={previewRef}
@@ -621,6 +676,17 @@ export default function Settings() {
                     touchAction: "none",
                   }}
                 >
+                  {showLogoGrid && (
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(to right, rgba(148,163,184,0.25) 1px, transparent 1px), " +
+                          "linear-gradient(to bottom, rgba(148,163,184,0.25) 1px, transparent 1px)",
+                        backgroundSize: "10% 10%",
+                      }}
+                    />
+                  )}
                   <div className="absolute inset-0">
                     {logoPreviewItems.map((logo) => {
                       const left = toPercent(logo.position.x, previewPage.width);
@@ -648,17 +714,22 @@ export default function Settings() {
                               </div>
                             )}
                             <div className="absolute inset-0 border border-dashed border-blue-400" />
-                            {["nw", "ne", "sw", "se"].map((handle) => {
+                            {["n", "s", "e", "w", "nw", "ne", "sw", "se"].map((handle) => {
                               const handleClasses = {
+                                n: "left-1/2 top-[-6px] -translate-x-1/2 cursor-ns-resize",
+                                s: "left-1/2 bottom-[-6px] -translate-x-1/2 cursor-ns-resize",
+                                e: "right-[-6px] top-1/2 -translate-y-1/2 cursor-ew-resize",
+                                w: "left-[-6px] top-1/2 -translate-y-1/2 cursor-ew-resize",
                                 nw: "left-[-6px] top-[-6px] cursor-nwse-resize",
                                 ne: "right-[-6px] top-[-6px] cursor-nesw-resize",
                                 sw: "left-[-6px] bottom-[-6px] cursor-nesw-resize",
                                 se: "right-[-6px] bottom-[-6px] cursor-nwse-resize",
                               };
+                              const size = "h-3 w-3";
                               return (
                                 <div
                                   key={handle}
-                                  className={`absolute h-3 w-3 rounded-full bg-blue-500 ${handleClasses[handle]}`}
+                                  className={`absolute ${size} rounded-full bg-blue-500 ${handleClasses[handle]}`}
                                   onPointerDown={(event) =>
                                     startResizeLogo(event, logo.key, handle)
                                   }
