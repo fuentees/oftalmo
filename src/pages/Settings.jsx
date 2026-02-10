@@ -1393,6 +1393,22 @@ export default function Settings() {
                           }
                         />
                       </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Recuo do parágrafo (mm)</Label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="30"
+                          value={certificateTemplate.textOptions?.bodyIndent || 0}
+                          onChange={(e) =>
+                            handleTextOptionChange(
+                              "bodyIndent",
+                              Number(e.target.value) || 0
+                            )
+                          }
+                        />
+                      </div>
                       <div className="flex items-center gap-2 mt-6">
                         <Checkbox
                           id="justify-body"
@@ -1854,6 +1870,11 @@ export default function Settings() {
                                   fontSize: certificateTemplate.fonts?.bodySize || 14,
                                   textAlign: "justify",
                                   lineHeight: certificateTemplate.textOptions?.bodyLineHeight || 1.2,
+                                  textIndent: `${
+                                    ((certificateTemplate.textOptions?.bodyIndent || 0) /
+                                      previewPage.width) *
+                                    100
+                                  }%`,
                                 }}
                               >
                                 {renderFormattedText(previewBody)}
