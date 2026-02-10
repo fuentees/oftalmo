@@ -62,6 +62,15 @@ export default function ParticipantProfile() {
     const candEmail = normalizeEmail(candidate.professional_email);
     const candRg = normalizeRg(candidate.professional_rg);
 
+    const nameEmailMatch =
+      baseName &&
+      candName &&
+      baseName === candName &&
+      baseEmail &&
+      candEmail &&
+      baseEmail === candEmail;
+    if (nameEmailMatch) return true;
+
     const rgMatch = baseRg && candRg && baseRg === candRg;
     if (rgMatch) return true;
 
