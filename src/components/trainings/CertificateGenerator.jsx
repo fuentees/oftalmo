@@ -208,11 +208,15 @@ export const generateParticipantCertificate = (participant, training) => {
   };
 
   const bodyText = interpolateText(template.body || "", textData).trim();
-  const bodyLines = pdf.splitTextToSize(
-    bodyText,
-    bodyPosition.width || pageWidth - 40
-  );
-  pdf.text(bodyLines, bodyPosition.x, bodyPosition.y + 34, { align: "center" });
+  const bodyWidth = bodyPosition.width || pageWidth - 40;
+  const bodyLeft = Number.isFinite(bodyPosition.x)
+    ? bodyPosition.x - bodyWidth / 2
+    : 20;
+  const bodyLines = pdf.splitTextToSize(bodyText, bodyWidth);
+  pdf.text(bodyLines, bodyLeft, bodyPosition.y + 34, {
+    align: "justify",
+    maxWidth: bodyWidth,
+  });
 
   if (template.footer) {
     pdf.setFontSize(sizes.footer);

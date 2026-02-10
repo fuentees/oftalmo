@@ -1616,10 +1616,11 @@ export default function Settings() {
                               }
                             >
                               <div
-                                className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-center text-slate-700 whitespace-pre-line"
+                                className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-slate-700 whitespace-pre-line"
                                 style={{
                                   fontFamily: previewFont,
                                   fontSize: certificateTemplate.fonts?.bodySize || 14,
+                                  textAlign: "justify",
                                 }}
                               >
                                 {previewBody}
