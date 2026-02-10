@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
@@ -18,13 +18,15 @@ export default function EventForm({ event, onClose, onSuccess }) {
     end_date: "",
     start_time: "",
     end_time: "",
-    location: "",
+    municipality: "",
+    gve: "",
     professional_ids: [],
     professional_names: [],
     status: "planejado",
     color: "#3b82f6",
     notes: "",
   });
+  const [gveMapping, setGveMapping] = useState([]);
 
   const queryClient = useQueryClient();
 
@@ -34,7 +36,77 @@ export default function EventForm({ event, onClose, onSuccess }) {
   });
 
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem("gveMappingSp");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setGveMapping(parsed);
+      }
+    } catch (error) {
+      // Ignora erro de leitura
+    }
+  }, []);
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const gveMap = useMemo(() => {
+    const map = new Map();
+    gveMapping.forEach((item) => {
+      const key = normalizeText(item.municipio);
+      if (!key) return;
+      if (map.has(key)) return;
+      map.set(key, String(item.gve || "").trim());
+    });
+    return map;
+  }, [gveMapping]);
+
+  const municipalityOptions = useMemo(() => {
+    const values = gveMapping
+      .map((item) => String(item.municipio || "").trim())
+      .filter(Boolean);
+    const unique = Array.from(new Set(values));
+    return unique.sort((a, b) => a.localeCompare(b));
+  }, [gveMapping]);
+
+  const getGveByMunicipio = (value) => {
+    const key = normalizeText(value);
+    if (!key) return "";
+    return gveMap.get(key) || "";
+  };
+
+  const parseLocation = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return { municipality: "", gve: "" };
+    const hasGve = /gve/i.test(raw);
+    if (!hasGve) return { municipality: raw, gve: "" };
+    const match = raw.match(/^(.*?)\s*(?:-|•|\|)?\s*GVE\s*[:\-]?\s*(.+)$/i);
+    if (match) {
+      return {
+        municipality: String(match[1] || "").trim(),
+        gve: String(match[2] || "").trim(),
+      };
+    }
+    return { municipality: raw, gve: "" };
+  };
+
+  const formatLocation = (municipality, gve) => {
+    const cleanMunicipality = String(municipality || "").trim();
+    const cleanGve = String(gve || "").trim();
+    if (cleanMunicipality && cleanGve) {
+      return `${cleanMunicipality} - GVE ${cleanGve}`;
+    }
+    return cleanMunicipality || (cleanGve ? `GVE ${cleanGve}` : "");
+  };
+
+  useEffect(() => {
     if (event) {
+      const parsed = parseLocation(event.location);
       setFormData({
         title: event.title || "",
         type: event.type || "outro",
@@ -43,7 +115,8 @@ export default function EventForm({ event, onClose, onSuccess }) {
         end_date: event.end_date || "",
         start_time: event.start_time || "",
         end_time: event.end_time || "",
-        location: event.location || "",
+        municipality: parsed.municipality || event.location || "",
+        gve: parsed.gve || "",
         professional_ids: event.professional_ids || [],
         professional_names: event.professional_names || [],
         status: event.status || "planejado",
@@ -70,10 +143,14 @@ export default function EventForm({ event, onClose, onSuccess }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const location = formatLocation(formData.municipality, formData.gve);
     const payload = {
       ...formData,
+      location,
       end_date: formData.end_date || null,
     };
+    delete payload.municipality;
+    delete payload.gve;
     saveMutation.mutate(payload);
   };
 
@@ -201,11 +278,41 @@ export default function EventForm({ event, onClose, onSuccess }) {
         </div>
 
         <div className="col-span-2 space-y-2">
-          <Label htmlFor="location">Local</Label>
+          <Label htmlFor="municipality">Município</Label>
           <Input
-            id="location"
-            value={formData.location}
-            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+            id="municipality"
+            list="municipios-gve"
+            value={formData.municipality}
+            onChange={(e) => {
+              const nextValue = e.target.value;
+              const autoGve = getGveByMunicipio(nextValue);
+              setFormData({
+                ...formData,
+                municipality: nextValue,
+                gve: autoGve || "",
+              });
+            }}
+            placeholder="Digite o município"
+          />
+          {municipalityOptions.length > 0 && (
+            <datalist id="municipios-gve">
+              {municipalityOptions.map((item) => (
+                <option key={item} value={item} />
+              ))}
+            </datalist>
+          )}
+        </div>
+
+        <div className="col-span-2 space-y-2">
+          <Label htmlFor="gve">GVE</Label>
+          <Input
+            id="gve"
+            value={getGveByMunicipio(formData.municipality) || formData.gve}
+            onChange={(e) =>
+              setFormData({ ...formData, gve: e.target.value })
+            }
+            placeholder="GVE"
+            readOnly={Boolean(getGveByMunicipio(formData.municipality))}
           />
         </div>
 
