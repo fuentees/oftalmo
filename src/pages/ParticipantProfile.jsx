@@ -15,7 +15,8 @@ import {
   ArrowLeft,
   FileText,
   RefreshCw,
-  Loader2
+  Loader2,
+  Mail
 } from "lucide-react";
 import { addMonths, format } from "date-fns";
 import { useNavigate } from "react-router-dom";
@@ -24,7 +25,9 @@ export default function ParticipantProfile() {
   const navigate = useNavigate();
   const [participantId, setParticipantId] = useState(null);
   const [regeneratingId, setRegeneratingId] = useState(null);
+  const [sendingId, setSendingId] = useState(null);
   const [regenStatus, setRegenStatus] = useState(null);
+  const [emailStatus, setEmailStatus] = useState(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -135,6 +138,26 @@ export default function ParticipantProfile() {
       .replace(/[^a-zA-Z0-9._-]+/g, "_")
       .replace(/_+/g, "_")
       .replace(/^_+|_+$/g, "");
+
+  const blobToBase64 = (blob) =>
+    new Promise((resolve, reject) => {
+      if (!blob) {
+        resolve("");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result;
+        if (typeof result !== "string") {
+          resolve("");
+          return;
+        }
+        const base64 = result.split(",")[1] || "";
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error("Falha ao ler o PDF."));
+      reader.readAsDataURL(blob);
+    });
 
   const typeLabels = {
     teorico: "Teórico",
@@ -290,7 +313,9 @@ export default function ParticipantProfile() {
     if (!participation) return;
     if (regeneratingId) return;
     setRegenStatus(null);
+    setEmailStatus(null);
     setRegeneratingId(participation.id);
+    const previewWindow = window.open("", "_blank");
     try {
       const training = resolveTrainingForCertificate(participation);
       if (!training) {
@@ -313,6 +338,14 @@ export default function ParticipantProfile() {
         validity_date: validityDate,
       });
 
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      if (previewWindow) {
+        previewWindow.location.href = blobUrl;
+        previewWindow.focus();
+      } else {
+        window.open(blobUrl, "_blank");
+      }
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
       pdf.save(fileName);
 
       await queryClient.invalidateQueries({ queryKey: ["participants"] });
@@ -321,12 +354,81 @@ export default function ParticipantProfile() {
         message: "PDF regenerado com sucesso.",
       });
     } catch (error) {
+      if (previewWindow) {
+        previewWindow.close();
+      }
       setRegenStatus({
         type: "error",
         message: error.message || "Erro ao regenerar o PDF.",
       });
     } finally {
       setRegeneratingId(null);
+    }
+  };
+
+  const handleResendCertificate = async (participation) => {
+    if (!participation) return;
+    if (sendingId) return;
+    setEmailStatus(null);
+    setRegenStatus(null);
+    if (!participation.professional_email) {
+      setEmailStatus({
+        type: "error",
+        message: "Participante sem e-mail cadastrado.",
+      });
+      return;
+    }
+
+    setSendingId(participation.id);
+    try {
+      const training = resolveTrainingForCertificate(participation);
+      if (!training) {
+        throw new Error("Treinamento não encontrado para enviar.");
+      }
+      const pdf = generateParticipantCertificate(participation, training);
+      const pdfBlob = pdf.output("blob");
+      const safeName = toSafeFileName(participation.professional_name || "participante");
+      const fileName = `certificado-${safeName || "participante"}.pdf`;
+      const attachmentBase64 = await blobToBase64(pdfBlob);
+      if (!attachmentBase64) {
+        throw new Error("Falha ao gerar o anexo.");
+      }
+
+      await dataClient.integrations.Core.SendEmail({
+        to: participation.professional_email,
+        subject: `Certificado de Conclusão - ${participation.training_title || "Treinamento"}`,
+        body: `
+          <h2>Certificado de Conclusão</h2>
+          <p>Olá ${participation.professional_name || "Participante"},</p>
+          <p>Segue em anexo seu certificado em PDF.</p>
+          <br>
+          <p>Atenciosamente,<br>Equipe de Treinamentos</p>
+        `,
+        attachments: [
+          {
+            filename: fileName,
+            contentType: "application/pdf",
+            content: attachmentBase64,
+          },
+        ],
+      });
+
+      await dataClient.entities.TrainingParticipant.update(participation.id, {
+        certificate_sent_date: new Date().toISOString(),
+        certificate_issued: true,
+      });
+
+      setEmailStatus({
+        type: "success",
+        message: "E-mail reenviado com sucesso.",
+      });
+    } catch (error) {
+      setEmailStatus({
+        type: "error",
+        message: error.message || "Erro ao reenviar e-mail.",
+      });
+    } finally {
+      setSendingId(null);
     }
   };
 
@@ -405,6 +507,19 @@ export default function ParticipantProfile() {
                     <RefreshCw className="h-4 w-4 mr-1" />
                   )}
                   Regenerar PDF
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleResendCertificate(participation)}
+                  disabled={sendingId === participation.id}
+                >
+                  {sendingId === participation.id ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Mail className="h-4 w-4 mr-1" />
+                  )}
+                  Reenviar por e-mail
                 </Button>
               </div>
             )}
@@ -535,6 +650,22 @@ export default function ParticipantProfile() {
               }
             >
               {regenStatus.message}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {emailStatus && (
+        <Card className={emailStatus.type === "error" ? "border-red-200" : "border-green-200"}>
+          <CardContent className="pt-4">
+            <p
+              className={
+                emailStatus.type === "error"
+                  ? "text-sm text-red-700"
+                  : "text-sm text-green-700"
+              }
+            >
+              {emailStatus.message}
             </p>
           </CardContent>
         </Card>
