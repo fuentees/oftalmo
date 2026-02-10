@@ -332,16 +332,6 @@ export default function EnrollmentPage() {
     setSectionStatus({ type: "success", message: "Seção removida." });
   };
 
-  React.useEffect(() => {
-    if (!sectionOrder.length) return;
-    if (!sectionOrder.includes(fieldFormData.section)) {
-      setFieldFormData((prev) => ({
-        ...prev,
-        section: sectionOrder[0],
-      }));
-    }
-  }, [sectionOrder, fieldFormData.section]);
-
   const getLatestTrainingDate = () => {
     const dates = [
       training?.date,
@@ -598,6 +588,16 @@ export default function EnrollmentPage() {
   });
 
   const [fieldFormData, setFieldFormData] = useState(getDefaultFieldData());
+
+  React.useEffect(() => {
+    if (!sectionOrder.length) return;
+    if (!sectionOrder.includes(fieldFormData.section)) {
+      setFieldFormData((prev) => ({
+        ...prev,
+        section: sectionOrder[0],
+      }));
+    }
+  }, [sectionOrder, fieldFormData.section]);
 
   const resetFieldForm = () => {
     setFieldFormData(getDefaultFieldData());
