@@ -167,6 +167,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     (prof) => !prof.status || prof.status === "ativo"
   );
 
+  const activeProfessionals = professionals.filter(
+    (prof) => !prof.status || prof.status === "ativo"
+  );
+
   const gveMap = useMemo(() => {
     const map = new Map();
     gveMapping.forEach((item) => {
@@ -542,8 +546,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             setFormData((prev) => ({
               ...prev,
               coordinator: nextValue,
-              coordinator_email:
-                prev.coordinator_email || match?.email || "",
+              coordinator_email: prev.coordinator_email || match?.email || "",
             }));
           }}
           placeholder="Nome do coordenador"
