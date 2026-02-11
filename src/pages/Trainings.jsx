@@ -65,6 +65,7 @@ export default function Trainings() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [yearFilter, setYearFilter] = useState("all");
   
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -487,13 +488,42 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
   const getTrainingStatus = (training) =>
     shouldMarkConcluded(training) ? "concluido" : training.status;
 
+  const getTrainingYear = (training) => {
+    if (!training) return null;
+    let value = null;
+    if (Array.isArray(training.dates) && training.dates.length > 0) {
+      const first = training.dates[0];
+      value = first?.date || first;
+    }
+    if (!value) {
+      value = training.start_date || training.date;
+    }
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.getFullYear();
+  };
+
+  const yearOptions = React.useMemo(() => {
+    const years = new Set();
+    trainings.forEach((training) => {
+      const year = getTrainingYear(training);
+      if (year) years.add(year);
+    });
+    return Array.from(years)
+      .sort((a, b) => b - a)
+      .map((year) => ({ value: String(year), label: String(year) }));
+  }, [trainings]);
+
   const filteredTrainings = trainings.filter((t) => {
     const effectiveStatus = getTrainingStatus(t);
     const matchesSearch = t.title?.toLowerCase().includes(search.toLowerCase()) ||
                           t.coordinator?.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || effectiveStatus === statusFilter;
     const matchesType = typeFilter === "all" || t.type === typeFilter;
-    return matchesSearch && matchesStatus && matchesType;
+    const trainingYear = getTrainingYear(t);
+    const matchesYear = yearFilter === "all" || String(trainingYear || "") === yearFilter;
+    return matchesSearch && matchesStatus && matchesType && matchesYear;
   });
 
   const statusColors = {
@@ -718,6 +748,13 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
             onSearchChange={setSearch}
             searchPlaceholder="Buscar por título ou coordenador..."
             filters={[
+              {
+                value: yearFilter,
+                onChange: setYearFilter,
+                placeholder: "Ano",
+                allLabel: "Todos os anos",
+                options: yearOptions,
+              },
               {
                 value: statusFilter,
                 onChange: setStatusFilter,

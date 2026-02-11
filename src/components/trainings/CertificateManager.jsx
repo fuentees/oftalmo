@@ -349,6 +349,9 @@ export default function CertificateManager({ training, participants, onClose }) 
         <p className="text-sm text-slate-500 mt-1">
           {eligibleParticipants.length} participante(s) elegível(eis) • {alreadySentCount} certificado(s) já enviado(s)
         </p>
+        <p className="text-xs text-slate-500 mt-1">
+          Ao emitir, o certificado é enviado por e-mail automaticamente para quem tem e-mail cadastrado.
+        </p>
       </div>
 
       {result && (
@@ -430,6 +433,16 @@ export default function CertificateManager({ training, participants, onClose }) 
 
       <div className="flex justify-between items-center pt-4">
         <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={toggleAll}
+            disabled={eligibleParticipants.length === 0 || processing}
+          >
+            {selectedParticipants.length === eligibleParticipants.length && eligibleParticipants.length > 0
+              ? "Limpar seleção"
+              : "Selecionar todos"}
+          </Button>
           <Button
             onClick={handleIssueSelected}
             disabled={selectedParticipants.length === 0 || processing}

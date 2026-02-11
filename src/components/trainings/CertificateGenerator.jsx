@@ -9,6 +9,45 @@ const formatDateSafe = (value, pattern = "dd/MM/yyyy") => {
   return format(parsed, pattern);
 };
 
+const getTrainingDates = (training) => {
+  const rawDates = [];
+  if (Array.isArray(training?.dates)) {
+    training.dates.forEach((entry) => {
+      if (!entry) return;
+      if (entry instanceof Date || typeof entry === "string" || typeof entry === "number") {
+        rawDates.push(entry);
+        return;
+      }
+      if (entry.date) rawDates.push(entry.date);
+      if (entry.start_date) rawDates.push(entry.start_date);
+    });
+  }
+  if (rawDates.length === 0) {
+    if (training?.start_date) rawDates.push(training.start_date);
+    if (training?.date) rawDates.push(training.date);
+  }
+  const parsedDates = rawDates
+    .map((value) => {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.getTime() - b.getTime());
+  const formatted = parsedDates.map((value) => format(value, "dd/MM/yyyy"));
+  return formatted.filter((value, index) => formatted.indexOf(value) === index);
+};
+
+const buildTrainingPeriod = (dates) => {
+  if (!Array.isArray(dates) || dates.length === 0) return "";
+  if (dates.length === 1) return dates[0];
+  return `de ${dates[0]} a ${dates[dates.length - 1]}`;
+};
+
+const buildTrainingDays = (dates) => {
+  if (!Array.isArray(dates) || dates.length === 0) return "";
+  return dates.join(", ");
+};
+
 const interpolateText = (text, data) =>
   text.replace(/\{\{(\w+)\}\}/g, (_, key) =>
     data[key] !== undefined && data[key] !== null ? String(data[key]) : ""
@@ -298,9 +337,10 @@ export const generateParticipantCertificate = (participant, training, templateOv
     signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
     signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
   };
-  const participantDate = Array.isArray(training.dates)
-    ? formatDateSafe(training.dates[0]?.date)
-    : null;
+  const trainingDates = getTrainingDates(training);
+  const trainingPeriod = buildTrainingPeriod(trainingDates);
+  const trainingDays = buildTrainingDays(trainingDates);
+  const participantDate = trainingDates[0] || formatDateSafe(training?.dates?.[0]?.date);
 
   const textData = {
     nome: participant.professional_name || "",
@@ -314,6 +354,8 @@ export const generateParticipantCertificate = (participant, training, templateOv
     funcao: "participante",
     tipo_certificado: "participante",
     aula: "",
+    periodo_treinamento: trainingPeriod,
+    dias_treinamento: trainingDays,
   };
 
   // Title
@@ -466,19 +508,24 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
     signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
     signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
   };
+  const trainingDates = getTrainingDates(training);
+  const trainingPeriod = buildTrainingPeriod(trainingDates);
+  const trainingDays = buildTrainingDays(trainingDates);
 
   const textData = {
     nome: monitor.name || "",
     rg: monitor.rg ? `RG ${monitor.rg}` : "",
     treinamento: training.title || "",
     carga_horaria: training.duration_hours || "",
-    data: formatDateSafe(training.dates?.[0]?.date) || formatDateSafe(new Date()),
+    data: trainingDates[0] || formatDateSafe(training.dates?.[0]?.date) || formatDateSafe(new Date()),
     entidade: template.entityName || "",
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
     funcao: "monitor",
     tipo_certificado: "monitor",
     aula: monitor.lecture || "",
+    periodo_treinamento: trainingPeriod,
+    dias_treinamento: trainingDays,
   };
 
   // Title
@@ -631,19 +678,24 @@ export const generateSpeakerCertificate = (speaker, training, templateOverride) 
     signature1: { x: 70, y: pageHeight - 40, lineWidth: 60 },
     signature2: { x: pageWidth - 70, y: pageHeight - 40, lineWidth: 60 },
   };
+  const trainingDates = getTrainingDates(training);
+  const trainingPeriod = buildTrainingPeriod(trainingDates);
+  const trainingDays = buildTrainingDays(trainingDates);
 
   const textData = {
     nome: speaker.name || "",
     rg: speaker.rg ? `RG ${speaker.rg}` : "",
     treinamento: training.title || "",
     carga_horaria: training.duration_hours || "",
-    data: formatDateSafe(training.dates?.[0]?.date) || formatDateSafe(new Date()),
+    data: trainingDates[0] || formatDateSafe(training.dates?.[0]?.date) || formatDateSafe(new Date()),
     entidade: template.entityName || "",
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
     funcao: "palestrante",
     tipo_certificado: "palestrante",
     aula: speaker.lecture || "",
+    periodo_treinamento: trainingPeriod,
+    dias_treinamento: trainingDays,
   };
 
   // Title
