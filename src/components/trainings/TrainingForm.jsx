@@ -154,6 +154,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       duration_hours: formData.duration_hours ? Number(formData.duration_hours) : null,
       max_participants: formData.max_participants ? Number(formData.max_participants) : null,
       validity_months: formData.validity_months ? Number(formData.validity_months) : null,
+      coordinator_email: formData.coordinator_email || null,
     };
     saveTraining.mutate(dataToSave);
   };
@@ -168,6 +169,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
       .trim();
+
+  const activeProfessionals = professionals.filter(
+    (prof) => !prof.status || prof.status === "ativo"
+  );
 
   const gveMap = useMemo(() => {
     const map = new Map();
@@ -220,47 +225,30 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     return "";
   };
 
-  const professionalOptions = useMemo(() => {
-    const map = new Map();
-    (professionals || []).forEach((professional) => {
-      const name = String(professional?.name || "").trim();
-      if (!name) return;
-      const key = normalizeText(name);
-      if (map.has(key)) return;
-      map.set(key, {
-        id: professional?.id || key,
-        name,
-        email: professional?.email || "",
-      });
-    });
-    return Array.from(map.values());
-  }, [professionals]);
-
-  const professionalListId = "professionals-name-list";
-
   const findProfessionalByName = (value) => {
     const normalized = normalizeText(value);
     if (!normalized) return null;
     return (
-      professionalOptions.find(
-        (professional) => normalizeText(professional.name) === normalized
+      activeProfessionals.find(
+        (prof) => normalizeText(prof.name) === normalized
       ) || null
     );
   };
 
-  const updateMonitor = (index, field, value) => {
-    setFormData((prev) => {
-      const newMonitors = [...prev.monitors];
-      const current = { ...(newMonitors[index] || {}), [field]: value };
-      if (field === "name") {
-        const match = findProfessionalByName(value);
-        if (match?.email && !current.email) {
-          current.email = match.email;
-        }
-      }
-      newMonitors[index] = current;
-      return { ...prev, monitors: newMonitors };
-    });
+  const findProfessionalByEmail = (email) => {
+    if (!email) return null;
+    const normalized = email.trim().toLowerCase();
+    return activeProfessionals.find(
+      (prof) => prof.email?.trim().toLowerCase() === normalized
+    );
+  };
+
+  const findProfessionalByRg = (rg) => {
+    if (!rg) return null;
+    const normalized = rg.replace(/\D/g, "");
+    return activeProfessionals.find(
+      (prof) => String(prof.rg || "").replace(/\D/g, "") === normalized
+    );
   };
 
   const addDate = () => {
@@ -547,22 +535,38 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         />
       </div>
 
-      {professionalOptions.length > 0 && (
-        <datalist id={professionalListId}>
-          {professionalOptions.map((professional) => (
-            <option key={professional.id} value={professional.name} />
-          ))}
-        </datalist>
-      )}
-
       <div className="space-y-1.5">
         <Label htmlFor="coordinator">Coordenador</Label>
         <Input
           id="coordinator"
+          list="professionals-names"
           value={formData.coordinator}
-          onChange={(e) => handleChange("coordinator", e.target.value)}
+          onChange={(e) => {
+            const nextValue = e.target.value;
+            const match = findProfessionalByName(nextValue);
+            setFormData((prev) => ({
+              ...prev,
+              coordinator: nextValue,
+              coordinator_email: prev.coordinator_email || match?.email || "",
+            }));
+          }}
           placeholder="Nome do coordenador"
-          list={professionalListId}
+        />
+        <Input
+          id="coordinator_email"
+          type="email"
+          list="professionals-emails"
+          value={formData.coordinator_email}
+          onChange={(e) => {
+            const nextValue = e.target.value;
+            const match = findProfessionalByEmail(nextValue);
+            setFormData((prev) => ({
+              ...prev,
+              coordinator_email: nextValue,
+              coordinator: prev.coordinator || match?.name || "",
+            }));
+          }}
+          placeholder="Email do coordenador (opcional)"
         />
       </div>
 
@@ -583,14 +587,28 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
           <div key={index} className="flex gap-2 p-2 border rounded-lg">
             <Input
               value={monitor.name}
-              onChange={(e) => updateMonitor(index, "name", e.target.value)}
+              list="professionals-names"
+              onChange={(e) => {
+                const newMonitors = [...formData.monitors];
+                const nextValue = e.target.value;
+                const match = findProfessionalByName(nextValue);
+                newMonitors[index].name = nextValue;
+                if (!newMonitors[index].email && match?.email) {
+                  newMonitors[index].email = match.email;
+                }
+                handleChange("monitors", newMonitors);
+              }}
               placeholder="Nome do monitor"
-              list={professionalListId}
             />
             <Input
               type="email"
               value={monitor.email}
-              onChange={(e) => updateMonitor(index, "email", e.target.value)}
+              list="professionals-emails"
+              onChange={(e) => {
+                const newMonitors = [...formData.monitors];
+                newMonitors[index].email = e.target.value;
+                handleChange("monitors", newMonitors);
+              }}
               placeholder="Email do monitor"
             />
             <Button
@@ -610,15 +628,127 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="instructor">Palestrante</Label>
-        <Input
-          id="instructor"
-          value={formData.instructor}
-          onChange={(e) => handleChange("instructor", e.target.value)}
-          placeholder="Nome do palestrante"
-          list={professionalListId}
-        />
+        <div className="flex items-center justify-between">
+          <Label className="text-sm flex items-center gap-2">
+            <Mic className="h-4 w-4 text-amber-600" />
+            Palestrantes
+          </Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              handleChange("speakers", [
+                ...formData.speakers,
+                { name: "", rg: "", email: "", lecture: "" },
+              ])
+            }
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Adicionar Palestrante
+          </Button>
+        </div>
+        {formData.speakers.map((speaker, index) => (
+          <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-2 border rounded-lg">
+            <Input
+              value={speaker.name}
+              list="professionals-names"
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                const match = findProfessionalByName(nextValue);
+                const newSpeakers = [...formData.speakers];
+                newSpeakers[index].name = nextValue;
+                if (!newSpeakers[index].email && match?.email) {
+                  newSpeakers[index].email = match.email;
+                }
+                if (!newSpeakers[index].rg && match?.rg) {
+                  newSpeakers[index].rg = match.rg;
+                }
+                handleChange("speakers", newSpeakers);
+              }}
+              placeholder="Nome do palestrante"
+            />
+            <Input
+              value={speaker.rg}
+              list="professionals-rg"
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                const match = findProfessionalByRg(nextValue);
+                const newSpeakers = [...formData.speakers];
+                newSpeakers[index].rg = nextValue;
+                if (!newSpeakers[index].name && match?.name) {
+                  newSpeakers[index].name = match.name;
+                }
+                if (!newSpeakers[index].email && match?.email) {
+                  newSpeakers[index].email = match.email;
+                }
+                handleChange("speakers", newSpeakers);
+              }}
+              placeholder="RG do palestrante"
+            />
+            <Input
+              type="email"
+              value={speaker.email}
+              list="professionals-emails"
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                const match = findProfessionalByEmail(nextValue);
+                const newSpeakers = [...formData.speakers];
+                newSpeakers[index].email = nextValue;
+                if (!newSpeakers[index].name && match?.name) {
+                  newSpeakers[index].name = match.name;
+                }
+                if (!newSpeakers[index].rg && match?.rg) {
+                  newSpeakers[index].rg = match.rg;
+                }
+                handleChange("speakers", newSpeakers);
+              }}
+              placeholder="Email do palestrante"
+            />
+            <Input
+              value={speaker.lecture}
+              onChange={(e) => {
+                const newSpeakers = [...formData.speakers];
+                newSpeakers[index].lecture = e.target.value;
+                handleChange("speakers", newSpeakers);
+              }}
+              placeholder="Aula/tema a ser ministrada"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                const newSpeakers = formData.speakers.filter((_, i) => i !== index);
+                handleChange("speakers", newSpeakers);
+              }}
+              className="text-red-600 justify-self-end"
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
       </div>
+
+      <datalist id="professionals-names">
+        {activeProfessionals.map((prof) => (
+          <option key={prof.id} value={prof.name} />
+        ))}
+      </datalist>
+      <datalist id="professionals-emails">
+        {activeProfessionals
+          .filter((prof) => prof.email)
+          .map((prof) => (
+            <option key={prof.id} value={prof.email} />
+          ))}
+      </datalist>
+      <datalist id="professionals-rg">
+        {activeProfessionals
+          .filter((prof) => prof.rg)
+          .map((prof) => (
+            <option key={prof.id} value={prof.rg} />
+          ))}
+      </datalist>
 
       <div className="space-y-1.5">
         <Label htmlFor="max_participants">Capacidade Máxima</Label>
