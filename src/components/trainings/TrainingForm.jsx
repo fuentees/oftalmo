@@ -114,15 +114,94 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     setFormData(prev => ({ ...prev, code }));
   };
 
+  const ONLINE_LINK_PREFIX = "link_online:";
+
+  const buildEventNotes = (notes, link) => {
+    const cleanNotes = String(notes || "").trim();
+    const cleanLink = String(link || "").trim();
+    if (!cleanLink) return cleanNotes;
+    return [cleanNotes, `${ONLINE_LINK_PREFIX} ${cleanLink}`]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+  };
+
+  const getTrainingDateRange = (dates = []) => {
+    const parsedDates = (dates || [])
+      .map((item) => {
+        const raw = item?.date;
+        if (!raw) return null;
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return null;
+        return {
+          date: raw,
+          start_time: item?.start_time || "",
+          end_time: item?.end_time || "",
+          value: parsed.getTime(),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.value - b.value);
+    if (!parsedDates.length) return {};
+    const first = parsedDates[0];
+    const last = parsedDates[parsedDates.length - 1];
+    return {
+      start_date: first.date,
+      end_date: last.date,
+      start_time: first.start_time,
+      end_time: last.end_time,
+    };
+  };
+
+  const mapTrainingStatusToEvent = (status) => {
+    if (status === "concluido") return "concluido";
+    if (status === "em_andamento") return "em_andamento";
+    if (status === "cancelado") return "cancelado";
+    return "planejado";
+  };
+
+  const buildEventPayload = (payload) => {
+    const dateRange = getTrainingDateRange(payload.dates || []);
+    const professionalNames = [
+      payload.coordinator,
+      payload.instructor,
+      ...(payload.monitors || []).map((monitor) => monitor?.name),
+      ...(payload.speakers || []).map((speaker) => speaker?.name),
+    ]
+      .map((name) => String(name || "").trim())
+      .filter(Boolean);
+    return {
+      title: payload.title || "Treinamento",
+      type: "treinamento",
+      description: payload.description || "",
+      start_date: dateRange.start_date || payload.date || null,
+      end_date: dateRange.end_date || payload.date || null,
+      start_time: dateRange.start_time || "",
+      end_time: dateRange.end_time || "",
+      location: payload.location || "",
+      professional_names: professionalNames.length ? professionalNames : null,
+      status: mapTrainingStatusToEvent(payload.status),
+      color: "#6366f1",
+      notes: buildEventNotes(payload.notes, payload.online_link),
+    };
+  };
+
   const saveTraining = useMutation({
-    mutationFn: (/** @type {any} */ data) => {
+    mutationFn: async (/** @type {any} */ data) => {
       if (training) {
         return dataClient.entities.Training.update(training.id, data);
       }
-      return dataClient.entities.Training.create(data);
+      const created = await dataClient.entities.Training.create(data);
+      try {
+        await dataClient.entities.Event.create(buildEventPayload(data));
+      } catch (error) {
+        console.error("Falha ao criar evento do treinamento:", error);
+      }
+      return created;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
       onClose();
     },
   });
