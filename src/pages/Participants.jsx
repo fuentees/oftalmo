@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
+import * as XLSX from "xlsx";
 import {
   Upload,
   Download,
@@ -34,6 +35,8 @@ export default function Participants() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [courseFilter, setCourseFilter] = useState("all");
+  const [municipalityFilter, setMunicipalityFilter] = useState("all");
+  const [gveFilter, setGveFilter] = useState("all");
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
@@ -322,6 +325,36 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     a.click();
   };
 
+  const handleExport = () => {
+    const rows = filteredParticipants.map((group) => ({
+      Nome: group.profile.professional_name || "",
+      RG: group.profile.professional_rg || "",
+      CPF: group.profile.professional_cpf || "",
+      Email: group.profile.professional_email || "",
+      Celular: group.profile.mobile_phone || "",
+      Municipio: group.profile.municipality || "",
+      GVE: group.profile.health_region || "",
+      "Tipo de Curso": group.courseTypes
+        .map((type) => typeLabels[type] || type)
+        .join(", "),
+      "Nome do Curso": group.courseTitles.join(", "),
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Participantes");
+    const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `participantes_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const groupedParticipants = useMemo(() => {
     const groups = [];
     participants.forEach((participant) => {
@@ -395,6 +428,16 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         (title) => normalizeText(title) === normalizedFilter
       );
     })
+    .filter((group) => {
+      if (municipalityFilter === "all") return true;
+      const value = normalizeText(group.profile.municipality);
+      return value && value === normalizeText(municipalityFilter);
+    })
+    .filter((group) => {
+      if (gveFilter === "all") return true;
+      const value = normalizeText(group.profile.health_region);
+      return value && value === normalizeText(gveFilter);
+    })
     .sort((a, b) =>
       (a.profile.professional_name || "").localeCompare(
         b.profile.professional_name || "",
@@ -423,12 +466,32 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
       .map((title) => ({ value: title, label: title }));
   }, [participants, trainings, trainingMaps]);
 
+  const municipalityOptions = useMemo(() => {
+    const values = new Set();
+    groupedParticipants.forEach((group) => {
+      if (group.profile.municipality) values.add(group.profile.municipality);
+    });
+    return Array.from(values)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
+      .map((value) => ({ value, label: value }));
+  }, [groupedParticipants]);
+
+  const gveOptions = useMemo(() => {
+    const values = new Set();
+    groupedParticipants.forEach((group) => {
+      if (group.profile.health_region) values.add(group.profile.health_region);
+    });
+    return Array.from(values)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
+      .map((value) => ({ value, label: value }));
+  }, [groupedParticipants]);
+
   const totalItems = filteredParticipants.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
   useEffect(() => {
     setPage(1);
-  }, [search, typeFilter, courseFilter]);
+  }, [search, typeFilter, courseFilter, municipalityFilter, gveFilter]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -516,7 +579,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
           <SearchFilter
             searchValue={search}
             onSearchChange={setSearch}
-            searchPlaceholder="Buscar por nome, RG, e-mail ou município..."
+            searchPlaceholder="Buscar por nome, RG, e-mail, município ou GVE..."
             filters={[
               {
                 value: typeFilter,
@@ -537,17 +600,27 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
                 allLabel: "Todos os cursos",
                 options: courseOptions,
               },
+              {
+                value: municipalityFilter,
+                onChange: setMunicipalityFilter,
+                placeholder: "Município",
+                allLabel: "Todos os municípios",
+                options: municipalityOptions,
+              },
+              {
+                value: gveFilter,
+                onChange: setGveFilter,
+                placeholder: "GVE",
+                allLabel: "Todas as GVE",
+                options: gveOptions,
+              },
             ]}
           />
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={downloadTemplate}
-            className="flex items-center gap-2"
-          >
+          <Button variant="outline" onClick={handleExport} className="flex items-center gap-2">
             <Download className="h-4 w-4" />
-            Modelo
+            Exportar Planilha
           </Button>
           <Button
             onClick={() => setShowUpload(true)}
@@ -632,6 +705,14 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
                 Faça o download do modelo, preencha com os dados dos participantes e faça o upload aqui.
               </AlertDescription>
             </Alert>
+            <Button
+              variant="outline"
+              onClick={downloadTemplate}
+              className="flex items-center gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Baixar modelo
+            </Button>
 
             <div className="space-y-2">
               <Label htmlFor="file">Selecione o arquivo (.xlsx, .csv)</Label>
