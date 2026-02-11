@@ -163,6 +163,13 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
   const activeProfessionals = useMemo(
     () => (professionals || []).filter(
       (prof) => !prof.status || prof.status === "ativo"
