@@ -167,8 +167,11 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     (prof) => !prof.status || prof.status === "ativo"
   );
 
-  const activeProfessionals = professionals.filter(
-    (prof) => !prof.status || prof.status === "ativo"
+  const activeProfessionals = useMemo(
+    () => (professionals || []).filter(
+      (prof) => !prof.status || prof.status === "ativo"
+    ),
+    [professionals]
   );
 
   const gveMap = useMemo(() => {
