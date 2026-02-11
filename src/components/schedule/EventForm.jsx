@@ -254,7 +254,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
         const end = parseDateInput(event.end_date);
         if (start && end) {
           const diff = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
-          if (diff === 15 || diff === 30) {
+          if (diff === 10 || diff === 20) {
             setVacationDays(diff);
           }
         }
@@ -494,7 +494,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
           <div className="space-y-2">
             <Label>Período de Férias</Label>
             <div className="flex flex-wrap gap-2">
-              {[15, 30].map((days) => (
+              {[10, 20].map((days) => (
                 <Button
                   key={days}
                   type="button"

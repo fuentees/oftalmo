@@ -77,6 +77,7 @@ export default function Stock() {
   const [activeTab, setActiveTab] = useState("materials");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [alertFilter, setAlertFilter] = useState("all");
   const [movementMaterialSearch, setMovementMaterialSearch] = useState("");
   const [movementMunicipioSearch, setMovementMunicipioSearch] = useState("");
   const [materialsPageSize, setMaterialsPageSize] = useState("10");
@@ -402,6 +403,10 @@ export default function Stock() {
     (material) => getExpiryStatus(material.expiry_date)?.status === "expiring"
   ).length;
 
+  const handleAlertToggle = (value) => {
+    setAlertFilter((prev) => (prev === value ? "all" : value));
+  };
+
   const handleDeleteCategory = (value) => {
     if (!value || !canDeleteCategory(value)) return false;
     setCustomCategories((prev) =>
@@ -723,7 +728,13 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     const matchesSearch = m.name?.toLowerCase().includes(search.toLowerCase()) ||
                           m.code?.toLowerCase().includes(search.toLowerCase());
     const matchesCategory = categoryFilter === "all" || m.category === categoryFilter;
-    return matchesSearch && matchesCategory;
+    const expiryStatus = getExpiryStatus(m.expiry_date)?.status;
+    const matchesAlert =
+      alertFilter === "all" ||
+      (alertFilter === "low" && isLowStock(m)) ||
+      (alertFilter === "expired" && expiryStatus === "expired") ||
+      (alertFilter === "expiring" && expiryStatus === "expiring");
+    return matchesSearch && matchesCategory && matchesAlert;
   });
 
   const filteredMovements = movements.filter((movement) => {
@@ -752,6 +763,10 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
       setMaterialsPage(materialsPagination.safePage);
     }
   }, [materialsPage, materialsPagination.safePage]);
+
+  React.useEffect(() => {
+    setMaterialsPage(1);
+  }, [search, categoryFilter, alertFilter]);
 
   React.useEffect(() => {
     if (movementsPage !== movementsPagination.safePage) {
@@ -1080,12 +1095,36 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
                 allLabel: "Todas categorias",
                 options: categoryOptions,
               },
+              {
+                value: alertFilter,
+                onChange: setAlertFilter,
+                placeholder: "Alertas",
+                allLabel: "Todos alertas",
+                options: [
+                  { value: "low", label: "Estoque mínimo" },
+                  { value: "expired", label: "Validade vencida" },
+                  { value: "expiring", label: "Vence em 30 dias" },
+                ],
+              },
             ]}
           />
           {(lowStockCount > 0 || expiredCount > 0 || expiringCount > 0) && (
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {lowStockCount > 0 && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleAlertToggle("low")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleAlertToggle("low");
+                    }
+                  }}
+                  className={`rounded-lg border border-red-200 bg-red-50 p-4 transition ${
+                    alertFilter === "low" ? "ring-2 ring-red-300" : "cursor-pointer hover:border-red-300"
+                  }`}
+                >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-red-700">Estoque mínimo</p>
@@ -1098,7 +1137,20 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
                 </div>
               )}
               {expiredCount > 0 && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleAlertToggle("expired")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleAlertToggle("expired");
+                    }
+                  }}
+                  className={`rounded-lg border border-red-200 bg-red-50 p-4 transition ${
+                    alertFilter === "expired" ? "ring-2 ring-red-300" : "cursor-pointer hover:border-red-300"
+                  }`}
+                >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-red-700">Validade vencida</p>
@@ -1111,7 +1163,22 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
                 </div>
               )}
               {expiringCount > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleAlertToggle("expiring")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleAlertToggle("expiring");
+                    }
+                  }}
+                  className={`rounded-lg border border-amber-200 bg-amber-50 p-4 transition ${
+                    alertFilter === "expiring"
+                      ? "ring-2 ring-amber-300"
+                      : "cursor-pointer hover:border-amber-300"
+                  }`}
+                >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-amber-700">Vence em 30 dias</p>
