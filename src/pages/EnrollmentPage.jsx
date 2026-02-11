@@ -377,9 +377,45 @@ export default function EnrollmentPage() {
     return cleaned.toUpperCase();
   };
 
+  const formatPersonName = (value) => {
+    const parts = String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!parts.length) return "";
+    const lowerWords = new Set([
+      "da",
+      "de",
+      "do",
+      "das",
+      "dos",
+      "e",
+      "a",
+      "o",
+      "as",
+      "os",
+      "em",
+      "para",
+      "por",
+    ]);
+    return parts
+      .map((word, index) => {
+        if (index > 0 && lowerWords.has(word)) return word;
+        return word
+          .split("-")
+          .map((segment) =>
+            segment ? segment[0].toUpperCase() + segment.slice(1) : segment
+          )
+          .join("-");
+      })
+      .join(" ");
+  };
+
   const formatFieldValue = (field, value) => {
     if (!value) return value;
     const key = field.field_key?.toLowerCase() || "";
+    if (key === "name") return formatPersonName(value);
     if (key.includes("cpf")) return formatCpf(value);
     if (key.includes("rg")) return formatRg(value);
     if (

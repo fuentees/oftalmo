@@ -359,9 +359,35 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
   };
 
   const updateDate = (index, field, value) => {
-    setFormData(prev => ({
+    if (field === "date" && index === 0) {
+      setFormData((prev) => {
+        const previousValue = prev.dates[0]?.date;
+        const prevDate = previousValue ? new Date(previousValue) : null;
+        const nextDate = value ? new Date(value) : null;
+        const deltaDays =
+          prevDate &&
+          nextDate &&
+          !Number.isNaN(prevDate.getTime()) &&
+          !Number.isNaN(nextDate.getTime())
+            ? Math.round((nextDate.getTime() - prevDate.getTime()) / 86400000)
+            : 0;
+        const updatedDates = prev.dates.map((dateItem, dateIndex) => {
+          if (dateIndex === 0) {
+            return { ...dateItem, date: value };
+          }
+          if (!deltaDays || !dateItem?.date) return dateItem;
+          const parsed = new Date(dateItem.date);
+          if (Number.isNaN(parsed.getTime())) return dateItem;
+          const shifted = addDays(parsed, deltaDays);
+          return { ...dateItem, date: format(shifted, "yyyy-MM-dd") };
+        });
+        return { ...prev, dates: updatedDates };
+      });
+      return;
+    }
+    setFormData((prev) => ({
       ...prev,
-      dates: prev.dates.map((d, i) => i === index ? { ...d, [field]: value } : d)
+      dates: prev.dates.map((d, i) => (i === index ? { ...d, [field]: value } : d)),
     }));
   };
 
