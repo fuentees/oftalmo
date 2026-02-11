@@ -335,9 +335,17 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     },
   });
 
+  useEffect(() => {
+    const autoGve = getGveByMunicipio(formData.municipality);
+    if (!autoGve) return;
+    if (autoGve === formData.gve) return;
+    setFormData((prev) => ({ ...prev, gve: autoGve }));
+  }, [formData.municipality, formData.gve, gveMap]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    const location = formatLocation(formData.municipality, formData.gve);
+    const resolvedGve = getGveByMunicipio(formData.municipality) || formData.gve;
+    const location = formatLocation(formData.municipality, resolvedGve);
     const notes = mergeNotesWithLink(formData.notes, formData.online_link);
     const payload = {
       ...formData,

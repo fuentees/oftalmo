@@ -1474,7 +1474,7 @@ export default function EnrollmentPage() {
   });
 
   const fieldsBySection = sectionOrder.reduce((acc, section) => {
-    acc[section] = activeEnrollmentFields.filter((field) => field.section === section);
+    acc[section] = orderedTemplateFields.filter((field) => field.section === section);
     return acc;
   }, {});
 
