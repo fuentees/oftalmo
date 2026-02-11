@@ -740,6 +740,8 @@ export default function Settings() {
     funcao: "participante",
     tipo_certificado: "participante",
     aula: "Aula de Exemplo",
+    periodo_treinamento: "de 10/02/2026 a 12/02/2026",
+    dias_treinamento: "10/02/2026, 11/02/2026, 12/02/2026",
   };
 
   const resolveSignature = (signature) => {
@@ -1141,7 +1143,8 @@ export default function Settings() {
                 <AlertDescription>
                   Variáveis disponíveis: {"{{nome}}"}, {"{{rg}}"}, {"{{treinamento}}"},
                   {"{{carga_horaria}}"}, {"{{data}}"}, {"{{entidade}}"},
-                  {"{{coordenador}}"}, {"{{instrutor}}"}, {"{{funcao}}"}, {"{{tipo_certificado}}"} e {"{{aula}}"}.
+                  {"{{coordenador}}"}, {"{{instrutor}}"}, {"{{funcao}}"},
+                  {"{{tipo_certificado}}"}, {"{{aula}}"}, {"{{periodo_treinamento}}"} e {"{{dias_treinamento}}"}.
                 </AlertDescription>
               </Alert>
 
