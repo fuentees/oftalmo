@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, X, Video, Plus, XCircle } from "lucide-react";
+import { Loader2, X, Video, Plus, XCircle, Mic } from "lucide-react";
 import { format, addDays, addWeeks } from "date-fns";
 
 export default function TrainingForm({ training, onClose, professionals = [] }) {
@@ -28,8 +28,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     gve: "",
     online_link: "",
     coordinator: "",
+    coordinator_email: "",
     instructor: "",
     monitors: [],
+    speakers: [],
     max_participants: "",
     status: "agendado",
     validity_months: "",
@@ -68,8 +70,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         gve: parsedLocation.gve,
         online_link: training.online_link || "",
         coordinator: training.coordinator || "",
+        coordinator_email: training.coordinator_email || "",
         instructor: training.instructor || "",
         monitors: training.monitors || [],
+        speakers: training.speakers || [],
         max_participants: training.max_participants || "",
         status: training.status || "agendado",
         validity_months: training.validity_months || "",
