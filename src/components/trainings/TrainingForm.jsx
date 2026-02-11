@@ -24,6 +24,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     dates: [{ date: format(new Date(), "yyyy-MM-dd"), start_time: "08:00", end_time: "12:00" }],
     duration_hours: 4,
     location: "",
+    municipality: "",
+    gve: "",
     online_link: "",
     coordinator: "",
     coordinator_email: "",
@@ -34,6 +36,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     validity_months: "",
     notes: "",
   });
+  const [gveMapping, setGveMapping] = useState([]);
 
   const [repeatConfig, setRepeatConfig] = useState({
     enabled: false,
@@ -52,6 +55,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       const normalizedDates = Array.isArray(training.dates)
         ? training.dates.filter((dateItem) => dateItem?.date)
         : [];
+      const parsedLocation = parseLocation(training.location);
 
       setFormData({
         title: training.title || "",
@@ -61,6 +65,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         dates: normalizedDates.length > 0 ? normalizedDates : defaultDates,
         duration_hours: training.duration_hours || 4,
         location: training.location || "",
+        municipality: parsedLocation.municipality,
+        gve: parsedLocation.gve,
         online_link: training.online_link || "",
         coordinator: training.coordinator || "",
         coordinator_email: training.coordinator_email || "",
@@ -76,6 +82,19 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       generateTrainingCode();
     }
   }, [training]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("gveMappingSp");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setGveMapping(parsed);
+      }
+    } catch (error) {
+      // Ignora erro de leitura
+    }
+  }, []);
 
   const generateTrainingCode = async () => {
     const currentYear = new Date().getFullYear();
@@ -123,8 +142,11 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       }
     }
     
+    const { municipality, gve, ...restForm } = formData;
+    const resolvedGve = getGveByMunicipio(municipality) || gve;
     const dataToSave = {
-      ...formData,
+      ...restForm,
+      location: buildLocation(municipality, resolvedGve),
       date: formData.dates?.[0]?.date || null,
       status: autoStatus,
       duration_hours: formData.duration_hours ? Number(formData.duration_hours) : null,
@@ -143,11 +165,66 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     (prof) => !prof.status || prof.status === "ativo"
   );
 
-  const findProfessionalByName = (name) => {
-    if (!name) return null;
-    const normalized = name.trim().toLowerCase();
-    return activeProfessionals.find(
-      (prof) => prof.name?.trim().toLowerCase() === normalized
+  const gveMap = useMemo(() => {
+    const map = new Map();
+    gveMapping.forEach((item) => {
+      const key = normalizeText(item.municipio);
+      if (!key) return;
+      if (map.has(key)) return;
+      map.set(key, String(item.gve || "").trim());
+    });
+    return map;
+  }, [gveMapping]);
+
+  const municipalityOptions = useMemo(() => {
+    const values = gveMapping
+      .map((item) => String(item.municipio || "").trim())
+      .filter(Boolean);
+    const unique = Array.from(new Set(values));
+    return unique.sort((a, b) =>
+      a.localeCompare(b, "pt-BR", { sensitivity: "base" })
+    );
+  }, [gveMapping]);
+
+  const getGveByMunicipio = (value) => {
+    const key = normalizeText(value);
+    if (!key) return "";
+    return gveMap.get(key) || "";
+  };
+
+  const parseLocation = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return { municipality: "", gve: "" };
+    const hasGve = /gve/i.test(raw);
+    if (!hasGve) return { municipality: raw, gve: "" };
+    const match = raw.match(/^(.*?)\s*(?:-|•|\|)?\s*GVE\s*[:\-]?\s*(.+)$/i);
+    if (match) {
+      return {
+        municipality: String(match[1] || "").trim(),
+        gve: String(match[2] || "").trim(),
+      };
+    }
+    return { municipality: raw, gve: "" };
+  };
+
+  const buildLocation = (municipalityValue, gveValue) => {
+    const cleanMunicipality = String(municipalityValue || "").trim();
+    const cleanGve = String(gveValue || "").trim();
+    if (cleanMunicipality && cleanGve) {
+      return `${cleanMunicipality} - GVE ${cleanGve}`;
+    }
+    if (cleanMunicipality) return cleanMunicipality;
+    if (cleanGve) return `GVE ${cleanGve}`;
+    return "";
+  };
+
+  const findProfessionalByName = (value) => {
+    const normalized = normalizeText(value);
+    if (!normalized) return null;
+    return (
+      activeProfessionals.find(
+        (prof) => normalizeText(prof.name) === normalized
+      ) || null
     );
   };
 
@@ -396,14 +473,46 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="location">Local</Label>
+          <Label htmlFor="municipality">Município</Label>
           <Input
-            id="location"
-            value={formData.location}
-            onChange={(e) => handleChange("location", e.target.value)}
-            placeholder="Ex: Sala de Treinamentos"
+            id="municipality"
+            list="municipios-treinamento"
+            value={formData.municipality}
+            onChange={(e) => {
+              const nextValue = e.target.value;
+              const autoGve = getGveByMunicipio(nextValue);
+              setFormData((prev) => ({
+                ...prev,
+                municipality: nextValue,
+                gve: autoGve || "",
+              }));
+            }}
+            placeholder="Digite o município"
           />
+          {municipalityOptions.length > 0 && (
+            <datalist id="municipios-treinamento">
+              {municipalityOptions.map((item) => (
+                <option key={item} value={item} />
+              ))}
+            </datalist>
+          )}
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="gve">GVE</Label>
+        <Input
+          id="gve"
+          value={getGveByMunicipio(formData.municipality) || formData.gve}
+          onChange={(e) =>
+            setFormData((prev) => ({
+              ...prev,
+              gve: e.target.value,
+            }))
+          }
+          placeholder="GVE"
+          readOnly={Boolean(getGveByMunicipio(formData.municipality))}
+        />
       </div>
 
       <div className="space-y-1.5">
