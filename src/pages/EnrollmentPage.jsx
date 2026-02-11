@@ -352,7 +352,7 @@ export default function EnrollmentPage() {
     latestTrainingDate && latestTrainingDate.getTime() < today.getTime();
 
   const formatCpf = (value) => {
-    const digits = value.replace(/\D/g, "").slice(0, 11);
+    const digits = String(value ?? "").replace(/\D/g, "").slice(0, 11);
     return digits
       .replace(/(\d{3})(\d)/, "$1.$2")
       .replace(/(\d{3})(\d)/, "$1.$2")
@@ -361,7 +361,7 @@ export default function EnrollmentPage() {
   };
 
   const formatPhone = (value) => {
-    const digits = value.replace(/\D/g, "").slice(0, 11);
+    const digits = String(value ?? "").replace(/\D/g, "").slice(0, 11);
     if (digits.length <= 10) {
       return digits
         .replace(/(\d{2})(\d)/, "($1) $2")
@@ -373,7 +373,7 @@ export default function EnrollmentPage() {
   };
 
   const formatRg = (value) => {
-    const cleaned = value.replace(/[^0-9xX]/g, "").slice(0, 12);
+    const cleaned = String(value ?? "").replace(/[^0-9xX]/g, "").slice(0, 12);
     return cleaned.toUpperCase();
   };
 
