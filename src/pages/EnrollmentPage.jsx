@@ -1200,25 +1200,16 @@ export default function EnrollmentPage() {
       cellClassName: "font-medium",
     },
     {
-      header: "CPF",
-      accessor: "professional_cpf",
+      header: "Município",
+      accessor: "municipality",
     },
     {
-      header: "Email",
-      accessor: "professional_email",
+      header: "GVE",
+      accessor: "health_region",
     },
     {
-      header: "Setor",
-      accessor: "professional_sector",
-    },
-    {
-      header: "Instituição",
-      accessor: "institution",
-    },
-    {
-      header: "Data Inscrição",
-      render: (row) => row.enrollment_date ? format(new Date(row.enrollment_date), "dd/MM/yyyy HH:mm") : "-",
-      sortType: "date",
+      header: "Formação",
+      accessor: "professional_formation",
     },
     {
       header: "Ações",
