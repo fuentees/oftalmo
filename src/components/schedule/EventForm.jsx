@@ -470,7 +470,18 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
             id="start_date"
             type="date"
             value={formData.start_date}
-            onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+            onChange={(e) => {
+              const nextStart = e.target.value;
+              let nextEnd = formData.end_date;
+              if (formData.type !== "ferias") {
+                const start = parseDateInput(nextStart);
+                const end = parseDateInput(formData.end_date);
+                if (start && (!end || end.getTime() <= start.getTime())) {
+                  nextEnd = formatDate(addDays(start, 1));
+                }
+              }
+              setFormData({ ...formData, start_date: nextStart, end_date: nextEnd });
+            }}
             required
           />
         </div>

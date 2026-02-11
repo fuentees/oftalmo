@@ -575,13 +575,21 @@ export default function EnrollmentPage() {
   const templateFields =
     activeEnrollmentFields.length > 0 ? activeEnrollmentFields : defaultEnrollmentFields;
   const orderedTemplateFields = React.useMemo(() => {
-    return [...templateFields].sort((a, b) => {
+    const sorted = [...templateFields].sort((a, b) => {
       const orderA = Number.isFinite(Number(a.order)) ? Number(a.order) : 0;
       const orderB = Number.isFinite(Number(b.order)) ? Number(b.order) : 0;
       if (orderA !== orderB) return orderA - orderB;
       const labelA = String(a.label || a.field_key || "");
       const labelB = String(b.label || b.field_key || "");
       return labelA.localeCompare(labelB, "pt-BR", { sensitivity: "base" });
+    });
+    const seen = new Set();
+    return sorted.filter((field) => {
+      const key = String(field.field_key || field.label || "").trim();
+      if (!key) return false;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
   }, [templateFields]);
 
@@ -1152,18 +1160,7 @@ export default function EnrollmentPage() {
 
   const handleSaveParticipant = () => {
     if (!editParticipant) return;
-    const errors = /** @type {Record<string, string | null>} */ ({});
-
-    orderedTemplateFields.forEach((field) => {
-      const rawValue = editFormData[field.field_key];
-      const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
-      if (field.required && !value) {
-        errors[field.field_key] = "Campo obrigatório.";
-      }
-    });
-
-    setEditFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    setEditFormErrors({});
 
     const payload = {};
     orderedTemplateFields.forEach((field) => {
@@ -1952,7 +1949,7 @@ export default function EnrollmentPage() {
                           return (
                             <div key={field.id} className="space-y-2">
                               <Label htmlFor={`edit-${fieldKey}`}>
-                                {field.label} {field.required && "*"}
+                                {field.label}
                               </Label>
                               <Input
                                 id={`edit-${fieldKey}`}
@@ -2000,7 +1997,6 @@ export default function EnrollmentPage() {
                                   }
                                 }}
                                 placeholder={field.placeholder}
-                                required={field.required}
                               />
                               {editFormErrors[fieldKey] && (
                                 <p className="text-xs text-red-600">

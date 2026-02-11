@@ -334,10 +334,19 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
   };
 
   const addDate = () => {
-    setFormData(prev => ({
-      ...prev,
-      dates: [...prev.dates, { date: format(new Date(), "yyyy-MM-dd"), start_time: "08:00", end_time: "12:00" }]
-    }));
+    setFormData((prev) => {
+      const lastDate = prev.dates[prev.dates.length - 1]?.date;
+      const base = lastDate ? new Date(lastDate) : new Date();
+      const next = Number.isNaN(base.getTime()) ? new Date() : addDays(base, 1);
+      const nextDate = format(next, "yyyy-MM-dd");
+      return {
+        ...prev,
+        dates: [
+          ...prev.dates,
+          { date: nextDate, start_time: "08:00", end_time: "12:00" },
+        ],
+      };
+    });
   };
 
   const removeDate = (index) => {
