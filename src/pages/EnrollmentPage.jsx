@@ -574,6 +574,16 @@ export default function EnrollmentPage() {
 
   const templateFields =
     activeEnrollmentFields.length > 0 ? activeEnrollmentFields : defaultEnrollmentFields;
+  const orderedTemplateFields = React.useMemo(() => {
+    return [...templateFields].sort((a, b) => {
+      const orderA = Number.isFinite(Number(a.order)) ? Number(a.order) : 0;
+      const orderB = Number.isFinite(Number(b.order)) ? Number(b.order) : 0;
+      if (orderA !== orderB) return orderA - orderB;
+      const labelA = String(a.label || a.field_key || "");
+      const labelB = String(b.label || b.field_key || "");
+      return labelA.localeCompare(labelB, "pt-BR", { sensitivity: "base" });
+    });
+  }, [templateFields]);
 
   const getDefaultFieldData = () => ({
     training_id: trainingId,
@@ -921,7 +931,9 @@ export default function EnrollmentPage() {
   };
 
   const handleDownloadTemplate = () => {
-    const headers = templateFields.map((field) => field.label || field.field_key);
+    const headers = orderedTemplateFields.map(
+      (field) => field.label || field.field_key
+    );
     const csv = `${headers.map((header) => `"${header}"`).join(";")}\n`;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -953,7 +965,7 @@ export default function EnrollmentPage() {
         throw new Error("Nenhum dado encontrado na planilha.");
       }
 
-      const fieldKeyMap = templateFields.reduce((acc, field) => {
+    const fieldKeyMap = orderedTemplateFields.reduce((acc, field) => {
         const aliases = fieldAliases[field.field_key] || [];
         const keys = [
           normalizeHeader(field.field_key),
@@ -970,7 +982,7 @@ export default function EnrollmentPage() {
         Object.keys(sampleRow).forEach((key) => availableKeys.add(key));
       }
 
-      const requiredFields = templateFields.filter((field) => {
+    const requiredFields = orderedTemplateFields.filter((field) => {
         if (!field.required) return false;
         if (field.field_key === "name") return true;
         const keys = fieldKeyMap[field.field_key] || [];
@@ -998,7 +1010,7 @@ export default function EnrollmentPage() {
         const normalizedRow = normalizeRow(row);
         const data = {};
 
-        templateFields.forEach((field) => {
+      orderedTemplateFields.forEach((field) => {
           const keys = fieldKeyMap[field.field_key] || [];
           const value = keys.reduce((acc, key) => {
             if (acc !== null && acc !== undefined && acc !== "") return acc;
@@ -1124,7 +1136,7 @@ export default function EnrollmentPage() {
   const handleEditParticipant = (participant) => {
     if (!participant) return;
     const data = {};
-    templateFields.forEach((field) => {
+    orderedTemplateFields.forEach((field) => {
       const participantKey = participantFieldMap[field.field_key];
       const rawValue = participantKey ? participant[participantKey] : participant[field.field_key];
       if (rawValue !== undefined && rawValue !== null) {
@@ -1142,7 +1154,7 @@ export default function EnrollmentPage() {
     if (!editParticipant) return;
     const errors = /** @type {Record<string, string | null>} */ ({});
 
-    templateFields.forEach((field) => {
+    orderedTemplateFields.forEach((field) => {
       const rawValue = editFormData[field.field_key];
       const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
       if (field.required && !value) {
@@ -1154,7 +1166,7 @@ export default function EnrollmentPage() {
     if (Object.keys(errors).length > 0) return;
 
     const payload = {};
-    templateFields.forEach((field) => {
+    orderedTemplateFields.forEach((field) => {
       const participantKey = participantFieldMap[field.field_key];
       if (!participantKey) return;
       const rawValue = editFormData[field.field_key];
