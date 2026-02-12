@@ -452,7 +452,7 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
   };
 
   // Background/Border
-  pdf.setDrawColor(139, 92, 246);
+  pdf.setDrawColor(0, 82, 204);
   pdf.setLineWidth(2);
   pdf.rect(10, 10, pageWidth - 20, pageHeight - 20);
   
@@ -622,7 +622,7 @@ export const generateSpeakerCertificate = (speaker, training, templateOverride) 
   };
 
   // Background/Border
-  pdf.setDrawColor(139, 92, 246);
+  pdf.setDrawColor(0, 82, 204);
   pdf.setLineWidth(2);
   pdf.rect(10, 10, pageWidth - 20, pageHeight - 20);
 
