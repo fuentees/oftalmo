@@ -41,8 +41,10 @@ import { format } from "date-fns";
 import {
   DEFAULT_CERTIFICATE_TEMPLATE,
   loadCertificateTemplate,
+  loadCertificateTemplateFromStorage,
   resetCertificateTemplate,
   saveCertificateTemplate,
+  saveCertificateTemplateToStorage,
 } from "@/lib/certificateTemplate";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
@@ -86,6 +88,15 @@ export default function Settings() {
   useEffect(() => {
     const template = loadCertificateTemplate();
     setCertificateTemplate(template);
+    let active = true;
+    loadCertificateTemplateFromStorage().then((remote) => {
+      if (!active || !remote) return;
+      setCertificateTemplate(remote);
+      saveCertificateTemplate(remote);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -671,21 +682,41 @@ export default function Settings() {
     window.addEventListener("pointerup", handleUp);
   };
 
-  const handleSaveCertificate = () => {
+  const handleSaveCertificate = async () => {
     saveCertificateTemplate(certificateTemplate);
-    setCertificateStatus({
-      type: "success",
-      message: "Modelo de certificado salvo com sucesso.",
-    });
+    try {
+      await saveCertificateTemplateToStorage(certificateTemplate);
+      setCertificateStatus({
+        type: "success",
+        message: "Modelo de certificado salvo com sucesso.",
+      });
+    } catch (error) {
+      setCertificateStatus({
+        type: "error",
+        message:
+          error?.message ||
+          "Modelo salvo localmente, mas falhou ao sincronizar no Supabase.",
+      });
+    }
   };
 
-  const handleResetCertificate = () => {
+  const handleResetCertificate = async () => {
     const reset = resetCertificateTemplate();
     setCertificateTemplate(reset);
-    setCertificateStatus({
-      type: "success",
-      message: "Modelo padrão restaurado.",
-    });
+    try {
+      await saveCertificateTemplateToStorage(reset);
+      setCertificateStatus({
+        type: "success",
+        message: "Modelo padrão restaurado.",
+      });
+    } catch (error) {
+      setCertificateStatus({
+        type: "error",
+        message:
+          error?.message ||
+          "Modelo padrão restaurado localmente, mas falhou ao sincronizar no Supabase.",
+      });
+    }
   };
 
   const normalizeRgValue = (value) =>

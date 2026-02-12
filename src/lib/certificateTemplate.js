@@ -1,4 +1,9 @@
+import { supabase } from "@/api/supabaseClient";
+
 export const CERTIFICATE_TEMPLATE_KEY = "certificateTemplate";
+const STORAGE_BUCKET =
+  import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
+const CERTIFICATE_TEMPLATE_STORAGE_PATH = "certificates/certificate-template.json";
 
 export const DEFAULT_CERTIFICATE_TEMPLATE = {
   headerLines: [
@@ -141,6 +146,45 @@ export const saveCertificateTemplate = (template) => {
     CERTIFICATE_TEMPLATE_KEY,
     JSON.stringify(payload)
   );
+};
+
+export const loadCertificateTemplateFromStorage = async () => {
+  try {
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .download(CERTIFICATE_TEMPLATE_STORAGE_PATH);
+    if (error || !data) return null;
+    const text = await data.text();
+    if (!text) return null;
+    const parsed = JSON.parse(text);
+    return mergeTemplate(parsed);
+  } catch (error) {
+    return null;
+  }
+};
+
+export const saveCertificateTemplateToStorage = async (template) => {
+  const payload = mergeTemplate(template);
+  const content = JSON.stringify(payload);
+  const blob = new Blob([content], { type: "application/json" });
+  const file = new File([blob], "certificate-template.json", {
+    type: "application/json",
+  });
+  const { error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(CERTIFICATE_TEMPLATE_STORAGE_PATH, file, { upsert: true });
+  if (error) throw error;
+  return true;
+};
+
+export const resolveCertificateTemplate = async () => {
+  const local = loadCertificateTemplate();
+  const remote = await loadCertificateTemplateFromStorage();
+  if (remote) {
+    saveCertificateTemplate(remote);
+    return remote;
+  }
+  return local;
 };
 
 export const resetCertificateTemplate = () => {
