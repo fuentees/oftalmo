@@ -16,6 +16,12 @@ import {
 } from "@/components/ui/table";
 import { Mail, CheckCircle, Award } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
+  loadCertificateEmailTemplate,
+  interpolateEmailTemplate,
+  buildCertificateEmailData,
+} from "@/lib/certificateEmailTemplate";
 
 export default function CertificateManager({ training, participants, onClose }) {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
@@ -23,6 +29,16 @@ export default function CertificateManager({ training, participants, onClose }) 
   const [result, setResult] = useState(null);
   
   const queryClient = useQueryClient();
+  const emailTemplate = loadCertificateEmailTemplate();
+
+  const resolveEmailContent = (emailData) => {
+    const subject = interpolateEmailTemplate(emailTemplate.subject, emailData).trim();
+    const body = interpolateEmailTemplate(emailTemplate.body, emailData).trim();
+    return {
+      subject: subject || DEFAULT_CERTIFICATE_EMAIL_TEMPLATE.subject,
+      body: body || DEFAULT_CERTIFICATE_EMAIL_TEMPLATE.body,
+    };
+  };
 
   const blobToBase64 = (blob) =>
     new Promise((resolve, reject) => {
@@ -77,16 +93,18 @@ export default function CertificateManager({ training, participants, onClose }) 
 
           let warning = null;
           try {
+            const emailData = buildCertificateEmailData({
+              training,
+              nome: monitor.name,
+              rg: monitor.rg,
+              role: "monitor",
+              aula: monitor.lecture || "",
+            });
+            const emailContent = resolveEmailContent(emailData);
             await dataClient.integrations.Core.SendEmail({
               to: monitor.email,
-              subject: `Certificado de Monitoria - ${training.title}`,
-              body: `
-                <h2>Certificado de Monitoria</h2>
-                <p>Olá ${monitor.name},</p>
-                <p>Segue em anexo seu certificado de monitoria do treinamento <strong>${training.title}</strong>.</p>
-                <br>
-                <p>Atenciosamente,<br>Equipe de Treinamentos</p>
-              `,
+              subject: emailContent.subject,
+              body: emailContent.body,
               attachments: [attachment],
             });
           } catch (error) {
@@ -150,17 +168,18 @@ export default function CertificateManager({ training, participants, onClose }) 
 
           let warning = null;
           try {
-            const lectureLabel = speaker.lecture ? ` (Aula: ${speaker.lecture})` : "";
+            const emailData = buildCertificateEmailData({
+              training,
+              nome: speaker.name,
+              rg: speaker.rg,
+              role: "speaker",
+              aula: speaker.lecture || "",
+            });
+            const emailContent = resolveEmailContent(emailData);
             await dataClient.integrations.Core.SendEmail({
               to: speaker.email,
-              subject: `Certificado de Palestra - ${training.title}`,
-              body: `
-                <h2>Certificado de Palestra</h2>
-                <p>Olá ${speaker.name},</p>
-                <p>Segue em anexo seu certificado de palestra do treinamento <strong>${training.title}</strong>${lectureLabel}.</p>
-                <br>
-                <p>Atenciosamente,<br>Equipe de Treinamentos</p>
-              `,
+              subject: emailContent.subject,
+              body: emailContent.body,
               attachments: [attachment],
             });
           } catch (error) {
@@ -229,17 +248,17 @@ export default function CertificateManager({ training, participants, onClose }) 
           // Send email to participant (best effort)
           if (participant.professional_email) {
             try {
+              const emailData = buildCertificateEmailData({
+                training,
+                nome: participant.professional_name,
+                rg: participant.professional_rg,
+                role: "participant",
+              });
+              const emailContent = resolveEmailContent(emailData);
               await dataClient.integrations.Core.SendEmail({
                 to: participant.professional_email,
-                subject: `Certificado de Conclusão - ${training.title}`,
-                body: `
-                  <h2>Certificado de Conclusão</h2>
-                  <p>Olá ${participant.professional_name},</p>
-                  <p>Parabéns pela conclusão do treinamento <strong>${training.title}</strong>!</p>
-                  <p>Segue em anexo seu certificado.</p>
-                  <br>
-                  <p>Atenciosamente,<br>Equipe de Treinamentos</p>
-                `,
+                subject: emailContent.subject,
+                body: emailContent.body,
                 attachments: [attachment],
               });
             } catch (error) {

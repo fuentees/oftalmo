@@ -2,6 +2,12 @@ import React, { useMemo, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
+import {
+  DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
+  loadCertificateEmailTemplate,
+  interpolateEmailTemplate,
+  buildCertificateEmailData,
+} from "@/lib/certificateEmailTemplate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -385,6 +391,7 @@ export default function ParticipantProfile() {
       if (!training) {
         throw new Error("Treinamento não encontrado para enviar.");
       }
+      const emailTemplate = loadCertificateEmailTemplate();
       const pdf = generateParticipantCertificate(participation, training);
       const pdfBlob = pdf.output("blob");
       const safeName = toSafeFileName(participation.professional_name || "participante");
@@ -394,16 +401,20 @@ export default function ParticipantProfile() {
         throw new Error("Falha ao gerar o anexo.");
       }
 
+      const emailData = buildCertificateEmailData({
+        training,
+        nome: participation.professional_name,
+        rg: participation.professional_rg,
+        role: "participant",
+      });
+      const subject = interpolateEmailTemplate(emailTemplate.subject, emailData).trim() ||
+        DEFAULT_CERTIFICATE_EMAIL_TEMPLATE.subject;
+      const body = interpolateEmailTemplate(emailTemplate.body, emailData).trim() ||
+        DEFAULT_CERTIFICATE_EMAIL_TEMPLATE.body;
       await dataClient.integrations.Core.SendEmail({
         to: participation.professional_email,
-        subject: `Certificado de Conclusão - ${participation.training_title || "Treinamento"}`,
-        body: `
-          <h2>Certificado de Conclusão</h2>
-          <p>Olá ${participation.professional_name || "Participante"},</p>
-          <p>Segue em anexo seu certificado em PDF.</p>
-          <br>
-          <p>Atenciosamente,<br>Equipe de Treinamentos</p>
-        `,
+        subject,
+        body,
         attachments: [
           {
             filename: fileName,

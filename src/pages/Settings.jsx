@@ -44,6 +44,14 @@ import {
   resetCertificateTemplate,
   saveCertificateTemplate,
 } from "@/lib/certificateTemplate";
+import {
+  DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
+  loadCertificateEmailTemplate,
+  resetCertificateEmailTemplate,
+  saveCertificateEmailTemplate,
+  interpolateEmailTemplate,
+  buildCertificateEmailData,
+} from "@/lib/certificateEmailTemplate";
 import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
 
 export default function Settings() {
@@ -60,6 +68,10 @@ export default function Settings() {
     webhookUrl: "",
   });
   const [emailStatus, setEmailStatus] = useState(null);
+  const [certificateEmailTemplate, setCertificateEmailTemplate] = useState(
+    DEFAULT_CERTIFICATE_EMAIL_TEMPLATE
+  );
+  const [emailTemplateStatus, setEmailTemplateStatus] = useState(null);
   const [lockLogoRatio, setLockLogoRatio] = useState(false);
   const [showLogoGrid, setShowLogoGrid] = useState(false);
   const [editLayer, setEditLayer] = useState("logos");
@@ -90,6 +102,11 @@ export default function Settings() {
     } catch (error) {
       // Ignora erro de leitura
     }
+  }, []);
+
+  useEffect(() => {
+    const template = loadCertificateEmailTemplate();
+    setCertificateEmailTemplate(template);
   }, []);
 
   useEffect(() => {
@@ -701,6 +718,30 @@ export default function Settings() {
     }));
   };
 
+  const handleEmailTemplateChange = (field, value) => {
+    setCertificateEmailTemplate((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSaveEmailTemplate = () => {
+    saveCertificateEmailTemplate(certificateEmailTemplate);
+    setEmailTemplateStatus({
+      type: "success",
+      message: "Mensagem de e-mail salva com sucesso.",
+    });
+  };
+
+  const handleResetEmailTemplate = () => {
+    const reset = resetCertificateEmailTemplate();
+    setCertificateEmailTemplate(reset);
+    setEmailTemplateStatus({
+      type: "success",
+      message: "Mensagem padrão restaurada.",
+    });
+  };
+
   const handleSaveEmailSettings = () => {
     const payload = {
       fromEmail: String(emailSettings.fromEmail || "").trim(),
@@ -743,6 +784,28 @@ export default function Settings() {
     periodo_treinamento: "de 10/02/2026 a 12/02/2026",
     dias_treinamento: "10/02/2026, 11/02/2026, 12/02/2026",
   };
+
+  const emailPreviewData = buildCertificateEmailData({
+    training: {
+      title: previewData.treinamento,
+      dates: [{ date: new Date() }],
+      duration_hours: Number(previewData.carga_horaria) || 0,
+      coordinator: previewData.coordenador,
+      instructor: previewData.instrutor,
+    },
+    nome: previewData.nome,
+    rg: normalizeRgValue(previewData.rg),
+    role: "participant",
+  });
+
+  const previewEmailSubject = interpolateEmailTemplate(
+    certificateEmailTemplate.subject,
+    emailPreviewData
+  );
+  const previewEmailBody = interpolateEmailTemplate(
+    certificateEmailTemplate.body,
+    emailPreviewData
+  );
 
   const resolveSignature = (signature) => {
     if (!signature || signature.source === "none") return null;
@@ -1996,6 +2059,88 @@ export default function Settings() {
             <Button type="button" variant="outline" onClick={handleClearEmailSettings}>
               Limpar
             </Button>
+          </div>
+
+          <div className="border-t pt-4 space-y-4">
+            <div>
+              <h4 className="font-semibold text-sm text-slate-700">
+                Mensagem do e-mail do certificado
+              </h4>
+              <p className="text-xs text-slate-500">
+                Personalize o assunto e o corpo do e-mail enviado junto com o PDF.
+              </p>
+            </div>
+
+            <Alert>
+              <AlertDescription>
+                Variáveis disponíveis: {"{{nome}}"}, {"{{treinamento}}"},
+                {"{{tipo_certificado}}"}, {"{{funcao}}"}, {"{{aula}}"},
+                {"{{periodo_treinamento}}"}, {"{{dias_treinamento}}"},
+                {"{{data}}"}, {"{{carga_horaria}}"}, {"{{coordenador}}"} e {"{{instrutor}}"}.
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-2">
+              <Label htmlFor="email-template-subject">Assunto do e-mail</Label>
+              <Input
+                id="email-template-subject"
+                value={certificateEmailTemplate.subject}
+                onChange={(e) => handleEmailTemplateChange("subject", e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email-template-body">Mensagem (HTML)</Label>
+              <Textarea
+                id="email-template-body"
+                rows={6}
+                value={certificateEmailTemplate.body}
+                onChange={(e) => handleEmailTemplateChange("body", e.target.value)}
+              />
+              <p className="text-xs text-slate-500">
+                Você pode usar tags HTML simples (p, br, strong).
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={handleSaveEmailTemplate}>
+                Salvar mensagem
+              </Button>
+              <Button type="button" variant="outline" onClick={handleResetEmailTemplate}>
+                Restaurar padrão
+              </Button>
+            </div>
+
+            <div className="rounded-lg border bg-slate-50 p-4 text-sm">
+              <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
+                Prévia
+              </p>
+              <p className="font-semibold mb-2">{previewEmailSubject}</p>
+              <div
+                className="prose prose-sm max-w-none text-slate-700"
+                dangerouslySetInnerHTML={{ __html: previewEmailBody }}
+              />
+            </div>
+
+            {emailTemplateStatus && (
+              <Alert
+                className={
+                  emailTemplateStatus.type === "error"
+                    ? "border-red-200 bg-red-50"
+                    : "border-green-200 bg-green-50"
+                }
+              >
+                <AlertDescription
+                  className={
+                    emailTemplateStatus.type === "error"
+                      ? "text-red-800"
+                      : "text-green-800"
+                  }
+                >
+                  {emailTemplateStatus.message}
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
 
           {emailStatus && (
