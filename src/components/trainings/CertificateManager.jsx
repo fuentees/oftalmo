@@ -22,6 +22,7 @@ import {
   interpolateEmailTemplate,
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
+import { resolveCertificateTemplate } from "@/lib/certificateTemplate";
 
 export default function CertificateManager({ training, participants, onClose }) {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
@@ -68,13 +69,14 @@ export default function CertificateManager({ training, participants, onClose }) 
 
       setProcessing(true);
       const results = [];
+      const templateOverride = await resolveCertificateTemplate();
 
       for (const monitor of training.monitors) {
         if (!monitor.name || !monitor.email) continue;
 
         try {
           // Generate PDF
-          const pdf = generateMonitorCertificate(monitor, training);
+          const pdf = generateMonitorCertificate(monitor, training, templateOverride);
           const pdfBlob = pdf.output('blob');
           const pdfFileName = `certificado-monitor-${monitor.name}.pdf`;
           const pdfFile = new File([pdfBlob], pdfFileName, { type: 'application/pdf' });
@@ -145,12 +147,13 @@ export default function CertificateManager({ training, participants, onClose }) 
 
       setProcessing(true);
       const results = [];
+      const templateOverride = await resolveCertificateTemplate();
 
       for (const speaker of training.speakers) {
         if (!speaker.name || !speaker.email) continue;
 
         try {
-          const pdf = generateSpeakerCertificate(speaker, training);
+          const pdf = generateSpeakerCertificate(speaker, training, templateOverride);
           const pdfBlob = pdf.output("blob");
           const pdfFileName = `certificado-palestrante-${speaker.name}.pdf`;
           const pdfFile = new File([pdfBlob], pdfFileName, { type: "application/pdf" });
@@ -222,11 +225,12 @@ export default function CertificateManager({ training, participants, onClose }) 
       );
 
       const results = [];
+      const templateOverride = await resolveCertificateTemplate();
 
       for (const participant of participantsToIssue) {
         try {
           // Generate PDF
-          const pdf = generateParticipantCertificate(participant, training);
+          const pdf = generateParticipantCertificate(participant, training, templateOverride);
           const pdfBlob = pdf.output('blob');
           const pdfFileName = `certificado-${participant.professional_name}.pdf`;
           const pdfFile = new File([pdfBlob], pdfFileName, { type: 'application/pdf' });

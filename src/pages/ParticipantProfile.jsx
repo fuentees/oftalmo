@@ -8,6 +8,7 @@ import {
   interpolateEmailTemplate,
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
+import { resolveCertificateTemplate } from "@/lib/certificateTemplate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -298,7 +299,7 @@ export default function ParticipantProfile() {
     return training;
   };
 
-  const handleDownloadCertificate = (participation) => {
+  const handleDownloadCertificate = async (participation) => {
     if (!participation) return;
     if (participation.certificate_url) {
       const link = document.createElement("a");
@@ -310,7 +311,8 @@ export default function ParticipantProfile() {
 
     const training = resolveTrainingForCertificate(participation);
     if (!training) return;
-    const pdf = generateParticipantCertificate(participation, training);
+    const templateOverride = await resolveCertificateTemplate();
+    const pdf = generateParticipantCertificate(participation, training, templateOverride);
     const fileName = `certificado-${participation.professional_name || "participante"}.pdf`;
     pdf.save(fileName);
   };
@@ -327,7 +329,8 @@ export default function ParticipantProfile() {
       if (!training) {
         throw new Error("Treinamento não encontrado para regenerar.");
       }
-      const pdf = generateParticipantCertificate(participation, training);
+      const templateOverride = await resolveCertificateTemplate();
+      const pdf = generateParticipantCertificate(participation, training, templateOverride);
       const pdfBlob = pdf.output("blob");
       const safeName = toSafeFileName(participation.professional_name || "participante");
       const fileName = `certificado-${safeName || "participante"}.pdf`;
@@ -392,7 +395,8 @@ export default function ParticipantProfile() {
         throw new Error("Treinamento não encontrado para enviar.");
       }
       const emailTemplate = loadCertificateEmailTemplate();
-      const pdf = generateParticipantCertificate(participation, training);
+      const templateOverride = await resolveCertificateTemplate();
+      const pdf = generateParticipantCertificate(participation, training, templateOverride);
       const pdfBlob = pdf.output("blob");
       const safeName = toSafeFileName(participation.professional_name || "participante");
       const fileName = `certificado-${safeName || "participante"}.pdf`;
