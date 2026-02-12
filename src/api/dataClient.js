@@ -378,6 +378,17 @@ const invokeSupabaseFunction = async (functionName, payload) => {
   return response.json().catch(() => ({}));
 };
 
+const shouldFallbackFunctionCall = (message) => {
+  if (!message) return false;
+  const normalized = String(message);
+  return (
+    normalized.includes("Failed to send a request to the Edge Function") ||
+    normalized.includes("Failed to fetch") ||
+    normalized.includes("NetworkError") ||
+    normalized.includes("fetch failed")
+  );
+};
+
 const SendEmail = async ({ to, subject, body, attachments }) => {
   const settings = getStoredEmailSettings();
   const fromEmail =
@@ -448,7 +459,7 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
     );
     if (error) {
       const message = error.message || "";
-      if (message.includes("Failed to send a request to the Edge Function")) {
+      if (shouldFallbackFunctionCall(message)) {
         return await invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload);
       }
       throw new Error(
@@ -459,7 +470,7 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
     return data;
   } catch (error) {
     const message = error?.message || String(error || "");
-    if (message.includes("Failed to send a request to the Edge Function")) {
+    if (shouldFallbackFunctionCall(message)) {
       return invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload);
     }
     throw error;
