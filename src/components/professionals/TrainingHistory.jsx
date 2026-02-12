@@ -17,7 +17,7 @@ export default function TrainingHistory({ professional, entries }) {
     queryKey: ["training-history", professional.id],
     queryFn: () => dataClient.entities.TrainingParticipant.filter({ 
       professional_id: professional.id 
-    }, "-created_date"),
+    }, "-created_at"),
     enabled: !hasEntries,
   });
 
