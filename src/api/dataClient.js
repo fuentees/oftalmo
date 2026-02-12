@@ -348,7 +348,16 @@ const getSupabaseFunctionUrl = (functionName) => {
   return `${baseUrl}/functions/v1/${functionName}`;
 };
 
-const invokeSupabaseFunction = async (functionName, payload) => {
+const getAccessToken = async () => {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token || "";
+  } catch (error) {
+    return "";
+  }
+};
+
+const invokeSupabaseFunction = async (functionName, payload, accessToken) => {
   const url = getSupabaseFunctionUrl(functionName);
   if (!url) {
     throw new Error(
@@ -361,12 +370,15 @@ const invokeSupabaseFunction = async (functionName, payload) => {
       "Supabase: defina VITE_SUPABASE_ANON_KEY para enviar email."
     );
   }
+  const token = typeof accessToken === "string" && accessToken.trim()
+    ? accessToken.trim()
+    : anonKey;
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(payload),
   });
@@ -384,9 +396,15 @@ const shouldFallbackFunctionCall = (message) => {
     normalized.includes("Failed to send a request to the Edge Function") ||
     normalized.includes("Failed to fetch") ||
     normalized.includes("NetworkError") ||
-    normalized.includes("fetch failed")
+    normalized.includes("fetch failed") ||
+    normalized.includes("Unauthorized") ||
+    normalized.includes("401") ||
+    normalized.includes("403")
   );
 };
+
+const shouldFallbackByStatus = (status) =>
+  Number(status) === 401 || Number(status) === 403;
 
 const SendEmail = async ({ to, subject, body, attachments }) => {
   const settings = getStoredEmailSettings();
@@ -449,6 +467,8 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
     return response.json().catch(() => ({}));
   }
 
+  const accessToken = await getAccessToken();
+
   try {
     const { data, error } = await supabase.functions.invoke(
       EMAIL_FUNCTION_NAME,
@@ -458,8 +478,8 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
     );
     if (error) {
       const message = error.message || "";
-      if (shouldFallbackFunctionCall(message)) {
-        return await invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload);
+      if (shouldFallbackFunctionCall(message) || shouldFallbackByStatus(error.status)) {
+        return await invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload, accessToken);
       }
       throw new Error(
         error.message ||
@@ -469,8 +489,8 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
     return data;
   } catch (error) {
     const message = error?.message || String(error || "");
-    if (shouldFallbackFunctionCall(message)) {
-      return invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload);
+    if (shouldFallbackFunctionCall(message) || shouldFallbackByStatus(error?.status)) {
+      return invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload, accessToken);
     }
     throw error;
   }
