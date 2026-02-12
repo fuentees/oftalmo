@@ -39,7 +39,7 @@ export default function Dashboard() {
 
   const { data: movements = [], isLoading: loadingMovements } = useQuery({
     queryKey: ["movements"],
-    queryFn: () => dataClient.entities.StockMovement.list("-created_date", 10),
+    queryFn: () => dataClient.entities.StockMovement.list("-created_at", 10),
   });
 
   const { data: trainings = [], isLoading: loadingTrainings } = useQuery({
