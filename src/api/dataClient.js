@@ -8,6 +8,8 @@ const EMAIL_FUNCTION_NAME =
   import.meta.env.VITE_SUPABASE_EMAIL_FUNCTION || "send-email";
 const EMAIL_WEBHOOK_URL = import.meta.env.VITE_EMAIL_WEBHOOK_URL;
 const EMAIL_SETTINGS_KEY = "emailSettings";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const toSnakeCase = (value) =>
   value.replace(/([A-Z])/g, "_$1").toLowerCase();
@@ -339,6 +341,43 @@ const getStoredEmailSettings = () => {
   }
 };
 
+const getSupabaseFunctionUrl = (functionName) => {
+  if (typeof SUPABASE_URL !== "string") return null;
+  const trimmed = SUPABASE_URL.trim();
+  if (!trimmed) return null;
+  const baseUrl = trimmed.replace(/\/$/, "");
+  return `${baseUrl}/functions/v1/${functionName}`;
+};
+
+const invokeSupabaseFunction = async (functionName, payload) => {
+  const url = getSupabaseFunctionUrl(functionName);
+  if (!url) {
+    throw new Error(
+      "Supabase: defina VITE_SUPABASE_URL para enviar email."
+    );
+  }
+  const anonKey = typeof SUPABASE_ANON_KEY === "string" ? SUPABASE_ANON_KEY.trim() : "";
+  if (!anonKey) {
+    throw new Error(
+      "Supabase: defina VITE_SUPABASE_ANON_KEY para enviar email."
+    );
+  }
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || "Falha ao enviar email via função.");
+  }
+  return response.json().catch(() => ({}));
+};
+
 const SendEmail = async ({ to, subject, body, attachments }) => {
   const settings = getStoredEmailSettings();
   const fromEmail =
@@ -400,19 +439,31 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
     return response.json().catch(() => ({}));
   }
 
-  const { data, error } = await supabase.functions.invoke(
-    EMAIL_FUNCTION_NAME,
-    {
-      body: payload,
-    }
-  );
-  if (error) {
-    throw new Error(
-      error.message ||
-        "Função send-email não configurada no Supabase."
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      EMAIL_FUNCTION_NAME,
+      {
+        body: payload,
+      }
     );
+    if (error) {
+      const message = error.message || "";
+      if (message.includes("Failed to send a request to the Edge Function")) {
+        return await invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload);
+      }
+      throw new Error(
+        error.message ||
+          "Função send-email não configurada no Supabase."
+      );
+    }
+    return data;
+  } catch (error) {
+    const message = error?.message || String(error || "");
+    if (message.includes("Failed to send a request to the Edge Function")) {
+      return invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload);
+    }
+    throw error;
   }
-  return data;
 };
 
 const logUserInApp = async (pageName) => {
