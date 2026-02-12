@@ -127,6 +127,48 @@ const mergeTemplate = (template) => {
   return cleanLegacyLogos(merged);
 };
 
+const getTemplateUpdatedAt = (template) => {
+  const value = template?.updatedAt;
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const countLogos = (template) =>
+  Object.values(template?.logos || {}).filter(Boolean).length;
+
+const hasCustomSignatures = (template) => {
+  const signatures = [template?.signature1, template?.signature2].filter(Boolean);
+  return signatures.some(
+    (signature) =>
+      signature.source === "custom" ||
+      Boolean(signature.name) ||
+      Boolean(signature.role)
+  );
+};
+
+const hasCustomContent = (template) =>
+  countLogos(template) > 0 || hasCustomSignatures(template);
+
+const pickBestTemplate = (local, remote) => {
+  if (!remote) return { template: local, source: "local" };
+  if (!local) return { template: remote, source: "remote" };
+  const localCustom = hasCustomContent(local);
+  const remoteCustom = hasCustomContent(remote);
+  if (localCustom && !remoteCustom) return { template: local, source: "local" };
+  if (!localCustom && remoteCustom) return { template: remote, source: "remote" };
+  const localUpdatedAt = getTemplateUpdatedAt(local);
+  const remoteUpdatedAt = getTemplateUpdatedAt(remote);
+  if (localUpdatedAt && remoteUpdatedAt) {
+    return localUpdatedAt >= remoteUpdatedAt
+      ? { template: local, source: "local" }
+      : { template: remote, source: "remote" };
+  }
+  if (localUpdatedAt && !remoteUpdatedAt) return { template: local, source: "local" };
+  if (!localUpdatedAt && remoteUpdatedAt) return { template: remote, source: "remote" };
+  return { template: local, source: "local" };
+};
+
 export const loadCertificateTemplate = () => {
   if (typeof window === "undefined") return DEFAULT_CERTIFICATE_TEMPLATE;
   try {
@@ -180,11 +222,19 @@ export const saveCertificateTemplateToStorage = async (template) => {
 export const resolveCertificateTemplate = async () => {
   const local = loadCertificateTemplate();
   const remote = await loadCertificateTemplateFromStorage();
-  if (remote) {
-    saveCertificateTemplate(remote);
-    return remote;
+  const { template, source } = pickBestTemplate(local, remote);
+  if (source === "remote") {
+    saveCertificateTemplate(template);
+    return template;
   }
-  return local;
+  if (!remote || template !== remote) {
+    try {
+      await saveCertificateTemplateToStorage(template);
+    } catch (error) {
+      // Falha ao sincronizar não deve impedir o uso do modelo local.
+    }
+  }
+  return template;
 };
 
 export const resetCertificateTemplate = () => {
