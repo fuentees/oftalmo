@@ -683,9 +683,14 @@ export default function Settings() {
   };
 
   const handleSaveCertificate = async () => {
-    saveCertificateTemplate(certificateTemplate);
+    const payload = {
+      ...certificateTemplate,
+      updatedAt: new Date().toISOString(),
+    };
+    setCertificateTemplate(payload);
+    saveCertificateTemplate(payload);
     try {
-      await saveCertificateTemplateToStorage(certificateTemplate);
+      await saveCertificateTemplateToStorage(payload);
       setCertificateStatus({
         type: "success",
         message: "Modelo de certificado salvo com sucesso.",
@@ -701,7 +706,10 @@ export default function Settings() {
   };
 
   const handleResetCertificate = async () => {
-    const reset = resetCertificateTemplate();
+    const reset = {
+      ...resetCertificateTemplate(),
+      updatedAt: new Date().toISOString(),
+    };
     setCertificateTemplate(reset);
     try {
       await saveCertificateTemplateToStorage(reset);
