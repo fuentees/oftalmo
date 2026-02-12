@@ -396,10 +396,16 @@ export default function ParticipantProfile() {
       const pdfBlob = pdf.output("blob");
       const safeName = toSafeFileName(participation.professional_name || "participante");
       const fileName = `certificado-${safeName || "participante"}.pdf`;
+      const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
       const attachmentBase64 = await blobToBase64(pdfBlob);
       if (!attachmentBase64) {
         throw new Error("Falha ao gerar o anexo.");
       }
+
+      const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
+      const validityDate = training.validity_months
+        ? addMonths(new Date(), training.validity_months).toISOString().split("T")[0]
+        : participation.validity_date || null;
 
       const emailData = buildCertificateEmailData({
         training,
@@ -427,6 +433,8 @@ export default function ParticipantProfile() {
       await dataClient.entities.TrainingParticipant.update(participation.id, {
         certificate_sent_date: new Date().toISOString(),
         certificate_issued: true,
+        certificate_url: file_url,
+        validity_date: validityDate,
       });
 
       setEmailStatus({
