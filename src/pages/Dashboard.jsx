@@ -139,17 +139,50 @@ export default function Dashboard() {
     return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
   };
 
+  const parseTimeToHoursMinutes = (value) => {
+    const match = String(value ?? "").trim().match(/^(\d{2}):(\d{2})$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (
+      !Number.isFinite(hours) ||
+      !Number.isFinite(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return null;
+    }
+    return { hours, minutes };
+  };
+
+  const getEventEndDateTime = (event) => {
+    const endDate = parseLocalDate(event?.end_date || event?.start_date);
+    if (!endDate) return null;
+
+    const parsedEndTime = parseTimeToHoursMinutes(event?.end_time);
+    if (parsedEndTime) {
+      endDate.setHours(parsedEndTime.hours, parsedEndTime.minutes, 0, 0);
+      return endDate;
+    }
+
+    // Sem horário explícito: considera o evento válido até o fim do dia.
+    endDate.setHours(23, 59, 59, 999);
+    return endDate;
+  };
+
   // Próximos eventos (futuros ou em andamento)
   const upcomingEvents = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
 
     const filtered = events.filter((event) => {
-      const eventEndDate = parseLocalDate(event.end_date || event.start_date);
-      if (!eventEndDate) return false;
-      if (event.status === "cancelado") return false;
+      if (event.status === "cancelado" || event.status === "concluido") return false;
       if (eventTypeFilter !== "all" && event.type !== eventTypeFilter) return false;
-      return eventEndDate >= today;
+
+      const eventEndDateTime = getEventEndDateTime(event);
+      if (!eventEndDateTime) return false;
+      return eventEndDateTime.getTime() >= now.getTime();
     });
 
     const groupMap = new Map();
