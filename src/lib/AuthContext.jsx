@@ -11,6 +11,15 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
   const [authError, setAuthError] = useState(null);
+  const setAuthStateFromUser = (sessionUser) => {
+    setUser(sessionUser);
+    setIsAuthenticated(!!sessionUser);
+    setAuthError(
+      sessionUser
+        ? null
+        : { type: "auth_required", message: "Authentication required" }
+    );
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -30,13 +39,7 @@ export const AuthProvider = ({ children }) => {
         const sessionUser = data?.session?.user
           ? mapSupabaseUser(data.session.user)
           : null;
-        setUser(sessionUser);
-        setIsAuthenticated(!!sessionUser);
-        setAuthError(
-          sessionUser
-            ? null
-            : { type: "auth_required", message: "Authentication required" }
-        );
+        setAuthStateFromUser(sessionUser);
       }
 
       setIsLoadingAuth(false);
@@ -50,13 +53,7 @@ export const AuthProvider = ({ children }) => {
         const sessionUser = session?.user
           ? mapSupabaseUser(session.user)
           : null;
-        setUser(sessionUser);
-        setIsAuthenticated(!!sessionUser);
-        setAuthError(
-          sessionUser
-            ? null
-            : { type: "auth_required", message: "Authentication required" }
-        );
+        setAuthStateFromUser(sessionUser);
         setIsLoadingAuth(false);
         setIsLoadingPublicSettings(false);
       }
@@ -85,6 +82,56 @@ export const AuthProvider = ({ children }) => {
     window.location.href = "/login";
   };
 
+  const refreshUser = async () => {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    const sessionUser = data?.user ? mapSupabaseUser(data.user) : null;
+    setAuthStateFromUser(sessionUser);
+    return sessionUser;
+  };
+
+  const updateProfile = async ({ fullName, email, password }) => {
+    const payload = {};
+    const normalizedName = String(fullName ?? "").trim();
+    const normalizedEmail = String(email ?? "").trim().toLowerCase();
+    const normalizedPassword = String(password ?? "").trim();
+    const currentName = String(user?.full_name ?? "").trim();
+    const currentEmail = String(user?.email ?? "").trim().toLowerCase();
+
+    if (normalizedName && normalizedName !== currentName) {
+      payload.data = {
+        full_name: normalizedName,
+        name: normalizedName,
+      };
+    }
+    if (normalizedEmail && normalizedEmail !== currentEmail) {
+      payload.email = normalizedEmail;
+    }
+    if (normalizedPassword) {
+      payload.password = normalizedPassword;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return {
+        user,
+        updated: false,
+        emailChangeRequested: false,
+      };
+    }
+
+    const { data, error } = await supabase.auth.updateUser(payload);
+    if (error) throw error;
+
+    const updatedUser = data?.user ? mapSupabaseUser(data.user) : await refreshUser();
+    setAuthStateFromUser(updatedUser);
+
+    return {
+      user: updatedUser,
+      updated: true,
+      emailChangeRequested: Boolean(payload.email),
+    };
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -96,6 +143,8 @@ export const AuthProvider = ({ children }) => {
         authError,
         logout,
         navigateToLogin,
+        refreshUser,
+        updateProfile,
       }}
     >
       {children}

@@ -15,7 +15,9 @@ import {
   User,
   Calendar,
   FileText,
-  Search
+  Search,
+  Pencil,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,12 +27,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import GlobalSearch from "@/components/common/GlobalSearch";
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const { user, isAdmin, logout } = useAuth();
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    fullName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [profileStatus, setProfileStatus] = useState(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const { user, isAdmin, logout, updateProfile } = useAuth();
 
   useEffect(() => {
     // Global search shortcut
@@ -47,6 +62,82 @@ export default function Layout({ children, currentPageName }) {
 
   const handleLogout = () => {
     logout();
+  };
+
+  const openProfileDialog = () => {
+    setProfileForm({
+      fullName: String(user?.full_name || user?.name || "").trim(),
+      email: String(user?.email || "").trim(),
+      password: "",
+      confirmPassword: "",
+    });
+    setProfileStatus(null);
+    setProfileDialogOpen(true);
+  };
+
+  const closeProfileDialog = () => {
+    setProfileDialogOpen(false);
+    setProfileStatus(null);
+    setProfileForm((prev) => ({ ...prev, password: "", confirmPassword: "" }));
+  };
+
+  const handleProfileSubmit = async (event) => {
+    event.preventDefault();
+    setProfileStatus(null);
+
+    const fullName = String(profileForm.fullName || "").trim();
+    const email = String(profileForm.email || "").trim().toLowerCase();
+    const password = String(profileForm.password || "").trim();
+    const confirmPassword = String(profileForm.confirmPassword || "").trim();
+
+    if (!fullName) {
+      setProfileStatus({ type: "error", message: "Informe seu nome completo." });
+      return;
+    }
+    if (!email) {
+      setProfileStatus({ type: "error", message: "Informe um e-mail válido." });
+      return;
+    }
+    if (password && password.length < 6) {
+      setProfileStatus({
+        type: "error",
+        message: "A nova senha deve ter pelo menos 6 caracteres.",
+      });
+      return;
+    }
+    if (password && password !== confirmPassword) {
+      setProfileStatus({
+        type: "error",
+        message: "A confirmação da senha não confere.",
+      });
+      return;
+    }
+
+    setIsSavingProfile(true);
+    try {
+      const result = await updateProfile({ fullName, email, password });
+      if (!result?.updated) {
+        setProfileStatus({
+          type: "info",
+          message: "Nenhuma alteração foi detectada no perfil.",
+        });
+        return;
+      }
+      setProfileStatus({
+        type: "success",
+        message: result.emailChangeRequested
+          ? "Perfil atualizado. Se a confirmação de e-mail estiver ativa no Supabase, confirme o novo e-mail na sua caixa de entrada."
+          : "Perfil atualizado com sucesso.",
+      });
+      setProfileForm((prev) => ({ ...prev, password: "", confirmPassword: "" }));
+    } catch (error) {
+      setProfileStatus({
+        type: "error",
+        message: error?.message || "Não foi possível atualizar o perfil.",
+      });
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const navigation = [
@@ -200,7 +291,7 @@ export default function Layout({ children, currentPageName }) {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56 p-2">
                     <div className="px-3 py-3 bg-slate-50 rounded-lg mb-2">
-                      <p className="text-sm font-semibold text-slate-900">{user.full_name}</p>
+                      <p className="text-sm font-semibold text-slate-900">{user.full_name || user.email}</p>
                       <p className="text-xs text-slate-500 mt-0.5">{user.email}</p>
                       <div className="mt-2">
                         <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-100 text-blue-700 text-xs font-semibold capitalize">
@@ -208,6 +299,13 @@ export default function Layout({ children, currentPageName }) {
                         </span>
                       </div>
                     </div>
+                    <DropdownMenuItem
+                      onClick={openProfileDialog}
+                      className="font-medium cursor-pointer rounded-lg"
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Editar perfil
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-red-600 font-medium cursor-pointer rounded-lg">
                       <LogOut className="h-4 w-4 mr-2" />
@@ -227,6 +325,115 @@ export default function Layout({ children, currentPageName }) {
           </div>
         </main>
       </div>
+
+      <Dialog open={profileDialogOpen} onOpenChange={(open) => (open ? setProfileDialogOpen(true) : closeProfileDialog())}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar perfil</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleProfileSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="profile-full-name">Nome completo</Label>
+              <Input
+                id="profile-full-name"
+                value={profileForm.fullName}
+                onChange={(e) =>
+                  setProfileForm((prev) => ({ ...prev, fullName: e.target.value }))
+                }
+                placeholder="Seu nome completo"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="profile-email">E-mail</Label>
+              <Input
+                id="profile-email"
+                type="email"
+                value={profileForm.email}
+                onChange={(e) =>
+                  setProfileForm((prev) => ({ ...prev, email: e.target.value }))
+                }
+                placeholder="voce@email.com"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="profile-password">Nova senha (opcional)</Label>
+              <Input
+                id="profile-password"
+                type="password"
+                value={profileForm.password}
+                onChange={(e) =>
+                  setProfileForm((prev) => ({ ...prev, password: e.target.value }))
+                }
+                placeholder="Deixe em branco para manter"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="profile-password-confirm">Confirmar nova senha</Label>
+              <Input
+                id="profile-password-confirm"
+                type="password"
+                value={profileForm.confirmPassword}
+                onChange={(e) =>
+                  setProfileForm((prev) => ({
+                    ...prev,
+                    confirmPassword: e.target.value,
+                  }))
+                }
+                placeholder="Repita a nova senha"
+              />
+            </div>
+
+            {profileStatus && (
+              <Alert
+                className={
+                  profileStatus.type === "error"
+                    ? "border-red-200 bg-red-50"
+                    : profileStatus.type === "success"
+                      ? "border-green-200 bg-green-50"
+                      : "border-blue-200 bg-blue-50"
+                }
+              >
+                <AlertDescription
+                  className={
+                    profileStatus.type === "error"
+                      ? "text-red-700"
+                      : profileStatus.type === "success"
+                        ? "text-green-700"
+                        : "text-blue-700"
+                  }
+                >
+                  {profileStatus.message}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeProfileDialog}
+                disabled={isSavingProfile}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700"
+                disabled={isSavingProfile}
+              >
+                {isSavingProfile && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Salvar
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
