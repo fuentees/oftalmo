@@ -174,14 +174,29 @@ export default function Trainings() {
           .toLowerCase()
           .trim();
 
-      const expectedStartDate = (() => {
-        if (Array.isArray(trainingToDelete?.dates)) {
-          const firstDate = trainingToDelete.dates.find((item) => item?.date)?.date;
-          if (firstDate) return String(firstDate);
-        }
-        if (trainingToDelete?.date) return String(trainingToDelete.date);
-        return "";
-      })();
+      const normalizeDateKey = (value) => {
+        if (!value) return "";
+        const text = String(value).trim();
+        if (!text) return "";
+        const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (match) return match[1];
+        const parsed = new Date(text);
+        if (Number.isNaN(parsed.getTime())) return "";
+        const year = parsed.getFullYear();
+        const month = String(parsed.getMonth() + 1).padStart(2, "0");
+        const day = String(parsed.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      };
+
+      const expectedDateKeys = new Set();
+      if (Array.isArray(trainingToDelete?.dates)) {
+        trainingToDelete.dates.forEach((item) => {
+          const dateKey = normalizeDateKey(item?.date || item);
+          if (dateKey) expectedDateKeys.add(dateKey);
+        });
+      }
+      const fallbackDateKey = normalizeDateKey(trainingToDelete?.date);
+      if (fallbackDateKey) expectedDateKeys.add(fallbackDateKey);
 
       const trainingEvents = await dataClient.entities.Event.filter(
         { type: "treinamento" },
@@ -199,8 +214,9 @@ export default function Trainings() {
           const sameTitle =
             normalizeComparisonText(item.title) === expectedTitle;
           if (!sameTitle) return false;
-          if (!expectedStartDate) return true;
-          return String(item.start_date || "") === expectedStartDate;
+          if (expectedDateKeys.size === 0) return true;
+          const eventDateKey = normalizeDateKey(item.start_date);
+          return !eventDateKey || expectedDateKeys.has(eventDateKey);
         });
       }
 
@@ -210,45 +226,86 @@ export default function Trainings() {
         );
       }
 
-      const participantsByTrainingId =
-        await dataClient.entities.TrainingParticipant.filter({
-          training_id: trainingId,
-        });
+      const allParticipants = await dataClient.entities.TrainingParticipant.list(
+        "-enrollment_date"
+      );
+      const expectedTitle = normalizeComparisonText(trainingToDelete?.title);
+      const participantsToCleanup = allParticipants.filter((item) => {
+        const participantId = String(item?.id || "").trim();
+        if (!participantId) return false;
 
-      let legacyParticipants = [];
-      if (trainingToDelete?.title) {
-        const byTitle = await dataClient.entities.TrainingParticipant.filter(
-          { training_title: trainingToDelete.title },
-          "-enrollment_date"
-        );
-        legacyParticipants = byTitle.filter((item) => {
-          if (item?.training_id) return false;
-          if (!expectedStartDate) return true;
-          const participantDate = String(item?.training_date || "").trim();
-          return !participantDate || participantDate === expectedStartDate;
+        const participantTrainingId = String(item?.training_id || "").trim();
+        if (participantTrainingId && participantTrainingId === trainingId) {
+          return true;
+        }
+        if (participantTrainingId) return false;
+
+        if (!expectedTitle) return false;
+        if (normalizeComparisonText(item?.training_title) !== expectedTitle) {
+          return false;
+        }
+
+        if (expectedDateKeys.size === 0) return true;
+        const participantDateKey = normalizeDateKey(item?.training_date);
+        if (!participantDateKey) return true;
+        return expectedDateKeys.has(participantDateKey);
+      });
+
+      if (participantsToCleanup.length === 0 && expectedTitle) {
+        const hasAnotherTrainingWithSameTitle = (trainings || []).some((item) => {
+          if (String(item?.id || "").trim() === trainingId) return false;
+          return normalizeComparisonText(item?.title) === expectedTitle;
         });
+        if (!hasAnotherTrainingWithSameTitle) {
+          participantsToCleanup.push(
+            ...(allParticipants || []).filter((item) => {
+              const participantId = String(item?.id || "").trim();
+              if (!participantId) return false;
+              if (String(item?.training_id || "").trim()) return false;
+              return normalizeComparisonText(item?.training_title) === expectedTitle;
+            })
+          );
+        }
       }
 
-      const participantIdsToDelete = Array.from(
-        new Set(
-          [...participantsByTrainingId, ...legacyParticipants]
-            .map((item) => String(item?.id || "").trim())
-            .filter(Boolean)
-        )
+      const participantsById = new Map(
+        participantsToCleanup.map((item) => [String(item.id), item])
       );
+      const participantIdsToDelete = Array.from(participantsById.keys());
 
+      let deletedParticipantsCount = 0;
       if (participantIdsToDelete.length > 0) {
-        await Promise.all(
+        const deleteParticipantRecord = async (participantId) => {
+          const deleteResult = await dataClient.entities.TrainingParticipant.delete(
+            participantId
+          );
+          if (deleteResult?.deleted === false) {
+            throw new Error(
+              "Registro de participante não foi removido do banco de dados."
+            );
+          }
+          deletedParticipantsCount += 1;
+        };
+
+        const deleteResults = await Promise.allSettled(
           participantIdsToDelete.map((participantId) =>
-            dataClient.entities.TrainingParticipant.delete(participantId)
+            deleteParticipantRecord(participantId)
           )
         );
+        const failedDeleteCount = deleteResults.filter(
+          (result) => result.status === "rejected"
+        ).length;
+        if (failedDeleteCount > 0) {
+          throw new Error(
+            `Não foi possível remover ${failedDeleteCount} registro(s) de participante vinculados ao treinamento. Verifique as permissões do usuário.`
+          );
+        }
       }
 
       await dataClient.entities.Training.delete(trainingId);
       return {
         deletedEvents: relatedEvents.length,
-        deletedParticipants: participantIdsToDelete.length,
+        deletedParticipants: deletedParticipantsCount,
       };
     },
     onSuccess: ({ deletedEvents, deletedParticipants }) => {
@@ -261,7 +318,7 @@ export default function Trainings() {
         type: "success",
         message:
           deletedEvents > 0 || deletedParticipants > 0
-            ? `Treinamento excluído com ${deletedEvents} evento(s) da agenda e ${deletedParticipants} registro(s) de participante removidos.`
+            ? `Treinamento excluído com ${deletedEvents} evento(s) da agenda e ${deletedParticipants} inscrito(s) removido(s).`
             : "Treinamento excluído com sucesso.",
       });
     },

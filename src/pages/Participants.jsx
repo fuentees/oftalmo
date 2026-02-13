@@ -216,6 +216,30 @@ export default function Participants() {
     return byDate || null;
   };
 
+  const resolveTrainingIdForImportRow = (row) => {
+    const explicitTrainingId = String(row?.training_id || "").trim();
+    if (explicitTrainingId) return explicitTrainingId;
+
+    const titleKey = normalizeText(row?.training_title);
+    if (!titleKey) return "";
+    const candidates = trainingMaps.byTitle.get(titleKey) || [];
+    if (!candidates.length) return "";
+
+    const rowDateKey = normalizeDateKey(row?.training_date);
+    if (rowDateKey) {
+      const byDate = candidates.find((training) =>
+        getTrainingDateKeys(training).includes(rowDateKey)
+      );
+      return String(byDate?.id || "").trim();
+    }
+
+    if (candidates.length === 1) {
+      return String(candidates[0]?.id || "").trim();
+    }
+
+    return "";
+  };
+
   const resolveTrainingType = (participant) => {
     if (!participant) return null;
     const training = resolveTrainingFromParticipant(participant);
@@ -390,7 +414,13 @@ export default function Participants() {
       const normalizedParticipants = (participantsData || []).map((item) => ({
         ...item,
         training_date: normalizeDateValue(item.training_date),
-      }));
+      })).map((item) => {
+        const resolvedTrainingId = resolveTrainingIdForImportRow(item);
+        return {
+          ...item,
+          training_id: resolvedTrainingId || null,
+        };
+      });
       
       // Create participants
       await dataClient.entities.TrainingParticipant.bulkCreate(
