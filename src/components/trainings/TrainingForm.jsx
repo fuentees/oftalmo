@@ -3,6 +3,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { useGveMapping } from "@/hooks/useGveMapping";
 import { parseDateSafe } from "@/lib/date";
+import {
+  buildEventNotes,
+  extractTrainingIdFromEventNotes,
+} from "@/lib/eventMetadata";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -103,18 +107,6 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     setFormData(prev => ({ ...prev, code }));
   };
 
-  const ONLINE_LINK_PREFIX = "link_online:";
-
-  const buildEventNotes = (notes, link) => {
-    const cleanNotes = String(notes || "").trim();
-    const cleanLink = String(link || "").trim();
-    if (!cleanLink) return cleanNotes;
-    return [cleanNotes, `${ONLINE_LINK_PREFIX} ${cleanLink}`]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-  };
-
   const getTrainingDateRange = (dates = []) => {
     const parsedDates = (dates || [])
       .map((item) => {
@@ -171,18 +163,99 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       professional_names: professionalNames.length ? professionalNames : null,
       status: mapTrainingStatusToEvent(payload.status),
       color: "#6366f1",
-      notes: buildEventNotes(payload.notes, payload.online_link),
+      notes: buildEventNotes({
+        notes: payload.notes,
+        onlineLink: payload.online_link,
+      }),
     };
+  };
+
+  const normalizeComparisonText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const getPayloadStartDate = (payload) => {
+    if (Array.isArray(payload?.dates)) {
+      const firstWithDate = payload.dates.find((item) => item?.date);
+      if (firstWithDate?.date) return String(firstWithDate.date);
+    }
+    if (payload?.date) return String(payload.date);
+    return "";
+  };
+
+  const findLegacyTrainingEvent = (events, payload) => {
+    const expectedTitle = normalizeComparisonText(payload?.title);
+    const expectedStartDate = getPayloadStartDate(payload);
+    return (events || []).find((item) => {
+      if (!item?.id) return false;
+      if (String(item.type || "") !== "treinamento") return false;
+      if (extractTrainingIdFromEventNotes(item.notes)) return false;
+      const sameTitle =
+        normalizeComparisonText(item.title) === expectedTitle;
+      if (!sameTitle) return false;
+      if (!expectedStartDate) return true;
+      return String(item.start_date || "") === expectedStartDate;
+    });
   };
 
   const saveTraining = useMutation({
     mutationFn: async (/** @type {any} */ data) => {
       if (training) {
-        return dataClient.entities.Training.update(training.id, data);
+        const updated = await dataClient.entities.Training.update(
+          training.id,
+          data
+        );
+        try {
+          const trainingEvents = await dataClient.entities.Event.filter(
+            { type: "treinamento" },
+            "-start_date"
+          );
+          const linkedEvents = trainingEvents.filter(
+            (item) =>
+              extractTrainingIdFromEventNotes(item.notes) === training.id
+          );
+          const eventPayload = {
+            ...buildEventPayload(data),
+            notes: buildEventNotes({
+              notes: data.notes,
+              onlineLink: data.online_link,
+              trainingId: training.id,
+            }),
+          };
+          if (linkedEvents.length > 0) {
+            await Promise.all(
+              linkedEvents.map((item) =>
+                dataClient.entities.Event.update(item.id, eventPayload)
+              )
+            );
+          } else {
+            const legacyEvent =
+              findLegacyTrainingEvent(trainingEvents, training) ||
+              findLegacyTrainingEvent(trainingEvents, data);
+            if (legacyEvent?.id) {
+              await dataClient.entities.Event.update(legacyEvent.id, eventPayload);
+            } else {
+              await dataClient.entities.Event.create(eventPayload);
+            }
+          }
+        } catch (error) {
+          console.error("Falha ao sincronizar evento do treinamento:", error);
+        }
+        return updated;
       }
       const created = await dataClient.entities.Training.create(data);
       try {
-        await dataClient.entities.Event.create(buildEventPayload(data));
+        await dataClient.entities.Event.create({
+          ...buildEventPayload(data),
+          notes: buildEventNotes({
+            notes: data.notes,
+            onlineLink: data.online_link,
+            trainingId: created.id,
+          }),
+        });
       } catch (error) {
         console.error("Falha ao criar evento do treinamento:", error);
       }

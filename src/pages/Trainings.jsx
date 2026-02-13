@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { extractTrainingIdFromEventNotes } from "@/lib/eventMetadata";
 import { format } from "date-fns";
 import {
   Edit,
@@ -79,6 +80,7 @@ export default function Trainings() {
   const [showImport, setShowImport] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
+  const [deleteStatus, setDeleteStatus] = useState(null);
 
   const navigate = useNavigate();
   const autoUpdatedRef = React.useRef(new Set());
@@ -109,10 +111,75 @@ export default function Trainings() {
   });
 
   const deleteTraining = useMutation({
-    mutationFn: (id) => dataClient.entities.Training.delete(id),
-    onSuccess: () => {
+    mutationFn: async (trainingToDelete) => {
+      const trainingId = String(trainingToDelete?.id || "").trim();
+      if (!trainingId) {
+        throw new Error("Treinamento inválido para exclusão.");
+      }
+
+      const normalizeComparisonText = (value) =>
+        String(value ?? "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .trim();
+
+      const expectedStartDate = (() => {
+        if (Array.isArray(trainingToDelete?.dates)) {
+          const firstDate = trainingToDelete.dates.find((item) => item?.date)?.date;
+          if (firstDate) return String(firstDate);
+        }
+        if (trainingToDelete?.date) return String(trainingToDelete.date);
+        return "";
+      })();
+
+      const trainingEvents = await dataClient.entities.Event.filter(
+        { type: "treinamento" },
+        "-start_date"
+      );
+
+      let relatedEvents = trainingEvents.filter(
+        (item) => extractTrainingIdFromEventNotes(item.notes) === trainingId
+      );
+
+      if (relatedEvents.length === 0) {
+        const expectedTitle = normalizeComparisonText(trainingToDelete?.title);
+        relatedEvents = trainingEvents.filter((item) => {
+          if (extractTrainingIdFromEventNotes(item.notes)) return false;
+          const sameTitle =
+            normalizeComparisonText(item.title) === expectedTitle;
+          if (!sameTitle) return false;
+          if (!expectedStartDate) return true;
+          return String(item.start_date || "") === expectedStartDate;
+        });
+      }
+
+      if (relatedEvents.length > 0) {
+        await Promise.all(
+          relatedEvents.map((item) => dataClient.entities.Event.delete(item.id))
+        );
+      }
+
+      await dataClient.entities.Training.delete(trainingId);
+      return { deletedEvents: relatedEvents.length };
+    },
+    onSuccess: ({ deletedEvents }) => {
       queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
       setDeleteConfirm(null);
+      setDeleteStatus({
+        type: "success",
+        message:
+          deletedEvents > 0
+            ? `Treinamento e ${deletedEvents} evento(s) da agenda foram excluídos.`
+            : "Treinamento excluído com sucesso.",
+      });
+    },
+    onError: (error) => {
+      setDeleteStatus({
+        type: "error",
+        message: error?.message || "Não foi possível excluir o treinamento.",
+      });
     },
   });
 
@@ -272,7 +339,7 @@ export default function Trainings() {
         try {
           const parsed = JSON.parse(trimmed);
           return normalizeDatesArray(parsed);
-        } catch (error) {
+        } catch {
           // Ignora JSON inválido
         }
       }
@@ -733,6 +800,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
+                  setDeleteStatus(null);
                   setDeleteConfirm(row);
                 }}
                 className="text-red-600"
@@ -808,6 +876,26 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           </Button>
         </div>
       </div>
+
+      {deleteStatus && (
+        <Alert
+          className={
+            deleteStatus.type === "error"
+              ? "border-red-200 bg-red-50"
+              : "border-green-200 bg-green-50"
+          }
+        >
+          <AlertDescription
+            className={
+              deleteStatus.type === "error"
+                ? "text-red-800"
+                : "text-green-800"
+            }
+          >
+            {deleteStatus.message}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <DataTable
         columns={columns}
@@ -1040,13 +1128,14 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
               Tem certeza que deseja excluir o treinamento "{deleteConfirm?.title}"? 
+              O evento correspondente na agenda também será removido (quando vinculado).
               Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteTraining.mutate(deleteConfirm.id)}
+              onClick={() => deleteTraining.mutate(deleteConfirm)}
               className="bg-red-600 hover:bg-red-700"
             >
               Excluir

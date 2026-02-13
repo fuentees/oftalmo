@@ -2,6 +2,12 @@ import React, { useState, useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { useGveMapping } from "@/hooks/useGveMapping";
+import {
+  buildEventNotes,
+  extractOnlineLinkFromEventNotes,
+  extractTrainingIdFromEventNotes,
+  stripEventMetadata,
+} from "@/lib/eventMetadata";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +41,6 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     days: [],
   });
   const [vacationDays, setVacationDays] = useState(null);
-  const ONLINE_LINK_PREFIX = "link_online:";
   const weekDays = [
     { value: 0, label: "Dom" },
     { value: 1, label: "Seg" },
@@ -167,42 +172,11 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     return cleanMunicipality || (cleanGve ? `GVE ${cleanGve}` : "");
   };
 
-  const extractOnlineLink = (value) => {
-    if (!value) return "";
-    const lines = String(value).split("\n");
-    const match = lines.find((line) =>
-      line.trim().toLowerCase().startsWith(ONLINE_LINK_PREFIX)
-    );
-    if (!match) return "";
-    return match.slice(ONLINE_LINK_PREFIX.length).trim();
-  };
-
-  const stripOnlineLink = (value) => {
-    if (!value) return "";
-    return String(value)
-      .split("\n")
-      .filter(
-        (line) => !line.trim().toLowerCase().startsWith(ONLINE_LINK_PREFIX)
-      )
-      .join("\n")
-      .trim();
-  };
-
-  const mergeNotesWithLink = (notes, link) => {
-    const cleanNotes = stripOnlineLink(notes);
-    const cleanLink = String(link || "").trim();
-    if (!cleanLink) return cleanNotes;
-    return [cleanNotes, `${ONLINE_LINK_PREFIX} ${cleanLink}`]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-  };
-
   useEffect(() => {
     if (event) {
       const parsed = parseLocation(event.location);
-      const linkFromNotes = extractOnlineLink(event.notes);
-      const cleanNotes = stripOnlineLink(event.notes);
+      const linkFromNotes = extractOnlineLinkFromEventNotes(event.notes);
+      const cleanNotes = stripEventMetadata(event.notes);
       const link =
         String(event.online_link || "").trim() || linkFromNotes || "";
       if (event.type === "ferias" && event.start_date && event.end_date) {
@@ -302,7 +276,14 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     e.preventDefault();
     const resolvedGve = getGveByMunicipio(formData.municipality) || formData.gve;
     const location = formatLocation(formData.municipality, resolvedGve);
-    const notes = mergeNotesWithLink(formData.notes, formData.online_link);
+    const linkedTrainingId = event
+      ? extractTrainingIdFromEventNotes(event.notes)
+      : "";
+    const notes = buildEventNotes({
+      notes: formData.notes,
+      onlineLink: formData.online_link,
+      trainingId: linkedTrainingId,
+    });
     const payload = {
       ...formData,
       location,

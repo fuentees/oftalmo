@@ -13,6 +13,7 @@ import TrainingFeedback from './pages/TrainingFeedback';
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
+const NO_LAYOUT_PAGES = new Set(["PublicEnrollment", "CheckIn"]);
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
@@ -53,6 +54,17 @@ const AuthenticatedApp = () => {
   }
 
   // Render the main app
+  const renderPageWithOptionalLayout = (pageKey, PageComponent) => {
+    if (NO_LAYOUT_PAGES.has(pageKey)) {
+      return <PageComponent />;
+    }
+    return (
+      <LayoutWrapper currentPageName={pageKey}>
+        <PageComponent />
+      </LayoutWrapper>
+    );
+  };
+
   return (
     <Routes>
       <Route path="/" element={
@@ -64,11 +76,7 @@ const AuthenticatedApp = () => {
         <Route
           key={path}
           path={`/${path}`}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
+          element={renderPageWithOptionalLayout(path, Page)}
         />
       ))}
       <Route path="*" element={<PageNotFound />} />

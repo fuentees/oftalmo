@@ -1,10 +1,15 @@
 import React, { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import {
+  extractOnlineLinkFromEventNotes,
+  extractTrainingIdFromEventNotes,
+} from "@/lib/eventMetadata";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Plus,
   MapPin,
@@ -50,6 +55,7 @@ export default function Schedule() {
   const [showEventForm, setShowEventForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [deleteEvent, setDeleteEvent] = useState(null);
+  const [deleteStatus, setDeleteStatus] = useState(null);
   const [prefillDate, setPrefillDate] = useState(null);
   const statusUpdateRef = useRef(new Map());
 
@@ -63,16 +69,116 @@ export default function Schedule() {
     }
   }, []);
 
-  const { data: events = [], isLoading } = useQuery({
+  const { data: events = [] } = useQuery({
     queryKey: ["events"],
     queryFn: () => dataClient.entities.Event.list("-start_date"),
   });
 
+  const normalizeComparisonText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const getTrainingPrimaryDate = (training) => {
+    if (Array.isArray(training?.dates) && training.dates.length > 0) {
+      const firstDate = training.dates.find((item) => item?.date)?.date;
+      if (firstDate) return String(firstDate);
+    }
+    if (training?.date) return String(training.date);
+    return "";
+  };
+
+  const findLegacyTrainingFromEvent = (eventData, trainings) => {
+    if (!eventData || !Array.isArray(trainings)) return null;
+    const expectedTitle = normalizeComparisonText(eventData.title);
+    const expectedStartDate = String(eventData.start_date || "");
+    return (
+      trainings.find((item) => {
+        if (!item?.id) return false;
+        const sameTitle =
+          normalizeComparisonText(item.title) === expectedTitle;
+        if (!sameTitle) return false;
+        if (!expectedStartDate) return true;
+        return getTrainingPrimaryDate(item) === expectedStartDate;
+      }) || null
+    );
+  };
+
   const deleteMutation = useMutation({
-    mutationFn: (id) => dataClient.entities.Event.delete(id),
-    onSuccess: () => {
+    mutationFn: async (eventToDelete) => {
+      const eventId = String(eventToDelete?.id || "").trim();
+      if (!eventId) {
+        throw new Error("Evento inválido para exclusão.");
+      }
+
+      const deleteTrainingSafely = async (trainingId) => {
+        if (!trainingId) return false;
+        try {
+          await dataClient.entities.Training.delete(trainingId);
+          return true;
+        } catch (error) {
+          const message = String(error?.message || "").toLowerCase();
+          if (
+            message.includes("not found") ||
+            message.includes("no rows") ||
+            message.includes("0 rows")
+          ) {
+            return false;
+          }
+          throw error;
+        }
+      };
+
+      await dataClient.entities.Event.delete(eventId);
+
+      let deletedTraining = false;
+      let warningMessage = null;
+      const linkedTrainingId = extractTrainingIdFromEventNotes(
+        eventToDelete?.notes
+      );
+
+      if (linkedTrainingId) {
+        deletedTraining = await deleteTrainingSafely(linkedTrainingId);
+      } else if (eventToDelete?.type === "treinamento") {
+        const trainings = await dataClient.entities.Training.list("-date");
+        const legacyTraining = findLegacyTrainingFromEvent(
+          eventToDelete,
+          trainings
+        );
+        if (legacyTraining?.id) {
+          deletedTraining = await deleteTrainingSafely(legacyTraining.id);
+        }
+      }
+
+      if (eventToDelete?.type === "treinamento" && !deletedTraining) {
+        warningMessage =
+          "Evento excluído, mas nenhum treinamento vinculado foi encontrado para remover.";
+      }
+
+      return { deletedTraining, warningMessage };
+    },
+    onSuccess: ({ deletedTraining, warningMessage }) => {
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
       setDeleteEvent(null);
+      if (warningMessage) {
+        setDeleteStatus({ type: "warning", message: warningMessage });
+        return;
+      }
+      setDeleteStatus({
+        type: "success",
+        message: deletedTraining
+          ? "Evento e treinamento vinculado foram excluídos."
+          : "Evento excluído com sucesso.",
+      });
+    },
+    onError: (error) => {
+      setDeleteStatus({
+        type: "error",
+        message: error?.message || "Não foi possível excluir o evento.",
+      });
     },
   });
 
@@ -136,8 +242,6 @@ export default function Schedule() {
     cancelado: "bg-red-100 text-red-700",
   };
 
-  const ONLINE_LINK_PREFIX = "link_online:";
-
   const parseLocalDate = (value) => {
     if (!value) return null;
     if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -163,23 +267,13 @@ export default function Schedule() {
     return null;
   };
 
-  const extractOnlineLink = (value) => {
-    if (!value) return "";
-    const lines = String(value).split("\n");
-    const match = lines.find((line) =>
-      line.trim().toLowerCase().startsWith(ONLINE_LINK_PREFIX)
-    );
-    if (!match) return "";
-    return match.slice(ONLINE_LINK_PREFIX.length).trim();
-  };
-
   const getOnlineLink = (event) => {
     if (!event) return "";
     const direct = String(event.online_link || "").trim();
     if (direct) return direct;
-    const fromNotes = extractOnlineLink(event.notes);
+    const fromNotes = extractOnlineLinkFromEventNotes(event.notes);
     if (fromNotes) return fromNotes;
-    const fromDescription = extractOnlineLink(event.description);
+    const fromDescription = extractOnlineLinkFromEventNotes(event.description);
     return fromDescription;
   };
 
@@ -302,6 +396,30 @@ export default function Schedule() {
         actionIcon={Plus}
         onActionClick={handleNewEvent}
       />
+
+      {deleteStatus && (
+        <Alert
+          className={
+            deleteStatus.type === "error"
+              ? "border-red-200 bg-red-50"
+              : deleteStatus.type === "warning"
+                ? "border-amber-200 bg-amber-50"
+                : "border-green-200 bg-green-50"
+          }
+        >
+          <AlertDescription
+            className={
+              deleteStatus.type === "error"
+                ? "text-red-800"
+                : deleteStatus.type === "warning"
+                  ? "text-amber-800"
+                  : "text-green-800"
+            }
+          >
+            {deleteStatus.message}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
@@ -455,7 +573,10 @@ export default function Schedule() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setDeleteEvent(event)}
+                            onClick={() => {
+                              setDeleteStatus(null);
+                              setDeleteEvent(event);
+                            }}
                           >
                             <Trash2 className="h-3 w-3 text-red-600" />
                           </Button>
@@ -577,13 +698,16 @@ export default function Schedule() {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir Evento</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir "{deleteEvent?.title}"? Esta ação não pode ser desfeita.
+              Tem certeza que deseja excluir "{deleteEvent?.title}"?
+              {deleteEvent?.type === "treinamento" &&
+                " O treinamento vinculado também será removido."}{" "}
+              Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteMutation.mutate(deleteEvent.id)}
+              onClick={() => deleteMutation.mutate(deleteEvent)}
               className="bg-red-600 hover:bg-red-700"
             >
               Excluir
