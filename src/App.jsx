@@ -18,7 +18,7 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
   : <>{children}</>;
 
-const PUBLIC_ROUTES = ["/publicenrollment", "/enrollmentpage", "/checkin", "/enrolled", "/trainingfeedback"];
+const PUBLIC_ROUTES = ["/publicenrollment", "/checkin", "/trainingfeedback"];
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
