@@ -239,6 +239,22 @@ const ListMunicipalityGveMapping = async () => {
   return normalizeMunicipalityGveRows(data || []);
 };
 
+const InsertMunicipalityGveMappingRows = async (rows) => {
+  const payload = (rows || []).map((item) => ({
+    municipio: item.municipio,
+    gve: item.gve,
+  }));
+  const chunkSize = 500;
+  for (let i = 0; i < payload.length; i += chunkSize) {
+    const chunk = payload.slice(i, i + chunkSize);
+    if (!chunk.length) continue;
+    const { error } = await supabase
+      .from("municipality_gve_mappings")
+      .insert(chunk);
+    if (error) throw error;
+  }
+};
+
 const ReplaceMunicipalityGveMapping = async ({ mapping }) => {
   const normalizedRows = normalizeMunicipalityGveRows(mapping || []);
   if (normalizedRows.length === 0) {
@@ -246,31 +262,9 @@ const ReplaceMunicipalityGveMapping = async ({ mapping }) => {
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("municipality_gve_mappings")
-    .upsert(
-      normalizedRows.map((item) => ({
-        municipio: item.municipio,
-        gve: item.gve,
-      })),
-      { onConflict: "municipio" }
-    )
-    .select("id, municipio, gve");
-  if (error) throw error;
-  const savedRows = normalizeMunicipalityGveRows(data || []);
-  if (!savedRows.length) return [];
-  const idFilter = `(${savedRows
-    .map((item) => `"${String(item.id || "").trim()}"`)
-    .filter(Boolean)
-    .join(",")})`;
-  if (idFilter !== "()") {
-    const { error: deleteStaleError } = await supabase
-      .from("municipality_gve_mappings")
-      .delete()
-      .not("id", "in", idFilter);
-    if (deleteStaleError) throw deleteStaleError;
-  }
-  return savedRows;
+  await ClearMunicipalityGveMapping();
+  await InsertMunicipalityGveMappingRows(normalizedRows);
+  return ListMunicipalityGveMapping();
 };
 
 const ClearMunicipalityGveMapping = async () => {

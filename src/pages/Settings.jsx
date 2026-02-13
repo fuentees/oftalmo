@@ -984,6 +984,19 @@ export default function Settings() {
     return normalizeGveMappingRows(mapped);
   };
 
+  const getReadableErrorMessage = (error, fallback) => {
+    if (!error) return fallback;
+    if (typeof error === "string" && error.trim()) return error;
+    const parts = [
+      error?.message,
+      error?.details,
+      error?.hint,
+      error?.code ? `Código: ${error.code}` : "",
+    ].filter(Boolean);
+    if (parts.length) return parts.join(" | ");
+    return fallback;
+  };
+
   const handleMappingFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1016,7 +1029,7 @@ export default function Settings() {
     } catch (error) {
       setMappingStatus({
         type: "error",
-        message: error.message || "Erro ao importar planilha.",
+        message: getReadableErrorMessage(error, "Erro ao importar planilha."),
       });
     }
   };
@@ -1032,7 +1045,7 @@ export default function Settings() {
     } catch (error) {
       setMappingStatus({
         type: "error",
-        message: error.message || "Erro ao remover planilha.",
+        message: getReadableErrorMessage(error, "Erro ao remover planilha."),
       });
     }
   };
