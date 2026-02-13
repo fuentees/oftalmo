@@ -57,18 +57,40 @@ export default function Dashboard() {
     queryFn: () => dataClient.entities.Event.list("-start_date"),
   });
 
+  const currentYear = new Date().getFullYear();
+
+  const getYearFromDateValue = (value) => {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.getFullYear();
+    }
+    const text = String(value).trim();
+    if (!text) return null;
+    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      return Number(match[1]);
+    }
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.getFullYear();
+  };
+
+  const isTrainingInCurrentYear = (training) => {
+    if (!training) return false;
+    const mainDateYear = getYearFromDateValue(training.date);
+    if (mainDateYear === currentYear) return true;
+    const dates = Array.isArray(training.dates) ? training.dates : [];
+    return dates.some((item) => {
+      const itemDate = typeof item === "object" ? item?.date : item;
+      return getYearFromDateValue(itemDate) === currentYear;
+    });
+  };
+
   // Calculate stats
   const lowStockItems = materials.filter(
     (m) => m.current_stock && m.minimum_stock && m.current_stock <= m.minimum_stock
   );
-  
-  const thisMonthTrainings = trainings.filter((t) => {
-    const trainingDate = new Date(t.date);
-    const now = new Date();
-    return trainingDate.getMonth() === now.getMonth() && 
-           trainingDate.getFullYear() === now.getFullYear();
-  });
-  
+
   const normalizeText = (value) =>
     String(value ?? "")
       .normalize("NFD")
@@ -114,14 +136,42 @@ export default function Dashboard() {
   };
 
   const totalTrained = useMemo(() => {
+    const trainingsInCurrentYear = trainings.filter(isTrainingInCurrentYear);
+    const currentYearTrainingIds = new Set(
+      trainingsInCurrentYear
+        .map((training) => String(training?.id || "").trim())
+        .filter(Boolean)
+    );
+
     const unique = [];
     participants.forEach((participant) => {
       if (!participant) return;
+      const trainingId = String(participant.training_id || "").trim();
+      const participantTrainingYear = getYearFromDateValue(participant.training_date);
+      const isParticipantFromCurrentYear =
+        (trainingId && currentYearTrainingIds.has(trainingId)) ||
+        participantTrainingYear === currentYear;
+      if (!isParticipantFromCurrentYear) return;
       if (unique.some((existing) => isSameParticipant(existing, participant))) return;
       unique.push(participant);
     });
     return unique.length;
-  }, [participants]);
+  }, [participants, trainings]);
+
+  const trainingsInCurrentYearCount = useMemo(
+    () => trainings.filter(isTrainingInCurrentYear).length,
+    [trainings]
+  );
+
+  const currentYearFieldWorkCount = useMemo(() => {
+    return events.filter((event) => {
+      if (!event || event.type !== "trabalho_campo") return false;
+      if (event.status === "cancelado") return false;
+      const startYear = getYearFromDateValue(event.start_date);
+      const endYear = getYearFromDateValue(event.end_date || event.start_date);
+      return startYear === currentYear || endYear === currentYear;
+    }).length;
+  }, [events]);
 
   const parseLocalDate = (value) => {
     if (!value) return null;
@@ -398,7 +448,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatsCard
           title="Materiais em Estoque"
           value={materials.length}
@@ -412,16 +462,22 @@ export default function Dashboard() {
           color={lowStockItems.length > 0 ? "red" : "green"}
         />
         <StatsCard
-          title="Treinamentos/Mês"
-          value={thisMonthTrainings.length}
+          title="Treinamentos (Ano Atual)"
+          value={loadingTrainings ? "..." : trainingsInCurrentYearCount}
           icon={GraduationCap}
           color="purple"
         />
         <StatsCard
-          title="Total de Pessoas Treinadas"
-          value={loadingParticipants ? "..." : totalTrained}
+          title="Pessoas Treinadas (Ano Atual)"
+          value={loadingParticipants || loadingTrainings ? "..." : totalTrained}
           icon={Users}
           color="green"
+        />
+        <StatsCard
+          title="Trabalho de Campo (Ano Atual)"
+          value={loadingEvents ? "..." : currentYearFieldWorkCount}
+          icon={MapPin}
+          color="amber"
         />
       </div>
 
