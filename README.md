@@ -23,6 +23,8 @@ armazenamento de arquivos.
    VITE_ALLOW_PUBLIC_SIGNUP=false
    # Opcional: e-mails com perfil admin (separados por vírgula)
    VITE_ADMIN_EMAILS=admin@seuorgao.gov.br
+   # Opcional: nome da função de gestão de usuários admin
+   VITE_SUPABASE_USER_ADMIN_FUNCTION=user-admin
    # Opcional: função de email no Supabase
    VITE_SUPABASE_EMAIL_FUNCTION=send-email
    # Opcional: webhook externo para envio de email
@@ -66,6 +68,14 @@ armazenamento de arquivos.
 4. Para definir perfil de admin, use uma das opções:
    - informar o e-mail em `VITE_ADMIN_EMAILS`, ou
    - definir `role: "admin"` nos metadados do usuário no Supabase.
+5. Deploy da função de gestão de usuários (admin):
+   ```bash
+   supabase functions deploy user-admin
+   ```
+   Se necessário, configure segredo para lista de admins por e-mail:
+   ```bash
+   supabase secrets set ADMIN_EMAILS=admin@seuorgao.gov.br
+   ```
 
 > Importante: desativar apenas no frontend não impede chamadas diretas à API de
 > autenticação. Para segurança real, desative o signup no painel do Supabase.

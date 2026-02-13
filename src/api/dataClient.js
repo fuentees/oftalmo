@@ -7,6 +7,8 @@ const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
 const EMAIL_FUNCTION_NAME =
   import.meta.env.VITE_SUPABASE_EMAIL_FUNCTION || "send-email";
+const USER_ADMIN_FUNCTION_NAME =
+  import.meta.env.VITE_SUPABASE_USER_ADMIN_FUNCTION || "user-admin";
 const EMAIL_WEBHOOK_URL = import.meta.env.VITE_EMAIL_WEBHOOK_URL;
 const EMAIL_SETTINGS_KEY = "emailSettings";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -404,6 +406,49 @@ const ExtractDataFromUploadedFile = async ({ file_url }) => {
   }
 };
 
+const callUserAdminFunction = async (action, payload = {}) => {
+  const { data, error } = await supabase.functions.invoke(
+    USER_ADMIN_FUNCTION_NAME,
+    {
+      body: {
+        action,
+        ...payload,
+      },
+    }
+  );
+  if (error) throw error;
+  if (data?.error) {
+    throw new Error(String(data.error));
+  }
+  return data || {};
+};
+
+const ListManagedUsers = async () => callUserAdminFunction("list_users");
+
+const InviteManagedUser = async ({ email, full_name, role }) =>
+  callUserAdminFunction("invite_user", { email, full_name, role });
+
+const CreateManagedUser = async ({
+  email,
+  password,
+  full_name,
+  role,
+  email_confirm,
+}) =>
+  callUserAdminFunction("create_user", {
+    email,
+    password,
+    full_name,
+    role,
+    email_confirm,
+  });
+
+const SetManagedUserRole = async ({ user_id, role }) =>
+  callUserAdminFunction("set_role", { user_id, role });
+
+const SetManagedUserActive = async ({ user_id, active }) =>
+  callUserAdminFunction("set_active", { user_id, active });
+
 const getWebhookUrl = (value) => {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -643,6 +688,11 @@ export const dataClient = {
       ReplaceMunicipalityGveMapping,
       ClearMunicipalityGveMapping,
       DeleteTrainingParticipantsByTraining,
+      ListManagedUsers,
+      InviteManagedUser,
+      CreateManagedUser,
+      SetManagedUserRole,
+      SetManagedUserActive,
     },
   },
   appLogs: {
