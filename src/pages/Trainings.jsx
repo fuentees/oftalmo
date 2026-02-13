@@ -643,14 +643,26 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       header: "Data(s)",
       render: (row) => {
         if (Array.isArray(row.dates) && row.dates.length > 0) {
-          const formattedDate = formatDate(row.dates[0]?.date);
+          const parsedDates = row.dates
+            .map((item) => parseDateSafe(item?.date))
+            .filter((date) => !Number.isNaN(date.getTime()))
+            .sort((a, b) => a.getTime() - b.getTime());
+          if (parsedDates.length === 0) return "-";
+          const startDate = formatDate(parsedDates[0]);
+          const endDate = formatDate(parsedDates[parsedDates.length - 1]);
+          const isSingleDay = startDate === endDate;
           return (
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-slate-400" />
               <div>
-                <div>{formattedDate}</div>
-                {row.dates.length > 1 && formattedDate !== "-" && (
-                  <span className="text-xs text-slate-500">+{row.dates.length - 1} data(s)</span>
+                <div>
+                  {startDate}
+                  {!isSingleDay && ` até ${endDate}`}
+                </div>
+                {row.dates.length > 1 && (
+                  <span className="text-xs text-slate-500">
+                    {row.dates.length} data(s)
+                  </span>
                 )}
               </div>
             </div>

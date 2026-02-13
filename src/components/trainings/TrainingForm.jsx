@@ -22,6 +22,151 @@ import { Loader2, X, Video, Plus, XCircle, Mic } from "lucide-react";
 import { format, addDays, addWeeks } from "date-fns";
 
 export default function TrainingForm({ training, onClose, professionals = [] }) {
+  const buildDefaultRangeConfig = () => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    return {
+      start_date: today,
+      end_date: today,
+      start_time: "08:00",
+      end_time: "12:00",
+    };
+  };
+
+  const parseTimeToMinutes = (value) => {
+    const raw = String(value || "").trim();
+    const match = raw.match(/^(\d{2}):(\d{2})$/);
+    if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (
+      !Number.isFinite(hour) ||
+      !Number.isFinite(minute) ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59
+    ) {
+      return null;
+    }
+    return hour * 60 + minute;
+  };
+
+  const buildRangeDates = ({ start_date, end_date, start_time, end_time }) => {
+    const start = start_date ? parseDateSafe(start_date) : null;
+    const end = end_date ? parseDateSafe(end_date) : null;
+    if (
+      !start ||
+      !end ||
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime())
+    ) {
+      return [];
+    }
+
+    const first =
+      start.getTime() <= end.getTime()
+        ? new Date(start.getTime())
+        : new Date(end.getTime());
+    const last =
+      start.getTime() <= end.getTime()
+        ? new Date(end.getTime())
+        : new Date(start.getTime());
+
+    const dates = [];
+    let cursor = new Date(first.getTime());
+    let safetyCounter = 0;
+    while (cursor.getTime() <= last.getTime() && safetyCounter < 370) {
+      dates.push({
+        date: format(cursor, "yyyy-MM-dd"),
+        start_time: start_time || "",
+        end_time: end_time || "",
+      });
+      cursor = addDays(cursor, 1);
+      safetyCounter += 1;
+    }
+    return dates;
+  };
+
+  const areDateListsEqual = (a, b) => {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      const itemA = a[i] || {};
+      const itemB = b[i] || {};
+      if (
+        String(itemA.date || "") !== String(itemB.date || "") ||
+        String(itemA.start_time || "") !== String(itemB.start_time || "") ||
+        String(itemA.end_time || "") !== String(itemB.end_time || "")
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const inferScheduleFromDates = (dates) => {
+    const sanitized = (Array.isArray(dates) ? dates : [])
+      .filter((item) => item?.date)
+      .map((item) => ({
+        date: String(item.date),
+        start_time: String(item.start_time || ""),
+        end_time: String(item.end_time || ""),
+      }));
+    if (sanitized.length === 0) {
+      return {
+        mode: "range",
+        range: buildDefaultRangeConfig(),
+      };
+    }
+    const sorted = [...sanitized].sort((a, b) => {
+      const dateA = parseDateSafe(a.date);
+      const dateB = parseDateSafe(b.date);
+      return dateA.getTime() - dateB.getTime();
+    });
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const sameTime = sorted.every(
+      (item) =>
+        String(item.start_time || "") === String(first.start_time || "") &&
+        String(item.end_time || "") === String(first.end_time || "")
+    );
+    const sequential = sorted.every((item, index) => {
+      if (index === 0) return true;
+      const prev = parseDateSafe(sorted[index - 1].date);
+      const curr = parseDateSafe(item.date);
+      if (Number.isNaN(prev.getTime()) || Number.isNaN(curr.getTime())) {
+        return false;
+      }
+      const diffDays = Math.round((curr.getTime() - prev.getTime()) / 86400000);
+      return diffDays === 1;
+    });
+
+    return {
+      mode: sameTime && sequential ? "range" : "custom",
+      range: {
+        start_date: String(first.date || ""),
+        end_date: String(last.date || first.date || ""),
+        start_time: String(first.start_time || "08:00"),
+        end_time: String(first.end_time || "12:00"),
+      },
+    };
+  };
+
+  const calculateDurationHours = (dates) => {
+    const totalMinutes = (Array.isArray(dates) ? dates : []).reduce(
+      (acc, item) => {
+        const startMinutes = parseTimeToMinutes(item?.start_time);
+        const endMinutes = parseTimeToMinutes(item?.end_time);
+        if (startMinutes === null || endMinutes === null) return acc;
+        let diff = endMinutes - startMinutes;
+        if (diff < 0) diff += 24 * 60;
+        return acc + diff;
+      },
+      0
+    );
+    return Math.round((totalMinutes / 60) * 100) / 100;
+  };
+
   const [formData, setFormData] = useState({
     title: "",
     code: "",
@@ -44,6 +189,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     notes: "",
   });
   const [isOnlineTraining, setIsOnlineTraining] = useState(false);
+  const [dateMode, setDateMode] = useState("range");
+  const [rangeConfig, setRangeConfig] = useState(buildDefaultRangeConfig());
 
   const [repeatConfig, setRepeatConfig] = useState({
     enabled: false,
@@ -64,6 +211,9 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         ? training.dates.filter((dateItem) => dateItem?.date)
         : [];
       const parsedLocation = parseLocation(training.location);
+      const scheduleFromTraining = inferScheduleFromDates(
+        normalizedDates.length > 0 ? normalizedDates : defaultDates
+      );
 
       setFormData({
         title: training.title || "",
@@ -71,7 +221,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         type: training.type || "teorico",
         description: training.description || "",
         dates: normalizedDates.length > 0 ? normalizedDates : defaultDates,
-        duration_hours: training.duration_hours || 4,
+        duration_hours:
+          Number.isFinite(Number(training.duration_hours))
+            ? Number(training.duration_hours)
+            : 0,
         location: training.location || "",
         municipality: parsedLocation.municipality,
         gve: parsedLocation.gve,
@@ -87,12 +240,46 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         notes: training.notes || "",
       });
       setIsOnlineTraining(Boolean(String(training.online_link || "").trim()));
+      setDateMode(scheduleFromTraining.mode);
+      setRangeConfig(scheduleFromTraining.range);
     } else {
       // Generate code for new training
       generateTrainingCode();
       setIsOnlineTraining(false);
+      setDateMode("range");
+      setRangeConfig(buildDefaultRangeConfig());
+      setFormData((prev) => ({
+        ...prev,
+        dates: buildRangeDates(buildDefaultRangeConfig()),
+        duration_hours: 4,
+      }));
     }
   }, [training]);
+
+  useEffect(() => {
+    if (dateMode !== "range") return;
+    const generatedDates = buildRangeDates(rangeConfig);
+    if (!generatedDates.length) return;
+    setFormData((prev) => {
+      if (areDateListsEqual(prev.dates || [], generatedDates)) return prev;
+      return {
+        ...prev,
+        dates: generatedDates,
+      };
+    });
+  }, [dateMode, rangeConfig]);
+
+  useEffect(() => {
+    const nextDuration = calculateDurationHours(formData.dates);
+    setFormData((prev) => {
+      const current = Number(prev.duration_hours || 0);
+      if (current === nextDuration) return prev;
+      return {
+        ...prev,
+        duration_hours: nextDuration,
+      };
+    });
+  }, [formData.dates]);
 
   const generateTrainingCode = async () => {
     const currentYear = new Date().getFullYear();
@@ -276,9 +463,12 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     
     // Auto-calculate status based on dates
     const now = new Date();
-    const firstDate = formData.dates[0] ? parseDateSafe(formData.dates[0].date) : null;
-    const lastDate = formData.dates[formData.dates.length - 1]
-      ? parseDateSafe(formData.dates[formData.dates.length - 1].date)
+    const dateRange = getTrainingDateRange(formData.dates || []);
+    const firstDate = dateRange.start_date
+      ? parseDateSafe(dateRange.start_date)
+      : null;
+    const lastDate = dateRange.end_date
+      ? parseDateSafe(dateRange.end_date)
       : null;
     
     let autoStatus = "agendado";
@@ -297,13 +487,14 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     const normalizedOnlineLink = isOnlineTraining
       ? String(formData.online_link || "").trim()
       : null;
+    const durationHours = Number(formData.duration_hours);
     const dataToSave = {
       ...restForm,
       location: isOnlineTraining ? "" : buildLocation(municipality, resolvedGve),
       online_link: normalizedOnlineLink,
-      date: formData.dates?.[0]?.date || null,
+      date: dateRange.start_date || null,
       status: autoStatus,
-      duration_hours: formData.duration_hours ? Number(formData.duration_hours) : null,
+      duration_hours: Number.isFinite(durationHours) ? durationHours : null,
       max_participants: formData.max_participants ? Number(formData.max_participants) : null,
       validity_months: formData.validity_months ? Number(formData.validity_months) : null,
       coordinator_email: formData.coordinator_email || null,
@@ -479,6 +670,42 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     setRepeatConfig(prev => ({ ...prev, enabled: false }));
   };
 
+  const handleDateModeChange = (mode) => {
+    if (mode === dateMode) return;
+    if (mode === "range") {
+      const inferred = inferScheduleFromDates(formData.dates);
+      setRangeConfig(inferred.range);
+      setRepeatConfig((prev) => ({ ...prev, enabled: false }));
+      setDateMode("range");
+      return;
+    }
+    setDateMode("custom");
+  };
+
+  const handleRangeChange = (field, value) => {
+    setRangeConfig((prev) => {
+      const next = { ...prev, [field]: value };
+      const start = next.start_date ? parseDateSafe(next.start_date) : null;
+      const end = next.end_date ? parseDateSafe(next.end_date) : null;
+      if (
+        start &&
+        end &&
+        !Number.isNaN(start.getTime()) &&
+        !Number.isNaN(end.getTime()) &&
+        start.getTime() > end.getTime()
+      ) {
+        if (field === "start_date") {
+          next.end_date = next.start_date;
+        } else if (field === "end_date") {
+          next.start_date = next.end_date;
+        }
+      }
+      return next;
+    });
+  };
+
+  const currentDateRange = getTrainingDateRange(formData.dates || []);
+
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
@@ -532,104 +759,184 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>Datas e Horários *</Label>
-          <div className="flex gap-2">
-            <Button 
-              type="button" 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setRepeatConfig(prev => ({ ...prev, enabled: !prev.enabled }))}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Label>Programação do Treinamento *</Label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={dateMode === "range" ? "default" : "outline"}
+              onClick={() => handleDateModeChange("range")}
             >
-              🔁 Repetir
+              Período (Início/Fim)
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={addDate}>
-              + Adicionar Data
+            <Button
+              type="button"
+              size="sm"
+              variant={dateMode === "custom" ? "default" : "outline"}
+              onClick={() => handleDateModeChange("custom")}
+            >
+              Incluir Datas
             </Button>
           </div>
         </div>
 
-        {repeatConfig.enabled && (
-          <div className="p-3 border rounded-lg bg-blue-50 space-y-3">
-            <div className="grid grid-cols-3 gap-2">
+        {dateMode === "range" ? (
+          <div className="p-3 border rounded-lg bg-slate-50 space-y-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div className="space-y-1">
-                <Label className="text-xs">Frequência</Label>
-                <Select 
-                  value={repeatConfig.type} 
-                  onValueChange={(v) => setRepeatConfig(prev => ({ ...prev, type: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="daily">Diariamente</SelectItem>
-                    <SelectItem value="weekly">Semanalmente</SelectItem>
-                    <SelectItem value="biweekly">Quinzenalmente</SelectItem>
-                    <SelectItem value="monthly">Mensalmente</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Ocorrências</Label>
-                <Input
-                  type="number"
-                  min="2"
-                  max="30"
-                  value={repeatConfig.occurrences}
-                  onChange={(e) => setRepeatConfig(prev => ({ ...prev, occurrences: Number(e.target.value) }))}
-                />
-              </div>
-              <div className="flex items-end">
-                <Button type="button" onClick={generateRepeatDates} size="sm" className="w-full">
-                  Gerar Datas
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {formData.dates.map((dateItem, index) => (
-          <div key={index} className="flex gap-2 items-start p-3 border rounded-lg bg-slate-50">
-            <div className="flex-1 grid grid-cols-3 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Data</Label>
+                <Label className="text-xs">Data de Início</Label>
                 <Input
                   type="date"
-                  value={dateItem.date}
-                  onChange={(e) => updateDate(index, "date", e.target.value)}
+                  value={rangeConfig.start_date}
+                  onChange={(e) => handleRangeChange("start_date", e.target.value)}
                   required
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Início</Label>
+                <Label className="text-xs">Data de Fim</Label>
                 <Input
-                  type="time"
-                  value={dateItem.start_time}
-                  onChange={(e) => updateDate(index, "start_time", e.target.value)}
+                  type="date"
+                  value={rangeConfig.end_date}
+                  onChange={(e) => handleRangeChange("end_date", e.target.value)}
+                  required
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Término</Label>
+                <Label className="text-xs">Horário de Início</Label>
                 <Input
                   type="time"
-                  value={dateItem.end_time}
-                  onChange={(e) => updateDate(index, "end_time", e.target.value)}
+                  value={rangeConfig.start_time}
+                  onChange={(e) => handleRangeChange("start_time", e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Horário de Término</Label>
+                <Input
+                  type="time"
+                  value={rangeConfig.end_time}
+                  onChange={(e) => handleRangeChange("end_time", e.target.value)}
+                  required
                 />
               </div>
             </div>
-            {formData.dates.length > 1 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => removeDate(index)}
-                className="text-red-600 mt-5"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
+            <p className="text-xs text-slate-500">
+              {formData.dates.length} data(s) gerada(s) automaticamente para o período.
+            </p>
           </div>
-        ))}
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-slate-600">
+                Datas alternadas e horários diferentes
+              </Label>
+              <div className="flex gap-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setRepeatConfig(prev => ({ ...prev, enabled: !prev.enabled }))}
+                >
+                  🔁 Repetir
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={addDate}>
+                  + Adicionar Data
+                </Button>
+              </div>
+            </div>
+
+            {repeatConfig.enabled && (
+              <div className="p-3 border rounded-lg bg-blue-50 space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Frequência</Label>
+                    <Select 
+                      value={repeatConfig.type} 
+                      onValueChange={(v) => setRepeatConfig(prev => ({ ...prev, type: v }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Diariamente</SelectItem>
+                        <SelectItem value="weekly">Semanalmente</SelectItem>
+                        <SelectItem value="biweekly">Quinzenalmente</SelectItem>
+                        <SelectItem value="monthly">Mensalmente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Ocorrências</Label>
+                    <Input
+                      type="number"
+                      min="2"
+                      max="30"
+                      value={repeatConfig.occurrences}
+                      onChange={(e) => setRepeatConfig(prev => ({ ...prev, occurrences: Number(e.target.value) }))}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="button" onClick={generateRepeatDates} size="sm" className="w-full">
+                      Gerar Datas
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {formData.dates.map((dateItem, index) => (
+              <div key={index} className="flex gap-2 items-start p-3 border rounded-lg bg-slate-50">
+                <div className="flex-1 grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Data</Label>
+                    <Input
+                      type="date"
+                      value={dateItem.date}
+                      onChange={(e) => updateDate(index, "date", e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Início</Label>
+                    <Input
+                      type="time"
+                      value={dateItem.start_time}
+                      onChange={(e) => updateDate(index, "start_time", e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Término</Label>
+                    <Input
+                      type="time"
+                      value={dateItem.end_time}
+                      onChange={(e) => updateDate(index, "end_time", e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                {formData.dates.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeDate(index)}
+                    className="text-red-600 mt-5"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </>
+        )}
+
+        {currentDateRange.start_date && currentDateRange.end_date && (
+          <p className="text-xs text-slate-500">
+            Início: {currentDateRange.start_date} • Fim: {currentDateRange.end_date}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -641,8 +948,12 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             min="0"
             step="0.5"
             value={formData.duration_hours}
-            onChange={(e) => handleChange("duration_hours", Number(e.target.value))}
+            readOnly
+            className="bg-slate-50"
           />
+          <p className="text-xs text-slate-500">
+            Calculada automaticamente com base nos horários informados.
+          </p>
         </div>
       </div>
 
