@@ -43,6 +43,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     validity_months: "",
     notes: "",
   });
+  const [isOnlineTraining, setIsOnlineTraining] = useState(false);
 
   const [repeatConfig, setRepeatConfig] = useState({
     enabled: false,
@@ -85,9 +86,11 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         validity_months: training.validity_months || "",
         notes: training.notes || "",
       });
+      setIsOnlineTraining(Boolean(String(training.online_link || "").trim()));
     } else {
       // Generate code for new training
       generateTrainingCode();
+      setIsOnlineTraining(false);
     }
   }, [training]);
 
@@ -288,10 +291,16 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     }
     
     const { municipality, gve, ...restForm } = formData;
-    const resolvedGve = getGveByMunicipio(municipality) || gve;
+    const resolvedGve = isOnlineTraining
+      ? ""
+      : getGveByMunicipio(municipality) || gve;
+    const normalizedOnlineLink = isOnlineTraining
+      ? String(formData.online_link || "").trim()
+      : null;
     const dataToSave = {
       ...restForm,
-      location: buildLocation(municipality, resolvedGve),
+      location: isOnlineTraining ? "" : buildLocation(municipality, resolvedGve),
+      online_link: normalizedOnlineLink,
       date: formData.dates?.[0]?.date || null,
       status: autoStatus,
       duration_hours: formData.duration_hours ? Number(formData.duration_hours) : null,
@@ -635,61 +644,90 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             onChange={(e) => handleChange("duration_hours", Number(e.target.value))}
           />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="municipality">Município</Label>
-          <Input
-            id="municipality"
-            list="municipios-treinamento"
-            value={formData.municipality}
-            onChange={(e) => {
-              const nextValue = e.target.value;
-              const autoGve = getGveByMunicipio(nextValue);
-              setFormData((prev) => ({
-                ...prev,
-                municipality: nextValue,
-                gve: autoGve || "",
-              }));
-            }}
-            placeholder="Digite o município"
-          />
-          {municipalityOptions.length > 0 && (
-            <datalist id="municipios-treinamento">
-              {municipalityOptions.map((item) => (
-                <option key={item} value={item} />
-              ))}
-            </datalist>
-          )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-sm">Modalidade do treinamento</Label>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant={isOnlineTraining ? "default" : "outline"}
+            onClick={() => setIsOnlineTraining(true)}
+            className="h-9"
+          >
+            <Video className="h-4 w-4 mr-2" />
+            Online
+          </Button>
+          <Button
+            type="button"
+            variant={!isOnlineTraining ? "default" : "outline"}
+            onClick={() => setIsOnlineTraining(false)}
+            className="h-9"
+          >
+            Presencial
+          </Button>
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="gve">GVE</Label>
-        <Input
-          id="gve"
-          value={getGveByMunicipio(formData.municipality) || formData.gve}
-          onChange={(e) =>
-            setFormData((prev) => ({
-              ...prev,
-              gve: e.target.value,
-            }))
-          }
-          placeholder="GVE"
-          readOnly={Boolean(getGveByMunicipio(formData.municipality))}
-        />
-      </div>
+      {isOnlineTraining ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="online_link" className="flex items-center gap-2 text-sm">
+            <Video className="h-4 w-4 text-blue-600" />
+            Link da Reunião Online (Zoom/Teams) *
+          </Label>
+          <Input
+            id="online_link"
+            value={formData.online_link}
+            onChange={(e) => handleChange("online_link", e.target.value)}
+            placeholder="https://zoom.us/j/... ou https://teams.microsoft.com/..."
+            required={isOnlineTraining}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor="municipality">Município</Label>
+            <Input
+              id="municipality"
+              list="municipios-treinamento"
+              value={formData.municipality}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                const autoGve = getGveByMunicipio(nextValue);
+                setFormData((prev) => ({
+                  ...prev,
+                  municipality: nextValue,
+                  gve: autoGve || "",
+                }));
+              }}
+              placeholder="Digite o município"
+            />
+            {municipalityOptions.length > 0 && (
+              <datalist id="municipios-treinamento">
+                {municipalityOptions.map((item) => (
+                  <option key={item} value={item} />
+                ))}
+              </datalist>
+            )}
+          </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="online_link" className="flex items-center gap-2 text-sm">
-          <Video className="h-4 w-4 text-blue-600" />
-          Link da Reunião Online (Zoom/Teams)
-        </Label>
-        <Input
-          id="online_link"
-          value={formData.online_link}
-          onChange={(e) => handleChange("online_link", e.target.value)}
-          placeholder="https://zoom.us/j/... ou https://teams.microsoft.com/..."
-        />
-      </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="gve">GVE</Label>
+            <Input
+              id="gve"
+              value={getGveByMunicipio(formData.municipality) || formData.gve}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  gve: e.target.value,
+                }))
+              }
+              placeholder="GVE"
+              readOnly={Boolean(getGveByMunicipio(formData.municipality))}
+            />
+          </div>
+        </>
+      )}
 
       <div className="space-y-1.5">
         <Label htmlFor="coordinator">Coordenador</Label>
