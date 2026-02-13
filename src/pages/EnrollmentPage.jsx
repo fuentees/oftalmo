@@ -382,10 +382,13 @@ export default function EnrollmentPage() {
       .join(" ");
   };
 
-  const formatFieldValue = (field, value) => {
+  const formatFieldValue = (field, value, options = {}) => {
     if (!value) return value;
+    const { liveInput = false } = options;
     const key = field.field_key?.toLowerCase() || "";
-    if (key === "name") return formatPersonName(value);
+    if (key === "name") {
+      return liveInput ? String(value ?? "") : formatPersonName(value);
+    }
     if (key.includes("cpf")) return formatCpf(value);
     if (key.includes("rg")) return formatRg(value);
     if (
@@ -889,7 +892,20 @@ export default function EnrollmentPage() {
 
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
-    enrollMutation.mutate(formData);
+    const normalizedFormData = { ...formData };
+    activeEnrollmentFields.forEach((field) => {
+      const rawValue = formData[field.field_key];
+      if (rawValue === undefined || rawValue === null) return;
+      if (typeof rawValue !== "string") {
+        normalizedFormData[field.field_key] = rawValue;
+        return;
+      }
+      const trimmed = rawValue.trim();
+      normalizedFormData[field.field_key] = trimmed
+        ? formatFieldValue(field, trimmed)
+        : "";
+    });
+    enrollMutation.mutate(normalizedFormData);
   };
 
   const handleCopyEnrollmentLink = () => {
@@ -1725,7 +1741,9 @@ export default function EnrollmentPage() {
                                       }
                                       readOnly={isGveField && Boolean(resolvedGve)}
                                       onChange={(e) => {
-                                        const nextValue = formatFieldValue(field, e.target.value);
+                                        const nextValue = formatFieldValue(field, e.target.value, {
+                                          liveInput: true,
+                                        });
                                         if (isMunicipalityField) {
                                           const gveValue = getGveByMunicipio(nextValue);
                                           setFormData((prev) => ({
@@ -2079,7 +2097,9 @@ export default function EnrollmentPage() {
                                 }
                                 readOnly={isGveField && Boolean(resolvedGve)}
                                 onChange={(e) => {
-                                  const nextValue = formatFieldValue(field, e.target.value);
+                                  const nextValue = formatFieldValue(field, e.target.value, {
+                                    liveInput: true,
+                                  });
                                   if (isMunicipalityField) {
                                     const gveValue = getGveByMunicipio(nextValue);
                                     setEditFormData((prev) => ({
