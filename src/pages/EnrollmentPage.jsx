@@ -754,15 +754,44 @@ export default function EnrollmentPage() {
 
   const deleteParticipant = useMutation({
     mutationFn: async (/** @type {any} */ id) => {
+      if (!id) {
+        throw new Error("Inscrito inválido para exclusão.");
+      }
+
       await dataClient.entities.TrainingParticipant.delete(id);
-      await dataClient.entities.Training.update(trainingId, {
-        participants_count: Math.max(0, (training.participants_count || 1) - 1),
-      });
+
+      let warningMessage = null;
+      try {
+        const remainingParticipants = await dataClient.entities.TrainingParticipant.filter(
+          { training_id: trainingId }
+        );
+        await dataClient.entities.Training.update(trainingId, {
+          participants_count: remainingParticipants.length,
+        });
+      } catch {
+        warningMessage =
+          "Inscrito removido, mas não foi possível atualizar o contador automaticamente.";
+      }
+
+      return { warningMessage };
     },
-    onSuccess: () => {
+    onSuccess: ({ warningMessage }) => {
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
+      queryClient.invalidateQueries({ queryKey: ["participants"] });
       queryClient.invalidateQueries({ queryKey: ["training"] });
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
       setDeleteConfirm(null);
+      setDeleteAllStatus(
+        warningMessage
+          ? { type: "warning", message: warningMessage }
+          : { type: "success", message: "Inscrito excluído com sucesso." }
+      );
+    },
+    onError: (error) => {
+      setDeleteAllStatus({
+        type: "error",
+        message: error?.message || "Não foi possível excluir o inscrito.",
+      });
     },
   });
 
@@ -826,7 +855,9 @@ export default function EnrollmentPage() {
     onSuccess: ({ warningMessage, deletedCount }) => {
       queryClient.setQueryData(["enrolled-participants", trainingId], []);
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
+      queryClient.invalidateQueries({ queryKey: ["participants"] });
       queryClient.invalidateQueries({ queryKey: ["training"] });
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
       setDeleteAllConfirmOpen(false);
       setDeleteAllStatus(
         warningMessage
@@ -1934,7 +1965,10 @@ export default function EnrollmentPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteParticipant.mutate(deleteConfirm.id)}
+              onClick={() => {
+                setDeleteAllStatus(null);
+                deleteParticipant.mutate(deleteConfirm.id);
+              }}
               className="bg-red-600 hover:bg-red-700"
             >
               Excluir

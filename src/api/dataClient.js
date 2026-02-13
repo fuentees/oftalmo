@@ -139,9 +139,35 @@ const update = async (table, id, payload) => {
 };
 
 const remove = async (table, id) => {
-  const { error } = await supabase.from(table).delete().eq("id", id);
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) {
+    throw new Error("Registro inválido para exclusão.");
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .delete()
+    .eq("id", normalizedId)
+    .select("id");
   if (error) throw error;
-  return { id };
+  if (Array.isArray(data) && data.length > 0) {
+    return { id: normalizedId, deleted: true };
+  }
+
+  const { data: existing, error: checkError } = await supabase
+    .from(table)
+    .select("id")
+    .eq("id", normalizedId)
+    .limit(1);
+  if (checkError) throw checkError;
+  if ((existing || []).length > 0) {
+    throw new Error(
+      "Não foi possível excluir o registro. Verifique suas permissões."
+    );
+  }
+
+  // Registro já não existe mais.
+  return { id: normalizedId, deleted: false };
 };
 
 const createEntityApi = (entityName) => {
@@ -282,13 +308,28 @@ const DeleteTrainingParticipantsByTraining = async ({ training_id }) => {
     throw new Error("Treinamento não informado para excluir inscritos.");
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("training_participants")
     .delete()
-    .eq("training_id", trainingId);
+    .eq("training_id", trainingId)
+    .select("id");
   if (error) throw error;
 
-  return { success: true };
+  const deletedCount = Array.isArray(data) ? data.length : 0;
+  const { count, error: countError } = await supabase
+    .from("training_participants")
+    .select("*", { count: "exact", head: true })
+    .eq("training_id", trainingId);
+  if (countError) throw countError;
+
+  const remainingCount = Number(count || 0);
+  if (remainingCount > 0 && deletedCount === 0) {
+    throw new Error(
+      "Não foi possível excluir os inscritos. Verifique as permissões do usuário."
+    );
+  }
+
+  return { success: true, deleted_count: deletedCount, remaining_count: remainingCount };
 };
 
 const getStoragePathFromUrl = (fileUrl) => {
