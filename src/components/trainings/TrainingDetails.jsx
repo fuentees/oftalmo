@@ -10,7 +10,7 @@ import { Download, Trash2, Upload } from "lucide-react";
 import { parseDateSafe, formatDateSafe } from "@/lib/date";
 
 export default function TrainingDetails({ training, participants = [] }) {
-  if (!training) return null;
+  const trainingId = String(training?.id || "").trim();
   const queryClient = useQueryClient();
   const [reportFile, setReportFile] = useState(null);
   const [reportStatus, setReportStatus] = useState(null);
@@ -23,15 +23,15 @@ export default function TrainingDetails({ training, participants = [] }) {
   });
 
   const { data: reports = [] } = useQuery({
-    queryKey: ["trainingReports", training?.id],
+    queryKey: ["trainingReports", trainingId],
     queryFn: () => dataClient.entities.TrainingMaterial.list(),
     select: (data) =>
       (data || [])
         .filter(
-          (item) => item.training_id === training?.id && item.name === REPORT_NAME
+          (item) => item.training_id === trainingId && item.name === REPORT_NAME
         )
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
-    enabled: !!training?.id,
+    enabled: !!trainingId,
   });
 
   const currentReport = reports[0] || null;
@@ -39,14 +39,15 @@ export default function TrainingDetails({ training, participants = [] }) {
   const uploadReport = useMutation({
     mutationFn: async (file) => {
       if (!file) throw new Error("Selecione um arquivo de relatório.");
+      if (!trainingId) throw new Error("Treinamento inválido.");
       if (currentReport?.id) {
         await dataClient.entities.TrainingMaterial.delete(currentReport.id);
       }
       const { file_url } = await dataClient.integrations.Core.UploadFile({ file });
       const ext = file.name?.split(".").pop() || "";
       return dataClient.entities.TrainingMaterial.create({
-        training_id: training.id,
-        training_title: training.title,
+        training_id: trainingId,
+        training_title: training?.title,
         name: REPORT_NAME,
         description: "Relatório do evento",
         file_url,
@@ -55,7 +56,7 @@ export default function TrainingDetails({ training, participants = [] }) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["trainingReports", training?.id] });
+      queryClient.invalidateQueries({ queryKey: ["trainingReports", trainingId] });
       setReportFile(null);
       setReportStatus({ type: "success", message: "Relatório enviado." });
     },
@@ -70,7 +71,7 @@ export default function TrainingDetails({ training, participants = [] }) {
   const deleteReport = useMutation({
     mutationFn: (id) => dataClient.entities.TrainingMaterial.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["trainingReports", training?.id] });
+      queryClient.invalidateQueries({ queryKey: ["trainingReports", trainingId] });
       setReportStatus({ type: "success", message: "Relatório removido." });
     },
     onError: (error) => {
@@ -173,11 +174,14 @@ export default function TrainingDetails({ training, participants = [] }) {
   };
 
   useEffect(() => {
+    if (!trainingId) return;
     const timer = window.setInterval(() => {
       forceClockTick((value) => value + 1);
     }, 60000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [trainingId]);
+
+  if (!training) return null;
 
   const effectiveStatus = getEffectiveStatus();
 
