@@ -33,9 +33,11 @@ import {
   Info,
   Mail,
   Plus,
+  Users,
 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import DataExport from "@/components/settings/DataExport";
+import UserManagementPanel from "@/components/settings/UserManagementPanel";
 import { dataClient } from "@/api/dataClient";
 import { normalizeGveMappingRows, useGveMapping } from "@/hooks/useGveMapping";
 import Papa from "papaparse";
@@ -1078,7 +1080,7 @@ export default function Settings() {
       />
 
       <Tabs defaultValue="tema" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 gap-2 lg:grid-cols-5">
+        <TabsList className="grid w-full grid-cols-2 gap-2 lg:grid-cols-6">
           <TabsTrigger value="tema" className="gap-2">
             <Palette className="h-4 w-4" />
             Tema
@@ -1094,6 +1096,10 @@ export default function Settings() {
           <TabsTrigger value="exportacao" className="gap-2">
             <Database className="h-4 w-4" />
             Exportações
+          </TabsTrigger>
+          <TabsTrigger value="usuarios" className="gap-2">
+            <Users className="h-4 w-4" />
+            Usuários
           </TabsTrigger>
           <TabsTrigger value="sobre" className="gap-2">
             <Info className="h-4 w-4" />
@@ -2207,6 +2213,10 @@ export default function Settings() {
 
         <TabsContent value="exportacao" className="mt-6">
           <DataExport />
+        </TabsContent>
+
+        <TabsContent value="usuarios" className="mt-6">
+          <UserManagementPanel />
         </TabsContent>
 
         <TabsContent value="sobre" className="mt-6">
