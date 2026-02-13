@@ -35,7 +35,9 @@ export default function ParticipantProfile() {
   const [sendingId, setSendingId] = useState(null);
   const [regenStatus, setRegenStatus] = useState(null);
   const [emailStatus, setEmailStatus] = useState(null);
+  const [cleanupStatus, setCleanupStatus] = useState(null);
   const queryClient = useQueryClient();
+  const cleanedInvalidParticipationIdsRef = React.useRef(new Set());
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -173,25 +175,83 @@ export default function ParticipantProfile() {
     repadronizacao: "Repadronização",
   };
 
-  const trainingTypeMaps = useMemo(() => {
+  const normalizeDateKey = (value) => {
+    if (!value) return "";
+    const text = String(value).trim();
+    if (!text) return "";
+    const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return "";
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTrainingDateKeys = (training) => {
+    if (!training) return [];
+    const keys = [];
+    const baseDate = normalizeDateKey(training.date);
+    if (baseDate) keys.push(baseDate);
+    const trainingDates = Array.isArray(training.dates) ? training.dates : [];
+    trainingDates.forEach((item) => {
+      const value = typeof item === "object" ? item?.date : item;
+      const dateKey = normalizeDateKey(value);
+      if (dateKey) keys.push(dateKey);
+    });
+    return Array.from(new Set(keys));
+  };
+
+  const formatParticipationDate = (value) => {
+    const dateKey = normalizeDateKey(value);
+    if (!dateKey) return "";
+    const parsed = new Date(`${dateKey}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return format(parsed, "dd/MM/yyyy");
+  };
+
+  const trainingLookups = useMemo(() => {
     const byId = new Map();
     const byTitle = new Map();
     trainings.forEach((training) => {
-      if (training.id) byId.set(training.id, training.type);
-      const titleKey = normalizeText(training.title);
-      if (titleKey) byTitle.set(titleKey, training.type);
+      const trainingId = String(training?.id || "").trim();
+      if (trainingId) byId.set(trainingId, training);
+      const titleKey = normalizeText(training?.title);
+      if (!titleKey) return;
+      if (!byTitle.has(titleKey)) {
+        byTitle.set(titleKey, []);
+      }
+      byTitle.get(titleKey).push(training);
     });
     return { byId, byTitle };
   }, [trainings]);
 
+  const resolveTrainingFromParticipation = (participation) => {
+    if (!participation) return null;
+    const trainingId = String(participation.training_id || "").trim();
+    if (trainingId) {
+      return trainingLookups.byId.get(trainingId) || null;
+    }
+
+    const titleKey = normalizeText(participation.training_title);
+    if (!titleKey) return null;
+    const candidates = trainingLookups.byTitle.get(titleKey) || [];
+    if (!candidates.length) return null;
+
+    const participationDateKey = normalizeDateKey(participation.training_date);
+    if (!participationDateKey) return candidates[0];
+
+    const byDate = candidates.find((training) =>
+      getTrainingDateKeys(training).includes(participationDateKey)
+    );
+    return byDate || null;
+  };
+
   const resolveTrainingType = (participation) => {
     if (!participation) return null;
-    const byId = trainingTypeMaps.byId;
-    const byTitle = trainingTypeMaps.byTitle;
-    const typeFromId = byId.get(participation.training_id);
-    if (typeFromId) return typeFromId;
-    const typeFromTitle = byTitle.get(normalizeText(participation.training_title));
-    if (typeFromTitle) return typeFromTitle;
+    const training = resolveTrainingFromParticipation(participation);
+    if (training?.type) return training.type;
     const title = String(participation.training_title || "").toLowerCase();
     if (title.includes("teorico") || title.includes("teórico")) return "teorico";
     if (title.includes("pratico") || title.includes("prático")) return "pratico";
@@ -211,6 +271,89 @@ export default function ParticipantProfile() {
     return participants.filter((p) => isSameParticipant(participant, p));
   }, [participants, participant]);
 
+  const { validParticipations, invalidParticipations } = useMemo(() => {
+    const valid = [];
+    const invalid = [];
+
+    allParticipations.forEach((participation) => {
+      const trainingId = String(participation?.training_id || "").trim();
+      if (trainingId) {
+        if (trainingLookups.byId.has(trainingId)) {
+          valid.push(participation);
+        } else {
+          invalid.push(participation);
+        }
+        return;
+      }
+
+      if (resolveTrainingFromParticipation(participation)) {
+        valid.push(participation);
+      } else {
+        invalid.push(participation);
+      }
+    });
+
+    return { validParticipations: valid, invalidParticipations: invalid };
+  }, [allParticipations, trainingLookups]);
+
+  const invalidParticipationIds = useMemo(
+    () =>
+      invalidParticipations
+        .map((participation) => String(participation?.id || "").trim())
+        .filter(Boolean),
+    [invalidParticipations]
+  );
+
+  useEffect(() => {
+    if (loadingParticipants || loadingTrainings) return;
+    if (!participant) return;
+    if (!invalidParticipationIds.length) return;
+
+    const pendingIds = invalidParticipationIds.filter(
+      (id) => !cleanedInvalidParticipationIdsRef.current.has(id)
+    );
+    if (!pendingIds.length) return;
+
+    pendingIds.forEach((id) => cleanedInvalidParticipationIdsRef.current.add(id));
+    let isCancelled = false;
+
+    (async () => {
+      const results = await Promise.allSettled(
+        pendingIds.map((id) => dataClient.entities.TrainingParticipant.delete(id))
+      );
+      if (isCancelled) return;
+
+      const deletedCount = results.filter(
+        (result) => result.status === "fulfilled"
+      ).length;
+      const failedCount = results.length - deletedCount;
+
+      if (deletedCount > 0) {
+        await queryClient.invalidateQueries({ queryKey: ["participants"] });
+      }
+
+      if (deletedCount > 0 || failedCount > 0) {
+        setCleanupStatus({
+          type: failedCount > 0 ? "error" : "success",
+          message:
+            failedCount > 0
+              ? `Limpeza removeu ${deletedCount} registro(s) órfão(s), mas ${failedCount} não puderam ser excluídos.`
+              : `Limpeza removeu ${deletedCount} registro(s) órfão(s) do histórico.`,
+        });
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    invalidParticipationIds,
+    loadingParticipants,
+    loadingTrainings,
+    participant,
+    queryClient,
+  ]);
+
   const mergedParticipant = useMemo(
     () => mergeParticipantData(allParticipations),
     [allParticipations]
@@ -218,12 +361,14 @@ export default function ParticipantProfile() {
 
   const participationsSorted = useMemo(
     () =>
-      [...allParticipations].sort((a, b) => {
-        const dateA = a.training_date ? new Date(a.training_date).getTime() : 0;
-        const dateB = b.training_date ? new Date(b.training_date).getTime() : 0;
-        return dateB - dateA;
+      [...validParticipations].sort((a, b) => {
+        const dateA = normalizeDateKey(a.training_date || resolveTrainingFromParticipation(a)?.date);
+        const dateB = normalizeDateKey(b.training_date || resolveTrainingFromParticipation(b)?.date);
+        const timeA = dateA ? new Date(`${dateA}T00:00:00`).getTime() : 0;
+        const timeB = dateB ? new Date(`${dateB}T00:00:00`).getTime() : 0;
+        return (Number.isFinite(timeB) ? timeB : 0) - (Number.isFinite(timeA) ? timeA : 0);
       }),
-    [allParticipations]
+    [validParticipations]
   );
 
   if (!participantId) {
@@ -250,36 +395,26 @@ export default function ParticipantProfile() {
     );
   }
 
-  const approvedCount = allParticipations.filter((p) => p.approved).length;
-  const certificatesCount = allParticipations.filter((p) => p.certificate_issued).length;
-  const avgAttendance = allParticipations.length > 0
+  const approvedCount = validParticipations.filter((p) => p.approved).length;
+  const certificatesCount = validParticipations.filter((p) => p.certificate_issued).length;
+  const avgAttendance = validParticipations.length > 0
     ? (
-        allParticipations.reduce(
+        validParticipations.reduce(
           (acc, p) => acc + (p.attendance_percentage || 0),
           0
-        ) / allParticipations.length
+        ) / validParticipations.length
       ).toFixed(1)
     : 0;
 
   const resolveTrainingForCertificate = (participation) => {
     if (!participation) return null;
-    const byId = trainingTypeMaps.byId;
-    let training = null;
-    if (participation.training_id) {
-      training = trainings.find((item) => item.id === participation.training_id);
-    }
-    if (!training && participation.training_title) {
-      const titleKey = normalizeText(participation.training_title);
-      training = trainings.find(
-        (item) => normalizeText(item.title) === titleKey
-      );
-    }
+    const training = resolveTrainingFromParticipation(participation);
 
     if (!training) {
       return {
-        title: participation.training_title || "Treinamento",
-        dates: participation.training_date
-          ? [{ date: participation.training_date }]
+        title: String(participation.training_title || "").trim() || "Treinamento",
+        dates: normalizeDateKey(participation.training_date)
+          ? [{ date: normalizeDateKey(participation.training_date) }]
           : [],
         duration_hours: null,
         coordinator: "",
@@ -288,10 +423,12 @@ export default function ParticipantProfile() {
     }
 
     if (!Array.isArray(training.dates) || training.dates.length === 0) {
+      const participationDate = normalizeDateKey(participation.training_date);
+      const fallbackDate = getTrainingDateKeys(training)[0] || "";
       return {
         ...training,
-        dates: participation.training_date
-          ? [{ date: participation.training_date }]
+        dates: participationDate || fallbackDate
+          ? [{ date: participationDate || fallbackDate }]
           : [],
       };
     }
@@ -455,25 +592,42 @@ export default function ParticipantProfile() {
     }
   };
 
-  const renderTrainingCard = (participation) => {
+  const renderTrainingCard = (participation, index = 0) => {
     const hasCertificate = participation.certificate_url || participation.certificate_issued;
+    const matchedTraining = resolveTrainingFromParticipation(participation);
+    const trainingTitle =
+      String(participation.training_title || "").trim() ||
+      String(matchedTraining?.title || "").trim() ||
+      "Treinamento";
+    const participationDate =
+      normalizeDateKey(participation.training_date) ||
+      getTrainingDateKeys(matchedTraining)[0] ||
+      "";
+    const participationDateLabel = formatParticipationDate(participationDate);
+    const trainingType = resolveTrainingType(participation);
+
     return (
-      <Card key={participation.id} className="mb-3">
+      <Card
+        key={
+          String(participation?.id || "").trim() ||
+          `${trainingTitle}-${participationDate || index}`
+        }
+        className="mb-3"
+      >
         <CardContent className="pt-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
-              <h4 className="font-semibold text-slate-900">{participation.training_title}</h4>
+              <h4 className="font-semibold text-slate-900">{trainingTitle}</h4>
               <div className="flex flex-wrap gap-2 mt-2">
-                {participation.training_date && (
+                {participationDateLabel && (
                   <div className="flex items-center gap-1 text-sm text-slate-600">
                     <Calendar className="h-3 w-3" />
-                    {format(new Date(participation.training_date), "dd/MM/yyyy")}
+                    {participationDateLabel}
                   </div>
                 )}
-                {resolveTrainingType(participation) && (
+                {trainingType && (
                   <Badge variant="outline" className="text-xs">
-                    {typeLabels[resolveTrainingType(participation)] ||
-                      resolveTrainingType(participation)}
+                    {typeLabels[trainingType] || trainingType}
                   </Badge>
                 )}
                 {participation.attendance_percentage !== undefined && (
@@ -612,7 +766,7 @@ export default function ParticipantProfile() {
                 <GraduationCap className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{allParticipations.length}</p>
+                <p className="text-2xl font-bold">{validParticipations.length}</p>
                 <p className="text-sm text-slate-500">Treinamentos</p>
               </div>
             </div>
@@ -694,6 +848,22 @@ export default function ParticipantProfile() {
         </Card>
       )}
 
+      {cleanupStatus && (
+        <Card className={cleanupStatus.type === "error" ? "border-amber-200" : "border-blue-200"}>
+          <CardContent className="pt-4">
+            <p
+              className={
+                cleanupStatus.type === "error"
+                  ? "text-sm text-amber-700"
+                  : "text-sm text-blue-700"
+              }
+            >
+              {cleanupStatus.message}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Treinamentos por Tipo */}
       <Card>
         <CardHeader>
@@ -708,7 +878,9 @@ export default function ParticipantProfile() {
               Nenhum treinamento realizado
             </p>
           ) : (
-            participationsSorted.map(renderTrainingCard)
+            participationsSorted.map((participation, index) =>
+              renderTrainingCard(participation, index)
+            )
           )}
         </CardContent>
       </Card>
