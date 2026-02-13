@@ -85,6 +85,7 @@ export default function Trainings() {
 
   const navigate = useNavigate();
   const autoUpdatedRef = React.useRef(new Set());
+  const orphanCleanupDoneRef = React.useRef(false);
 
   const queryClient = useQueryClient();
 
@@ -110,6 +111,54 @@ export default function Trainings() {
     queryKey: ["participants"],
     queryFn: () => dataClient.entities.TrainingParticipant.list(),
   });
+
+  React.useEffect(() => {
+    if (orphanCleanupDoneRef.current) return;
+    if (isLoading) return;
+    orphanCleanupDoneRef.current = true;
+
+    const validTrainingIds = new Set(
+      (trainings || [])
+        .map((training) => String(training?.id || "").trim())
+        .filter(Boolean)
+    );
+    if (!validTrainingIds.size) return;
+
+    const orphanParticipantIds = (participants || [])
+      .filter((participant) => {
+        const trainingId = String(participant?.training_id || "").trim();
+        if (!trainingId) return false;
+        return !validTrainingIds.has(trainingId);
+      })
+      .map((participant) => String(participant?.id || "").trim())
+      .filter(Boolean);
+
+    if (orphanParticipantIds.length === 0) return;
+
+    (async () => {
+      const results = await Promise.allSettled(
+        orphanParticipantIds.map((participantId) =>
+          dataClient.entities.TrainingParticipant.delete(participantId)
+        )
+      );
+      const deletedCount = results.filter(
+        (result) => result.status === "fulfilled"
+      ).length;
+      const failedCount = results.length - deletedCount;
+
+      if (deletedCount > 0) {
+        queryClient.invalidateQueries({ queryKey: ["participants"] });
+        queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
+        setDeleteStatus({
+          type: failedCount > 0 ? "error" : "success",
+          message:
+            failedCount > 0
+              ? `Limpeza automática removeu ${deletedCount} registro(s) órfão(s), mas ${failedCount} não puderam ser removidos.`
+              : `Limpeza automática removeu ${deletedCount} registro(s) órfão(s) de treinamentos antigos.`,
+        });
+      }
+    })();
+  }, [isLoading, participants, trainings, queryClient]);
 
   const deleteTraining = useMutation({
     mutationFn: async (trainingToDelete) => {
