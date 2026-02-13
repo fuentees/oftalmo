@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { useGveMapping } from "@/hooks/useGveMapping";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,7 +64,6 @@ export default function EnrollmentPage() {
   const [showUploadList, setShowUploadList] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
-  const [gveMapping, setGveMapping] = useState([]);
   const [sectionName, setSectionName] = useState("");
   const [sectionStatus, setSectionStatus] = useState(null);
   const [customSections, setCustomSections] = useState(/** @type {Array<{key: string, label: string}>} */ ([]));
@@ -74,6 +74,7 @@ export default function EnrollmentPage() {
   const [showEditParticipant, setShowEditParticipant] = useState(false);
 
   const queryClient = useQueryClient();
+  const { municipalityOptions, getGveByMunicipio } = useGveMapping();
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
@@ -112,20 +113,6 @@ export default function EnrollmentPage() {
   const activeEnrollmentFields = enrollmentFields
     .filter((field) => field.is_active)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const stored = window.localStorage.getItem("gveMappingSp");
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        setGveMapping(parsed);
-      }
-    } catch (error) {
-      // Ignora erro de leitura
-    }
-  }, []);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -221,25 +208,6 @@ export default function EnrollmentPage() {
       .replace(/[_-]+/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
   };
-
-  const gveMap = React.useMemo(() => {
-    const map = new Map();
-    gveMapping.forEach((item) => {
-      map.set(normalizeText(item.municipio), item.gve);
-    });
-    return map;
-  }, [gveMapping]);
-
-  const municipalityOptions = React.useMemo(
-    () =>
-      gveMapping
-        .map((item) => item.municipio)
-        .sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [gveMapping]
-  );
-
-  const getGveByMunicipio = (municipio) =>
-    gveMap.get(normalizeText(municipio)) || "";
 
   const sections = React.useMemo(() => {
     const seen = new Set();

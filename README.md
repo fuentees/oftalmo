@@ -42,6 +42,8 @@ armazenamento de arquivos.
    Para logo e palestrantes, adicione as colunas `logo_url` e `speakers` em `trainings`.
    Para avaliação, adicione a coluna `answers` em `training_feedback` e a tabela
    `training_feedback_questions` (ver `schema.sql`).
+   O mapeamento de Município x GVE agora é persistido na tabela
+   `municipality_gve_mappings`.
 3. Crie o bucket de armazenamento `uploads` e deixe como **public** (ou adapte
    a lógica para URLs assinadas).
 4. Configure as políticas de RLS conforme sua necessidade. Para rotas públicas

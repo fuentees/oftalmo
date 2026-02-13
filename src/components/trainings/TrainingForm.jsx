@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { useGveMapping } from "@/hooks/useGveMapping";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +38,6 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     validity_months: "",
     notes: "",
   });
-  const [gveMapping, setGveMapping] = useState([]);
 
   const [repeatConfig, setRepeatConfig] = useState({
     enabled: false,
@@ -46,6 +46,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
   });
 
   const queryClient = useQueryClient();
+  const { municipalityOptions, getGveByMunicipio } = useGveMapping();
 
   useEffect(() => {
     const defaultDates = [
@@ -84,19 +85,6 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       generateTrainingCode();
     }
   }, [training]);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("gveMappingSp");
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        setGveMapping(parsed);
-      }
-    } catch (error) {
-      // Ignora erro de leitura
-    }
-  }, []);
 
   const generateTrainingCode = async () => {
     const currentYear = new Date().getFullYear();
@@ -255,33 +243,6 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     ),
     [professionals]
   );
-
-  const gveMap = useMemo(() => {
-    const map = new Map();
-    gveMapping.forEach((item) => {
-      const key = normalizeText(item.municipio);
-      if (!key) return;
-      if (map.has(key)) return;
-      map.set(key, String(item.gve || "").trim());
-    });
-    return map;
-  }, [gveMapping]);
-
-  const municipalityOptions = useMemo(() => {
-    const values = gveMapping
-      .map((item) => String(item.municipio || "").trim())
-      .filter(Boolean);
-    const unique = Array.from(new Set(values));
-    return unique.sort((a, b) =>
-      a.localeCompare(b, "pt-BR", { sensitivity: "base" })
-    );
-  }, [gveMapping]);
-
-  const getGveByMunicipio = (value) => {
-    const key = normalizeText(value);
-    if (!key) return "";
-    return gveMap.get(key) || "";
-  };
 
   const parseLocation = (value) => {
     const raw = String(value || "").trim();

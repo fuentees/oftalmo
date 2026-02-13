@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,8 @@ import {
 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import DataExport from "@/components/settings/DataExport";
+import { dataClient } from "@/api/dataClient";
+import { normalizeGveMappingRows, useGveMapping } from "@/hooks/useGveMapping";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
@@ -58,7 +61,6 @@ import { generateParticipantCertificate } from "@/components/trainings/Certifica
 
 export default function Settings() {
   const [selectedColor, setSelectedColor] = useState("blue");
-  const [gveMapping, setGveMapping] = useState([]);
   const [mappingStatus, setMappingStatus] = useState(null);
   const [certificateTemplate, setCertificateTemplate] = useState(
     DEFAULT_CERTIFICATE_TEMPLATE
@@ -78,6 +80,8 @@ export default function Settings() {
   const [showLogoGrid, setShowLogoGrid] = useState(false);
   const [editLayer, setEditLayer] = useState("logos");
   const bodyTextRef = useRef(null);
+  const queryClient = useQueryClient();
+  const { gveMapping, isLoading: isGveMappingLoading } = useGveMapping();
 
   useEffect(() => {
     const savedColor = localStorage.getItem("theme-color") || "blue";
@@ -118,19 +122,6 @@ export default function Settings() {
   useEffect(() => {
     const template = loadCertificateEmailTemplate();
     setCertificateEmailTemplate(template);
-  }, []);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("gveMappingSp");
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        setGveMapping(parsed);
-      }
-    } catch (error) {
-      // Ignora erro de leitura
-    }
   }, []);
 
   const colors = [
@@ -940,13 +931,6 @@ export default function Settings() {
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "");
 
-  const normalizeText = (value) =>
-    String(value ?? "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-
   const normalizeRow = (row) =>
     Object.entries(row || {}).reduce((acc, [key, value]) => {
       const normalizedKey = normalizeHeader(key);
@@ -997,22 +981,13 @@ export default function Settings() {
         gve: String(gve).trim(),
       });
     });
-
-    const unique = [];
-    const seen = new Set();
-    mapped.forEach((item) => {
-      const key = normalizeText(item.municipio);
-      if (seen.has(key)) return;
-      seen.add(key);
-      unique.push(item);
-    });
-    return unique;
+    return normalizeGveMappingRows(mapped);
   };
 
   const handleMappingFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setMappingStatus({ type: "loading", message: "Lendo planilha..." });
+    setMappingStatus({ type: "loading", message: "Lendo e salvando planilha..." });
     try {
       const lowerName = file.name.toLowerCase();
       let rows = [];
@@ -1029,11 +1004,14 @@ export default function Settings() {
       if (mapping.length === 0) {
         throw new Error("Nenhum município/GVE encontrado na planilha.");
       }
-      localStorage.setItem("gveMappingSp", JSON.stringify(mapping));
-      setGveMapping(mapping);
+      const savedMapping =
+        await dataClient.integrations.Core.ReplaceMunicipalityGveMapping({
+          mapping,
+        });
+      queryClient.setQueryData(["gve-mapping"], savedMapping);
       setMappingStatus({
         type: "success",
-        message: `${mapping.length} municípios carregados.`,
+        message: `${savedMapping.length} municípios carregados.`,
       });
     } catch (error) {
       setMappingStatus({
@@ -1043,13 +1021,20 @@ export default function Settings() {
     }
   };
 
-  const handleClearMapping = () => {
-    localStorage.removeItem("gveMappingSp");
-    setGveMapping([]);
-    setMappingStatus({
-      type: "success",
-      message: "Planilha removida.",
-    });
+  const handleClearMapping = async () => {
+    try {
+      await dataClient.integrations.Core.ClearMunicipalityGveMapping();
+      queryClient.setQueryData(["gve-mapping"], []);
+      setMappingStatus({
+        type: "success",
+        message: "Planilha removida.",
+      });
+    } catch (error) {
+      setMappingStatus({
+        type: "error",
+        message: error.message || "Erro ao remover planilha.",
+      });
+    }
   };
 
   const handleExportMapping = () => {
@@ -1191,7 +1176,9 @@ export default function Settings() {
                 </Button>
               </div>
               <div className="text-sm text-slate-600">
-                {gveMapping.length > 0
+                {isGveMappingLoading
+                  ? "Carregando planilha salva..."
+                  : gveMapping.length > 0
                   ? `${gveMapping.length} municípios carregados.`
                   : "Nenhuma planilha carregada."}
               </div>

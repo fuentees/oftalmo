@@ -209,6 +209,26 @@ create table if not exists material_requests (
   details jsonb
 );
 
+create table if not exists municipality_gve_mappings (
+  id uuid primary key default gen_random_uuid(),
+  municipio text not null,
+  gve text not null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'municipality_gve_mappings_municipio_key'
+  ) then
+    alter table public.municipality_gve_mappings
+      add constraint municipality_gve_mappings_municipio_key unique (municipio);
+  end if;
+end $$;
+
 create table if not exists app_logs (
   id uuid primary key default gen_random_uuid(),
   page_name text,

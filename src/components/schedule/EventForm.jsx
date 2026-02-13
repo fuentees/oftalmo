@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { useGveMapping } from "@/hooks/useGveMapping";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +29,6 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     color: "#3b82f6",
     notes: "",
   });
-  const [gveMapping, setGveMapping] = useState([]);
   const [repeatConfig, setRepeatConfig] = useState({
     enabled: false,
     weeks: 4,
@@ -47,56 +47,12 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
   ];
 
   const queryClient = useQueryClient();
+  const { municipalityOptions, getGveByMunicipio } = useGveMapping();
 
   const { data: professionals = [] } = useQuery({
     queryKey: ["professionals"],
     queryFn: () => dataClient.entities.Professional.list(),
   });
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("gveMappingSp");
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        setGveMapping(parsed);
-      }
-    } catch (error) {
-      // Ignora erro de leitura
-    }
-  }, []);
-
-  const normalizeText = (value) =>
-    String(value ?? "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-
-  const gveMap = useMemo(() => {
-    const map = new Map();
-    gveMapping.forEach((item) => {
-      const key = normalizeText(item.municipio);
-      if (!key) return;
-      if (map.has(key)) return;
-      map.set(key, String(item.gve || "").trim());
-    });
-    return map;
-  }, [gveMapping]);
-
-  const municipalityOptions = useMemo(() => {
-    const values = gveMapping
-      .map((item) => String(item.municipio || "").trim())
-      .filter(Boolean);
-    const unique = Array.from(new Set(values));
-    return unique.sort((a, b) => a.localeCompare(b));
-  }, [gveMapping]);
-
-  const getGveByMunicipio = (value) => {
-    const key = normalizeText(value);
-    if (!key) return "";
-    return gveMap.get(key) || "";
-  };
 
   const parseLocation = (value) => {
     const raw = String(value || "").trim();
@@ -340,7 +296,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     if (!autoGve) return;
     if (autoGve === formData.gve) return;
     setFormData((prev) => ({ ...prev, gve: autoGve }));
-  }, [formData.municipality, formData.gve, gveMap]);
+  }, [formData.municipality, formData.gve, getGveByMunicipio]);
 
   const handleSubmit = (e) => {
     e.preventDefault();

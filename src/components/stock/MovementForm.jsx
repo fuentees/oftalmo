@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { useGveMapping } from "@/hooks/useGveMapping";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,10 +30,10 @@ export default function MovementForm({
     notes: "",
   });
   const [materialInput, setMaterialInput] = useState("");
-  const [gveMapping, setGveMapping] = useState([]);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { gveMapping, municipalityOptions, getGveByMunicipio } = useGveMapping();
 
   useEffect(() => {
     if (movement) {
@@ -83,20 +84,6 @@ export default function MovementForm({
     setFormData((prev) => ({ ...prev, type }));
   }, [type, movement]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const stored = window.localStorage.getItem("gveMappingSp");
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        setGveMapping(parsed);
-      }
-    } catch (error) {
-      // Ignora erro de leitura
-    }
-  }, []);
-
   const normalizeText = (value) =>
     String(value ?? "")
       .normalize("NFD")
@@ -104,23 +91,7 @@ export default function MovementForm({
       .toLowerCase()
       .trim();
 
-  const gveMap = useMemo(() => {
-    const map = new Map();
-    gveMapping.forEach((item) => {
-      map.set(normalizeText(item.municipio), item.gve);
-    });
-    return map;
-  }, [gveMapping]);
-
-  const selectedGve = gveMap.get(normalizeText(formData.sector)) || "";
-
-  const municipalityOptions = useMemo(
-    () =>
-      gveMapping
-        .map((item) => item.municipio)
-        .sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [gveMapping]
-  );
+  const selectedGve = getGveByMunicipio(formData.sector);
 
   const materialOptions = useMemo(
     () =>

@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { useGveMapping } from "@/hooks/useGveMapping";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,7 +48,7 @@ export default function PublicEnrollment() {
   const [formErrors, setFormErrors] = useState(
     /** @type {Record<string, string | null>} */ ({})
   );
-  const [gveMapping, setGveMapping] = useState([]);
+  const { municipalityOptions, getGveByMunicipio } = useGveMapping();
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
@@ -90,46 +91,6 @@ export default function PublicEnrollment() {
     const cleaned = value.replace(/[^0-9xX]/g, "").slice(0, 12);
     return cleaned.toUpperCase();
   };
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const stored = window.localStorage.getItem("gveMappingSp");
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        setGveMapping(parsed);
-      }
-    } catch (error) {
-      // Ignora erro de leitura
-    }
-  }, []);
-
-  const normalizeText = (value) =>
-    String(value ?? "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-
-  const gveMap = useMemo(() => {
-    const map = new Map();
-    gveMapping.forEach((item) => {
-      map.set(normalizeText(item.municipio), item.gve);
-    });
-    return map;
-  }, [gveMapping]);
-
-  const municipalityOptions = useMemo(
-    () =>
-      gveMapping
-        .map((item) => item.municipio)
-        .sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [gveMapping]
-  );
-
-  const getGveByMunicipio = (municipio) =>
-    gveMap.get(normalizeText(municipio)) || "";
 
   const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
 

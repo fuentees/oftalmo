@@ -188,6 +188,31 @@ const normalizeRows = (rows) =>
     )
     .filter((row) => Object.keys(row).length > 0);
 
+const normalizeGveText = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const normalizeMunicipalityGveRows = (rows) => {
+  const unique = [];
+  const seen = new Set();
+  (rows || []).forEach((item) => {
+    const id = String(item?.id || "").trim();
+    const municipio = String(item?.municipio || "").trim();
+    const gve = String(item?.gve || "").trim();
+    if (!municipio || !gve) return;
+    const key = normalizeGveText(municipio);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    unique.push(id ? { id, municipio, gve } : { municipio, gve });
+  });
+  return unique.sort((a, b) =>
+    a.municipio.localeCompare(b.municipio, "pt-BR", { sensitivity: "base" })
+  );
+};
+
 const parseCsv = (text) =>
   new Promise((resolve, reject) => {
     Papa.parse(text, {
@@ -203,6 +228,58 @@ const parseXlsx = (buffer) => {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
   return normalizeRows(rows || []);
+};
+
+const ListMunicipalityGveMapping = async () => {
+  const { data, error } = await supabase
+    .from("municipality_gve_mappings")
+    .select("id, municipio, gve")
+    .order("municipio", { ascending: true });
+  if (error) throw error;
+  return normalizeMunicipalityGveRows(data || []);
+};
+
+const ReplaceMunicipalityGveMapping = async ({ mapping }) => {
+  const normalizedRows = normalizeMunicipalityGveRows(mapping || []);
+  if (normalizedRows.length === 0) {
+    await ClearMunicipalityGveMapping();
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("municipality_gve_mappings")
+    .upsert(
+      normalizedRows.map((item) => ({
+        municipio: item.municipio,
+        gve: item.gve,
+      })),
+      { onConflict: "municipio" }
+    )
+    .select("id, municipio, gve");
+  if (error) throw error;
+  const savedRows = normalizeMunicipalityGveRows(data || []);
+  if (!savedRows.length) return [];
+  const idFilter = `(${savedRows
+    .map((item) => `"${String(item.id || "").trim()}"`)
+    .filter(Boolean)
+    .join(",")})`;
+  if (idFilter !== "()") {
+    const { error: deleteStaleError } = await supabase
+      .from("municipality_gve_mappings")
+      .delete()
+      .not("id", "in", idFilter);
+    if (deleteStaleError) throw deleteStaleError;
+  }
+  return savedRows;
+};
+
+const ClearMunicipalityGveMapping = async () => {
+  const { error } = await supabase
+    .from("municipality_gve_mappings")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) throw error;
+  return { success: true };
 };
 
 const getStoragePathFromUrl = (fileUrl) => {
@@ -547,6 +624,9 @@ export const dataClient = {
       UploadFile,
       ExtractDataFromUploadedFile,
       SendEmail,
+      ListMunicipalityGveMapping,
+      ReplaceMunicipalityGveMapping,
+      ClearMunicipalityGveMapping,
     },
   },
   appLogs: {
