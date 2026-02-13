@@ -7,8 +7,21 @@ const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
 const EMAIL_FUNCTION_NAME =
   import.meta.env.VITE_SUPABASE_EMAIL_FUNCTION || "send-email";
+const USER_ADMIN_FUNCTION_FALLBACK = "user-admin";
 const USER_ADMIN_FUNCTION_NAME =
-  import.meta.env.VITE_SUPABASE_USER_ADMIN_FUNCTION || "user-admin";
+  import.meta.env.VITE_SUPABASE_USER_ADMIN_FUNCTION ||
+  USER_ADMIN_FUNCTION_FALLBACK;
+const USER_ADMIN_FUNCTION_CANDIDATES = Array.from(
+  new Set(
+    [
+      String(USER_ADMIN_FUNCTION_NAME || "").trim(),
+      USER_ADMIN_FUNCTION_FALLBACK,
+    ].filter(Boolean)
+  )
+);
+const USER_ADMIN_FUNCTION_LABEL = USER_ADMIN_FUNCTION_CANDIDATES.map(
+  (name) => `"${name}"`
+).join(" ou ");
 const EMAIL_WEBHOOK_URL = import.meta.env.VITE_EMAIL_WEBHOOK_URL;
 const EMAIL_SETTINGS_KEY = "emailSettings";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -455,35 +468,47 @@ const getUserAdminFunctionError = (error) => {
     lowered.includes("networkerror") ||
     lowered.includes("failed to fetch")
   ) {
-    return `Não foi possível conectar à função "${USER_ADMIN_FUNCTION_NAME}". Verifique no Supabase se a Edge Function foi deployada e se o nome está correto em VITE_SUPABASE_USER_ADMIN_FUNCTION.`;
+    return `Não foi possível conectar à função ${USER_ADMIN_FUNCTION_LABEL}. Verifique no Supabase se a Edge Function foi deployada e se o nome está correto em VITE_SUPABASE_USER_ADMIN_FUNCTION.`;
   }
   if (lowered.includes("not found") || lowered.includes("404")) {
-    return `A função "${USER_ADMIN_FUNCTION_NAME}" não foi encontrada no projeto Supabase. Faça o deploy da função.`;
+    return `A função ${USER_ADMIN_FUNCTION_LABEL} não foi encontrada no projeto Supabase. Faça o deploy da função.`;
   }
   return message || "Falha ao executar operação de gestão de usuários.";
 };
 
 const callUserAdminFunction = async (action, payload = {}) => {
-  try {
-    const { data, error } = await supabase.functions.invoke(
-      USER_ADMIN_FUNCTION_NAME,
-      {
+  let lastError = null;
+
+  for (let i = 0; i < USER_ADMIN_FUNCTION_CANDIDATES.length; i += 1) {
+    const functionName = USER_ADMIN_FUNCTION_CANDIDATES[i];
+    try {
+      const { data, error } = await supabase.functions.invoke(functionName, {
         body: {
           action,
           ...payload,
         },
+      });
+      if (error) {
+        throw error;
       }
-    );
-    if (error) {
+      if (data?.error) {
+        throw new Error(String(data.error));
+      }
+      return data || {};
+    } catch (error) {
+      lastError = error;
+      const lowered = String(error?.message || "").toLowerCase();
+      const isNotFound =
+        lowered.includes("not found") || lowered.includes("404");
+      const hasNextCandidate = i < USER_ADMIN_FUNCTION_CANDIDATES.length - 1;
+      if (isNotFound && hasNextCandidate) {
+        continue;
+      }
       throw new Error(getUserAdminFunctionError(error));
     }
-    if (data?.error) {
-      throw new Error(String(data.error));
-    }
-    return data || {};
-  } catch (error) {
-    throw new Error(getUserAdminFunctionError(error));
   }
+
+  throw new Error(getUserAdminFunctionError(lastError));
 };
 
 const ListManagedUsers = async () => callUserAdminFunction("list_users");
