@@ -772,9 +772,44 @@ export default function EnrollmentPage() {
         throw new Error("Treinamento inválido para exclusão em massa.");
       }
 
+      const participantsBefore =
+        await dataClient.entities.TrainingParticipant.filter({
+          training_id: trainingId,
+        });
+      const expectedCount = participantsBefore.length;
+      if (expectedCount === 0) {
+        return {
+          warningMessage: null,
+          deletedCount: 0,
+        };
+      }
+
       await dataClient.integrations.Core.DeleteTrainingParticipantsByTraining({
         training_id: trainingId,
       });
+
+      let remainingParticipants =
+        await dataClient.entities.TrainingParticipant.filter({
+          training_id: trainingId,
+        });
+
+      // Fallback: se a exclusão por training_id não remover tudo,
+      // tenta remover registro por registro.
+      if (remainingParticipants.length > 0) {
+        for (const participant of remainingParticipants) {
+          if (!participant?.id) continue;
+          await dataClient.entities.TrainingParticipant.delete(participant.id);
+        }
+        remainingParticipants = await dataClient.entities.TrainingParticipant.filter(
+          { training_id: trainingId }
+        );
+      }
+
+      if (remainingParticipants.length > 0) {
+        throw new Error(
+          "Não foi possível excluir todos os inscritos. Tente novamente."
+        );
+      }
 
       let warningMessage = null;
       try {
@@ -786,16 +821,23 @@ export default function EnrollmentPage() {
           "Inscritos removidos, mas não foi possível atualizar o contador automaticamente.";
       }
 
-      return { warningMessage };
+      return { warningMessage, deletedCount: expectedCount };
     },
-    onSuccess: ({ warningMessage }) => {
+    onSuccess: ({ warningMessage, deletedCount }) => {
+      queryClient.setQueryData(["enrolled-participants", trainingId], []);
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
       queryClient.invalidateQueries({ queryKey: ["training"] });
       setDeleteAllConfirmOpen(false);
       setDeleteAllStatus(
         warningMessage
           ? { type: "warning", message: warningMessage }
-          : { type: "success", message: "Todos os inscritos foram excluídos com sucesso." }
+          : {
+              type: "success",
+              message:
+                deletedCount > 0
+                  ? `${deletedCount} inscrito(s) excluído(s) com sucesso.`
+                  : "Não havia inscritos para excluir.",
+            }
       );
     },
     onError: (error) => {
