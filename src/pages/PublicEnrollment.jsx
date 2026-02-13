@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import React, { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { useGveMapping } from "@/hooks/useGveMapping";
 import { Button } from "@/components/ui/button";
@@ -7,44 +7,297 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  GraduationCap, 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  User, 
+import {
+  GraduationCap,
+  Calendar,
+  Clock,
+  MapPin,
+  User,
   CheckCircle,
   AlertCircle,
   Loader2,
-  Video
+  Video,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatDateSafe, parseDateSafe } from "@/lib/date";
+
+const defaultSections = [
+  { key: "pessoais", label: "Dados Pessoais" },
+  { key: "instituicao", label: "Instituição" },
+  { key: "enderecos", label: "Endereços" },
+  { key: "contatos", label: "Contatos" },
+];
+
+const defaultEnrollmentFields = [
+  {
+    field_key: "name",
+    label: "Nome",
+    type: "text",
+    required: true,
+    placeholder: "Nome completo",
+    section: "pessoais",
+    order: 1,
+  },
+  {
+    field_key: "cpf",
+    label: "CPF",
+    type: "text",
+    required: true,
+    placeholder: "000.000.000-00",
+    section: "pessoais",
+    order: 2,
+  },
+  {
+    field_key: "rg",
+    label: "RG",
+    type: "text",
+    required: true,
+    placeholder: "00.000.000-0",
+    section: "pessoais",
+    order: 3,
+  },
+  {
+    field_key: "email",
+    label: "E-mail",
+    type: "email",
+    required: true,
+    placeholder: "nome@email.com",
+    section: "pessoais",
+    order: 4,
+  },
+  {
+    field_key: "professional_formation",
+    label: "Formação Profissional",
+    type: "text",
+    required: false,
+    placeholder: "Ex: Enfermagem",
+    section: "instituicao",
+    order: 5,
+  },
+  {
+    field_key: "institution",
+    label: "Instituição que representa",
+    type: "text",
+    required: false,
+    placeholder: "Ex: Hospital X",
+    section: "instituicao",
+    order: 6,
+  },
+  {
+    field_key: "state",
+    label: "Estado",
+    type: "text",
+    required: false,
+    placeholder: "UF",
+    section: "instituicao",
+    order: 7,
+  },
+  {
+    field_key: "health_region",
+    label: "GVE",
+    type: "text",
+    required: false,
+    placeholder: "Ex: GVE Taubaté",
+    section: "instituicao",
+    order: 8,
+  },
+  {
+    field_key: "municipality",
+    label: "Município",
+    type: "text",
+    required: false,
+    placeholder: "Cidade",
+    section: "instituicao",
+    order: 9,
+  },
+  {
+    field_key: "unit_name",
+    label: "Nome da Unidade",
+    type: "text",
+    required: false,
+    placeholder: "Unidade de saude",
+    section: "instituicao",
+    order: 10,
+  },
+  {
+    field_key: "sector",
+    label: "Cargo",
+    type: "text",
+    required: false,
+    placeholder: "Cargo/Função",
+    section: "instituicao",
+    order: 11,
+  },
+  {
+    field_key: "work_address",
+    label: "Endereço de Trabalho",
+    type: "text",
+    required: false,
+    placeholder: "Rua, número, bairro",
+    section: "enderecos",
+    order: 12,
+  },
+  {
+    field_key: "residential_address",
+    label: "Endereço Residencial",
+    type: "text",
+    required: false,
+    placeholder: "Rua, número, bairro",
+    section: "enderecos",
+    order: 13,
+  },
+  {
+    field_key: "commercial_phone",
+    label: "Telefone Comercial",
+    type: "tel",
+    required: false,
+    placeholder: "(00) 0000-0000",
+    section: "contatos",
+    order: 14,
+  },
+  {
+    field_key: "mobile_phone",
+    label: "Celular",
+    type: "tel",
+    required: false,
+    placeholder: "(00) 00000-0000",
+    section: "contatos",
+    order: 15,
+  },
+];
+
+const participantFieldMap = {
+  name: "professional_name",
+  cpf: "professional_cpf",
+  rg: "professional_rg",
+  email: "professional_email",
+  sector: "professional_sector",
+  registration: "professional_registration",
+  professional_formation: "professional_formation",
+  institution: "institution",
+  state: "state",
+  health_region: "health_region",
+  municipality: "municipality",
+  unit_name: "unit_name",
+  position: "position",
+  work_address: "work_address",
+  residential_address: "residential_address",
+  commercial_phone: "commercial_phone",
+  mobile_phone: "mobile_phone",
+};
+
+const formatSectionLabel = (value) => {
+  if (!value) return "";
+  return String(value)
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const formatCpf = (value) => {
+  const digits = String(value ?? "").replace(/\D/g, "").slice(0, 11);
+  return digits
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d{1,2})/, "$1-$2")
+    .replace(/(-\d{2})\d+?$/, "$1");
+};
+
+const formatPhone = (value) => {
+  const digits = String(value ?? "").replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 10) {
+    return digits
+      .replace(/(\d{2})(\d)/, "($1) $2")
+      .replace(/(\d{4})(\d)/, "$1-$2");
+  }
+  return digits
+    .replace(/(\d{2})(\d)/, "($1) $2")
+    .replace(/(\d{5})(\d)/, "$1-$2");
+};
+
+const formatRg = (value) => {
+  const cleaned = String(value ?? "").replace(/[^0-9xX]/g, "").slice(0, 12);
+  return cleaned.toUpperCase();
+};
+
+const formatPersonName = (value) => {
+  const parts = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "";
+  const lowerWords = new Set([
+    "da",
+    "de",
+    "do",
+    "das",
+    "dos",
+    "e",
+    "a",
+    "o",
+    "as",
+    "os",
+    "em",
+    "para",
+    "por",
+  ]);
+  return parts
+    .map((word, index) => {
+      if (index > 0 && lowerWords.has(word)) return word;
+      return word
+        .split("-")
+        .map((segment) =>
+          segment ? segment[0].toUpperCase() + segment.slice(1) : segment
+        )
+        .join("-");
+    })
+    .join(" ");
+};
+
+const formatFieldValue = (field, value, options = {}) => {
+  if (!value) return value;
+  const { liveInput = false } = options;
+  const key = String(field?.field_key || "").toLowerCase();
+  if (key === "name") {
+    return liveInput ? String(value ?? "") : formatPersonName(value);
+  }
+  if (key.includes("cpf")) return formatCpf(value);
+  if (key.includes("rg")) return formatRg(value);
+  if (
+    field?.type === "tel" ||
+    key.includes("phone") ||
+    key.includes("celular") ||
+    key.includes("telefone")
+  ) {
+    return formatPhone(value);
+  }
+  return value;
+};
+
+const isValidCpf = (value) => {
+  const cpfDigits = String(value || "").replace(/\D/g, "");
+  if (cpfDigits.length !== 11 || /^(\d)\1+$/.test(cpfDigits)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i += 1) sum += Number(cpfDigits[i]) * (10 - i);
+  let check = (sum * 10) % 11;
+  if (check === 10) check = 0;
+  if (check !== Number(cpfDigits[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i += 1) sum += Number(cpfDigits[i]) * (11 - i);
+  check = (sum * 10) % 11;
+  if (check === 10) check = 0;
+  return check === Number(cpfDigits[10]);
+};
 
 export default function PublicEnrollment() {
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
   const trainingId = urlParams.get("training");
-  
-  const [formData, setFormData] = useState({
-    name: "",
-    cpf: "",
-    rg: "",
-    email: "",
-    sector: "",
-    registration: "",
-    professional_formation: "",
-    institution: "",
-    state: "",
-    health_region: "",
-    municipality: "",
-    unit_name: "",
-    work_address: "",
-    residential_address: "",
-    commercial_phone: "",
-    mobile_phone: "",
-  });
+
+  const [formData, setFormData] = useState(
+    /** @type {Record<string, any>} */ ({})
+  );
   const [submitted, setSubmitted] = useState(false);
   const [formErrors, setFormErrors] = useState(
     /** @type {Record<string, string | null>} */ ({})
@@ -55,36 +308,21 @@ export default function PublicEnrollment() {
     queryKey: ["training", trainingId],
     queryFn: async () => {
       const trainings = await dataClient.entities.Training.list();
-      return trainings.find(t => t.id === trainingId);
+      return trainings.find((item) => item.id === trainingId);
     },
     enabled: !!trainingId,
   });
 
-  const formatCpf = (value) => {
-    const digits = value.replace(/\D/g, "").slice(0, 11);
-    return digits
-      .replace(/(\d{3})(\d)/, "$1.$2")
-      .replace(/(\d{3})(\d)/, "$1.$2")
-      .replace(/(\d{3})(\d{1,2})/, "$1-$2")
-      .replace(/(-\d{2})\d+?$/, "$1");
-  };
-
-  const formatPhone = (value) => {
-    const digits = value.replace(/\D/g, "").slice(0, 11);
-    if (digits.length <= 10) {
-      return digits
-        .replace(/(\d{2})(\d)/, "($1) $2")
-        .replace(/(\d{4})(\d)/, "$1-$2");
-    }
-    return digits
-      .replace(/(\d{2})(\d)/, "($1) $2")
-      .replace(/(\d{5})(\d)/, "$1-$2");
-  };
-
-  const formatRg = (value) => {
-    const cleaned = value.replace(/[^0-9xX]/g, "").slice(0, 12);
-    return cleaned.toUpperCase();
-  };
+  const { data: enrollmentFields = [] } = useQuery({
+    queryKey: ["enrollment-fields-public", trainingId],
+    queryFn: async () => {
+      const allFields = await dataClient.entities.EnrollmentField.list("order");
+      return allFields.filter(
+        (field) => !field.training_id || field.training_id === trainingId
+      );
+    },
+    enabled: !!trainingId,
+  });
 
   const trainingDates = useMemo(() => {
     const list = Array.isArray(training?.dates) ? [...training.dates] : [];
@@ -97,57 +335,164 @@ export default function PublicEnrollment() {
     });
   }, [training?.dates]);
 
+  const activeEnrollmentFields = useMemo(
+    () =>
+      enrollmentFields
+        .filter((field) => field.is_active)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [enrollmentFields]
+  );
+
+  const templateFields =
+    activeEnrollmentFields.length > 0
+      ? activeEnrollmentFields
+      : defaultEnrollmentFields;
+
+  const orderedTemplateFields = useMemo(() => {
+    const sorted = [...templateFields].sort((a, b) => {
+      const orderA = Number.isFinite(Number(a.order)) ? Number(a.order) : 0;
+      const orderB = Number.isFinite(Number(b.order)) ? Number(b.order) : 0;
+      if (orderA !== orderB) return orderA - orderB;
+      const labelA = String(a.label || a.field_key || "");
+      const labelB = String(b.label || b.field_key || "");
+      return labelA.localeCompare(labelB, "pt-BR", { sensitivity: "base" });
+    });
+    const seen = new Set();
+    return sorted.filter((field) => {
+      const key = String(field.field_key || "").trim();
+      if (!key) return false;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [templateFields]);
+
+  const sections = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+
+    defaultSections.forEach((section) => {
+      if (seen.has(section.key)) return;
+      seen.add(section.key);
+      list.push(section);
+    });
+
+    orderedTemplateFields.forEach((field) => {
+      const key = String(field.section || "").trim();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      list.push({ key, label: formatSectionLabel(key) });
+    });
+
+    return list;
+  }, [orderedTemplateFields]);
+
+  const sectionOrder = useMemo(
+    () => sections.map((section) => section.key),
+    [sections]
+  );
+
+  const sectionLabels = useMemo(
+    () =>
+      sections.reduce((acc, section) => {
+        acc[section.key] = section.label || formatSectionLabel(section.key);
+        return acc;
+      }, {}),
+    [sections]
+  );
+
+  const fieldsBySection = useMemo(
+    () =>
+      sectionOrder.reduce((acc, section) => {
+        acc[section] = orderedTemplateFields.filter(
+          (field) => (field.section || "pessoais") === section
+        );
+        return acc;
+      }, {}),
+    [sectionOrder, orderedTemplateFields]
+  );
+
+  useEffect(() => {
+    if (!orderedTemplateFields.length) return;
+    setFormData((prev) => {
+      const next = {};
+      orderedTemplateFields.forEach((field) => {
+        const key = String(field.field_key || "").trim();
+        if (!key) return;
+        next[key] = prev[key] ?? "";
+      });
+      return next;
+    });
+  }, [orderedTemplateFields]);
+
   const enrollMutation = useMutation({
     mutationFn: async (/** @type {Record<string, any>} */ data) => {
-      // Check if already enrolled
-      const existing = await dataClient.entities.TrainingParticipant.filter({
-        training_id: trainingId,
-        professional_cpf: data.cpf,
-      });
-
-      if (existing && existing.length > 0) {
-        throw new Error("CPF já inscrito neste treinamento");
+      const normalizedCpf = String(data.cpf || "").trim();
+      if (normalizedCpf) {
+        const existing = await dataClient.entities.TrainingParticipant.filter({
+          training_id: trainingId,
+          professional_cpf: normalizedCpf,
+        });
+        if (existing && existing.length > 0) {
+          throw new Error("CPF já inscrito neste treinamento");
+        }
       }
 
-      // Check capacity
-      if (training.max_participants && training.participants_count >= training.max_participants) {
+      if (
+        training.max_participants &&
+        training.participants_count >= training.max_participants
+      ) {
         throw new Error("Treinamento com vagas esgotadas");
       }
 
-      const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
-      const baseDate = firstDate ? new Date(firstDate) : null;
+      const firstDate =
+        trainingDates.length > 0
+          ? String(trainingDates[0]?.date || "").trim()
+          : "";
+      const baseDate =
+        (firstDate && parseDateSafe(firstDate)) || parseDateSafe(training?.date);
       const validityDate =
         training.validity_months &&
         baseDate &&
         !Number.isNaN(baseDate.getTime())
           ? format(
               new Date(
-                baseDate.setMonth(baseDate.getMonth() + training.validity_months)
+                new Date(baseDate).setMonth(
+                  baseDate.getMonth() + training.validity_months
+                )
               ),
               "yyyy-MM-dd"
             )
           : null;
 
+      const mapped = {};
+      Object.entries(data).forEach(([fieldKey, fieldValue]) => {
+        const participantKey = participantFieldMap[fieldKey];
+        if (!participantKey) return;
+        mapped[participantKey] = fieldValue;
+      });
+
       await dataClient.entities.TrainingParticipant.create({
         training_id: trainingId,
         training_title: training.title,
-        training_date: firstDate,
-        professional_name: data.name,
-        professional_cpf: data.cpf,
-        professional_rg: data.rg,
-        professional_email: data.email,
-        professional_sector: data.sector,
-        professional_registration: data.registration,
-        professional_formation: data.professional_formation,
-        institution: data.institution,
-        state: data.state,
-        health_region: data.health_region,
-        municipality: data.municipality,
-        unit_name: data.unit_name,
-        work_address: data.work_address,
-        residential_address: data.residential_address,
-        commercial_phone: data.commercial_phone,
-        mobile_phone: data.mobile_phone,
+        training_date: firstDate || null,
+        professional_name: mapped.professional_name || "",
+        professional_cpf: mapped.professional_cpf || "",
+        professional_rg: mapped.professional_rg || "",
+        professional_email: mapped.professional_email || "",
+        professional_sector: mapped.professional_sector || "",
+        professional_registration: mapped.professional_registration || "",
+        professional_formation: mapped.professional_formation || "",
+        institution: mapped.institution || "",
+        state: mapped.state || "",
+        health_region: mapped.health_region || "",
+        municipality: mapped.municipality || "",
+        unit_name: mapped.unit_name || "",
+        position: mapped.position || "",
+        work_address: mapped.work_address || "",
+        residential_address: mapped.residential_address || "",
+        commercial_phone: mapped.commercial_phone || "",
+        mobile_phone: mapped.mobile_phone || "",
         enrollment_status: "inscrito",
         enrollment_date: new Date().toISOString(),
         attendance_records: [],
@@ -157,7 +502,6 @@ export default function PublicEnrollment() {
         validity_date: validityDate,
       });
 
-      // Update training count
       await dataClient.entities.Training.update(trainingId, {
         participants_count: (training.participants_count || 0) + 1,
       });
@@ -167,60 +511,75 @@ export default function PublicEnrollment() {
     },
   });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = (event) => {
+    event.preventDefault();
     const errors = /** @type {Record<string, string | null>} */ ({});
-    const cpfDigits = String(formData.cpf || "").replace(/\D/g, "");
-    const rgDigits = String(formData.rg || "").replace(/\D/g, "");
-    const commercialDigits = String(formData.commercial_phone || "").replace(/\D/g, "");
-    const mobileDigits = String(formData.mobile_phone || "").replace(/\D/g, "");
 
-    if (!formData.name?.trim()) errors.name = "Campo obrigatório.";
-    if (!formData.rg?.trim() || rgDigits.length < 5 || rgDigits.length > 12) {
-      errors.rg = "RG inválido.";
-    }
-    if (formData.cpf?.trim()) {
-      const isValidCpf = (() => {
-        if (cpfDigits.length !== 11 || /^(\d)\1+$/.test(cpfDigits)) return false;
-        let sum = 0;
-        for (let i = 0; i < 9; i += 1) sum += Number(cpfDigits[i]) * (10 - i);
-        let check = (sum * 10) % 11;
-        if (check === 10) check = 0;
-        if (check !== Number(cpfDigits[9])) return false;
-        sum = 0;
-        for (let i = 0; i < 10; i += 1) sum += Number(cpfDigits[i]) * (11 - i);
-        check = (sum * 10) % 11;
-        if (check === 10) check = 0;
-        return check === Number(cpfDigits[10]);
-      })();
-      if (!isValidCpf) {
-        errors.cpf = "CPF inválido.";
+    orderedTemplateFields.forEach((field) => {
+      const rawValue = formData[field.field_key];
+      const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
+
+      if (field.required && !value) {
+        errors[field.field_key] = "Campo obrigatório.";
+        return;
       }
-    }
-    if (!formData.professional_formation?.trim()) errors.professional_formation = "Campo obrigatório.";
-    if (!formData.institution?.trim()) errors.institution = "Campo obrigatório.";
-    if (!formData.state?.trim()) errors.state = "Campo obrigatório.";
-    if (!formData.municipality?.trim()) errors.municipality = "Campo obrigatório.";
-    if (!formData.health_region?.trim()) errors.health_region = "Campo obrigatório.";
-    if (!formData.unit_name?.trim()) errors.unit_name = "Campo obrigatório.";
-    if (!formData.sector?.trim()) errors.sector = "Campo obrigatório.";
-    if (!formData.work_address?.trim()) errors.work_address = "Campo obrigatório.";
-    if (!formData.residential_address?.trim()) errors.residential_address = "Campo obrigatório.";
-    if (!formData.email?.trim()) {
-      errors.email = "Campo obrigatório.";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      errors.email = "E-mail inválido.";
-    }
-    if (commercialDigits.length < 10 || commercialDigits.length > 11) {
-      errors.commercial_phone = "Telefone inválido.";
-    }
-    if (mobileDigits.length < 10 || mobileDigits.length > 11) {
-      errors.mobile_phone = "Celular inválido.";
-    }
+
+      if (!value) return;
+
+      const lowerKey = String(field.field_key || "").toLowerCase();
+      const digits = String(value).replace(/\D/g, "");
+
+      if (lowerKey.includes("cpf")) {
+        if (!isValidCpf(value)) {
+          errors[field.field_key] = "CPF inválido.";
+        }
+        return;
+      }
+
+      if (lowerKey.includes("rg")) {
+        if (digits.length < 5 || digits.length > 12) {
+          errors[field.field_key] = "RG inválido.";
+        }
+        return;
+      }
+
+      if (field.type === "email" || lowerKey.includes("email")) {
+        const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value));
+        if (!isValidEmail) {
+          errors[field.field_key] = "E-mail inválido.";
+        }
+        return;
+      }
+
+      if (
+        field.type === "tel" ||
+        lowerKey.includes("phone") ||
+        lowerKey.includes("celular")
+      ) {
+        if (digits.length < 10 || digits.length > 11) {
+          errors[field.field_key] = "Telefone inválido.";
+        }
+      }
+    });
 
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
-    enrollMutation.mutate(formData);
+
+    const normalizedFormData = { ...formData };
+    orderedTemplateFields.forEach((field) => {
+      const rawValue = formData[field.field_key];
+      if (rawValue === undefined || rawValue === null) return;
+      if (typeof rawValue !== "string") {
+        normalizedFormData[field.field_key] = rawValue;
+        return;
+      }
+      const trimmed = rawValue.trim();
+      normalizedFormData[field.field_key] = trimmed
+        ? formatFieldValue(field, trimmed)
+        : "";
+    });
+
+    enrollMutation.mutate(normalizedFormData);
   };
 
   if (!trainingId) {
@@ -289,7 +648,9 @@ export default function PublicEnrollment() {
                   {trainingDates.map((dateItem, index) => (
                     <p key={index} className="text-sm text-slate-600 pl-3">
                       • {formatDateSafe(dateItem.date)}
-                      {dateItem.start_time && dateItem.end_time && ` - ${dateItem.start_time} às ${dateItem.end_time}`}
+                      {dateItem.start_time && dateItem.end_time
+                        ? ` - ${dateItem.start_time} às ${dateItem.end_time}`
+                        : ""}
                     </p>
                   ))}
                 </div>
@@ -309,7 +670,9 @@ export default function PublicEnrollment() {
     );
   }
 
-  const isFullyBooked = training.max_participants && training.participants_count >= training.max_participants;
+  const isFullyBooked =
+    training.max_participants &&
+    training.participants_count >= training.max_participants;
   const isCancelled = training.status === "cancelado";
 
   return (
@@ -322,14 +685,15 @@ export default function PublicEnrollment() {
                 <GraduationCap className="h-6 w-6" />
               </div>
               <div>
-                <CardTitle className="text-2xl">Inscrição em Treinamento</CardTitle>
-                <p className="text-blue-100 text-sm mt-1">Preencha os dados para confirmar sua participação</p>
+                <CardTitle className="text-2xl">Inscricao em Treinamento</CardTitle>
+                <p className="text-blue-100 text-sm mt-1">
+                  Preencha os dados para confirmar sua participacao
+                </p>
               </div>
             </div>
           </CardHeader>
-          
+
           <CardContent className="pt-6 space-y-6">
-            {/* Training Info */}
             <div className="bg-slate-50 rounded-lg p-4 space-y-3">
               <h3 className="font-semibold text-lg text-slate-900">{training.title}</h3>
               {training.code && (
@@ -339,7 +703,10 @@ export default function PublicEnrollment() {
                 <p className="text-sm font-medium text-slate-700">Datas e Horários:</p>
                 {trainingDates.length > 0 ? (
                   trainingDates.map((dateItem, index) => (
-                    <div key={index} className="flex items-center gap-3 text-sm text-slate-700 pl-2">
+                    <div
+                      key={index}
+                      className="flex items-center gap-3 text-sm text-slate-700 pl-2"
+                    >
                       <Calendar className="h-4 w-4 text-blue-600" />
                       <span>{formatDateSafe(dateItem.date)}</span>
                       {dateItem.start_time && dateItem.end_time && (
@@ -370,7 +737,7 @@ export default function PublicEnrollment() {
                 )}
                 <div className="flex items-center gap-2 text-sm text-slate-700">
                   <User className="h-4 w-4 text-blue-600" />
-                  Coordenador: {training.coordinator}
+                  Coordenador: {training.coordinator || "-"}
                 </div>
               </div>
               {training.max_participants && (
@@ -384,7 +751,9 @@ export default function PublicEnrollment() {
               <Alert className="border-red-200 bg-red-50">
                 <AlertCircle className="h-4 w-4 text-red-600" />
                 <AlertDescription className="text-red-800">
-                  {isCancelled ? "Este treinamento foi cancelado." : "Vagas esgotadas para este treinamento."}
+                  {isCancelled
+                    ? "Este treinamento foi cancelado."
+                    : "Vagas esgotadas para este treinamento."}
                 </AlertDescription>
               </Alert>
             )}
@@ -393,7 +762,7 @@ export default function PublicEnrollment() {
               <Alert className="border-red-200 bg-red-50">
                 <AlertCircle className="h-4 w-4 text-red-600" />
                 <AlertDescription className="text-red-800">
-                  {enrollMutation.error.message}
+                  {enrollMutation.error?.message || "Erro ao realizar inscricao."}
                 </AlertDescription>
               </Alert>
             )}
@@ -407,256 +776,108 @@ export default function PublicEnrollment() {
                     ))}
                   </datalist>
                 )}
+
                 <div className="space-y-8">
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-slate-900">Dados Pessoais</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="name">Nome Completo *</Label>
-                        <Input
-                          id="name"
-                          value={formData.name}
-                          onChange={(e) => setFormData({...formData, name: e.target.value})}
-                          required
-                        />
+                  {sectionOrder.map((section, index) => {
+                    const sectionFields = fieldsBySection[section] || [];
+                    if (!sectionFields.length) return null;
+
+                    return (
+                      <div key={section} className="space-y-4">
+                        {index > 0 && <div className="border-t border-slate-200" />}
+                        <h3 className="text-lg font-semibold text-slate-900">
+                          {sectionLabels[section] || formatSectionLabel(section)}
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {sectionFields.map((field) => {
+                            const fieldKey = String(field.field_key || "");
+                            const lowerKey = fieldKey.toLowerCase();
+                            const isMunicipalityField =
+                              lowerKey.includes("municipio") ||
+                              lowerKey.includes("municipality");
+                            const isGveField =
+                              lowerKey === "health_region" ||
+                              lowerKey.includes("gve") ||
+                              lowerKey.includes("regional");
+                            const resolvedGve = getGveByMunicipio(
+                              formData.municipality
+                            );
+                            const fieldValue =
+                              isGveField && resolvedGve
+                                ? resolvedGve
+                                : formData[fieldKey] || "";
+
+                            return (
+                              <div key={fieldKey} className="space-y-2">
+                                <Label htmlFor={fieldKey}>
+                                  {field.label || fieldKey}
+                                  {field.required ? " *" : ""}
+                                </Label>
+                                <Input
+                                  id={fieldKey}
+                                  type={field.type || "text"}
+                                  value={fieldValue}
+                                  list={
+                                    isMunicipalityField && municipalityOptions.length > 0
+                                      ? "municipios-list"
+                                      : undefined
+                                  }
+                                  readOnly={isGveField && Boolean(resolvedGve)}
+                                  onChange={(e) => {
+                                    const nextValue = formatFieldValue(
+                                      field,
+                                      e.target.value,
+                                      { liveInput: true }
+                                    );
+
+                                    if (isMunicipalityField) {
+                                      const gveValue = getGveByMunicipio(nextValue);
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        [fieldKey]: nextValue,
+                                        health_region: gveValue || prev.health_region,
+                                      }));
+                                      if (formErrors[fieldKey]) {
+                                        setFormErrors((prev) => ({
+                                          ...prev,
+                                          [fieldKey]: null,
+                                        }));
+                                      }
+                                      if (gveValue && formErrors.health_region) {
+                                        setFormErrors((prev) => ({
+                                          ...prev,
+                                          health_region: null,
+                                        }));
+                                      }
+                                      return;
+                                    }
+
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      [fieldKey]: nextValue,
+                                    }));
+                                    if (formErrors[fieldKey]) {
+                                      setFormErrors((prev) => ({
+                                        ...prev,
+                                        [fieldKey]: null,
+                                      }));
+                                    }
+                                  }}
+                                  placeholder={field.placeholder || ""}
+                                  required={Boolean(field.required)}
+                                />
+                                {formErrors[fieldKey] && (
+                                  <p className="text-xs text-red-600">
+                                    {formErrors[fieldKey]}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="rg">RG *</Label>
-                        <Input
-                          id="rg"
-                          value={formData.rg}
-                          onChange={(e) => {
-                            const nextValue = formatRg(e.target.value);
-                            setFormData({ ...formData, rg: nextValue });
-                            if (formErrors.rg) {
-                              setFormErrors((prev) => ({ ...prev, rg: null }));
-                            }
-                          }}
-                          required
-                        />
-                        {formErrors.rg && <p className="text-xs text-red-600">{formErrors.rg}</p>}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="cpf">CPF</Label>
-                        <Input
-                          id="cpf"
-                          value={formData.cpf}
-                          onChange={(e) => {
-                            const nextValue = formatCpf(e.target.value);
-                            setFormData({ ...formData, cpf: nextValue });
-                            if (formErrors.cpf) {
-                              setFormErrors((prev) => ({ ...prev, cpf: null }));
-                            }
-                          }}
-                          placeholder="000.000.000-00"
-                        />
-                        {formErrors.cpf && <p className="text-xs text-red-600">{formErrors.cpf}</p>}
-                      </div>
-
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="professional_formation">Formação Profissional *</Label>
-                        <Input
-                          id="professional_formation"
-                          value={formData.professional_formation}
-                          onChange={(e) => setFormData({...formData, professional_formation: e.target.value})}
-                          required
-                        />
-                        {formErrors.professional_formation && (
-                          <p className="text-xs text-red-600">{formErrors.professional_formation}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-slate-200" />
-
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-slate-900">Instituição</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="institution">Instituição que Representa *</Label>
-                        <Input
-                          id="institution"
-                          value={formData.institution}
-                          onChange={(e) => setFormData({...formData, institution: e.target.value})}
-                          required
-                        />
-                        {formErrors.institution && (
-                          <p className="text-xs text-red-600">{formErrors.institution}</p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="state">Estado *</Label>
-                        <Input
-                          id="state"
-                          value={formData.state}
-                          onChange={(e) => setFormData({...formData, state: e.target.value})}
-                          placeholder="Ex: SP"
-                          required
-                        />
-                        {formErrors.state && <p className="text-xs text-red-600">{formErrors.state}</p>}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="municipality">Município *</Label>
-                        <Input
-                          id="municipality"
-                          value={formData.municipality}
-                          list={municipalityOptions.length > 0 ? "municipios-list" : undefined}
-                          onChange={(e) => {
-                            const nextValue = e.target.value;
-                            const gveValue = getGveByMunicipio(nextValue);
-                            setFormData((prev) => ({
-                              ...prev,
-                              municipality: nextValue,
-                              health_region: gveValue || prev.health_region,
-                            }));
-                            if (formErrors.municipality) {
-                              setFormErrors((prev) => ({ ...prev, municipality: null }));
-                            }
-                            if (gveValue && formErrors.health_region) {
-                              setFormErrors((prev) => ({ ...prev, health_region: null }));
-                            }
-                          }}
-                          required
-                        />
-                        {formErrors.municipality && (
-                          <p className="text-xs text-red-600">{formErrors.municipality}</p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="health_region">GVE *</Label>
-                        <Input
-                          id="health_region"
-                          value={getGveByMunicipio(formData.municipality) || formData.health_region}
-                          readOnly={Boolean(getGveByMunicipio(formData.municipality))}
-                          onChange={(e) => setFormData({ ...formData, health_region: e.target.value })}
-                          required
-                        />
-                        {formErrors.health_region && (
-                          <p className="text-xs text-red-600">{formErrors.health_region}</p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="unit_name">Nome da Unidade *</Label>
-                        <Input
-                          id="unit_name"
-                          value={formData.unit_name}
-                          onChange={(e) => setFormData({...formData, unit_name: e.target.value})}
-                          required
-                        />
-                        {formErrors.unit_name && <p className="text-xs text-red-600">{formErrors.unit_name}</p>}
-                      </div>
-
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="sector">Cargo *</Label>
-                        <Input
-                          id="sector"
-                          value={formData.sector}
-                          onChange={(e) => setFormData({...formData, sector: e.target.value})}
-                          required
-                        />
-                        {formErrors.sector && <p className="text-xs text-red-600">{formErrors.sector}</p>}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-slate-200" />
-
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-slate-900">Endereços</h3>
-                    <div className="grid grid-cols-1 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="work_address">Endereço de Trabalho *</Label>
-                        <Input
-                          id="work_address"
-                          value={formData.work_address}
-                          onChange={(e) => setFormData({...formData, work_address: e.target.value})}
-                          required
-                        />
-                        {formErrors.work_address && (
-                          <p className="text-xs text-red-600">{formErrors.work_address}</p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="residential_address">Endereço de Residência *</Label>
-                        <Input
-                          id="residential_address"
-                          value={formData.residential_address}
-                          onChange={(e) => setFormData({...formData, residential_address: e.target.value})}
-                          required
-                        />
-                        {formErrors.residential_address && (
-                          <p className="text-xs text-red-600">{formErrors.residential_address}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-slate-200" />
-
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-slate-900">Contatos</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="email">E-mail *</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          value={formData.email}
-                          onChange={(e) => setFormData({...formData, email: e.target.value})}
-                          required
-                        />
-                        {formErrors.email && <p className="text-xs text-red-600">{formErrors.email}</p>}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="commercial_phone">Telefone Comercial *</Label>
-                        <Input
-                          id="commercial_phone"
-                          value={formData.commercial_phone}
-                          onChange={(e) => {
-                            const nextValue = formatPhone(e.target.value);
-                            setFormData({ ...formData, commercial_phone: nextValue });
-                            if (formErrors.commercial_phone) {
-                              setFormErrors((prev) => ({ ...prev, commercial_phone: null }));
-                            }
-                          }}
-                          placeholder="(11) 1234-5678"
-                          required
-                        />
-                        {formErrors.commercial_phone && (
-                          <p className="text-xs text-red-600">{formErrors.commercial_phone}</p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="mobile_phone">Celular *</Label>
-                        <Input
-                          id="mobile_phone"
-                          value={formData.mobile_phone}
-                          onChange={(e) => {
-                            const nextValue = formatPhone(e.target.value);
-                            setFormData({ ...formData, mobile_phone: nextValue });
-                            if (formErrors.mobile_phone) {
-                              setFormErrors((prev) => ({ ...prev, mobile_phone: null }));
-                            }
-                          }}
-                          placeholder="(11) 91234-5678"
-                          required
-                        />
-                        {formErrors.mobile_phone && (
-                          <p className="text-xs text-red-600">{formErrors.mobile_phone}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
