@@ -161,18 +161,58 @@ export default function Trainings() {
         );
       }
 
+      const participantsByTrainingId =
+        await dataClient.entities.TrainingParticipant.filter({
+          training_id: trainingId,
+        });
+
+      let legacyParticipants = [];
+      if (trainingToDelete?.title) {
+        const byTitle = await dataClient.entities.TrainingParticipant.filter(
+          { training_title: trainingToDelete.title },
+          "-enrollment_date"
+        );
+        legacyParticipants = byTitle.filter((item) => {
+          if (item?.training_id) return false;
+          if (!expectedStartDate) return true;
+          const participantDate = String(item?.training_date || "").trim();
+          return !participantDate || participantDate === expectedStartDate;
+        });
+      }
+
+      const participantIdsToDelete = Array.from(
+        new Set(
+          [...participantsByTrainingId, ...legacyParticipants]
+            .map((item) => String(item?.id || "").trim())
+            .filter(Boolean)
+        )
+      );
+
+      if (participantIdsToDelete.length > 0) {
+        await Promise.all(
+          participantIdsToDelete.map((participantId) =>
+            dataClient.entities.TrainingParticipant.delete(participantId)
+          )
+        );
+      }
+
       await dataClient.entities.Training.delete(trainingId);
-      return { deletedEvents: relatedEvents.length };
+      return {
+        deletedEvents: relatedEvents.length,
+        deletedParticipants: participantIdsToDelete.length,
+      };
     },
-    onSuccess: ({ deletedEvents }) => {
+    onSuccess: ({ deletedEvents, deletedParticipants }) => {
       queryClient.invalidateQueries({ queryKey: ["trainings"] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["participants"] });
+      queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
       setDeleteConfirm(null);
       setDeleteStatus({
         type: "success",
         message:
-          deletedEvents > 0
-            ? `Treinamento e ${deletedEvents} evento(s) da agenda foram excluídos.`
+          deletedEvents > 0 || deletedParticipants > 0
+            ? `Treinamento excluído com ${deletedEvents} evento(s) da agenda e ${deletedParticipants} registro(s) de participante removidos.`
             : "Treinamento excluído com sucesso.",
       });
     },
