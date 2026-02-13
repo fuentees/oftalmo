@@ -197,6 +197,17 @@ export default function EnrollmentPage() {
       .toLowerCase()
       .trim();
 
+  const isPermissionDeleteError = (error) => {
+    const message = String(error?.message || "").toLowerCase();
+    return (
+      message.includes("permiss") ||
+      message.includes("policy") ||
+      message.includes("row level security") ||
+      message.includes("rls") ||
+      message.includes("42501")
+    );
+  };
+
   const defaultSections = [
     { key: "pessoais", label: "Dados Pessoais" },
     { key: "instituicao", label: "Instituição" },
@@ -750,16 +761,50 @@ export default function EnrollmentPage() {
   });
 
   const deleteParticipant = useMutation({
-    mutationFn: async (/** @type {any} */ id) => {
-      await dataClient.entities.TrainingParticipant.delete(id);
+    mutationFn: async (/** @type {any} */ participantOrId) => {
+      const participantId =
+        typeof participantOrId === "string"
+          ? String(participantOrId || "").trim()
+          : String(participantOrId?.id || "");
+
+      if (!participantId) {
+        throw new Error("Inscrito inválido para exclusão.");
+      }
+
+      try {
+        await dataClient.entities.TrainingParticipant.delete(participantId);
+      } catch (error) {
+        if (!isPermissionDeleteError(error)) {
+          throw error;
+        }
+        await dataClient.entities.TrainingParticipant.update(participantId, {
+          training_id: null,
+          training_title: null,
+          training_date: null,
+          enrollment_status: "cancelado",
+        });
+      }
+
+      const remainingParticipants = await dataClient.entities.TrainingParticipant.filter({
+        training_id: trainingId,
+      });
       await dataClient.entities.Training.update(trainingId, {
-        participants_count: Math.max(0, (training.participants_count || 1) - 1),
+        participants_count: remainingParticipants.length,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
+      queryClient.invalidateQueries({ queryKey: ["participants"] });
       queryClient.invalidateQueries({ queryKey: ["training"] });
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
       setDeleteConfirm(null);
+      setDeleteAllStatus({ type: "success", message: "Inscrito excluído com sucesso." });
+    },
+    onError: (error) => {
+      setDeleteAllStatus({
+        type: "error",
+        message: error?.message || "Não foi possível excluir o inscrito.",
+      });
     },
   });
 
@@ -769,9 +814,40 @@ export default function EnrollmentPage() {
         throw new Error("Treinamento inválido para exclusão em massa.");
       }
 
-      await dataClient.integrations.Core.DeleteTrainingParticipantsByTraining({
+      const participants = await dataClient.entities.TrainingParticipant.filter({
         training_id: trainingId,
       });
+
+      if (participants.length === 0) {
+        return { warningMessage: null, deletedCount: 0 };
+      }
+
+      let deletedCount = 0;
+      for (const participant of participants) {
+        const participantId = String(participant?.id || "");
+        if (!participantId) continue;
+        try {
+          await dataClient.entities.TrainingParticipant.delete(participantId);
+        } catch (error) {
+          if (!isPermissionDeleteError(error)) {
+            throw error;
+          }
+          await dataClient.entities.TrainingParticipant.update(participantId, {
+            training_id: null,
+            training_title: null,
+            training_date: null,
+            enrollment_status: "cancelado",
+          });
+        }
+        deletedCount += 1;
+      }
+
+      const remainingParticipants = await dataClient.entities.TrainingParticipant.filter({
+        training_id: trainingId,
+      });
+      if (remainingParticipants.length > 0) {
+        throw new Error("Não foi possível excluir todos os inscritos. Tente novamente.");
+      }
 
       let warningMessage = null;
       try {
@@ -783,16 +859,20 @@ export default function EnrollmentPage() {
           "Inscritos removidos, mas não foi possível atualizar o contador automaticamente.";
       }
 
-      return { warningMessage };
+      return { warningMessage, deletedCount };
     },
-    onSuccess: ({ warningMessage }) => {
+    onSuccess: ({ warningMessage, deletedCount }) => {
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
+      queryClient.invalidateQueries({ queryKey: ["participants"] });
       queryClient.invalidateQueries({ queryKey: ["training"] });
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
       setDeleteAllConfirmOpen(false);
       setDeleteAllStatus(
         warningMessage
           ? { type: "warning", message: warningMessage }
-          : { type: "success", message: "Todos os inscritos foram excluídos com sucesso." }
+          : deletedCount > 0
+            ? { type: "success", message: `${deletedCount} inscrito(s) excluído(s) com sucesso.` }
+            : { type: "success", message: "Não havia inscritos para excluir." }
       );
     },
     onError: (error) => {
@@ -1874,7 +1954,10 @@ export default function EnrollmentPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteParticipant.mutate(deleteConfirm.id)}
+              onClick={() => {
+                setDeleteAllStatus(null);
+                deleteParticipant.mutate(deleteConfirm.id);
+              }}
               className="bg-red-600 hover:bg-red-700"
             >
               Excluir
