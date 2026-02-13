@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { UserPlus, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { addMonths, format } from "date-fns";
+import { parseDateSafe } from "@/lib/date";
 
 export default function EnrollmentManager({ training, professionals, existingParticipants, onClose }) {
   const [selectedProfessional, setSelectedProfessional] = useState("");
@@ -24,7 +25,7 @@ export default function EnrollmentManager({ training, professionals, existingPar
       const professional = professionals.find((p) => p.id === professionalId);
       const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
       const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
-      const baseDate = firstDate ? new Date(firstDate) : null;
+      const baseDate = firstDate ? parseDateSafe(firstDate) : null;
       const validityDate =
         training.validity_months &&
         baseDate &&

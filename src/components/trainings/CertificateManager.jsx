@@ -290,7 +290,7 @@ export default function CertificateManager({ training, participants, onClose }) 
 
           // Update participant with validity date
           const validityDate = training.validity_months 
-            ? addMonths(new Date(), training.validity_months).toISOString().split('T')[0]
+            ? format(addMonths(new Date(), training.validity_months), "yyyy-MM-dd")
             : null;
 
           await dataClient.entities.TrainingParticipant.update(participant.id, {

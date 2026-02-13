@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
-import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar, MapPin, User, Users, GraduationCap, FileText, Video } from "lucide-react";
 import { Download, Trash2, Upload } from "lucide-react";
+import { parseDateSafe, formatDateSafe } from "@/lib/date";
 
 export default function TrainingDetails({ training, participants = [] }) {
   if (!training) return null;
@@ -81,10 +81,8 @@ export default function TrainingDetails({ training, participants = [] }) {
   });
 
   const formatDate = (value, pattern = "dd/MM/yyyy") => {
-    if (!value) return "-";
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return "-";
-    return format(parsed, pattern);
+    const formatted = formatDateSafe(value, pattern);
+    return formatted || "-";
   };
 
   const trainingDates = Array.isArray(training.dates)
@@ -115,7 +113,7 @@ export default function TrainingDetails({ training, participants = [] }) {
     if (training.date) dates.push(training.date);
     if (dates.length === 0) return null;
     const parsedDates = dates
-      .map((date) => new Date(date))
+      .map((date) => parseDateSafe(date))
       .filter((date) => !Number.isNaN(date.getTime()));
     if (parsedDates.length === 0) return null;
     return new Date(Math.max(...parsedDates.map((date) => date.getTime())));

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { useGveMapping } from "@/hooks/useGveMapping";
+import { parseDateSafe } from "@/lib/date";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -119,7 +120,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       .map((item) => {
         const raw = item?.date;
         if (!raw) return null;
-        const parsed = new Date(raw);
+        const parsed = parseDateSafe(raw);
         if (Number.isNaN(parsed.getTime())) return null;
         return {
           date: raw,
@@ -199,8 +200,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     
     // Auto-calculate status based on dates
     const now = new Date();
-    const firstDate = formData.dates[0] ? new Date(formData.dates[0].date) : null;
-    const lastDate = formData.dates[formData.dates.length - 1] ? new Date(formData.dates[formData.dates.length - 1].date) : null;
+    const firstDate = formData.dates[0] ? parseDateSafe(formData.dates[0].date) : null;
+    const lastDate = formData.dates[formData.dates.length - 1]
+      ? parseDateSafe(formData.dates[formData.dates.length - 1].date)
+      : null;
     
     let autoStatus = "agendado";
     if (firstDate && lastDate) {
@@ -299,7 +302,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
   const addDate = () => {
     setFormData((prev) => {
       const lastDate = prev.dates[prev.dates.length - 1]?.date;
-      const base = lastDate ? new Date(lastDate) : new Date();
+      const base = lastDate ? parseDateSafe(lastDate) : new Date();
       const next = Number.isNaN(base.getTime()) ? new Date() : addDays(base, 1);
       const nextDate = format(next, "yyyy-MM-dd");
       return {
@@ -325,8 +328,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     if (field === "date" && index === 0) {
       setFormData((prev) => {
         const previousValue = prev.dates[0]?.date;
-        const prevDate = previousValue ? new Date(previousValue) : null;
-        const nextDate = value ? new Date(value) : null;
+        const prevDate = previousValue ? parseDateSafe(previousValue) : null;
+        const nextDate = value ? parseDateSafe(value) : null;
         const deltaDays =
           prevDate &&
           nextDate &&
@@ -339,7 +342,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             return { ...dateItem, date: value };
           }
           if (!deltaDays || !dateItem?.date) return dateItem;
-          const parsed = new Date(dateItem.date);
+          const parsed = parseDateSafe(dateItem.date);
           if (Number.isNaN(parsed.getTime())) return dateItem;
           const shifted = addDays(parsed, deltaDays);
           return { ...dateItem, date: format(shifted, "yyyy-MM-dd") };
@@ -357,7 +360,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
   const generateRepeatDates = () => {
     if (!formData.dates[0]) return;
     
-    const baseDate = new Date(formData.dates[0].date);
+    const baseDate = parseDateSafe(formData.dates[0].date);
     const startTime = formData.dates[0].start_time;
     const endTime = formData.dates[0].end_time;
     const newDates = [formData.dates[0]];

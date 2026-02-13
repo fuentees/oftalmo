@@ -10,17 +10,14 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Send, CheckCircle, AlertCircle, Loader2, Video } from "lucide-react";
-import { format } from "date-fns";
+import { formatDateSafe } from "@/lib/date";
 
 export default function SendLinkButton({ training, participants }) {
   const [showDialog, setShowDialog] = useState(false);
   const [result, setResult] = useState(null);
 
   const formatDate = (value) => {
-    if (!value) return null;
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return null;
-    return format(parsed, "dd/MM/yyyy");
+    return formatDateSafe(value, "dd/MM/yyyy");
   };
 
   const sendLink = useMutation({

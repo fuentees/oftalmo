@@ -28,6 +28,7 @@ import { UserCheck, UserX, Search, Calendar, Link as LinkIcon, Copy, CheckCircle
 import { format } from "date-fns";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import { parseDateSafe, formatDateSafe } from "@/lib/date";
 
 export default function AttendanceControl({ training, participants, onClose }) {
   const [search, setSearch] = useState("");
@@ -36,7 +37,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
     ? training.dates.filter((dateItem) => dateItem?.date)
     : [];
   const sortedTrainingDates = [...trainingDates].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    (a, b) => parseDateSafe(a.date).getTime() - parseDateSafe(b.date).getTime()
   );
   const [selectedDate, setSelectedDate] = useState(
     trainingDates[0]?.date || null
@@ -45,10 +46,8 @@ export default function AttendanceControl({ training, participants, onClose }) {
   const queryClient = useQueryClient();
 
   const formatDate = (value, pattern = "dd/MM/yyyy") => {
-    if (!value) return "-";
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return "-";
-    return format(parsed, pattern);
+    const formatted = formatDateSafe(value, pattern);
+    return formatted || "-";
   };
 
   const getStatusLabel = (status) => {
@@ -307,7 +306,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <LinkIcon className="h-4 w-4 text-blue-600" />
-                Link de Check-in - {selectedDate && format(new Date(selectedDate), "dd/MM/yyyy")}
+                Link de Check-in - {selectedDate ? formatDate(selectedDate) : "-"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">

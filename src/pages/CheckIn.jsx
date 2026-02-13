@@ -15,6 +15,7 @@ import {
   GraduationCap
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatDateSafe } from "@/lib/date";
 
 export default function CheckIn() {
   const [rgPrefix, setRgPrefix] = useState("");
@@ -118,6 +119,8 @@ export default function CheckIn() {
     },
   });
 
+  const formatTrainingDate = (value) => formatDateSafe(value, "dd/MM/yyyy") || "-";
+
   if (!token) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
@@ -182,7 +185,7 @@ export default function CheckIn() {
             </p>
             <div className="p-4 bg-slate-50 rounded-lg text-sm text-left">
               <p><strong>Treinamento:</strong> {linkData.training_title}</p>
-              <p><strong>Data:</strong> {format(new Date(linkData.date), "dd/MM/yyyy")}</p>
+              <p><strong>Data:</strong> {formatTrainingDate(linkData.date)}</p>
               <p><strong>Horário:</strong> {format(new Date(), "HH:mm")}</p>
             </div>
           </CardContent>
@@ -208,7 +211,7 @@ export default function CheckIn() {
             </div>
             <div className="flex items-center gap-2 text-slate-600">
               <Calendar className="h-4 w-4" />
-              <span>{format(new Date(linkData.date), "dd/MM/yyyy")}</span>
+              <span>{formatTrainingDate(linkData.date)}</span>
             </div>
             <div className="flex items-center gap-2 text-slate-600">
               <Clock className="h-4 w-4" />

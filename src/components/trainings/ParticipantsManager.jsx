@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Search, UserPlus, Trash2, Loader2 } from "lucide-react";
 import { addMonths, format } from "date-fns";
+import { parseDateSafe } from "@/lib/date";
 
 export default function ParticipantsManager({ training, professionals, existingParticipants, onClose }) {
   const [search, setSearch] = useState("");
@@ -40,7 +41,7 @@ export default function ParticipantsManager({ training, professionals, existingP
 
   const addParticipants = useMutation({
     mutationFn: async (/** @type {any[]} */ professionalIds) => {
-      const baseDate = training.date ? new Date(training.date) : null;
+      const baseDate = training.date ? parseDateSafe(training.date) : null;
       const validityDate =
         training.validity_months &&
         baseDate &&

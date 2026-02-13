@@ -1,13 +1,7 @@
 import jsPDF from "jspdf";
 import { format } from "date-fns";
 import { loadCertificateTemplate } from "@/lib/certificateTemplate";
-
-const formatDateSafe = (value, pattern = "dd/MM/yyyy") => {
-  if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return format(parsed, pattern);
-};
+import { parseDateSafe, formatDateSafe } from "@/lib/date";
 
 const getTrainingDates = (training) => {
   const rawDates = [];
@@ -28,7 +22,7 @@ const getTrainingDates = (training) => {
   }
   const parsedDates = rawDates
     .map((value) => {
-      const parsed = new Date(value);
+      const parsed = parseDateSafe(value);
       return Number.isNaN(parsed.getTime()) ? null : parsed;
     })
     .filter(Boolean)
