@@ -62,10 +62,11 @@ import SendLinkButton from "@/components/trainings/SendLinkButton";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
 
 export default function Trainings() {
+  const currentYearValue = String(new Date().getFullYear());
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [yearFilter, setYearFilter] = useState("all");
+  const [yearFilter, setYearFilter] = useState(currentYearValue);
   
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -442,7 +443,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     if (training.date) dates.push(training.date);
     if (dates.length === 0) return null;
     const parsedDates = dates
-      .map((date) => new Date(date))
+      .map((date) => parseDateSafe(date))
       .filter((date) => !Number.isNaN(date.getTime()));
     if (parsedDates.length === 0) return null;
     return new Date(Math.max(...parsedDates.map((date) => date.getTime())));
@@ -499,13 +500,13 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       value = training.start_date || training.date;
     }
     if (!value) return null;
-    const parsed = new Date(value);
+    const parsed = parseDateSafe(value);
     if (Number.isNaN(parsed.getTime())) return null;
     return parsed.getFullYear();
   };
 
   const yearOptions = React.useMemo(() => {
-    const years = new Set();
+    const years = new Set([Number(currentYearValue)]);
     trainings.forEach((training) => {
       const year = getTrainingYear(training);
       if (year) years.add(year);
@@ -513,7 +514,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     return Array.from(years)
       .sort((a, b) => b - a)
       .map((year) => ({ value: String(year), label: String(year) }));
-  }, [trainings]);
+  }, [trainings, currentYearValue]);
 
   const filteredTrainings = trainings.filter((t) => {
     const effectiveStatus = getTrainingStatus(t);
@@ -542,10 +543,27 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
 
   const formatDate = (value) => {
     if (!value) return "-";
-    const parsed = new Date(value);
+    const parsed = parseDateSafe(value);
     if (Number.isNaN(parsed.getTime())) return "-";
     return format(parsed, "dd/MM/yyyy");
   };
+
+  function parseDateSafe(value) {
+    if (!value) return new Date(NaN);
+    if (value instanceof Date) return new Date(value.getTime());
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (match) {
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+        return new Date(year, month - 1, day);
+      }
+      return new Date(trimmed);
+    }
+    return new Date(value);
+  }
 
   const typeLabels = {
     teorico: "Teórico",
