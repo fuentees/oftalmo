@@ -282,6 +282,21 @@ const ClearMunicipalityGveMapping = async () => {
   return { success: true };
 };
 
+const DeleteTrainingParticipantsByTraining = async ({ training_id }) => {
+  const trainingId = String(training_id || "").trim();
+  if (!trainingId) {
+    throw new Error("Treinamento não informado para excluir inscritos.");
+  }
+
+  const { error } = await supabase
+    .from("training_participants")
+    .delete()
+    .eq("training_id", trainingId);
+  if (error) throw error;
+
+  return { success: true };
+};
+
 const getStoragePathFromUrl = (fileUrl) => {
   try {
     const url = new URL(fileUrl);
@@ -627,6 +642,7 @@ export const dataClient = {
       ListMunicipalityGveMapping,
       ReplaceMunicipalityGveMapping,
       ClearMunicipalityGveMapping,
+      DeleteTrainingParticipantsByTraining,
     },
   },
   appLogs: {

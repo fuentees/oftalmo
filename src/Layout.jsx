@@ -77,6 +77,10 @@ export default function Layout({ children, currentPageName }) {
   ];
 
   const isActive = (page) => currentPageName === page;
+  const isMacPlatform =
+    typeof window !== "undefined" &&
+    /(Mac|iPhone|iPad|iPod)/i.test(window.navigator.platform || "");
+  const shortcutModifier = isMacPlatform ? "⌘" : "Ctrl";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
@@ -172,7 +176,15 @@ export default function Layout({ children, currentPageName }) {
               >
                 <Search className="h-4 w-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
                 <span className="font-medium">Buscar em tudo...</span>
-                <kbd className="ml-auto px-2.5 py-1 text-xs bg-white rounded-lg border border-slate-200 shadow-sm font-semibold text-slate-600">⌘K</kbd>
+                <div className="ml-auto flex items-center gap-1.5 shrink-0 whitespace-nowrap text-[11px] text-slate-500">
+                  <kbd className="px-2 py-1 bg-white rounded-lg border border-slate-200 shadow-sm font-semibold text-slate-600">
+                    {shortcutModifier}
+                  </kbd>
+                  <span className="font-semibold text-slate-400">+</span>
+                  <kbd className="px-2 py-1 bg-white rounded-lg border border-slate-200 shadow-sm font-semibold text-slate-600">
+                    K
+                  </kbd>
+                </div>
               </button>
             </div>
 

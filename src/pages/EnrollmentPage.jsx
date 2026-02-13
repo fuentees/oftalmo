@@ -73,6 +73,7 @@ export default function EnrollmentPage() {
   const [editStatus, setEditStatus] = useState(null);
   const [showEditParticipant, setShowEditParticipant] = useState(false);
   const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
+  const [deleteAllStatus, setDeleteAllStatus] = useState(null);
 
   const queryClient = useQueryClient();
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
@@ -764,20 +765,41 @@ export default function EnrollmentPage() {
 
   const deleteAllParticipants = useMutation({
     mutationFn: async () => {
-      if (!allParticipants.length) return;
-      await Promise.all(
-        allParticipants.map((participant) =>
-          dataClient.entities.TrainingParticipant.delete(participant.id)
-        )
-      );
-      await dataClient.entities.Training.update(trainingId, {
-        participants_count: 0,
+      if (!trainingId) {
+        throw new Error("Treinamento inválido para exclusão em massa.");
+      }
+
+      await dataClient.integrations.Core.DeleteTrainingParticipantsByTraining({
+        training_id: trainingId,
       });
+
+      let warningMessage = null;
+      try {
+        await dataClient.entities.Training.update(trainingId, {
+          participants_count: 0,
+        });
+      } catch {
+        warningMessage =
+          "Inscritos removidos, mas não foi possível atualizar o contador automaticamente.";
+      }
+
+      return { warningMessage };
     },
-    onSuccess: () => {
+    onSuccess: ({ warningMessage }) => {
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
       queryClient.invalidateQueries({ queryKey: ["training"] });
       setDeleteAllConfirmOpen(false);
+      setDeleteAllStatus(
+        warningMessage
+          ? { type: "warning", message: warningMessage }
+          : { type: "success", message: "Todos os inscritos foram excluídos com sucesso." }
+      );
+    },
+    onError: (error) => {
+      setDeleteAllStatus({
+        type: "error",
+        message: error?.message || "Não foi possível excluir todos os inscritos.",
+      });
     },
   });
 
@@ -1787,8 +1809,15 @@ export default function EnrollmentPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setDeleteAllConfirmOpen(true)}
-                    disabled={!allParticipants.length || deleteAllParticipants.isPending}
+                    onClick={() => {
+                      setDeleteAllStatus(null);
+                      setDeleteAllConfirmOpen(true);
+                    }}
+                    disabled={
+                      participantsLoading ||
+                      !allParticipants.length ||
+                      deleteAllParticipants.isPending
+                    }
                     className="text-red-600 border-red-200 hover:bg-red-50"
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
@@ -1796,6 +1825,30 @@ export default function EnrollmentPage() {
                   </Button>
                 </div>
               </div>
+
+              {deleteAllStatus && (
+                <Alert
+                  className={
+                    deleteAllStatus.type === "error"
+                      ? "border-red-200 bg-red-50"
+                      : deleteAllStatus.type === "warning"
+                        ? "border-amber-200 bg-amber-50"
+                        : "border-green-200 bg-green-50"
+                  }
+                >
+                  <AlertDescription
+                    className={
+                      deleteAllStatus.type === "error"
+                        ? "text-red-800"
+                        : deleteAllStatus.type === "warning"
+                          ? "text-amber-800"
+                          : "text-green-800"
+                    }
+                  >
+                    {deleteAllStatus.message}
+                  </AlertDescription>
+                </Alert>
+              )}
 
               <DataTable
                 columns={columns}
@@ -1845,7 +1898,10 @@ export default function EnrollmentPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteAllParticipants.mutate()}
+              onClick={() => {
+                setDeleteAllStatus(null);
+                deleteAllParticipants.mutate();
+              }}
               className="bg-red-600 hover:bg-red-700"
               disabled={deleteAllParticipants.isPending}
             >
