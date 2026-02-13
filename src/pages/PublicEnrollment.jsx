@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { useGveMapping } from "@/hooks/useGveMapping";
@@ -19,6 +19,7 @@ import {
   Video
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatDateSafe, parseDateSafe } from "@/lib/date";
 
 export default function PublicEnrollment() {
   const queryString =
@@ -59,13 +60,6 @@ export default function PublicEnrollment() {
     enabled: !!trainingId,
   });
 
-  const formatDateSafe = (value, pattern = "dd/MM/yyyy") => {
-    if (!value) return null;
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return null;
-    return format(parsed, pattern);
-  };
-
   const formatCpf = (value) => {
     const digits = value.replace(/\D/g, "").slice(0, 11);
     return digits
@@ -92,7 +86,16 @@ export default function PublicEnrollment() {
     return cleaned.toUpperCase();
   };
 
-  const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
+  const trainingDates = useMemo(() => {
+    const list = Array.isArray(training?.dates) ? [...training.dates] : [];
+    return list.sort((a, b) => {
+      const dateA = parseDateSafe(a?.date);
+      const dateB = parseDateSafe(b?.date);
+      const timeA = Number.isNaN(dateA.getTime()) ? 0 : dateA.getTime();
+      const timeB = Number.isNaN(dateB.getTime()) ? 0 : dateB.getTime();
+      return timeA - timeB;
+    });
+  }, [training?.dates]);
 
   const enrollMutation = useMutation({
     mutationFn: async (/** @type {Record<string, any>} */ data) => {

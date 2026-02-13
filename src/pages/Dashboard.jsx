@@ -222,17 +222,64 @@ export default function Dashboard() {
     return endDate;
   };
 
+  const getEventStartDateTime = (event) => {
+    const startDate = parseLocalDate(event?.start_date);
+    if (!startDate) return null;
+
+    const parsedStartTime = parseTimeToHoursMinutes(event?.start_time);
+    if (parsedStartTime) {
+      startDate.setHours(parsedStartTime.hours, parsedStartTime.minutes, 0, 0);
+      return startDate;
+    }
+
+    startDate.setHours(0, 0, 0, 0);
+    return startDate;
+  };
+
+  const getEffectiveEventStatus = (event) => {
+    if (!event) return "planejado";
+    const normalizedStatus = String(event.status || "").trim().toLowerCase();
+    if (normalizedStatus === "cancelado") return "cancelado";
+
+    const start = getEventStartDateTime(event);
+    const end = getEventEndDateTime(event);
+    if (!start || !end) {
+      if (normalizedStatus === "agendado") return "planejado";
+      return normalizedStatus || "planejado";
+    }
+
+    const now = new Date();
+    if (now < start) {
+      return normalizedStatus === "confirmado" ? "confirmado" : "planejado";
+    }
+    if (now <= end) return "em_andamento";
+    return "concluido";
+  };
+
+  const eventStatusLabels = {
+    agendado: "Agendado",
+    planejado: "Planejado",
+    confirmado: "Confirmado",
+    em_andamento: "Em andamento",
+    concluido: "Concluído",
+    cancelado: "Cancelado",
+  };
+
+  const eventStatusColors = {
+    agendado: "bg-blue-100 text-blue-700",
+    planejado: "bg-blue-100 text-blue-700",
+    confirmado: "bg-green-100 text-green-700",
+    em_andamento: "bg-amber-100 text-amber-700",
+    concluido: "bg-slate-100 text-slate-700",
+    cancelado: "bg-red-100 text-red-700",
+  };
+
   // Próximos eventos (futuros ou em andamento)
   const upcomingEvents = useMemo(() => {
-    const now = new Date();
-
     const filtered = events.filter((event) => {
-      if (event.status === "cancelado" || event.status === "concluido") return false;
       if (eventTypeFilter !== "all" && event.type !== eventTypeFilter) return false;
-
-      const eventEndDateTime = getEventEndDateTime(event);
-      if (!eventEndDateTime) return false;
-      return eventEndDateTime.getTime() >= now.getTime();
+      const effectiveStatus = getEffectiveEventStatus(event);
+      return effectiveStatus !== "cancelado" && effectiveStatus !== "concluido";
     });
 
     const groupMap = new Map();
@@ -260,6 +307,7 @@ export default function Dashboard() {
           ...event,
           startDate,
           endDate,
+          effectiveStatus: getEffectiveEventStatus(event),
           occurrences: 1,
         });
         return;
@@ -267,6 +315,18 @@ export default function Dashboard() {
 
       if (startDate < existing.startDate) existing.startDate = startDate;
       if (endDate > existing.endDate) existing.endDate = endDate;
+      const incomingStatus = getEffectiveEventStatus(event);
+      const statusPriority = {
+        em_andamento: 3,
+        confirmado: 2,
+        planejado: 1,
+        agendado: 1,
+      };
+      const currentPriority = statusPriority[existing.effectiveStatus] || 0;
+      const incomingPriority = statusPriority[incomingStatus] || 0;
+      if (incomingPriority > currentPriority) {
+        existing.effectiveStatus = incomingStatus;
+      }
       existing.occurrences += 1;
     });
 
@@ -374,6 +434,18 @@ export default function Dashboard() {
         if (!row.start_time && !row.end_time) return "-";
         if (row.start_time && row.end_time) return `${row.start_time} - ${row.end_time}`;
         return row.start_time || row.end_time;
+      },
+      sortable: false,
+    },
+    {
+      header: "Status",
+      render: (row) => {
+        const status = row.effectiveStatus || "planejado";
+        return (
+          <Badge className={eventStatusColors[status] || eventStatusColors.planejado}>
+            {eventStatusLabels[status] || eventStatusLabels.planejado}
+          </Badge>
+        );
       },
       sortable: false,
     },

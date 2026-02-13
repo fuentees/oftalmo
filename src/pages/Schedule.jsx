@@ -227,6 +227,7 @@ export default function Schedule() {
   };
 
   const statusLabels = {
+    agendado: "Agendado",
     planejado: "Planejado",
     confirmado: "Confirmado",
     em_andamento: "Em Andamento",
@@ -235,6 +236,7 @@ export default function Schedule() {
   };
 
   const statusColors = {
+    agendado: "bg-blue-100 text-blue-700",
     planejado: "bg-blue-100 text-blue-700",
     confirmado: "bg-green-100 text-green-700",
     em_andamento: "bg-amber-100 text-amber-700",
@@ -311,14 +313,19 @@ export default function Schedule() {
   const getEffectiveStatus = (event) => {
     if (!event) return "planejado";
     if (event.status === "cancelado") return "cancelado";
-    if (event.status === "concluido") return "concluido";
     const startDate = event.start_date;
     const endDate = event.end_date || event.start_date;
     const start = parseDateTime(startDate, event.start_time, false);
     const end = parseDateTime(endDate, event.end_time, true);
-    if (!start || !end) return event.status || "planejado";
+    const normalizedStatus = String(event.status || "").trim().toLowerCase();
+    if (!start || !end) {
+      if (normalizedStatus === "agendado") return "planejado";
+      return normalizedStatus || "planejado";
+    }
     const now = new Date();
-    if (now < start) return event.status || "planejado";
+    if (now < start) {
+      return normalizedStatus === "confirmado" ? "confirmado" : "planejado";
+    }
     if (now >= start && now <= end) return "em_andamento";
     return "concluido";
   };
@@ -545,7 +552,8 @@ export default function Schedule() {
               selectedDateEvents.map((event) => {
                 const Icon = typeIcons[event.type] || Circle;
                 const effectiveStatus = getEffectiveStatus(event);
-                const showPlanActions = event.status === "planejado";
+                const showPlanActions =
+                  effectiveStatus === "planejado" || effectiveStatus === "agendado";
                 return (
                   <Card key={event.id} className="border shadow-sm">
                     <CardContent className="p-3 space-y-2">

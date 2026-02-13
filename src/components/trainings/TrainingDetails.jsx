@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ export default function TrainingDetails({ training, participants = [] }) {
   const queryClient = useQueryClient();
   const [reportFile, setReportFile] = useState(null);
   const [reportStatus, setReportStatus] = useState(null);
+  const [, forceClockTick] = useState(0);
   const REPORT_NAME = "Relatório do Evento";
 
   const { data: user } = useQuery({
@@ -103,32 +104,80 @@ export default function TrainingDetails({ training, participants = [] }) {
     cancelado: "Cancelado",
   };
 
-  const getLastTrainingDate = () => {
-    const dates = [];
-    if (Array.isArray(training.dates)) {
-      training.dates.forEach((item) => {
-        if (item?.date) dates.push(item.date);
-      });
+  const parseTimeToParts = (value) => {
+    const match = String(value ?? "").trim().match(/^(\d{2}):(\d{2})$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (
+      !Number.isFinite(hours) ||
+      !Number.isFinite(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return null;
     }
-    if (training.date) dates.push(training.date);
-    if (dates.length === 0) return null;
-    const parsedDates = dates
-      .map((date) => parseDateSafe(date))
-      .filter((date) => !Number.isNaN(date.getTime()));
-    if (parsedDates.length === 0) return null;
-    return new Date(Math.max(...parsedDates.map((date) => date.getTime())));
+    return { hours, minutes };
+  };
+
+  const parseTrainingDateTime = (dateValue, timeValue, isEnd) => {
+    const parsedDate = parseDateSafe(dateValue);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+    const parsedTime = parseTimeToParts(timeValue);
+    if (parsedTime) {
+      parsedDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
+      return parsedDate;
+    }
+    if (isEnd) {
+      parsedDate.setHours(23, 59, 59, 999);
+    } else {
+      parsedDate.setHours(0, 0, 0, 0);
+    }
+    return parsedDate;
+  };
+
+  const getTrainingDateBounds = () => {
+    const dateItems = Array.isArray(training?.dates) && training.dates.length > 0
+      ? training.dates
+      : training?.date
+      ? [{ date: training.date }]
+      : [];
+
+    const starts = [];
+    const ends = [];
+    dateItems.forEach((item) => {
+      const dateValue = item?.date || item;
+      const startDateTime = parseTrainingDateTime(dateValue, item?.start_time, false);
+      const endDateTime = parseTrainingDateTime(dateValue, item?.end_time, true);
+      if (startDateTime) starts.push(startDateTime.getTime());
+      if (endDateTime) ends.push(endDateTime.getTime());
+    });
+
+    if (!starts.length || !ends.length) return null;
+    return {
+      start: new Date(Math.min(...starts)),
+      end: new Date(Math.max(...ends)),
+    };
   };
 
   const getEffectiveStatus = () => {
-    if (training.status === "concluido" || training.status === "cancelado") {
-      return training.status;
-    }
-    const lastDate = getLastTrainingDate();
-    if (!lastDate) return training.status;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return lastDate.getTime() < today.getTime() ? "concluido" : training.status;
+    if (training.status === "cancelado") return "cancelado";
+    const bounds = getTrainingDateBounds();
+    if (!bounds) return training.status || "agendado";
+    const now = new Date();
+    if (now < bounds.start) return "agendado";
+    if (now > bounds.end) return "concluido";
+    return "em_andamento";
   };
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      forceClockTick((value) => value + 1);
+    }, 60000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const effectiveStatus = getEffectiveStatus();
 

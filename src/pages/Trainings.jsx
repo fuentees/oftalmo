@@ -82,9 +82,10 @@ export default function Trainings() {
   const [importFile, setImportFile] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
   const [deleteStatus, setDeleteStatus] = useState(null);
+  const [, forceStatusClockTick] = useState(0);
 
   const navigate = useNavigate();
-  const autoUpdatedRef = React.useRef(new Set());
+  const autoUpdatedRef = React.useRef(new Map());
   const orphanCleanupDoneRef = React.useRef(false);
 
   const queryClient = useQueryClient();
@@ -646,62 +647,129 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     setImportStatus(null);
   };
 
-  const getLastTrainingDate = (training) => {
-    if (!training) return null;
-    const dates = [];
-    if (Array.isArray(training.dates)) {
-      training.dates.forEach((item) => {
-        if (item?.date) dates.push(item.date);
-      });
+  const parseTimeToParts = (value) => {
+    const match = String(value ?? "").trim().match(/^(\d{2}):(\d{2})$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (
+      !Number.isFinite(hours) ||
+      !Number.isFinite(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return null;
     }
-    if (training.date) dates.push(training.date);
-    if (dates.length === 0) return null;
-    const parsedDates = dates
-      .map((date) => parseDateSafe(date))
-      .filter((date) => !Number.isNaN(date.getTime()));
-    if (parsedDates.length === 0) return null;
-    return new Date(Math.max(...parsedDates.map((date) => date.getTime())));
+    return { hours, minutes };
   };
 
-  const shouldMarkConcluded = (training) => {
-    if (!training) return false;
-    if (training.status === "concluido" || training.status === "cancelado") {
-      return false;
+  const parseTrainingDateTime = (dateValue, timeValue, isEnd) => {
+    const date = parseDateSafe(dateValue);
+    if (Number.isNaN(date.getTime())) return null;
+    const parsedTime = parseTimeToParts(timeValue);
+    if (parsedTime) {
+      date.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
+      return date;
     }
-    const lastDate = getLastTrainingDate(training);
-    if (!lastDate) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return lastDate.getTime() < today.getTime();
+    if (isEnd) {
+      date.setHours(23, 59, 59, 999);
+    } else {
+      date.setHours(0, 0, 0, 0);
+    }
+    return date;
+  };
+
+  const getTrainingDateBounds = (training) => {
+    if (!training) return null;
+
+    const dateItems = Array.isArray(training.dates) && training.dates.length > 0
+      ? training.dates
+      : training.date
+      ? [{ date: training.date }]
+      : [];
+
+    const starts = [];
+    const ends = [];
+    dateItems.forEach((item) => {
+      const dateValue = item?.date || item;
+      const startDateTime = parseTrainingDateTime(dateValue, item?.start_time, false);
+      const endDateTime = parseTrainingDateTime(dateValue, item?.end_time, true);
+      if (startDateTime) starts.push(startDateTime.getTime());
+      if (endDateTime) ends.push(endDateTime.getTime());
+    });
+
+    if (!starts.length || !ends.length) return null;
+
+    return {
+      start: new Date(Math.min(...starts)),
+      end: new Date(Math.max(...ends)),
+    };
+  };
+
+  const getComputedTrainingStatus = (training) => {
+    if (!training) return "agendado";
+    if (training.status === "cancelado") return "cancelado";
+
+    const bounds = getTrainingDateBounds(training);
+    if (!bounds) return training.status || "agendado";
+
+    const now = new Date();
+    if (now < bounds.start) return "agendado";
+    if (now > bounds.end) return "concluido";
+    return "em_andamento";
   };
 
   React.useEffect(() => {
-    if (!trainings.length) return;
-    const pending = trainings.filter(
-      (training) =>
-        training.id &&
-        shouldMarkConcluded(training) &&
-        !autoUpdatedRef.current.has(training.id)
-    );
-    if (pending.length === 0) return;
-    pending.forEach((training) => autoUpdatedRef.current.add(training.id));
-    Promise.all(
-      pending.map((training) =>
-        dataClient.entities.Training.update(training.id, {
-          status: "concluido",
+    let cancelled = false;
+
+    const syncTrainingStatuses = async () => {
+      if (!trainings.length) return;
+
+      // Atualiza relógio local para refletir status visual em tempo real.
+      forceStatusClockTick((value) => value + 1);
+
+      const updates = trainings
+        .map((training) => {
+          const trainingId = String(training?.id || "").trim();
+          const nextStatus = getComputedTrainingStatus(training);
+          const currentStatus = String(training?.status || "").trim();
+          if (!trainingId || training?.status === "cancelado") return null;
+          if (!nextStatus || nextStatus === currentStatus) return null;
+          const lastSentStatus = autoUpdatedRef.current.get(trainingId);
+          if (lastSentStatus === nextStatus) return null;
+          return { trainingId, nextStatus };
         })
-      )
-    )
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ["trainings"] });
-      })
-      .catch(() => {
-        // Se falhar (RLS), mantém apenas o status visual.
+        .filter(Boolean);
+
+      if (!updates.length || cancelled) return;
+      updates.forEach(({ trainingId, nextStatus }) => {
+        autoUpdatedRef.current.set(trainingId, nextStatus);
       });
+
+      try {
+        await Promise.all(
+          updates.map(({ trainingId, nextStatus }) =>
+            dataClient.entities.Training.update(trainingId, { status: nextStatus })
+          )
+        );
+        if (cancelled) return;
+        queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      } catch (error) {
+        // Se falhar (RLS), mantém apenas o status visual.
+      }
+    };
+
+    syncTrainingStatuses();
+    const timer = window.setInterval(syncTrainingStatuses, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [trainings, queryClient]);
 
-  const getTrainingStatus = (training) =>
-    shouldMarkConcluded(training) ? "concluido" : training.status;
+  const getTrainingStatus = (training) => getComputedTrainingStatus(training);
 
   const getTrainingYear = (training) => {
     if (!training) return null;
