@@ -72,6 +72,7 @@ export default function EnrollmentPage() {
   const [editFormErrors, setEditFormErrors] = useState(/** @type {Record<string, string | null>} */ ({}));
   const [editStatus, setEditStatus] = useState(null);
   const [showEditParticipant, setShowEditParticipant] = useState(false);
+  const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
 
   const queryClient = useQueryClient();
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
@@ -758,6 +759,25 @@ export default function EnrollmentPage() {
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
       queryClient.invalidateQueries({ queryKey: ["training"] });
       setDeleteConfirm(null);
+    },
+  });
+
+  const deleteAllParticipants = useMutation({
+    mutationFn: async () => {
+      if (!allParticipants.length) return;
+      await Promise.all(
+        allParticipants.map((participant) =>
+          dataClient.entities.TrainingParticipant.delete(participant.id)
+        )
+      );
+      await dataClient.entities.Training.update(trainingId, {
+        participants_count: 0,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
+      queryClient.invalidateQueries({ queryKey: ["training"] });
+      setDeleteAllConfirmOpen(false);
     },
   });
 
@@ -1742,13 +1762,15 @@ export default function EnrollmentPage() {
             </TabsContent>
 
             <TabsContent value="list" className="mt-6 space-y-4">
-              <div className="flex flex-col lg:flex-row gap-3 justify-between">
-                <SearchFilter
-                  searchValue={search}
-                  onSearchChange={setSearch}
-                  searchPlaceholder="Buscar por nome, CPF ou email..."
-                />
-                <div className="flex gap-2">
+              <div className="flex flex-col lg:flex-row lg:items-start gap-3 justify-between">
+                <div className="flex-1 min-w-0">
+                  <SearchFilter
+                    searchValue={search}
+                    onSearchChange={setSearch}
+                    searchPlaceholder="Buscar por nome, CPF ou email..."
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 lg:pt-1">
                   {isPastTraining && (
                     <Button
                       onClick={() => setShowUploadList(true)}
@@ -1761,6 +1783,16 @@ export default function EnrollmentPage() {
                   <Button onClick={handleExportExcel} variant="outline">
                     <Download className="h-4 w-4 mr-2" />
                     Exportar Excel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setDeleteAllConfirmOpen(true)}
+                    disabled={!allParticipants.length || deleteAllParticipants.isPending}
+                    className="text-red-600 border-red-200 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Excluir todos
                   </Button>
                 </div>
               </div>
@@ -1793,6 +1825,31 @@ export default function EnrollmentPage() {
               className="bg-red-600 hover:bg-red-700"
             >
               Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={deleteAllConfirmOpen}
+        onOpenChange={setDeleteAllConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir todos os inscritos</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação vai remover todos os inscritos deste treinamento e não pode
+              ser desfeita. Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteAllParticipants.mutate()}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleteAllParticipants.isPending}
+            >
+              {deleteAllParticipants.isPending ? "Excluindo..." : "Excluir todos"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
