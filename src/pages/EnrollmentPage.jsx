@@ -197,6 +197,142 @@ export default function EnrollmentPage() {
       .toLowerCase()
       .trim();
 
+  const normalizeCpf = (value) => String(value ?? "").replace(/\D/g, "");
+  const normalizeEmail = (value) => String(value ?? "").trim().toLowerCase();
+  const normalizeDateKey = (value) => String(value ?? "").trim().slice(0, 10);
+
+  const hasSameTrainingContext = (a, b) => {
+    const aTrainingId = String(a?.training_id || "").trim();
+    const bTrainingId = String(b?.training_id || "").trim();
+    if (aTrainingId && bTrainingId) return aTrainingId === bTrainingId;
+    const aTitle = normalizeText(a?.training_title);
+    const bTitle = normalizeText(b?.training_title);
+    if (aTitle && bTitle) return aTitle === bTitle;
+    return !aTrainingId && !bTrainingId;
+  };
+
+  const isSameParticipantRecord = (candidate, target) => {
+    if (!candidate || !target) return false;
+    const candidateId = String(candidate.id || "").trim();
+    const targetId = String(target.id || "").trim();
+    if (candidateId && targetId && candidateId === targetId) return true;
+    if (!hasSameTrainingContext(candidate, target)) return false;
+
+    const candidateCpf = normalizeCpf(candidate.professional_cpf);
+    const targetCpf = normalizeCpf(target.professional_cpf);
+    if (candidateCpf && targetCpf && candidateCpf === targetCpf) return true;
+
+    const candidateEmail = normalizeEmail(candidate.professional_email);
+    const targetEmail = normalizeEmail(target.professional_email);
+    const candidateName = normalizeText(candidate.professional_name);
+    const targetName = normalizeText(target.professional_name);
+    if (
+      candidateEmail &&
+      targetEmail &&
+      candidateEmail === targetEmail &&
+      candidateName &&
+      targetName &&
+      candidateName === targetName
+    ) {
+      return true;
+    }
+
+    const candidateEnrollmentDate = normalizeDateKey(candidate.enrollment_date);
+    const targetEnrollmentDate = normalizeDateKey(target.enrollment_date);
+    if (
+      candidateEnrollmentDate &&
+      targetEnrollmentDate &&
+      candidateEnrollmentDate === targetEnrollmentDate &&
+      candidateName &&
+      targetName &&
+      candidateName === targetName
+    ) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const isLegacyParticipantForCurrentTraining = (participant) => {
+    if (!participant) return false;
+    if (participant.training_id) return false;
+    if (!training?.title) return false;
+    if (normalizeText(participant.training_title) !== normalizeText(training.title)) {
+      return false;
+    }
+    const trainingDate = normalizeDateKey(trainingDates?.[0]?.date || training?.date);
+    if (!trainingDate) return true;
+    const participantDate = normalizeDateKey(participant.training_date);
+    return !participantDate || participantDate === trainingDate;
+  };
+
+  const resolveParticipantIdForDeletion = async (participant) => {
+    const participantId = String(participant?.id || "").trim();
+    if (participantId) return participantId;
+
+    let candidates = [];
+    if (participant?.training_id) {
+      candidates = await dataClient.entities.TrainingParticipant.filter(
+        { training_id: participant.training_id },
+        "-enrollment_date"
+      );
+    } else if (trainingId) {
+      candidates = await dataClient.entities.TrainingParticipant.filter(
+        { training_id: trainingId },
+        "-enrollment_date"
+      );
+    }
+
+    if (candidates.length === 0 && training?.title) {
+      const byTitle = await dataClient.entities.TrainingParticipant.filter(
+        { training_title: training.title },
+        "-enrollment_date"
+      );
+      candidates = byTitle.filter((item) =>
+        isLegacyParticipantForCurrentTraining(item)
+      );
+    }
+
+    const match = candidates.find((item) =>
+      isSameParticipantRecord(item, participant)
+    );
+    return String(match?.id || "").trim();
+  };
+
+  const deleteParticipantRecord = async (participant) => {
+    if (!participant) {
+      throw new Error("Inscrito inválido para exclusão.");
+    }
+
+    const participantId = await resolveParticipantIdForDeletion(participant);
+    if (participantId) {
+      await dataClient.entities.TrainingParticipant.delete(participantId);
+      return 1;
+    }
+
+    const normalizedCpf = normalizeCpf(participant.professional_cpf);
+    if (trainingId && normalizedCpf) {
+      const scoped = await dataClient.entities.TrainingParticipant.filter(
+        { training_id: trainingId },
+        "-enrollment_date"
+      );
+      const ids = scoped
+        .filter(
+          (item) => normalizeCpf(item.professional_cpf) === normalizedCpf
+        )
+        .map((item) => String(item.id || "").trim())
+        .filter(Boolean);
+      if (ids.length > 0) {
+        await Promise.all(
+          ids.map((id) => dataClient.entities.TrainingParticipant.delete(id))
+        );
+        return ids.length;
+      }
+    }
+
+    throw new Error("Não foi possível localizar o inscrito para exclusão.");
+  };
+
   const defaultSections = [
     { key: "pessoais", label: "Dados Pessoais" },
     { key: "instituicao", label: "Instituição" },
@@ -753,12 +889,15 @@ export default function EnrollmentPage() {
   });
 
   const deleteParticipant = useMutation({
-    mutationFn: async (/** @type {any} */ id) => {
-      if (!id) {
+    mutationFn: async (/** @type {any} */ participant) => {
+      if (!participant) {
         throw new Error("Inscrito inválido para exclusão.");
       }
 
-      await dataClient.entities.TrainingParticipant.delete(id);
+      const removedCount = await deleteParticipantRecord(participant);
+      if (removedCount <= 0) {
+        throw new Error("Nenhum inscrito foi removido.");
+      }
 
       let warningMessage = null;
       try {
@@ -801,10 +940,32 @@ export default function EnrollmentPage() {
         throw new Error("Treinamento inválido para exclusão em massa.");
       }
 
-      const participantsBefore =
+      const participantsByTrainingId =
         await dataClient.entities.TrainingParticipant.filter({
           training_id: trainingId,
         });
+      let legacyParticipants = [];
+      if (training?.title) {
+        const byTitle = await dataClient.entities.TrainingParticipant.filter(
+          { training_title: training.title },
+          "-enrollment_date"
+        );
+        legacyParticipants = byTitle.filter((item) =>
+          isLegacyParticipantForCurrentTraining(item)
+        );
+      }
+
+      const participantsBefore = [
+        ...participantsByTrainingId,
+        ...legacyParticipants.filter((item) => {
+          const id = String(item.id || "").trim();
+          if (!id) return true;
+          return !participantsByTrainingId.some(
+            (base) => String(base.id || "").trim() === id
+          );
+        }),
+      ];
+
       const expectedCount = participantsBefore.length;
       if (expectedCount === 0) {
         return {
@@ -821,20 +982,43 @@ export default function EnrollmentPage() {
         await dataClient.entities.TrainingParticipant.filter({
           training_id: trainingId,
         });
+      let remainingLegacyParticipants = [];
+      if (training?.title) {
+        const byTitleAfterDelete = await dataClient.entities.TrainingParticipant.filter(
+          { training_title: training.title },
+          "-enrollment_date"
+        );
+        remainingLegacyParticipants = byTitleAfterDelete.filter((item) =>
+          isLegacyParticipantForCurrentTraining(item)
+        );
+      }
 
       // Fallback: se a exclusão por training_id não remover tudo,
       // tenta remover registro por registro.
       if (remainingParticipants.length > 0) {
         for (const participant of remainingParticipants) {
-          if (!participant?.id) continue;
-          await dataClient.entities.TrainingParticipant.delete(participant.id);
+          await deleteParticipantRecord(participant);
         }
         remainingParticipants = await dataClient.entities.TrainingParticipant.filter(
           { training_id: trainingId }
         );
       }
+      if (remainingLegacyParticipants.length > 0) {
+        for (const participant of remainingLegacyParticipants) {
+          await deleteParticipantRecord(participant);
+        }
+        if (training?.title) {
+          const byTitleFinalCheck = await dataClient.entities.TrainingParticipant.filter(
+            { training_title: training.title },
+            "-enrollment_date"
+          );
+          remainingLegacyParticipants = byTitleFinalCheck.filter((item) =>
+            isLegacyParticipantForCurrentTraining(item)
+          );
+        }
+      }
 
-      if (remainingParticipants.length > 0) {
+      if (remainingParticipants.length > 0 || remainingLegacyParticipants.length > 0) {
         throw new Error(
           "Não foi possível excluir todos os inscritos. Tente novamente."
         );
@@ -1967,7 +2151,7 @@ export default function EnrollmentPage() {
             <AlertDialogAction
               onClick={() => {
                 setDeleteAllStatus(null);
-                deleteParticipant.mutate(deleteConfirm.id);
+                deleteParticipant.mutate(deleteConfirm);
               }}
               className="bg-red-600 hover:bg-red-700"
             >
