@@ -10,6 +10,7 @@ import {
   Users,
   Calendar,
   MapPin,
+  Video,
   UserPlus,
   ClipboardCheck,
   Award,
@@ -678,7 +679,15 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       render: (row) => (
         <div>
           <p className="font-medium">{row.title}</p>
-          {row.code && <p className="text-xs text-slate-500">{row.code}</p>}
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {row.code && <p className="text-xs text-slate-500">{row.code}</p>}
+            {row.online_link && (
+              <Badge className="bg-blue-100 text-blue-700 border border-blue-200">
+                <Video className="h-3 w-3 mr-1" />
+                Online
+              </Badge>
+            )}
+          </div>
         </div>
       ),
     },
