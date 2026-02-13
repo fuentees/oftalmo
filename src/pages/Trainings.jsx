@@ -65,7 +65,8 @@ export default function Trainings() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [yearFilter, setYearFilter] = useState("all");
+  const currentYear = new Date().getFullYear();
+  const [yearFilter, setYearFilter] = useState(String(currentYear));
   
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -506,6 +507,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
 
   const yearOptions = React.useMemo(() => {
     const years = new Set();
+    years.add(currentYear);
     trainings.forEach((training) => {
       const year = getTrainingYear(training);
       if (year) years.add(year);
@@ -513,7 +515,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     return Array.from(years)
       .sort((a, b) => b - a)
       .map((year) => ({ value: String(year), label: String(year) }));
-  }, [trainings]);
+  }, [trainings, currentYear]);
 
   const filteredTrainings = trainings.filter((t) => {
     const effectiveStatus = getTrainingStatus(t);
