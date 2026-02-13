@@ -54,18 +54,27 @@ const jsonResponse = (status: number, body: Record<string, unknown>) =>
     },
   });
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error(
-    "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables."
-  );
-}
+let adminClient: ReturnType<typeof createClient> | null = null;
 
-const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-});
+const getAdminClient = () => {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new ApiError(
+      500,
+      "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables."
+    );
+  }
+
+  if (!adminClient) {
+    adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+  }
+
+  return adminClient;
+};
 
 const getBearerToken = (req: Request) => {
   const header = req.headers.get("authorization") || req.headers.get("Authorization");
@@ -74,6 +83,7 @@ const getBearerToken = (req: Request) => {
 };
 
 const requireAdminUser = async (req: Request) => {
+  const adminClient = getAdminClient();
   const token = getBearerToken(req);
   if (!token) {
     throw new ApiError(401, "Authentication token is required.");
@@ -117,6 +127,7 @@ const mapManagedUser = (user: any) => {
 };
 
 const listUsers = async () => {
+  const adminClient = getAdminClient();
   const users: any[] = [];
   let page = 1;
   const perPage = 200;
@@ -141,6 +152,7 @@ const listUsers = async () => {
 };
 
 const setRole = async (actingUserId: string, payload: Record<string, unknown>) => {
+  const adminClient = getAdminClient();
   const userId = String(payload.user_id || "").trim();
   const nextRole = normalizeRole(payload.role);
   if (!userId) throw new ApiError(400, "user_id is required.");
@@ -169,6 +181,7 @@ const setRole = async (actingUserId: string, payload: Record<string, unknown>) =
 };
 
 const setActive = async (actingUserId: string, payload: Record<string, unknown>) => {
+  const adminClient = getAdminClient();
   const userId = String(payload.user_id || "").trim();
   const active = Boolean(payload.active);
   if (!userId) throw new ApiError(400, "user_id is required.");
@@ -193,6 +206,7 @@ const setActive = async (actingUserId: string, payload: Record<string, unknown>)
 };
 
 const inviteUser = async (payload: Record<string, unknown>) => {
+  const adminClient = getAdminClient();
   const email = normalizeText(payload.email);
   const fullName = String(payload.full_name || "").trim();
   const role = normalizeRole(payload.role);
@@ -228,6 +242,7 @@ const inviteUser = async (payload: Record<string, unknown>) => {
 };
 
 const createUser = async (payload: Record<string, unknown>) => {
+  const adminClient = getAdminClient();
   const email = normalizeText(payload.email);
   const password = String(payload.password || "");
   const fullName = String(payload.full_name || "").trim();
