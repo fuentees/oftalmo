@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, X } from "lucide-react";
+import { Loader2, Video, X } from "lucide-react";
 import { format } from "date-fns";
 
 export default function EventForm({ event, onClose, onSuccess, initialDate }) {
@@ -41,6 +41,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     days: [],
   });
   const [vacationDays, setVacationDays] = useState(null);
+  const [isOnlineEvent, setIsOnlineEvent] = useState(false);
   const weekDays = [
     { value: 0, label: "Dom" },
     { value: 1, label: "Seg" },
@@ -206,6 +207,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
         color: event.color || "#3b82f6",
         notes: cleanNotes || "",
       });
+      setIsOnlineEvent(Boolean(link));
     }
   }, [event]);
 
@@ -274,14 +276,18 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const resolvedGve = getGveByMunicipio(formData.municipality) || formData.gve;
-    const location = formatLocation(formData.municipality, resolvedGve);
+    const resolvedGve = isOnlineEvent
+      ? ""
+      : getGveByMunicipio(formData.municipality) || formData.gve;
+    const location = isOnlineEvent
+      ? ""
+      : formatLocation(formData.municipality, resolvedGve);
     const linkedTrainingId = event
       ? extractTrainingIdFromEventNotes(event.notes)
       : "";
     const notes = buildEventNotes({
       notes: formData.notes,
-      onlineLink: formData.online_link,
+      onlineLink: isOnlineEvent ? formData.online_link : "",
       trainingId: linkedTrainingId,
     });
     const payload = {
@@ -545,55 +551,83 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
         )}
 
         <div className="col-span-2 space-y-2">
-          <Label htmlFor="municipality">Município</Label>
-          <Input
-            id="municipality"
-            list="municipios-gve"
-            value={formData.municipality}
-            onChange={(e) => {
-              const nextValue = e.target.value;
-              const autoGve = getGveByMunicipio(nextValue);
-              setFormData({
-                ...formData,
-                municipality: nextValue,
-                gve: autoGve || "",
-              });
-            }}
-            placeholder="Digite o município"
-          />
-          {municipalityOptions.length > 0 && (
-            <datalist id="municipios-gve">
-              {municipalityOptions.map((item) => (
-                <option key={item} value={item} />
-              ))}
-            </datalist>
-          )}
+          <Label className="text-sm">Modalidade do agendamento</Label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={isOnlineEvent ? "default" : "outline"}
+              onClick={() => setIsOnlineEvent(true)}
+              className="h-9"
+            >
+              <Video className="h-4 w-4 mr-2" />
+              Online
+            </Button>
+            <Button
+              type="button"
+              variant={!isOnlineEvent ? "default" : "outline"}
+              onClick={() => setIsOnlineEvent(false)}
+              className="h-9"
+            >
+              Presencial
+            </Button>
+          </div>
         </div>
 
-        <div className="col-span-2 space-y-2">
-          <Label htmlFor="gve">GVE</Label>
-          <Input
-            id="gve"
-            value={getGveByMunicipio(formData.municipality) || formData.gve}
-            onChange={(e) =>
-              setFormData({ ...formData, gve: e.target.value })
-            }
-            placeholder="GVE"
-            readOnly={Boolean(getGveByMunicipio(formData.municipality))}
-          />
-        </div>
+        {isOnlineEvent ? (
+          <div className="col-span-2 space-y-2">
+            <Label htmlFor="online_link">Link do evento online *</Label>
+            <Input
+              id="online_link"
+              value={formData.online_link}
+              onChange={(e) =>
+                setFormData({ ...formData, online_link: e.target.value })
+              }
+              placeholder="https://zoom.us/j/... ou https://teams.microsoft.com/..."
+              required={isOnlineEvent}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="municipality">Município</Label>
+              <Input
+                id="municipality"
+                list="municipios-gve"
+                value={formData.municipality}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  const autoGve = getGveByMunicipio(nextValue);
+                  setFormData({
+                    ...formData,
+                    municipality: nextValue,
+                    gve: autoGve || "",
+                  });
+                }}
+                placeholder="Digite o município"
+              />
+              {municipalityOptions.length > 0 && (
+                <datalist id="municipios-gve">
+                  {municipalityOptions.map((item) => (
+                    <option key={item} value={item} />
+                  ))}
+                </datalist>
+              )}
+            </div>
 
-        <div className="col-span-2 space-y-2">
-          <Label htmlFor="online_link">Link do evento online</Label>
-          <Input
-            id="online_link"
-            value={formData.online_link}
-            onChange={(e) =>
-              setFormData({ ...formData, online_link: e.target.value })
-            }
-            placeholder="https://zoom.us/j/... ou https://teams.microsoft.com/..."
-          />
-        </div>
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="gve">GVE</Label>
+              <Input
+                id="gve"
+                value={getGveByMunicipio(formData.municipality) || formData.gve}
+                onChange={(e) =>
+                  setFormData({ ...formData, gve: e.target.value })
+                }
+                placeholder="GVE"
+                readOnly={Boolean(getGveByMunicipio(formData.municipality))}
+              />
+            </div>
+          </>
+        )}
 
         <div className="col-span-2 space-y-2">
           <Label>Profissionais Vinculados</Label>
