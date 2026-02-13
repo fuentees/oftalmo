@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { createPageUrl } from "./utils";
-import { dataClient } from "@/api/dataClient";
+import { useAuth } from "@/lib/AuthContext";
 import {
   LayoutDashboard,
   Package,
@@ -29,16 +29,10 @@ import GlobalSearch from "@/components/common/GlobalSearch";
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [user, setUser] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [themeColor, setThemeColor] = useState("blue");
-  const navigate = useNavigate();
+  const { user, isAdmin, logout } = useAuth();
 
   useEffect(() => {
-    loadUser();
-    const savedColor = localStorage.getItem("theme-color") || "blue";
-    setThemeColor(savedColor);
-
     // Global search shortcut
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -51,17 +45,8 @@ export default function Layout({ children, currentPageName }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const loadUser = async () => {
-    try {
-      const currentUser = await dataClient.auth.me();
-      setUser(currentUser);
-    } catch (error) {
-      console.log("User not logged in");
-    }
-  };
-
   const handleLogout = () => {
-    dataClient.auth.logout();
+    logout();
   };
 
   const navigation = [
@@ -72,9 +57,9 @@ export default function Layout({ children, currentPageName }) {
     { name: "Profissionais", page: "Professionals", icon: Users },
     { name: "Participantes", page: "Participants", icon: Users },
     { name: "Relatórios", page: "Reports", icon: FileText },
-    { name: "Logs", page: "AuditLogs", icon: FileText },
-    { name: "Configurações", page: "Settings", icon: Settings },
-  ];
+    { name: "Logs", page: "AuditLogs", icon: FileText, adminOnly: true },
+    { name: "Configurações", page: "Settings", icon: Settings, adminOnly: true },
+  ].filter((item) => !item.adminOnly || isAdmin);
 
   const isActive = (page) => currentPageName === page;
   const isMacPlatform =
