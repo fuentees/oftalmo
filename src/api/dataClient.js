@@ -447,21 +447,43 @@ const ExtractDataFromUploadedFile = async ({ file_url }) => {
   }
 };
 
-const callUserAdminFunction = async (action, payload = {}) => {
-  const { data, error } = await supabase.functions.invoke(
-    USER_ADMIN_FUNCTION_NAME,
-    {
-      body: {
-        action,
-        ...payload,
-      },
-    }
-  );
-  if (error) throw error;
-  if (data?.error) {
-    throw new Error(String(data.error));
+const getUserAdminFunctionError = (error) => {
+  const message = String(error?.message || "").trim();
+  const lowered = message.toLowerCase();
+  if (
+    lowered.includes("failed to send a request to the edge function") ||
+    lowered.includes("networkerror") ||
+    lowered.includes("failed to fetch")
+  ) {
+    return `Não foi possível conectar à função "${USER_ADMIN_FUNCTION_NAME}". Verifique no Supabase se a Edge Function foi deployada e se o nome está correto em VITE_SUPABASE_USER_ADMIN_FUNCTION.`;
   }
-  return data || {};
+  if (lowered.includes("not found") || lowered.includes("404")) {
+    return `A função "${USER_ADMIN_FUNCTION_NAME}" não foi encontrada no projeto Supabase. Faça o deploy da função.`;
+  }
+  return message || "Falha ao executar operação de gestão de usuários.";
+};
+
+const callUserAdminFunction = async (action, payload = {}) => {
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      USER_ADMIN_FUNCTION_NAME,
+      {
+        body: {
+          action,
+          ...payload,
+        },
+      }
+    );
+    if (error) {
+      throw new Error(getUserAdminFunctionError(error));
+    }
+    if (data?.error) {
+      throw new Error(String(data.error));
+    }
+    return data || {};
+  } catch (error) {
+    throw new Error(getUserAdminFunctionError(error));
+  }
 };
 
 const ListManagedUsers = async () => callUserAdminFunction("list_users");
