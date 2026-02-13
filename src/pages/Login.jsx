@@ -10,6 +10,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Lock, Mail, User } from "lucide-react";
 
 export default function Login() {
+  const allowPublicSignup =
+    String(import.meta.env.VITE_ALLOW_PUBLIC_SIGNUP || "").toLowerCase() ===
+    "true";
   const [mode, setMode] = useState("login");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -32,6 +35,12 @@ export default function Login() {
     }
   }, [isAuthenticated, isLoadingAuth, navigate, redirectTarget]);
 
+  useEffect(() => {
+    if (!allowPublicSignup && mode === "signup") {
+      setMode("login");
+    }
+  }, [allowPublicSignup, mode]);
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setLoading(true);
@@ -40,6 +49,11 @@ export default function Login() {
 
     try {
       if (mode === "signup") {
+        if (!allowPublicSignup) {
+          throw new Error(
+            "Cadastro público desativado. Solicite acesso ao administrador."
+          );
+        }
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -80,7 +94,9 @@ export default function Login() {
             </div>
             <div>
               <CardTitle className="text-xl font-semibold text-slate-800">
-                {mode === "signup" ? "Criar conta" : "Entrar no sistema"}
+                {mode === "signup" && allowPublicSignup
+                  ? "Criar conta"
+                  : "Entrar no sistema"}
               </CardTitle>
               <p className="text-sm text-slate-500">
                 Acesse seus treinamentos e dados
@@ -90,7 +106,16 @@ export default function Login() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === "signup" && (
+            {!allowPublicSignup && (
+              <Alert className="border-amber-200 bg-amber-50">
+                <AlertDescription className="text-amber-800">
+                  Cadastro público desativado. Solicite criação de conta ao
+                  administrador.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {mode === "signup" && allowPublicSignup && (
               <div className="space-y-2">
                 <Label htmlFor="full_name">Nome completo</Label>
                 <div className="relative">
@@ -162,33 +187,37 @@ export default function Login() {
               disabled={loading}
             >
               {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {mode === "signup" ? "Criar conta" : "Entrar"}
+              {mode === "signup" && allowPublicSignup ? "Criar conta" : "Entrar"}
             </Button>
           </form>
 
           <div className="mt-6 text-center text-sm text-slate-500">
-            {mode === "signup" ? (
-              <>
-                Já tem conta?{" "}
-                <button
-                  type="button"
-                  onClick={() => setMode("login")}
-                  className="text-blue-600 font-semibold hover:underline"
-                >
-                  Entrar
-                </button>
-              </>
+            {allowPublicSignup ? (
+              mode === "signup" ? (
+                <>
+                  Já tem conta?{" "}
+                  <button
+                    type="button"
+                    onClick={() => setMode("login")}
+                    className="text-blue-600 font-semibold hover:underline"
+                  >
+                    Entrar
+                  </button>
+                </>
+              ) : (
+                <>
+                  Ainda não tem conta?{" "}
+                  <button
+                    type="button"
+                    onClick={() => setMode("signup")}
+                    className="text-blue-600 font-semibold hover:underline"
+                  >
+                    Criar agora
+                  </button>
+                </>
+              )
             ) : (
-              <>
-                Ainda não tem conta?{" "}
-                <button
-                  type="button"
-                  onClick={() => setMode("signup")}
-                  className="text-blue-600 font-semibold hover:underline"
-                >
-                  Criar agora
-                </button>
-              </>
+              "A criação de novas contas é feita somente pela administração."
             )}
           </div>
         </CardContent>

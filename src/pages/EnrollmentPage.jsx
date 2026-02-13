@@ -200,6 +200,16 @@ export default function EnrollmentPage() {
   const normalizeCpf = (value) => String(value ?? "").replace(/\D/g, "");
   const normalizeEmail = (value) => String(value ?? "").trim().toLowerCase();
   const normalizeDateKey = (value) => String(value ?? "").trim().slice(0, 10);
+  const isPermissionDeleteError = (error) => {
+    const message = String(error?.message || "").toLowerCase();
+    return (
+      message.includes("permiss") ||
+      message.includes("policy") ||
+      message.includes("row level security") ||
+      message.includes("rls") ||
+      message.includes("42501")
+    );
+  };
 
   const hasSameTrainingContext = (a, b) => {
     const aTrainingId = String(a?.training_id || "").trim();
@@ -304,10 +314,31 @@ export default function EnrollmentPage() {
       throw new Error("Inscrito inválido para exclusão.");
     }
 
+    const detachParticipantById = async (id) => {
+      await dataClient.entities.TrainingParticipant.update(id, {
+        training_id: null,
+        training_title: null,
+        training_date: null,
+        enrollment_status: "cancelado",
+      });
+      return 1;
+    };
+
+    const deleteOrDetachById = async (id) => {
+      try {
+        await dataClient.entities.TrainingParticipant.delete(id);
+        return 1;
+      } catch (error) {
+        if (!isPermissionDeleteError(error)) {
+          throw error;
+        }
+        return detachParticipantById(id);
+      }
+    };
+
     const participantId = await resolveParticipantIdForDeletion(participant);
     if (participantId) {
-      await dataClient.entities.TrainingParticipant.delete(participantId);
-      return 1;
+      return deleteOrDetachById(participantId);
     }
 
     const normalizedCpf = normalizeCpf(participant.professional_cpf);
@@ -323,10 +354,11 @@ export default function EnrollmentPage() {
         .map((item) => String(item.id || "").trim())
         .filter(Boolean);
       if (ids.length > 0) {
-        await Promise.all(
-          ids.map((id) => dataClient.entities.TrainingParticipant.delete(id))
-        );
-        return ids.length;
+        let removed = 0;
+        for (const id of ids) {
+          removed += await deleteOrDetachById(id);
+        }
+        return removed;
       }
     }
 
@@ -974,9 +1006,25 @@ export default function EnrollmentPage() {
         };
       }
 
-      await dataClient.integrations.Core.DeleteTrainingParticipantsByTraining({
-        training_id: trainingId,
+      const seenKeys = new Set();
+      const participantsToRemove = participantsBefore.filter((item) => {
+        const id = String(item?.id || "").trim();
+        const key = id
+          ? `id:${id}`
+          : `legacy:${normalizeCpf(item?.professional_cpf)}|${normalizeEmail(
+              item?.professional_email
+            )}|${normalizeText(item?.professional_name)}|${normalizeDateKey(
+              item?.enrollment_date
+            )}`;
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
       });
+
+      let removedCount = 0;
+      for (const participant of participantsToRemove) {
+        removedCount += await deleteParticipantRecord(participant);
+      }
 
       let remainingParticipants =
         await dataClient.entities.TrainingParticipant.filter({
@@ -991,31 +1039,6 @@ export default function EnrollmentPage() {
         remainingLegacyParticipants = byTitleAfterDelete.filter((item) =>
           isLegacyParticipantForCurrentTraining(item)
         );
-      }
-
-      // Fallback: se a exclusão por training_id não remover tudo,
-      // tenta remover registro por registro.
-      if (remainingParticipants.length > 0) {
-        for (const participant of remainingParticipants) {
-          await deleteParticipantRecord(participant);
-        }
-        remainingParticipants = await dataClient.entities.TrainingParticipant.filter(
-          { training_id: trainingId }
-        );
-      }
-      if (remainingLegacyParticipants.length > 0) {
-        for (const participant of remainingLegacyParticipants) {
-          await deleteParticipantRecord(participant);
-        }
-        if (training?.title) {
-          const byTitleFinalCheck = await dataClient.entities.TrainingParticipant.filter(
-            { training_title: training.title },
-            "-enrollment_date"
-          );
-          remainingLegacyParticipants = byTitleFinalCheck.filter((item) =>
-            isLegacyParticipantForCurrentTraining(item)
-          );
-        }
       }
 
       if (remainingParticipants.length > 0 || remainingLegacyParticipants.length > 0) {
@@ -1034,7 +1057,7 @@ export default function EnrollmentPage() {
           "Inscritos removidos, mas não foi possível atualizar o contador automaticamente.";
       }
 
-      return { warningMessage, deletedCount: expectedCount };
+      return { warningMessage, deletedCount: removedCount || expectedCount };
     },
     onSuccess: ({ warningMessage, deletedCount }) => {
       queryClient.setQueryData(["enrolled-participants", trainingId], []);

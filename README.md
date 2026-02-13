@@ -19,6 +19,8 @@ armazenamento de arquivos.
    VITE_SUPABASE_URL=https://seu-projeto.supabase.co
    VITE_SUPABASE_ANON_KEY=sua_chave_anon
    VITE_SUPABASE_STORAGE_BUCKET=uploads
+   # Segurança: mantenha false para bloquear cadastro público
+   VITE_ALLOW_PUBLIC_SIGNUP=false
    # Opcional: função de email no Supabase
    VITE_SUPABASE_EMAIL_FUNCTION=send-email
    # Opcional: webhook externo para envio de email
@@ -50,6 +52,18 @@ armazenamento de arquivos.
    (ex.: inscrições), habilite **SELECT/INSERT** nas tabelas necessárias.
    Para operações internas (painel), libere SELECT/INSERT/UPDATE/DELETE para
    usuários autenticados nas tabelas `trainings`, `professionals`, etc.
+
+### Segurança de cadastro (recomendado)
+
+1. O frontend já vem com cadastro público **desativado por padrão**
+   (`VITE_ALLOW_PUBLIC_SIGNUP=false`).
+2. No Supabase, desative também o cadastro aberto:
+   - **Authentication > Providers > Email > Enable email signups = OFF**.
+3. Para novos usuários, crie convites manualmente:
+   - **Authentication > Users > Invite user**.
+
+> Importante: desativar apenas no frontend não impede chamadas diretas à API de
+> autenticação. Para segurança real, desative o signup no painel do Supabase.
 
 ### Envio de email
 
