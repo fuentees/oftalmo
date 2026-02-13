@@ -7,6 +7,7 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const isAdmin = user?.role === "admin";
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
   const [authError, setAuthError] = useState(null);
@@ -89,6 +90,7 @@ export const AuthProvider = ({ children }) => {
       value={{
         user,
         isAuthenticated,
+        isAdmin,
         isLoadingAuth,
         isLoadingPublicSettings,
         authError,

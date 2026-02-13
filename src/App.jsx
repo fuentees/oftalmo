@@ -9,10 +9,12 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Login from './pages/Login';
 import TrainingFeedback from './pages/TrainingFeedback';
+import { ADMIN_ONLY_PAGES } from "@/lib/accessControl";
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
+const NO_LAYOUT_PAGES = new Set(["PublicEnrollment", "CheckIn"]);
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
@@ -21,7 +23,7 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
 const PUBLIC_ROUTES = ["/publicenrollment", "/checkin", "/trainingfeedback"];
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, isAdmin } = useAuth();
   const location = useLocation();
   const currentPath = location.pathname.toLowerCase();
   const isPublicRoute = PUBLIC_ROUTES.some((route) =>
@@ -53,6 +55,20 @@ const AuthenticatedApp = () => {
   }
 
   // Render the main app
+  const renderPageWithOptionalLayout = (pageKey, PageComponent) => {
+    if (ADMIN_ONLY_PAGES.has(pageKey) && !isAdmin) {
+      return <Navigate to="/" replace />;
+    }
+    if (NO_LAYOUT_PAGES.has(pageKey)) {
+      return <PageComponent />;
+    }
+    return (
+      <LayoutWrapper currentPageName={pageKey}>
+        <PageComponent />
+      </LayoutWrapper>
+    );
+  };
+
   return (
     <Routes>
       <Route path="/" element={
@@ -64,11 +80,7 @@ const AuthenticatedApp = () => {
         <Route
           key={path}
           path={`/${path}`}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
+          element={renderPageWithOptionalLayout(path, Page)}
         />
       ))}
       <Route path="*" element={<PageNotFound />} />

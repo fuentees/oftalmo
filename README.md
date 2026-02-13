@@ -21,6 +21,8 @@ armazenamento de arquivos.
    VITE_SUPABASE_STORAGE_BUCKET=uploads
    # Segurança: mantenha false para bloquear cadastro público
    VITE_ALLOW_PUBLIC_SIGNUP=false
+   # Opcional: e-mails com perfil admin (separados por vírgula)
+   VITE_ADMIN_EMAILS=admin@seuorgao.gov.br
    # Opcional: função de email no Supabase
    VITE_SUPABASE_EMAIL_FUNCTION=send-email
    # Opcional: webhook externo para envio de email
@@ -61,6 +63,9 @@ armazenamento de arquivos.
    - **Authentication > Providers > Email > Enable email signups = OFF**.
 3. Para novos usuários, crie convites manualmente:
    - **Authentication > Users > Invite user**.
+4. Para definir perfil de admin, use uma das opções:
+   - informar o e-mail em `VITE_ADMIN_EMAILS`, ou
+   - definir `role: "admin"` nos metadados do usuário no Supabase.
 
 > Importante: desativar apenas no frontend não impede chamadas diretas à API de
 > autenticação. Para segurança real, desative o signup no painel do Supabase.

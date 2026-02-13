@@ -1,6 +1,7 @@
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { supabase } from "@/api/supabaseClient";
+import { resolveUserRole } from "@/lib/accessControl";
 
 const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
@@ -59,12 +60,17 @@ export const mapSupabaseUser = (user) => {
   if (!user) return null;
   const metadata = user.user_metadata || {};
   const appMetadata = user.app_metadata || {};
+  const role = resolveUserRole({
+    email: user.email,
+    userMetadata: metadata,
+    appMetadata,
+  });
   return {
     id: user.id,
     email: user.email,
     full_name: metadata.full_name || metadata.name || user.email,
-    role: appMetadata.role || metadata.role || "usuario",
     ...metadata,
+    role,
   };
 };
 
