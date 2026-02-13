@@ -1121,14 +1121,22 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           <DialogHeader>
             <DialogTitle>Emitir Certificados</DialogTitle>
           </DialogHeader>
-          <CertificateManager
-            training={selectedTraining}
-            participants={participants.filter(p => p.training_id === selectedTraining?.id)}
-            onClose={() => {
-              setShowCertificates(false);
-              setSelectedTraining(null);
-            }}
-          />
+          {selectedTraining ? (
+            <CertificateManager
+              training={selectedTraining}
+              participants={participants.filter(p => p.training_id === selectedTraining?.id)}
+              onClose={() => {
+                setShowCertificates(false);
+                setSelectedTraining(null);
+              }}
+            />
+          ) : (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertDescription className="text-amber-800">
+                Treinamento não carregado. Feche e abra novamente a emissão de certificados.
+              </AlertDescription>
+            </Alert>
+          )}
         </DialogContent>
       </Dialog>
 

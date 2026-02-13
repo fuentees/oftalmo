@@ -24,13 +24,14 @@ import {
 } from "@/lib/certificateEmailTemplate";
 import { resolveCertificateTemplate } from "@/lib/certificateTemplate";
 
-export default function CertificateManager({ training, participants, onClose }) {
+export default function CertificateManager({ training, participants = [], onClose }) {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
   
   const queryClient = useQueryClient();
   const emailTemplate = loadCertificateEmailTemplate();
+  const safeParticipants = Array.isArray(participants) ? participants : [];
 
   const resolveEmailContent = (emailData) => {
     const subject = interpolateEmailTemplate(emailTemplate.subject, emailData).trim();
@@ -63,6 +64,9 @@ export default function CertificateManager({ training, participants, onClose }) 
 
   const issueMonitorCertificates = useMutation({
     mutationFn: async () => {
+      if (!training) {
+        throw new Error("Treinamento inválido para emissão de certificados.");
+      }
       if (!training.monitors || training.monitors.length === 0) {
         throw new Error("Nenhum monitor cadastrado");
       }
@@ -141,6 +145,9 @@ export default function CertificateManager({ training, participants, onClose }) 
 
   const issueSpeakerCertificates = useMutation({
     mutationFn: async () => {
+      if (!training) {
+        throw new Error("Treinamento inválido para emissão de certificados.");
+      }
       if (!training.speakers || training.speakers.length === 0) {
         throw new Error("Nenhum palestrante cadastrado");
       }
@@ -217,10 +224,13 @@ export default function CertificateManager({ training, participants, onClose }) 
 
   const issueCertificates = useMutation({
     mutationFn: async (/** @type {any[]} */ participantIds) => {
+      if (!training) {
+        throw new Error("Treinamento inválido para emissão de certificados.");
+      }
       setProcessing(true);
       setResult(null);
 
-      const participantsToIssue = participants.filter((p) =>
+      const participantsToIssue = safeParticipants.filter((p) =>
         participantIds.includes(p.id)
       );
 
@@ -351,7 +361,7 @@ export default function CertificateManager({ training, participants, onClose }) 
   };
 
   // Participantes com presença registrada e frequência satisfatória
-  const eligibleParticipants = participants.filter((p) => {
+  const eligibleParticipants = safeParticipants.filter((p) => {
     if (p.enrollment_status === "cancelado") return false;
     const hasRecords =
       Array.isArray(p.attendance_records) && p.attendance_records.length > 0;
@@ -361,6 +371,23 @@ export default function CertificateManager({ training, participants, onClose }) 
   });
 
   const alreadySentCount = eligibleParticipants.filter(p => p.certificate_issued).length;
+
+  if (!training) {
+    return (
+      <div className="space-y-4">
+        <Alert className="border-amber-200 bg-amber-50">
+          <AlertDescription className="text-amber-800">
+            Treinamento indisponível no momento. Feche e abra novamente a emissão de certificados.
+          </AlertDescription>
+        </Alert>
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
