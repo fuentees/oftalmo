@@ -19,6 +19,7 @@ import {
   ClipboardCheck,
   Award,
   Link2,
+  MessageSquare,
   MoreVertical,
   FileText,
   Upload,
@@ -904,6 +905,17 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
               >
                 <Link2 className="h-4 w-4 mr-2" />
                 Copiar Link
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const feedbackUrl = `${window.location.origin}/TrainingFeedback?training=${encodeURIComponent(row.id)}`;
+                  navigator.clipboard.writeText(feedbackUrl);
+                  alert("Link de avaliação copiado!");
+                }}
+              >
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Copiar Link da Avaliação
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem

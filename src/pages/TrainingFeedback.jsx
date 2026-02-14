@@ -12,6 +12,7 @@ import { CheckCircle, AlertCircle, Loader2, Star } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import DataTable from "@/components/common/DataTable";
 import { toast } from "sonner";
 
@@ -36,6 +37,60 @@ const StarRating = ({ value, onChange, label }) => (
     </div>
   </div>
 );
+
+const CHOICE_SPLIT_TOKEN = "||";
+const CHOICE_OPTION_TOKEN = "|";
+
+const normalizeChoiceOptions = (options) =>
+  Array.from(
+    new Set(
+      (options || [])
+        .map((option) => String(option || "").trim())
+        .filter(Boolean)
+    )
+  );
+
+const parseChoiceOptionsFromText = (value) =>
+  normalizeChoiceOptions(
+    String(value || "")
+      .split(CHOICE_OPTION_TOKEN)
+      .map((item) => item.trim())
+  );
+
+const buildChoiceQuestionText = (label, options) => {
+  const cleanLabel = String(label || "").trim();
+  const cleanOptions = normalizeChoiceOptions(options);
+  if (!cleanOptions.length) return cleanLabel;
+  return `${cleanLabel} ${CHOICE_SPLIT_TOKEN} ${cleanOptions.join(` ${CHOICE_OPTION_TOKEN} `)}`;
+};
+
+const extractQuestionMeta = (question) => {
+  const rawText = String(question?.question_text || "");
+  const questionType = String(question?.question_type || "").trim().toLowerCase();
+
+  if (questionType !== "choice") {
+    return {
+      label: rawText.trim(),
+      options: [],
+    };
+  }
+
+  const fromColumn = normalizeChoiceOptions(question?.question_options);
+  if (fromColumn.length > 0) {
+    return {
+      label: rawText.trim(),
+      options: fromColumn,
+    };
+  }
+
+  const [labelPart, optionsPart = ""] = rawText.split(CHOICE_SPLIT_TOKEN);
+  const options = parseChoiceOptionsFromText(optionsPart);
+
+  return {
+    label: String(labelPart || rawText).trim(),
+    options,
+  };
+};
 
 export default function TrainingFeedback() {
   const queryString =
@@ -67,14 +122,19 @@ export default function TrainingFeedback() {
     { question_text: "Conteúdo apresentado", question_type: "rating", order: 1 },
     { question_text: "Didática do instrutor", question_type: "rating", order: 2 },
     { question_text: "Material de apoio", question_type: "rating", order: 3 },
-    { question_text: "Carga horária (tempo)", question_type: "rating", order: 4 },
-    { question_text: "Infraestrutura/organização", question_type: "rating", order: 5 },
+    { question_text: "Duração/carga horária do curso", question_type: "choice", order: 4, question_options: ["Muito curta", "Adequada", "Muito longa"] },
+    { question_text: "Horário/tempo do treinamento", question_type: "choice", order: 5, question_options: ["Muito ruim", "Ruim", "Adequado", "Muito bom"] },
+    { question_text: "Local e infraestrutura", question_type: "choice", order: 6, question_options: ["Ruim", "Regular", "Bom", "Excelente"] },
+    { question_text: "Assuntos mais importantes para sua prática", question_type: "text", order: 7 },
+    { question_text: "Assuntos menos importantes", question_type: "text", order: 8, required: false },
+    { question_text: "Sugestões para próximos treinamentos", question_type: "text", order: 9, required: false },
   ];
 
   const getDefaultQuestion = () => ({
     training_id: trainingId,
     question_text: "",
     question_type: "rating",
+    question_options_text: "",
     required: true,
     order: 0,
     is_active: true,
@@ -155,8 +215,30 @@ export default function TrainingFeedback() {
 
   const handleSaveQuestion = (event) => {
     event.preventDefault();
+    const cleanQuestionText = String(questionFormData.question_text || "").trim();
+    if (!cleanQuestionText) {
+      toast.error("Informe o texto da pergunta.");
+      return;
+    }
+
+    let questionText = cleanQuestionText;
+    if (questionFormData.question_type === "choice") {
+      const options = normalizeChoiceOptions(
+        String(questionFormData.question_options_text || "")
+          .split(/\r?\n/)
+          .map((item) => item.trim())
+      );
+      if (options.length < 2) {
+        toast.error("Perguntas com alternativas precisam de pelo menos 2 opções.");
+        return;
+      }
+      questionText = buildChoiceQuestionText(cleanQuestionText, options);
+    }
+
+    const { question_options_text, ...questionBase } = questionFormData;
     const payload = {
-      ...questionFormData,
+      ...questionBase,
+      question_text: questionText,
       training_id: questionFormData.training_id || null,
       order: Number(questionFormData.order) || 0,
     };
@@ -168,9 +250,12 @@ export default function TrainingFeedback() {
   };
 
   const handleEditQuestion = (question) => {
+    const questionMeta = extractQuestionMeta(question);
     setEditingQuestion(question);
     setQuestionFormData({
       ...question,
+      question_text: questionMeta.label,
+      question_options_text: questionMeta.options.join("\n"),
       training_id: question.training_id ?? null,
       order: question.order ?? 0,
     });
@@ -179,13 +264,35 @@ export default function TrainingFeedback() {
 
   const handleApplyDefaults = () => {
     if (!trainingId) return;
-    const existing = new Set(questions.map((q) => q.question_text));
+    const existing = new Set(
+      questions.map((question) =>
+        String(extractQuestionMeta(question).label || "").trim().toLowerCase()
+      )
+    );
     const payload = defaultQuestions
-      .filter((q) => !existing.has(q.question_text))
+      .map((question) => {
+        const options = normalizeChoiceOptions(question.question_options);
+        const { question_options, ...restQuestion } = question;
+        return {
+          ...restQuestion,
+          question_text:
+            question.question_type === "choice"
+              ? buildChoiceQuestionText(question.question_text, options)
+              : question.question_text,
+        };
+      })
+      .filter((question) => {
+        const questionLabel = String(
+          extractQuestionMeta(question).label || question.question_text || ""
+        )
+          .trim()
+          .toLowerCase();
+        return !existing.has(questionLabel);
+      })
       .map((q) => ({
         ...q,
         training_id: trainingId,
-        required: true,
+        required: q.required !== false,
         is_active: true,
       }));
     if (payload.length === 0) {
@@ -243,6 +350,13 @@ export default function TrainingFeedback() {
           if (question.question_type === "yesno") {
             return value !== true && value !== false;
           }
+          if (question.question_type === "choice") {
+            const selected = String(value || "").trim();
+            if (!selected) return true;
+            const { options } = extractQuestionMeta(question);
+            if (!options.length) return false;
+            return !options.includes(selected);
+          }
           return false;
         });
 
@@ -263,12 +377,16 @@ export default function TrainingFeedback() {
             )
           : null;
 
-      const answersPayload = activeQuestions.map((question) => ({
-        id: question.id,
-        question: question.question_text,
-        type: question.question_type,
-        value: answers[question.id] ?? null,
-      }));
+      const answersPayload = activeQuestions.map((question) => {
+        const meta = extractQuestionMeta(question);
+        return {
+          id: question.id,
+          question: meta.label || question.question_text,
+          type: question.question_type,
+          options: meta.options,
+          value: answers[question.id] ?? null,
+        };
+      });
 
       await dataClient.entities.TrainingFeedback.create({
         training_id: trainingId,
@@ -355,7 +473,10 @@ export default function TrainingFeedback() {
   const questionColumns = [
     {
       header: "Pergunta",
-      accessor: "question_text",
+      render: (row) => {
+        const meta = extractQuestionMeta(row);
+        return <span className="font-medium">{meta.label || row.question_text}</span>;
+      },
       cellClassName: "font-medium",
     },
     {
@@ -365,6 +486,7 @@ export default function TrainingFeedback() {
           rating: "Escala 1-5",
           text: "Texto",
           yesno: "Sim/Não",
+          choice: "Alternativas",
         };
         return labels[row.question_type] || row.question_type;
       },
@@ -397,7 +519,9 @@ export default function TrainingFeedback() {
   ];
 
   const filteredQuestions = questions.filter((question) =>
-    question.question_text?.toLowerCase().includes(questionSearch.toLowerCase())
+    (extractQuestionMeta(question).label || question.question_text || "")
+      .toLowerCase()
+      .includes(questionSearch.toLowerCase())
   );
 
   return (
@@ -421,7 +545,7 @@ export default function TrainingFeedback() {
                     Nova Pergunta
                   </Button>
                   <Button variant="outline" onClick={handleApplyDefaults}>
-                    Aplicar Perguntas Padrão
+                    Aplicar Modelo de Ficha
                   </Button>
                   <Button
                     variant="outline"
@@ -434,6 +558,12 @@ export default function TrainingFeedback() {
                     Copiar Link da Avaliação
                   </Button>
                 </div>
+                <Alert>
+                  <AlertDescription>
+                    Modelo sugerido: didática, conteúdo, duração do curso, horário/tempo, local,
+                    assuntos mais e menos importantes e sugestões para próximos treinamentos.
+                  </AlertDescription>
+                </Alert>
                 <Input
                   placeholder="Buscar pergunta..."
                   value={questionSearch}
@@ -479,11 +609,14 @@ export default function TrainingFeedback() {
             </Alert>
           ) : (
             activeQuestions.map((question) => {
+              const questionMeta = extractQuestionMeta(question);
+              const questionLabel = questionMeta.label || question.question_text;
+
               if (question.question_type === "text") {
                 return (
                   <div key={question.id} className="space-y-2">
                     <Label>
-                      {question.question_text} {question.required && "*"}
+                      {questionLabel} {question.required && "*"}
                     </Label>
                     <Textarea
                       value={answers[question.id] || ""}
@@ -497,18 +630,89 @@ export default function TrainingFeedback() {
               }
 
               if (question.question_type === "yesno") {
+                const yesNoValue =
+                  answers[question.id] === true
+                    ? "sim"
+                    : answers[question.id] === false
+                    ? "nao"
+                    : "";
                 return (
-                  <div key={question.id} className="flex items-center gap-2">
-                    <Checkbox
-                      id={`question-${question.id}`}
-                      checked={Boolean(answers[question.id])}
-                      onCheckedChange={(checked) =>
-                        setAnswers({ ...answers, [question.id]: Boolean(checked) })
-                      }
-                    />
-                    <Label htmlFor={`question-${question.id}`}>
-                      {question.question_text} {question.required && "*"}
+                  <div key={question.id} className="space-y-2">
+                    <Label>
+                      {questionLabel} {question.required && "*"}
                     </Label>
+                    <RadioGroup
+                      value={yesNoValue}
+                      onValueChange={(value) =>
+                        setAnswers({ ...answers, [question.id]: value === "sim" })
+                      }
+                      className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                    >
+                      <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+                        <RadioGroupItem id={`question-${question.id}-sim`} value="sim" />
+                        <Label
+                          htmlFor={`question-${question.id}-sim`}
+                          className="font-normal"
+                        >
+                          Sim
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+                        <RadioGroupItem id={`question-${question.id}-nao`} value="nao" />
+                        <Label
+                          htmlFor={`question-${question.id}-nao`}
+                          className="font-normal"
+                        >
+                          Não
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                );
+              }
+
+              if (question.question_type === "choice") {
+                const options = questionMeta.options;
+                return (
+                  <div key={question.id} className="space-y-2">
+                    <Label>
+                      {questionLabel} {question.required && "*"}
+                    </Label>
+                    {options.length > 0 ? (
+                      <RadioGroup
+                        value={String(answers[question.id] || "")}
+                        onValueChange={(value) =>
+                          setAnswers({ ...answers, [question.id]: value })
+                        }
+                        className="space-y-2"
+                      >
+                        {options.map((option, index) => {
+                          const optionId = `question-${question.id}-option-${index}`;
+                          return (
+                            <div
+                              key={optionId}
+                              className="flex items-center gap-3 rounded-md border px-3 py-2"
+                            >
+                              <RadioGroupItem id={optionId} value={option} />
+                              <Label htmlFor={optionId} className="font-normal">
+                                {option}
+                              </Label>
+                            </div>
+                          );
+                        })}
+                      </RadioGroup>
+                    ) : (
+                      <Input
+                        value={String(answers[question.id] || "")}
+                        onChange={(event) =>
+                          setAnswers({
+                            ...answers,
+                            [question.id]: event.target.value,
+                          })
+                        }
+                        placeholder="Digite sua resposta"
+                      />
+                    )}
                   </div>
                 );
               }
@@ -516,7 +720,7 @@ export default function TrainingFeedback() {
               return (
                 <StarRating
                   key={question.id}
-                  label={`${question.question_text}${question.required ? " *" : ""}`}
+                  label={`${questionLabel}${question.required ? " *" : ""}`}
                   value={Number(answers[question.id] || 0)}
                   onChange={(value) =>
                     setAnswers({ ...answers, [question.id]: value })
@@ -615,6 +819,7 @@ export default function TrainingFeedback() {
                     <SelectItem value="rating">Escala 1-5</SelectItem>
                     <SelectItem value="text">Texto</SelectItem>
                     <SelectItem value="yesno">Sim/Não</SelectItem>
+                    <SelectItem value="choice">Alternativas</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -632,6 +837,29 @@ export default function TrainingFeedback() {
                 />
               </div>
             </div>
+
+            {questionFormData.question_type === "choice" && (
+              <div className="space-y-2">
+                <Label htmlFor="question-options">
+                  Alternativas (uma por linha)
+                </Label>
+                <Textarea
+                  id="question-options"
+                  value={questionFormData.question_options_text || ""}
+                  onChange={(e) =>
+                    setQuestionFormData({
+                      ...questionFormData,
+                      question_options_text: e.target.value,
+                    })
+                  }
+                  placeholder={"Muito curta\nAdequada\nMuito longa"}
+                  rows={4}
+                />
+                <p className="text-xs text-slate-500">
+                  Adicione pelo menos 2 alternativas.
+                </p>
+              </div>
+            )}
 
             <div className="flex items-center gap-2">
               <Checkbox
