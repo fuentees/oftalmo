@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar, MapPin, User, Users, GraduationCap, FileText, Video } from "lucide-react";
 import { Download, Trash2, Upload } from "lucide-react";
-import { parseDateSafe, formatDateSafe } from "@/lib/date";
+import { formatDateSafe } from "@/lib/date";
+import { getEffectiveTrainingStatus } from "@/lib/statusRules";
 
 export default function TrainingDetails({ training, participants = [] }) {
   const trainingId = String(training?.id || "").trim();
@@ -105,73 +106,7 @@ export default function TrainingDetails({ training, participants = [] }) {
     cancelado: "Cancelado",
   };
 
-  const parseTimeToParts = (value) => {
-    const match = String(value ?? "").trim().match(/^(\d{2}):(\d{2})$/);
-    if (!match) return null;
-    const hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    if (
-      !Number.isFinite(hours) ||
-      !Number.isFinite(minutes) ||
-      hours < 0 ||
-      hours > 23 ||
-      minutes < 0 ||
-      minutes > 59
-    ) {
-      return null;
-    }
-    return { hours, minutes };
-  };
-
-  const parseTrainingDateTime = (dateValue, timeValue, isEnd) => {
-    const parsedDate = parseDateSafe(dateValue);
-    if (Number.isNaN(parsedDate.getTime())) return null;
-    const parsedTime = parseTimeToParts(timeValue);
-    if (parsedTime) {
-      parsedDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
-      return parsedDate;
-    }
-    if (isEnd) {
-      parsedDate.setHours(23, 59, 59, 999);
-    } else {
-      parsedDate.setHours(0, 0, 0, 0);
-    }
-    return parsedDate;
-  };
-
-  const getTrainingDateBounds = () => {
-    const dateItems = Array.isArray(training?.dates) && training.dates.length > 0
-      ? training.dates
-      : training?.date
-      ? [{ date: training.date }]
-      : [];
-
-    const starts = [];
-    const ends = [];
-    dateItems.forEach((item) => {
-      const dateValue = item?.date || item;
-      const startDateTime = parseTrainingDateTime(dateValue, item?.start_time, false);
-      const endDateTime = parseTrainingDateTime(dateValue, item?.end_time, true);
-      if (startDateTime) starts.push(startDateTime.getTime());
-      if (endDateTime) ends.push(endDateTime.getTime());
-    });
-
-    if (!starts.length || !ends.length) return null;
-    return {
-      start: new Date(Math.min(...starts)),
-      end: new Date(Math.max(...ends)),
-    };
-  };
-
-  const getEffectiveStatus = () => {
-    if (training.status === "cancelado") return "cancelado";
-    const bounds = getTrainingDateBounds();
-    if (!bounds) return training.status || "agendado";
-    const now = new Date();
-    if (now < bounds.start) return "agendado";
-    if (now > bounds.end) return "concluido";
-    return "em_andamento";
-  };
+  const getEffectiveStatus = () => getEffectiveTrainingStatus(training);
 
   useEffect(() => {
     if (!trainingId) return;

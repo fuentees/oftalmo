@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { useGveMapping } from "@/hooks/useGveMapping";
 import { parseDateSafe } from "@/lib/date";
+import { getEffectiveTrainingStatus } from "@/lib/statusRules";
 import {
   buildEventNotes,
   extractTrainingIdFromEventNotes,
@@ -460,25 +461,14 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
-    // Auto-calculate status based on dates
-    const now = new Date();
+
+    // Auto-calculate status based on dates and times.
     const dateRange = getTrainingDateRange(formData.dates || []);
-    const firstDate = dateRange.start_date
-      ? parseDateSafe(dateRange.start_date)
-      : null;
-    const lastDate = dateRange.end_date
-      ? parseDateSafe(dateRange.end_date)
-      : null;
-    
-    let autoStatus = "agendado";
-    if (firstDate && lastDate) {
-      if (now > lastDate) {
-        autoStatus = "concluido";
-      } else if (now >= firstDate && now <= lastDate) {
-        autoStatus = "em_andamento";
-      }
-    }
+    const autoStatus = getEffectiveTrainingStatus({
+      ...formData,
+      date: dateRange.start_date || formData.date,
+      dates: formData.dates || [],
+    });
     
     const { municipality, gve, ...restForm } = formData;
     const resolvedGve = isOnlineTraining

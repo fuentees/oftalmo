@@ -9,8 +9,6 @@ import TrainingHistory from "./TrainingHistory";
 import CertificatesPanel from "./CertificatesPanel";
 
 export default function ProfessionalDetails({ professional, participations, trainings, events }) {
-  if (!professional) return null;
-
   const normalizeText = (value) =>
     String(value ?? "")
       .normalize("NFD")
@@ -21,8 +19,8 @@ export default function ProfessionalDetails({ professional, participations, trai
   const normalizeEmail = (value) =>
     String(value ?? "").trim().toLowerCase();
 
-  const normalizedName = normalizeText(professional.name);
-  const normalizedEmail = normalizeEmail(professional.email);
+  const normalizedName = normalizeText(professional?.name);
+  const normalizedEmail = normalizeEmail(professional?.email);
 
   const matchesName = (value) =>
     normalizedName && normalizeText(value) === normalizedName;
@@ -186,6 +184,8 @@ export default function ProfessionalDetails({ professional, participations, trai
       },
     },
   ];
+
+  if (!professional) return null;
 
   return (
     <div className="space-y-6">

@@ -6,6 +6,10 @@ import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
+  getEffectiveEventStatus as resolveEffectiveEventStatus,
+  getEventDateBounds,
+} from "@/lib/statusRules";
+import {
   Package,
   GraduationCap,
   Users,
@@ -189,73 +193,6 @@ export default function Dashboard() {
     return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
   };
 
-  const parseTimeToHoursMinutes = (value) => {
-    const match = String(value ?? "").trim().match(/^(\d{2}):(\d{2})$/);
-    if (!match) return null;
-    const hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    if (
-      !Number.isFinite(hours) ||
-      !Number.isFinite(minutes) ||
-      hours < 0 ||
-      hours > 23 ||
-      minutes < 0 ||
-      minutes > 59
-    ) {
-      return null;
-    }
-    return { hours, minutes };
-  };
-
-  const getEventEndDateTime = (event) => {
-    const endDate = parseLocalDate(event?.end_date || event?.start_date);
-    if (!endDate) return null;
-
-    const parsedEndTime = parseTimeToHoursMinutes(event?.end_time);
-    if (parsedEndTime) {
-      endDate.setHours(parsedEndTime.hours, parsedEndTime.minutes, 0, 0);
-      return endDate;
-    }
-
-    // Sem horário explícito: considera o evento válido até o fim do dia.
-    endDate.setHours(23, 59, 59, 999);
-    return endDate;
-  };
-
-  const getEventStartDateTime = (event) => {
-    const startDate = parseLocalDate(event?.start_date);
-    if (!startDate) return null;
-
-    const parsedStartTime = parseTimeToHoursMinutes(event?.start_time);
-    if (parsedStartTime) {
-      startDate.setHours(parsedStartTime.hours, parsedStartTime.minutes, 0, 0);
-      return startDate;
-    }
-
-    startDate.setHours(0, 0, 0, 0);
-    return startDate;
-  };
-
-  const getEffectiveEventStatus = (event) => {
-    if (!event) return "planejado";
-    const normalizedStatus = String(event.status || "").trim().toLowerCase();
-    if (normalizedStatus === "cancelado") return "cancelado";
-
-    const start = getEventStartDateTime(event);
-    const end = getEventEndDateTime(event);
-    if (!start || !end) {
-      if (normalizedStatus === "agendado") return "planejado";
-      return normalizedStatus || "planejado";
-    }
-
-    const now = new Date();
-    if (now < start) {
-      return normalizedStatus === "confirmado" ? "confirmado" : "planejado";
-    }
-    if (now <= end) return "em_andamento";
-    return "concluido";
-  };
-
   const eventStatusLabels = {
     agendado: "Agendado",
     planejado: "Planejado",
@@ -278,14 +215,27 @@ export default function Dashboard() {
   const upcomingEvents = useMemo(() => {
     const filtered = events.filter((event) => {
       if (eventTypeFilter !== "all" && event.type !== eventTypeFilter) return false;
-      const effectiveStatus = getEffectiveEventStatus(event);
+      const effectiveStatus = resolveEffectiveEventStatus(event);
       return effectiveStatus !== "cancelado" && effectiveStatus !== "concluido";
     });
 
     const groupMap = new Map();
     filtered.forEach((event) => {
-      const startDate = parseLocalDate(event.start_date);
-      const endDate = parseLocalDate(event.end_date || event.start_date) || startDate;
+      const bounds = getEventDateBounds(event);
+      const startDate = bounds
+        ? new Date(
+            bounds.start.getFullYear(),
+            bounds.start.getMonth(),
+            bounds.start.getDate()
+          )
+        : parseLocalDate(event.start_date);
+      const endDate = bounds
+        ? new Date(
+            bounds.end.getFullYear(),
+            bounds.end.getMonth(),
+            bounds.end.getDate()
+          )
+        : parseLocalDate(event.end_date || event.start_date) || startDate;
       if (!startDate) return;
 
       const namesValue = Array.isArray(event.professional_names)
@@ -307,7 +257,7 @@ export default function Dashboard() {
           ...event,
           startDate,
           endDate,
-          effectiveStatus: getEffectiveEventStatus(event),
+          effectiveStatus: resolveEffectiveEventStatus(event),
           occurrences: 1,
         });
         return;
@@ -315,7 +265,7 @@ export default function Dashboard() {
 
       if (startDate < existing.startDate) existing.startDate = startDate;
       if (endDate > existing.endDate) existing.endDate = endDate;
-      const incomingStatus = getEffectiveEventStatus(event);
+      const incomingStatus = resolveEffectiveEventStatus(event);
       const statusPriority = {
         em_andamento: 3,
         confirmado: 2,

@@ -87,3 +87,10 @@ O app chama a função `send-email` via Supabase Functions. Você pode:
 - Informar um webhook em `VITE_EMAIL_WEBHOOK_URL`.
 
 Se nenhuma opção estiver configurada, o envio de emails exibirá erro.
+
+### Limpeza de registros órfãos (participantes)
+
+- No painel, acesse **Configurações > Planilhas > Executar limpeza de órfãos** para
+  remover inscrições legadas sem vínculo válido com treinamentos.
+- Para uma limpeza manual via SQL (batch), use o script:
+  `supabase/cleanup_orphan_training_participants.sql`.

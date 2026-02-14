@@ -5,6 +5,7 @@ import {
   extractOnlineLinkFromEventNotes,
   extractTrainingIdFromEventNotes,
 } from "@/lib/eventMetadata";
+import { getEffectiveEventStatus } from "@/lib/statusRules";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -288,47 +289,7 @@ export default function Schedule() {
     });
   };
 
-  const parseDateTime = (dateValue, timeValue, isEnd) => {
-    if (!dateValue) return null;
-    const base = parseLocalDate(dateValue);
-    if (!base) return null;
-    const time = String(timeValue || "").trim();
-    if (time) {
-      const [hourPart, minutePart] = time.split(":");
-      const hours = Number(hourPart);
-      const minutes = Number(minutePart);
-      if (Number.isFinite(hours) && Number.isFinite(minutes)) {
-        base.setHours(hours, minutes, 0, 0);
-        return base;
-      }
-    }
-    if (isEnd) {
-      base.setHours(23, 59, 59, 999);
-    } else {
-      base.setHours(0, 0, 0, 0);
-    }
-    return base;
-  };
-
-  const getEffectiveStatus = (event) => {
-    if (!event) return "planejado";
-    if (event.status === "cancelado") return "cancelado";
-    const startDate = event.start_date;
-    const endDate = event.end_date || event.start_date;
-    const start = parseDateTime(startDate, event.start_time, false);
-    const end = parseDateTime(endDate, event.end_time, true);
-    const normalizedStatus = String(event.status || "").trim().toLowerCase();
-    if (!start || !end) {
-      if (normalizedStatus === "agendado") return "planejado";
-      return normalizedStatus || "planejado";
-    }
-    const now = new Date();
-    if (now < start) {
-      return normalizedStatus === "confirmado" ? "confirmado" : "planejado";
-    }
-    if (now >= start && now <= end) return "em_andamento";
-    return "concluido";
-  };
+  const getEffectiveStatus = (event) => getEffectiveEventStatus(event);
 
   const selectedDateEvents = selectedDate ? getEventsForDate(selectedDate) : [];
 

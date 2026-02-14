@@ -33,6 +33,7 @@ import {
   Info,
   Mail,
   Plus,
+  RefreshCw,
   Users,
 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
@@ -64,6 +65,8 @@ import { generateParticipantCertificate } from "@/components/trainings/Certifica
 export default function Settings() {
   const [selectedColor, setSelectedColor] = useState("blue");
   const [mappingStatus, setMappingStatus] = useState(null);
+  const [orphanCleanupStatus, setOrphanCleanupStatus] = useState(null);
+  const [isRunningOrphanCleanup, setIsRunningOrphanCleanup] = useState(false);
   const [certificateTemplate, setCertificateTemplate] = useState(
     DEFAULT_CERTIFICATE_TEMPLATE
   );
@@ -999,6 +1002,150 @@ export default function Settings() {
     return fallback;
   };
 
+  const normalizeText = (value) => String(value ?? "").trim().toLowerCase();
+
+  const normalizeDateKey = (value) => {
+    if (!value) return "";
+    const text = String(value).trim();
+    if (!text) return "";
+    const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return "";
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTrainingDateKeys = (training) => {
+    if (!training) return [];
+    const keys = [];
+    const baseDate = normalizeDateKey(training.date);
+    if (baseDate) keys.push(baseDate);
+
+    const trainingDates = Array.isArray(training.dates) ? training.dates : [];
+    trainingDates.forEach((item) => {
+      const value = typeof item === "object" ? item?.date : item;
+      const dateKey = normalizeDateKey(value);
+      if (dateKey) keys.push(dateKey);
+    });
+
+    return Array.from(new Set(keys));
+  };
+
+  const buildTrainingLookups = (trainings) => {
+    const byId = new Map();
+    const byTitle = new Map();
+    (trainings || []).forEach((training) => {
+      const trainingId = String(training?.id || "").trim();
+      if (trainingId) byId.set(trainingId, training);
+
+      const titleKey = normalizeText(training?.title);
+      if (!titleKey) return;
+      if (!byTitle.has(titleKey)) byTitle.set(titleKey, []);
+      byTitle.get(titleKey).push(training);
+    });
+    return { byId, byTitle };
+  };
+
+  const hasLinkedTraining = (participant, lookups) => {
+    if (!participant) return false;
+    const trainingId = String(participant.training_id || "").trim();
+    if (trainingId) return lookups.byId.has(trainingId);
+
+    const titleKey = normalizeText(participant.training_title);
+    if (!titleKey) return false;
+    const candidates = lookups.byTitle.get(titleKey) || [];
+    if (!candidates.length) return false;
+
+    const participantDateKey = normalizeDateKey(participant.training_date);
+    if (!participantDateKey) return true;
+    return candidates.some((training) =>
+      getTrainingDateKeys(training).includes(participantDateKey)
+    );
+  };
+
+  const handleRunOrphanCleanup = async () => {
+    if (isRunningOrphanCleanup) return;
+    setIsRunningOrphanCleanup(true);
+    setOrphanCleanupStatus({
+      type: "loading",
+      message: "Executando limpeza de órfãos...",
+    });
+
+    try {
+      const [trainings, participants] = await Promise.all([
+        dataClient.entities.Training.list(),
+        dataClient.entities.TrainingParticipant.list(),
+      ]);
+
+      const lookups = buildTrainingLookups(trainings);
+      const orphanRows = (participants || []).filter(
+        (participant) => !hasLinkedTraining(participant, lookups)
+      );
+
+      if (!orphanRows.length) {
+        setOrphanCleanupStatus({
+          type: "success",
+          message: "Nenhum registro órfão encontrado.",
+        });
+        return;
+      }
+
+      const orphanIds = orphanRows
+        .map((row) => String(row?.id || "").trim())
+        .filter(Boolean);
+      const missingIdCount = orphanRows.length - orphanIds.length;
+
+      if (!orphanIds.length) {
+        setOrphanCleanupStatus({
+          type: "error",
+          message:
+            "Foram encontrados órfãos, mas sem ID válido para exclusão automática.",
+        });
+        return;
+      }
+
+      const results = await Promise.allSettled(
+        orphanIds.map((id) => dataClient.entities.TrainingParticipant.delete(id))
+      );
+      const deletedCount = results.filter(
+        (result) => result.status === "fulfilled"
+      ).length;
+      const failedCount = results.length - deletedCount;
+
+      if (deletedCount > 0) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["participants"] }),
+          queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] }),
+          queryClient.invalidateQueries({ queryKey: ["training"] }),
+          queryClient.invalidateQueries({ queryKey: ["trainings"] }),
+        ]);
+      }
+
+      const details = [];
+      if (deletedCount > 0) details.push(`${deletedCount} removido(s)`);
+      if (failedCount > 0) details.push(`${failedCount} com falha`);
+      if (missingIdCount > 0) details.push(`${missingIdCount} sem ID`);
+
+      setOrphanCleanupStatus({
+        type: failedCount > 0 || missingIdCount > 0 ? "error" : "success",
+        message: `Limpeza concluída: ${details.join(", ")}.`,
+      });
+    } catch (error) {
+      setOrphanCleanupStatus({
+        type: "error",
+        message: getReadableErrorMessage(
+          error,
+          "Erro ao executar limpeza de órfãos."
+        ),
+      });
+    } finally {
+      setIsRunningOrphanCleanup(false);
+    }
+  };
+
   const handleMappingFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1224,6 +1371,55 @@ export default function Settings() {
                   </AlertDescription>
                 </Alert>
               )}
+
+              <div className="mt-4 border-t pt-4 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">
+                    Limpeza de órfãos (inscritos)
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Remove participantes vinculados a treinamentos que não existem mais.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleRunOrphanCleanup}
+                  disabled={isRunningOrphanCleanup}
+                >
+                  <RefreshCw
+                    className={`mr-2 h-4 w-4 ${
+                      isRunningOrphanCleanup ? "animate-spin" : ""
+                    }`}
+                  />
+                  {isRunningOrphanCleanup
+                    ? "Executando limpeza..."
+                    : "Executar limpeza de órfãos"}
+                </Button>
+                {orphanCleanupStatus && (
+                  <Alert
+                    className={
+                      orphanCleanupStatus.type === "error"
+                        ? "border-red-200 bg-red-50"
+                        : orphanCleanupStatus.type === "success"
+                        ? "border-green-200 bg-green-50"
+                        : "border-blue-200 bg-blue-50"
+                    }
+                  >
+                    <AlertDescription
+                      className={
+                        orphanCleanupStatus.type === "error"
+                          ? "text-red-800"
+                          : orphanCleanupStatus.type === "success"
+                          ? "text-green-800"
+                          : "text-blue-800"
+                      }
+                    >
+                      {orphanCleanupStatus.message}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

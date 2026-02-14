@@ -2,6 +2,10 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { extractTrainingIdFromEventNotes } from "@/lib/eventMetadata";
+import {
+  getEffectiveTrainingStatus,
+  getTrainingDateItems,
+} from "@/lib/statusRules";
 import { format } from "date-fns";
 import {
   Edit,
@@ -647,80 +651,6 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     setImportStatus(null);
   };
 
-  const parseTimeToParts = (value) => {
-    const match = String(value ?? "").trim().match(/^(\d{2}):(\d{2})$/);
-    if (!match) return null;
-    const hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    if (
-      !Number.isFinite(hours) ||
-      !Number.isFinite(minutes) ||
-      hours < 0 ||
-      hours > 23 ||
-      minutes < 0 ||
-      minutes > 59
-    ) {
-      return null;
-    }
-    return { hours, minutes };
-  };
-
-  const parseTrainingDateTime = (dateValue, timeValue, isEnd) => {
-    const date = parseDateSafe(dateValue);
-    if (Number.isNaN(date.getTime())) return null;
-    const parsedTime = parseTimeToParts(timeValue);
-    if (parsedTime) {
-      date.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
-      return date;
-    }
-    if (isEnd) {
-      date.setHours(23, 59, 59, 999);
-    } else {
-      date.setHours(0, 0, 0, 0);
-    }
-    return date;
-  };
-
-  const getTrainingDateBounds = (training) => {
-    if (!training) return null;
-
-    const dateItems = Array.isArray(training.dates) && training.dates.length > 0
-      ? training.dates
-      : training.date
-      ? [{ date: training.date }]
-      : [];
-
-    const starts = [];
-    const ends = [];
-    dateItems.forEach((item) => {
-      const dateValue = item?.date || item;
-      const startDateTime = parseTrainingDateTime(dateValue, item?.start_time, false);
-      const endDateTime = parseTrainingDateTime(dateValue, item?.end_time, true);
-      if (startDateTime) starts.push(startDateTime.getTime());
-      if (endDateTime) ends.push(endDateTime.getTime());
-    });
-
-    if (!starts.length || !ends.length) return null;
-
-    return {
-      start: new Date(Math.min(...starts)),
-      end: new Date(Math.max(...ends)),
-    };
-  };
-
-  const getComputedTrainingStatus = (training) => {
-    if (!training) return "agendado";
-    if (training.status === "cancelado") return "cancelado";
-
-    const bounds = getTrainingDateBounds(training);
-    if (!bounds) return training.status || "agendado";
-
-    const now = new Date();
-    if (now < bounds.start) return "agendado";
-    if (now > bounds.end) return "concluido";
-    return "em_andamento";
-  };
-
   React.useEffect(() => {
     let cancelled = false;
 
@@ -733,7 +663,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       const updates = trainings
         .map((training) => {
           const trainingId = String(training?.id || "").trim();
-          const nextStatus = getComputedTrainingStatus(training);
+          const nextStatus = getEffectiveTrainingStatus(training);
           const currentStatus = String(training?.status || "").trim();
           if (!trainingId || training?.status === "cancelado") return null;
           if (!nextStatus || nextStatus === currentStatus) return null;
@@ -769,18 +699,12 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     };
   }, [trainings, queryClient]);
 
-  const getTrainingStatus = (training) => getComputedTrainingStatus(training);
+  const getTrainingStatus = (training) => getEffectiveTrainingStatus(training);
 
   const getTrainingYear = (training) => {
     if (!training) return null;
-    let value = null;
-    if (Array.isArray(training.dates) && training.dates.length > 0) {
-      const first = training.dates[0];
-      value = first?.date || first;
-    }
-    if (!value) {
-      value = training.start_date || training.date;
-    }
+    const firstDateItem = getTrainingDateItems(training)[0] || null;
+    const value = firstDateItem?.date || training.start_date || training.date;
     if (!value) return null;
     const parsed = parseDateSafe(value);
     if (Number.isNaN(parsed.getTime())) return null;
