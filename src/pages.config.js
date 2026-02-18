@@ -62,6 +62,7 @@ import AuditLogs from './pages/AuditLogs';
 import Enrolled from './pages/Enrolled';
 import EnrollmentFieldsManager from './pages/EnrollmentFieldsManager';
 import EnrollmentPage from './pages/EnrollmentPage';
+import TrainingFeedbackPage from './pages/TrainingFeedbackPage';
 import __Layout from './Layout.jsx';
 
 
@@ -81,6 +82,7 @@ export const PAGES = {
     "Enrolled": Enrolled,
     "EnrollmentFieldsManager": EnrollmentFieldsManager,
     "EnrollmentPage": EnrollmentPage,
+    "TrainingFeedbackPage": TrainingFeedbackPage,
 }
 
 export const pagesConfig = {

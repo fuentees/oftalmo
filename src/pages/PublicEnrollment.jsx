@@ -401,6 +401,19 @@ export default function PublicEnrollment() {
     training.max_participants &&
     training.participants_count >= training.max_participants;
   const isCancelled = training.status === "cancelado";
+  const dateLabels = trainingDates
+    .map((dateItem) => formatDateSafe(dateItem?.date))
+    .filter(Boolean);
+  const timeLabels = Array.from(
+    new Set(
+      trainingDates
+        .map((dateItem) => {
+          if (!dateItem?.start_time || !dateItem?.end_time) return null;
+          return `${dateItem.start_time} - ${dateItem.end_time}`;
+        })
+        .filter(Boolean)
+    )
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 py-8 px-4">
@@ -412,7 +425,7 @@ export default function PublicEnrollment() {
                 <GraduationCap className="h-6 w-6" />
               </div>
               <div>
-                <CardTitle className="text-2xl">Inscricao em Treinamento</CardTitle>
+                <CardTitle className="text-2xl">{training.title}</CardTitle>
                 <p className="text-blue-100 text-sm mt-1">
                   Preencha os dados para confirmar sua participacao
                 </p>
@@ -422,34 +435,41 @@ export default function PublicEnrollment() {
 
           <CardContent className="pt-6 space-y-6">
             <div className="bg-slate-50 rounded-lg p-4 space-y-3">
-              <h3 className="font-semibold text-lg text-slate-900">{training.title}</h3>
-              {training.code && (
-                <p className="text-sm text-slate-600">Código: {training.code}</p>
-              )}
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-slate-700">Datas e Horários:</p>
-                {trainingDates.length > 0 ? (
-                  trainingDates.map((dateItem, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-3 text-sm text-slate-700 pl-2"
-                    >
-                      <Calendar className="h-4 w-4 text-blue-600" />
-                      <span>{formatDateSafe(dateItem.date)}</span>
-                      {dateItem.start_time && dateItem.end_time && (
-                        <>
-                          <Clock className="h-4 w-4 text-blue-600" />
-                          <span>{dateItem.start_time} - {dateItem.end_time}</span>
-                        </>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="flex items-center gap-2 text-sm text-slate-700">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="rounded-md border bg-white px-3 py-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
                     <Calendar className="h-4 w-4 text-blue-600" />
-                    <span>Data a definir</span>
+                    Datas
                   </div>
-                )}
+                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                    {dateLabels.length > 0 ? dateLabels.join(" • ") : "Data a definir"}
+                  </p>
+                </div>
+
+                <div className="rounded-md border bg-white px-3 py-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <Clock className="h-4 w-4 text-blue-600" />
+                    Horario
+                  </div>
+                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                    {timeLabels.length > 0
+                      ? timeLabels.join(" • ")
+                      : "Horario a definir"}
+                  </p>
+                </div>
+
+                <div className="rounded-md border bg-white px-3 py-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <User className="h-4 w-4 text-blue-600" />
+                    Coordenador
+                  </div>
+                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                    {training.coordinator || "-"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
                 {training.location && (
                   <div className="flex items-center gap-2 text-sm text-slate-700">
                     <MapPin className="h-4 w-4 text-blue-600" />
@@ -462,11 +482,8 @@ export default function PublicEnrollment() {
                     <span>Treinamento Online</span>
                   </div>
                 )}
-                <div className="flex items-center gap-2 text-sm text-slate-700">
-                  <User className="h-4 w-4 text-blue-600" />
-                  Coordenador: {training.coordinator || "-"}
-                </div>
               </div>
+
               {training.max_participants && (
                 <p className="text-sm text-slate-600">
                   Vagas: {training.participants_count || 0} / {training.max_participants}

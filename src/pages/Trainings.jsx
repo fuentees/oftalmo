@@ -18,7 +18,6 @@ import {
   UserPlus,
   ClipboardCheck,
   Award,
-  Link2,
   MessageSquare,
   MoreVertical,
   FileText,
@@ -898,35 +897,24 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  const enrollUrl = `${window.location.origin}/PublicEnrollment?training=${encodeURIComponent(row.id)}`;
-                  navigator.clipboard.writeText(enrollUrl);
-                  alert("Link de inscrição copiado!");
-                }}
-              >
-                <Link2 className="h-4 w-4 mr-2" />
-                Copiar Link
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const feedbackUrl = `${window.location.origin}/TrainingFeedback?training=${encodeURIComponent(row.id)}`;
-                  navigator.clipboard.writeText(feedbackUrl);
-                  alert("Link de avaliação copiado!");
-                }}
-              >
-                <MessageSquare className="h-4 w-4 mr-2" />
-                Copiar Link da Avaliação
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
                   navigate(`/EnrollmentPage?training=${encodeURIComponent(row.id)}`);
                 }}
               >
                 <UserPlus className="h-4 w-4 mr-2" />
                 Página de Inscrição
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(
+                    `/TrainingFeedbackPage?training=${encodeURIComponent(row.id)}`
+                  );
+                }}
+              >
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Página de Avaliação
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
