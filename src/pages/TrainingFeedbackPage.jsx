@@ -103,6 +103,13 @@ const toValidRating = (value) => {
 const formatResponseDateTime = (value) =>
   formatDateSafe(value, "dd/MM/yyyy HH:mm") || "-";
 
+const questionTypeLabels = {
+  rating: "Escala 1-5",
+  text: "Texto",
+  yesno: "Sim/Nao",
+  choice: "Alternativas",
+};
+
 const resolveFeedbackRating = (feedbackItem) => {
   const directRating = toValidRating(feedbackItem?.rating);
   if (directRating) return directRating;
@@ -685,6 +692,36 @@ export default function TrainingFeedbackPage() {
     alert("Link de avaliacao copiado!");
   };
 
+  const handleCopyQuestion = async (question) => {
+    if (!question) return;
+    const questionMeta = extractQuestionMeta(question);
+    const questionLabel =
+      String(questionMeta.label || question.question_text || "").trim() || "Pergunta";
+    const questionType = String(question.question_type || "text")
+      .trim()
+      .toLowerCase();
+    const details = [
+      `Pergunta: ${questionLabel}`,
+      `Tipo: ${questionTypeLabels[questionType] || questionType}`,
+    ];
+    if (questionType === "choice" && questionMeta.options.length > 0) {
+      details.push(`Alternativas: ${questionMeta.options.join(" | ")}`);
+    }
+
+    try {
+      await navigator.clipboard.writeText(details.join("\n"));
+      setQuestionActionStatus({
+        type: "success",
+        message: `Pergunta "${questionLabel}" copiada.`,
+      });
+    } catch {
+      setQuestionActionStatus({
+        type: "error",
+        message: "Nao foi possivel copiar a pergunta.",
+      });
+    }
+  };
+
   const filteredQuestions = useMemo(() => {
     const searchTerm = questionSearch.trim().toLowerCase();
     return [...questionsData]
@@ -723,13 +760,7 @@ export default function TrainingFeedbackPage() {
     {
       header: "Tipo",
       render: (row) => {
-        const labels = {
-          rating: "Escala 1-5",
-          text: "Texto",
-          yesno: "Sim/Nao",
-          choice: "Alternativas",
-        };
-        return labels[row.question_type] || row.question_type;
+        return questionTypeLabels[row.question_type] || row.question_type;
       },
     },
     {
@@ -757,6 +788,15 @@ export default function TrainingFeedbackPage() {
       cellClassName: "text-right",
       render: (row) => (
         <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => handleCopyQuestion(row)}
+          >
+            <Copy className="h-4 w-4 mr-1" />
+            Copiar
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => handleEditQuestion(row)}>
             Editar
           </Button>
