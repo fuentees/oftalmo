@@ -42,6 +42,7 @@ import {
   Loader2,
   MessageSquare,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 import { formatDateSafe } from "@/lib/date";
 import {
@@ -105,6 +106,8 @@ export default function TrainingFeedbackPage() {
   const [questionSearch, setQuestionSearch] = useState("");
   const [showInactiveQuestions, setShowInactiveQuestions] = useState(false);
   const [questionActionStatus, setQuestionActionStatus] = useState(null);
+  const [activeTab, setActiveTab] = useState("mask");
+  const [previewVersion, setPreviewVersion] = useState(0);
   const [questionFormData, setQuestionFormData] = useState(
     createDefaultQuestion(trainingId)
   );
@@ -112,7 +115,16 @@ export default function TrainingFeedbackPage() {
   React.useEffect(() => {
     setQuestionFormData(createDefaultQuestion(trainingId));
     setEditingQuestion(null);
+    setActiveTab("mask");
+    setPreviewVersion(0);
   }, [trainingId]);
+
+  const refreshPreview = React.useCallback(() => {
+    setPreviewVersion((value) => value + 1);
+  }, []);
+  const previewUrl = feedbackLink
+    ? `${feedbackLink}${feedbackLink.includes("?") ? "&" : "?"}_preview=${previewVersion}`
+    : "";
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["feedback-training-page", trainingId],
@@ -160,6 +172,7 @@ export default function TrainingFeedbackPage() {
     mutationFn: (payload) => dataClient.entities.TrainingFeedbackQuestion.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["training-feedback-questions"] });
+      refreshPreview();
       setQuestionActionStatus({
         type: "success",
         message: "Pergunta criada com sucesso.",
@@ -182,6 +195,7 @@ export default function TrainingFeedbackPage() {
       dataClient.entities.TrainingFeedbackQuestion.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["training-feedback-questions"] });
+      refreshPreview();
       setQuestionActionStatus({
         type: "success",
         message: "Pergunta atualizada com sucesso.",
@@ -204,6 +218,7 @@ export default function TrainingFeedbackPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["training-feedback-questions"] });
       setQuestionDeleteConfirm(null);
+      refreshPreview();
       setQuestionActionStatus({
         type: "success",
         message: "Pergunta excluida com sucesso.",
@@ -225,6 +240,7 @@ export default function TrainingFeedbackPage() {
       dataClient.entities.TrainingFeedbackQuestion.bulkCreate(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["training-feedback-questions"] });
+      refreshPreview();
       setQuestionActionStatus({
         type: "success",
         message: "Modelo de perguntas aplicado com sucesso.",
@@ -525,7 +541,16 @@ export default function TrainingFeedbackPage() {
           </p>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="mask" className="w-full">
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              setActiveTab(value);
+              if (value === "preview") {
+                refreshPreview();
+              }
+            }}
+            className="w-full"
+          >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="mask">Mascara</TabsTrigger>
               <TabsTrigger value="preview">Visualizacao</TabsTrigger>
@@ -635,6 +660,10 @@ export default function TrainingFeedbackPage() {
                   <Copy className="h-4 w-4 mr-2" />
                   Copiar Link da Avaliacao
                 </Button>
+                <Button type="button" variant="outline" onClick={refreshPreview}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Atualizar Visualizacao
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -656,8 +685,9 @@ export default function TrainingFeedbackPage() {
 
               <div className="rounded-lg border bg-white overflow-hidden">
                 <iframe
+                  key={previewUrl}
                   title={`Visualizacao da avaliacao - ${training.title}`}
-                  src={feedbackLink}
+                  src={previewUrl}
                   className="w-full h-[760px]"
                 />
               </div>
