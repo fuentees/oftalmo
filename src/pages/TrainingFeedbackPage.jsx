@@ -45,6 +45,10 @@ import {
 } from "lucide-react";
 import { formatDateSafe } from "@/lib/date";
 import {
+  getSupabaseErrorMessage,
+  isMissingSupabaseTableError,
+} from "@/lib/supabaseErrors";
+import {
   DEFAULT_TRAINING_FEEDBACK_QUESTIONS,
   buildChoiceQuestionText,
   extractQuestionMeta,
@@ -62,8 +66,12 @@ const createDefaultQuestion = (trainingId) => ({
 });
 
 const resolveQuestionMutationError = (error, fallbackMessage) => {
-  const message = String(error?.message || "").trim();
+  const message = getSupabaseErrorMessage(error);
   if (!message) return fallbackMessage;
+
+  if (isMissingSupabaseTableError(error, "training_feedback_questions")) {
+    return "A tabela de perguntas de avaliacao nao existe no banco. Execute o script SQL de criacao da tabela e recarregue o app.";
+  }
 
   const normalized = message.toLowerCase();
   if (
@@ -115,7 +123,7 @@ export default function TrainingFeedbackPage() {
     enabled: !!trainingId,
   });
 
-  const { data: questions = [], isLoading: questionsLoading } = useQuery({
+  const questionsQuery = useQuery({
     queryKey: ["training-feedback-questions", trainingId],
     queryFn: async () => {
       const allQuestions =
@@ -126,6 +134,21 @@ export default function TrainingFeedbackPage() {
     },
     enabled: !!trainingId,
   });
+  const questionsData = questionsQuery.data || [];
+  const questionsLoadingState = questionsQuery.isLoading;
+  const questionsError = questionsQuery.error;
+  const hasQuestionsError = questionsQuery.isError;
+  const isQuestionsTableMissing = isMissingSupabaseTableError(
+    questionsError,
+    "training_feedback_questions"
+  );
+  const questionsLoadErrorMessage = hasQuestionsError
+    ? isQuestionsTableMissing
+      ? "A tabela training_feedback_questions nao foi encontrada no Supabase. Execute o script SQL de criacao da tabela e recarregue a pagina."
+      : getSupabaseErrorMessage(questionsError) ||
+        "Nao foi possivel carregar as perguntas da avaliacao."
+    : "";
+  const disableQuestionActions = hasQuestionsError;
 
   const resetQuestionForm = () => {
     setQuestionFormData(createDefaultQuestion(trainingId));
@@ -221,6 +244,15 @@ export default function TrainingFeedbackPage() {
   const handleSaveQuestion = (event) => {
     event.preventDefault();
     setQuestionActionStatus(null);
+    if (disableQuestionActions) {
+      setQuestionActionStatus({
+        type: "error",
+        message:
+          questionsLoadErrorMessage ||
+          "Nao foi possivel salvar porque as perguntas nao puderam ser carregadas.",
+      });
+      return;
+    }
     const cleanQuestionText = String(questionFormData.question_text || "").trim();
     if (!cleanQuestionText) {
       alert("Informe o texto da pergunta.");
@@ -279,8 +311,17 @@ export default function TrainingFeedbackPage() {
   const handleApplyDefaults = () => {
     if (!trainingId) return;
     setQuestionActionStatus(null);
+    if (disableQuestionActions) {
+      setQuestionActionStatus({
+        type: "error",
+        message:
+          questionsLoadErrorMessage ||
+          "Nao foi possivel aplicar o modelo porque as perguntas nao puderam ser carregadas.",
+      });
+      return;
+    }
     const existing = new Set(
-      questions.map((question) =>
+      questionsData.map((question) =>
         String(extractQuestionMeta(question).label || "")
           .trim()
           .toLowerCase()
@@ -332,7 +373,7 @@ export default function TrainingFeedbackPage() {
 
   const filteredQuestions = useMemo(() => {
     const searchTerm = questionSearch.trim().toLowerCase();
-    return [...questions]
+    return [...questionsData]
       .filter((question) => {
         if (!showInactiveQuestions && !question.is_active) return false;
         if (!searchTerm) return true;
@@ -340,7 +381,7 @@ export default function TrainingFeedbackPage() {
         return String(label || "").toLowerCase().includes(searchTerm);
       })
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [questions, questionSearch, showInactiveQuestions]);
+  }, [questionsData, questionSearch, showInactiveQuestions]);
 
   const questionColumns = [
     {
@@ -496,11 +537,17 @@ export default function TrainingFeedbackPage() {
                   <Copy className="h-4 w-4 mr-2" />
                   Copiar Link da Avaliacao
                 </Button>
-                <Button type="button" variant="outline" onClick={handleApplyDefaults}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleApplyDefaults}
+                  disabled={disableQuestionActions}
+                >
                   Aplicar Modelo de Ficha
                 </Button>
                 <Button
                   type="button"
+                  disabled={disableQuestionActions}
                   onClick={() => {
                     setQuestionActionStatus(null);
                     setEditingQuestion(null);
@@ -512,6 +559,14 @@ export default function TrainingFeedbackPage() {
                   Nova Pergunta
                 </Button>
               </div>
+
+              {hasQuestionsError && (
+                <Alert className="border-red-200 bg-red-50">
+                  <AlertDescription className="text-red-800">
+                    {questionsLoadErrorMessage}
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {questionActionStatus && (
                 <Alert
@@ -567,7 +622,7 @@ export default function TrainingFeedbackPage() {
                   <DataTable
                     columns={questionColumns}
                     data={filteredQuestions}
-                    isLoading={questionsLoading}
+                    isLoading={questionsLoadingState}
                     emptyMessage="Nenhuma pergunta cadastrada"
                   />
                 </CardContent>
@@ -757,7 +812,11 @@ export default function TrainingFeedbackPage() {
               <Button
                 type="submit"
                 className="bg-blue-600 hover:bg-blue-700"
-                disabled={createQuestion.isPending || updateQuestion.isPending}
+                disabled={
+                  createQuestion.isPending ||
+                  updateQuestion.isPending ||
+                  disableQuestionActions
+                }
               >
                 {editingQuestion ? "Salvar" : "Criar"}
               </Button>

@@ -18,6 +18,10 @@ import {
   User,
 } from "lucide-react";
 import { formatDateSafe, parseDateSafe } from "@/lib/date";
+import {
+  getSupabaseErrorMessage,
+  isMissingSupabaseTableError,
+} from "@/lib/supabaseErrors";
 import { extractQuestionMeta } from "@/lib/trainingFeedbackSchema";
 
 const StarRating = ({ value, onChange, label }) => (
@@ -68,7 +72,11 @@ export default function TrainingFeedback() {
     enabled: !!trainingId,
   });
 
-  const { data: questions = [] } = useQuery({
+  const {
+    data: questions = [],
+    error: questionsError,
+    isError: hasQuestionsError,
+  } = useQuery({
     queryKey: ["training-feedback-questions-public", trainingId],
     queryFn: async () => {
       const allQuestions =
@@ -80,6 +88,16 @@ export default function TrainingFeedback() {
     },
     enabled: !!trainingId,
   });
+  const isQuestionsTableMissing = isMissingSupabaseTableError(
+    questionsError,
+    "training_feedback_questions"
+  );
+  const questionsLoadErrorMessage = hasQuestionsError
+    ? isQuestionsTableMissing
+      ? "A tabela training_feedback_questions nao foi encontrada no Supabase. Solicite ao administrador a criacao da tabela de perguntas de avaliacao."
+      : getSupabaseErrorMessage(questionsError) ||
+        "Nao foi possivel carregar as perguntas da avaliacao."
+    : "";
 
   const trainingDates = useMemo(() => {
     const list = Array.isArray(training?.dates) ? [...training.dates] : [];
@@ -218,6 +236,12 @@ export default function TrainingFeedback() {
       setSubmitted(true);
     },
     onError: (error) => {
+      if (isMissingSupabaseTableError(error, "training_feedback")) {
+        setLookupError(
+          "A tabela training_feedback nao existe no banco. Solicite ao administrador a atualizacao do schema."
+        );
+        return;
+      }
       setLookupError(error.message || "Erro ao enviar avaliacao.");
     },
   });
@@ -328,12 +352,21 @@ export default function TrainingFeedback() {
             </div>
 
             {activeQuestions.length === 0 ? (
-              <Alert className="border-amber-200 bg-amber-50">
-                <AlertCircle className="h-4 w-4 text-amber-600" />
-                <AlertDescription className="text-amber-800">
-                  Nenhuma pergunta configurada para este treinamento.
-                </AlertDescription>
-              </Alert>
+              hasQuestionsError ? (
+                <Alert className="border-red-200 bg-red-50">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800">
+                    {questionsLoadErrorMessage}
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Alert className="border-amber-200 bg-amber-50">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800">
+                    Nenhuma pergunta configurada para este treinamento.
+                  </AlertDescription>
+                </Alert>
+              )
             ) : (
               activeQuestions.map((question) => {
                 const meta = extractQuestionMeta(question);
@@ -494,7 +527,11 @@ export default function TrainingFeedback() {
             <Button
               onClick={() => submitFeedback.mutate()}
               className="w-full"
-              disabled={submitFeedback.isPending || activeQuestions.length === 0}
+              disabled={
+                submitFeedback.isPending ||
+                activeQuestions.length === 0 ||
+                hasQuestionsError
+              }
             >
               {submitFeedback.isPending ? (
                 <>

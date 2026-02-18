@@ -46,8 +46,11 @@ armazenamento de arquivos.
    Também recomendamos executar a função `is_valid_cpf` e as constraints de CPF
    (no próprio `schema.sql`) para validação no backend.
    Para logo e palestrantes, adicione as colunas `logo_url` e `speakers` em `trainings`.
-   Para avaliação, adicione a coluna `answers` em `training_feedback` e a tabela
-   `training_feedback_questions` (ver `schema.sql`).
+  Para avaliação, adicione a coluna `answers` em `training_feedback` e a tabela
+  `training_feedback_questions` (ver `schema.sql`).
+  Se aparecer o erro
+  `Could not find the table 'public.training_feedback_questions' in the schema cache`,
+  execute o script `supabase/create_training_feedback_questions_table.sql`.
    O mapeamento de Município x GVE agora é persistido na tabela
    `municipality_gve_mappings`.
 3. Crie o bucket de armazenamento `uploads` e deixe como **public** (ou adapte
