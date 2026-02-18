@@ -61,6 +61,25 @@ const createDefaultQuestion = (trainingId) => ({
   is_active: true,
 });
 
+const resolveQuestionMutationError = (error, fallbackMessage) => {
+  const message = String(error?.message || "").trim();
+  if (!message) return fallbackMessage;
+
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("permission") ||
+    normalized.includes("permiss") ||
+    normalized.includes("policy") ||
+    normalized.includes("row level security") ||
+    normalized.includes("rls") ||
+    normalized.includes("42501")
+  ) {
+    return "Sem permissao para alterar perguntas de avaliacao. Solicite acesso de administrador.";
+  }
+
+  return message;
+};
+
 export default function TrainingFeedbackPage() {
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
@@ -77,6 +96,7 @@ export default function TrainingFeedbackPage() {
   const [questionDeleteConfirm, setQuestionDeleteConfirm] = useState(null);
   const [questionSearch, setQuestionSearch] = useState("");
   const [showInactiveQuestions, setShowInactiveQuestions] = useState(false);
+  const [questionActionStatus, setQuestionActionStatus] = useState(null);
   const [questionFormData, setQuestionFormData] = useState(
     createDefaultQuestion(trainingId)
   );
@@ -117,7 +137,20 @@ export default function TrainingFeedbackPage() {
     mutationFn: (payload) => dataClient.entities.TrainingFeedbackQuestion.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["training-feedback-questions"] });
+      setQuestionActionStatus({
+        type: "success",
+        message: "Pergunta criada com sucesso.",
+      });
       resetQuestionForm();
+    },
+    onError: (error) => {
+      setQuestionActionStatus({
+        type: "error",
+        message: resolveQuestionMutationError(
+          error,
+          "Nao foi possivel criar a pergunta."
+        ),
+      });
     },
   });
 
@@ -126,7 +159,20 @@ export default function TrainingFeedbackPage() {
       dataClient.entities.TrainingFeedbackQuestion.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["training-feedback-questions"] });
+      setQuestionActionStatus({
+        type: "success",
+        message: "Pergunta atualizada com sucesso.",
+      });
       resetQuestionForm();
+    },
+    onError: (error) => {
+      setQuestionActionStatus({
+        type: "error",
+        message: resolveQuestionMutationError(
+          error,
+          "Nao foi possivel atualizar a pergunta."
+        ),
+      });
     },
   });
 
@@ -135,6 +181,19 @@ export default function TrainingFeedbackPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["training-feedback-questions"] });
       setQuestionDeleteConfirm(null);
+      setQuestionActionStatus({
+        type: "success",
+        message: "Pergunta excluida com sucesso.",
+      });
+    },
+    onError: (error) => {
+      setQuestionActionStatus({
+        type: "error",
+        message: resolveQuestionMutationError(
+          error,
+          "Nao foi possivel excluir a pergunta."
+        ),
+      });
     },
   });
 
@@ -143,11 +202,25 @@ export default function TrainingFeedbackPage() {
       dataClient.entities.TrainingFeedbackQuestion.bulkCreate(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["training-feedback-questions"] });
+      setQuestionActionStatus({
+        type: "success",
+        message: "Modelo de perguntas aplicado com sucesso.",
+      });
+    },
+    onError: (error) => {
+      setQuestionActionStatus({
+        type: "error",
+        message: resolveQuestionMutationError(
+          error,
+          "Nao foi possivel aplicar o modelo de perguntas."
+        ),
+      });
     },
   });
 
   const handleSaveQuestion = (event) => {
     event.preventDefault();
+    setQuestionActionStatus(null);
     const cleanQuestionText = String(questionFormData.question_text || "").trim();
     if (!cleanQuestionText) {
       alert("Informe o texto da pergunta.");
@@ -205,6 +278,7 @@ export default function TrainingFeedbackPage() {
 
   const handleApplyDefaults = () => {
     if (!trainingId) return;
+    setQuestionActionStatus(null);
     const existing = new Set(
       questions.map((question) =>
         String(extractQuestionMeta(question).label || "")
@@ -240,7 +314,10 @@ export default function TrainingFeedbackPage() {
       }));
 
     if (!payload.length) {
-      alert("O modelo ja esta configurado para este treinamento.");
+      setQuestionActionStatus({
+        type: "info",
+        message: "O modelo ja esta configurado para este treinamento.",
+      });
       return;
     }
 
@@ -415,15 +492,17 @@ export default function TrainingFeedbackPage() {
 
             <TabsContent value="mask" className="mt-6 space-y-6">
               <div className="flex flex-wrap gap-3">
-                <Button variant="outline" onClick={handleCopyFeedbackLink}>
+                <Button type="button" variant="outline" onClick={handleCopyFeedbackLink}>
                   <Copy className="h-4 w-4 mr-2" />
                   Copiar Link da Avaliacao
                 </Button>
-                <Button variant="outline" onClick={handleApplyDefaults}>
+                <Button type="button" variant="outline" onClick={handleApplyDefaults}>
                   Aplicar Modelo de Ficha
                 </Button>
                 <Button
+                  type="button"
                   onClick={() => {
+                    setQuestionActionStatus(null);
                     setEditingQuestion(null);
                     setQuestionFormData(createDefaultQuestion(trainingId));
                     setQuestionFormOpen(true);
@@ -433,6 +512,30 @@ export default function TrainingFeedbackPage() {
                   Nova Pergunta
                 </Button>
               </div>
+
+              {questionActionStatus && (
+                <Alert
+                  className={
+                    questionActionStatus.type === "error"
+                      ? "border-red-200 bg-red-50"
+                      : questionActionStatus.type === "success"
+                      ? "border-green-200 bg-green-50"
+                      : "border-blue-200 bg-blue-50"
+                  }
+                >
+                  <AlertDescription
+                    className={
+                      questionActionStatus.type === "error"
+                        ? "text-red-800"
+                        : questionActionStatus.type === "success"
+                        ? "text-green-800"
+                        : "text-blue-800"
+                    }
+                  >
+                    {questionActionStatus.message}
+                  </AlertDescription>
+                </Alert>
+              )}
 
               <Card>
                 <CardHeader>
@@ -473,11 +576,12 @@ export default function TrainingFeedbackPage() {
 
             <TabsContent value="preview" className="mt-6 space-y-4">
               <div className="flex flex-wrap gap-3">
-                <Button variant="outline" onClick={handleCopyFeedbackLink}>
+                <Button type="button" variant="outline" onClick={handleCopyFeedbackLink}>
                   <Copy className="h-4 w-4 mr-2" />
                   Copiar Link da Avaliacao
                 </Button>
                 <Button
+                  type="button"
                   variant="outline"
                   onClick={() =>
                     window.open(feedbackLink, "_blank", "noopener,noreferrer")
@@ -507,7 +611,16 @@ export default function TrainingFeedbackPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={questionFormOpen} onOpenChange={(open) => !open && resetQuestionForm()}>
+      <Dialog
+        open={questionFormOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetQuestionForm();
+            return;
+          }
+          setQuestionFormOpen(true);
+        }}
+      >
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>
