@@ -15,7 +15,6 @@ import {
   User,
   Calendar,
   FileText,
-  MessageSquare,
   Search,
   Pencil,
   Loader2,
@@ -33,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import GlobalSearch from "@/components/common/GlobalSearch";
+import CommunicationChatWidget from "@/components/communication/CommunicationChatWidget";
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -148,7 +148,6 @@ export default function Layout({ children, currentPageName }) {
     { name: "Treinamentos", page: "Trainings", icon: GraduationCap },
     { name: "Profissionais", page: "Professionals", icon: Users },
     { name: "Participantes", page: "Participants", icon: Users },
-    { name: "Comunicação", page: "Communication", icon: MessageSquare },
     { name: "Relatórios", page: "Reports", icon: FileText },
     { name: "Logs", page: "AuditLogs", icon: FileText, adminOnly: true },
     { name: "Configurações", page: "Settings", icon: Settings, adminOnly: true },
@@ -437,6 +436,7 @@ export default function Layout({ children, currentPageName }) {
         </DialogContent>
       </Dialog>
 
+      <CommunicationChatWidget currentUser={user} />
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
