@@ -77,9 +77,19 @@ armazenamento de arquivos.
    ```bash
    supabase functions deploy user-admin
    ```
+   Se a tela de usuários mostrar erro de conexão mesmo com a função deployada,
+   faça deploy sem validação automática de JWT (a função já valida token no
+   código e o preflight do navegador fica mais estável):
+   ```bash
+   supabase functions deploy user-admin --no-verify-jwt
+   ```
    Se necessário, configure segredo para lista de admins por e-mail:
    ```bash
    supabase secrets set ADMIN_EMAILS=admin@seuorgao.gov.br
+   ```
+   Confira também se a função está no mesmo projeto do frontend:
+   ```bash
+   supabase link --project-ref <project_ref_do_VITE_SUPABASE_URL>
    ```
 
 > Importante: desativar apenas no frontend não impede chamadas diretas à API de

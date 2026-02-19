@@ -462,17 +462,46 @@ const ExtractDataFromUploadedFile = async ({ file_url }) => {
 };
 
 const getUserAdminFunctionError = (error) => {
-  const message = String(error?.message || "").trim();
+  const rawMessage = String(error?.message || "").trim();
+  const status = Number(error?.status || 0);
+  let message = rawMessage;
+  if (rawMessage.startsWith("{") && rawMessage.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(rawMessage);
+      const parsedMessage = String(parsed?.error || parsed?.message || "").trim();
+      if (parsedMessage) {
+        message = parsedMessage;
+      }
+    } catch (parseError) {
+      // mantém a mensagem original quando não for JSON válido
+    }
+  }
   const lowered = message.toLowerCase();
+  const projectRef = (() => {
+    try {
+      if (typeof SUPABASE_URL !== "string" || !SUPABASE_URL.trim()) return "";
+      const host = new URL(SUPABASE_URL.trim()).hostname || "";
+      return host.split(".")[0] || "";
+    } catch (parseError) {
+      return "";
+    }
+  })();
+  const projectHint = projectRef
+    ? ` Projeto atual do frontend: "${projectRef}".`
+    : "";
+
+  if (status >= 500 && lowered.includes("fetch failed")) {
+    return `A função ${USER_ADMIN_FUNCTION_LABEL} respondeu com erro interno (${status}). Verifique os logs da função no Supabase e confirme os secrets SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no mesmo projeto.${projectHint}`;
+  }
   if (
     lowered.includes("failed to send a request to the edge function") ||
     lowered.includes("networkerror") ||
     lowered.includes("failed to fetch")
   ) {
-    return `Não foi possível conectar à função ${USER_ADMIN_FUNCTION_LABEL}. Verifique no Supabase se a Edge Function foi deployada e se o nome está correto em VITE_SUPABASE_USER_ADMIN_FUNCTION. Se necessário, execute: supabase functions deploy user-admin.`;
+    return `Não foi possível conectar à função ${USER_ADMIN_FUNCTION_LABEL}. Verifique no Supabase se a Edge Function foi deployada e se o nome está correto em VITE_SUPABASE_USER_ADMIN_FUNCTION.${projectHint} Se necessário, execute: supabase functions deploy user-admin.`;
   }
   if (lowered.includes("not found") || lowered.includes("404")) {
-    return `A função ${USER_ADMIN_FUNCTION_LABEL} não foi encontrada no projeto Supabase. Faça o deploy da função com: supabase functions deploy user-admin.`;
+    return `A função ${USER_ADMIN_FUNCTION_LABEL} não foi encontrada no projeto Supabase.${projectHint} Faça o deploy da função com: supabase functions deploy user-admin.`;
   }
   return message || "Falha ao executar operação de gestão de usuários.";
 };
@@ -656,7 +685,19 @@ const invokeSupabaseFunction = async (functionName, payload, accessToken) => {
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Falha ao chamar função ${functionName}.`);
+    let parsedMessage = "";
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        parsedMessage = String(parsed?.error || parsed?.message || "").trim();
+      } catch (parseError) {
+        parsedMessage = "";
+      }
+    }
+    const message = parsedMessage || text || `Falha ao chamar função ${functionName}.`;
+    const requestError = new Error(message);
+    requestError.status = response.status;
+    throw requestError;
   }
   return response.json().catch(() => ({}));
 };
