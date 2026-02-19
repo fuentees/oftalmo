@@ -4,7 +4,9 @@ const normalizeText = (value) => String(value || "").trim();
 
 const normalizeDestinationMode = (value) => {
   const normalized = normalizeText(value).toLowerCase();
-  return normalized === "gve" ? "gve" : "municipio";
+  if (normalized === "gve") return "gve";
+  if (normalized === "setor") return "setor";
+  return "municipio";
 };
 
 const normalizePurpose = (metadata) => ({
@@ -115,6 +117,15 @@ export const resolveStockMovementDestination = ({
     metadata?.destination_municipio || fallbackMunicipio
   );
   const destinationGve = normalizeText(metadata?.destination_gve || fallbackGve);
+
+  if (destinationMode === "setor") {
+    return {
+      destination: "Setor",
+      destinationMode: "setor",
+      municipio: null,
+      gve: null,
+    };
+  }
 
   if (destinationMode === "gve" && destinationGve) {
     return {
