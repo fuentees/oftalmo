@@ -26,14 +26,31 @@ import { MessageSquare, Send, Loader2, AlertCircle } from "lucide-react";
 
 const RECIPIENT_SCOPE_OPTIONS = [
   { value: "todos", label: "Todos" },
-  { value: "perfil", label: "Perfil / Setor" },
-  { value: "gve", label: "GVE" },
-  { value: "municipio", label: "Município" },
   { value: "pessoa", label: "Pessoa específica" },
 ];
+const COMMUNICATION_MESSAGES_TABLE_SQL = `create extension if not exists pgcrypto;
+
+create table if not exists public.communication_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_name text,
+  sender_email text,
+  recipient_scope text default 'todos',
+  recipient_label text,
+  subject text,
+  message text not null,
+  created_at timestamptz default now()
+);
+
+create index if not exists idx_communication_messages_created_at
+  on public.communication_messages (created_at desc);
+
+notify pgrst, 'reload schema';`;
 
 const resolveScopeLabel = (scope) =>
   RECIPIENT_SCOPE_OPTIONS.find((item) => item.value === scope)?.label || scope;
+const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+const buildAccountLabel = (name, email) =>
+  name && email ? `${name} (${email})` : name || email || "Usuário";
 
 export default function Communication() {
   const queryClient = useQueryClient();
@@ -56,29 +73,63 @@ export default function Communication() {
     queryKey: ["communication-messages"],
     queryFn: () => dataClient.entities.CommunicationMessage.list("-created_at", 300),
   });
+  const managedUsersQuery = useQuery({
+    queryKey: ["managed-users-recipient-options"],
+    queryFn: () => dataClient.integrations.Core.ListManagedUsers(),
+    retry: false,
+  });
   const messages = messagesQuery.data || [];
+  const managedUsers = Array.isArray(managedUsersQuery.data?.users)
+    ? managedUsersQuery.data.users
+    : [];
   const missingTable = isMissingSupabaseTableError(
     messagesQuery.error,
     "communication_messages"
   );
   const loadErrorMessage = messagesQuery.isError
     ? missingTable
-      ? "A tabela communication_messages não foi encontrada no Supabase. Execute o script supabase/create_communication_messages_table.sql."
+      ? "A tabela communication_messages não foi encontrada no Supabase. Execute o SQL de criação no SQL Editor."
       : getSupabaseErrorMessage(messagesQuery.error) ||
         "Não foi possível carregar as mensagens."
     : "";
 
-  const recipientSuggestions = useMemo(() => {
-    const values = new Set();
-    messages.forEach((item) => {
-      const label = String(item.recipient_label || "").trim();
-      if (label && label.toLowerCase() !== "todos") {
-        values.add(label);
-      }
+  const recipientAccounts = useMemo(() => {
+    const mapped = new Map();
+    const upsertAccount = (emailValue, nameValue) => {
+      const email = normalizeEmail(emailValue);
+      if (!email) return;
+      const current = mapped.get(email) || { email, name: "" };
+      const nextName = String(nameValue || "").trim();
+      mapped.set(email, {
+        email,
+        name: current.name || nextName,
+      });
+    };
+
+    managedUsers.forEach((user) => {
+      upsertAccount(user?.email, user?.full_name || user?.name);
     });
-    return Array.from(values).sort((a, b) =>
-      a.localeCompare(b, "pt-BR", { sensitivity: "base" })
-    );
+    messages.forEach((item) => {
+      upsertAccount(item?.sender_email, item?.sender_name);
+    });
+    upsertAccount(currentUser?.email, currentUser?.full_name || currentUser?.name);
+
+    return Array.from(mapped.values())
+      .map((item) => ({
+        email: item.email,
+        name: item.name,
+        label: buildAccountLabel(item.name, item.email),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+  }, [managedUsers, messages, currentUser?.email, currentUser?.full_name, currentUser?.name]);
+  const hasRecipientOptions = recipientAccounts.length > 0;
+  const availableScopeFilters = useMemo(() => {
+    const knownScopes = new Set(["todos", "pessoa"]);
+    messages.forEach((item) => {
+      const scope = String(item?.recipient_scope || "").trim().toLowerCase();
+      if (scope) knownScopes.add(scope);
+    });
+    return Array.from(knownScopes);
   }, [messages]);
 
   const filteredMessages = useMemo(() => {
@@ -124,6 +175,21 @@ export default function Communication() {
     },
   });
 
+  const handleCopySetupSql = async () => {
+    try {
+      await navigator.clipboard.writeText(COMMUNICATION_MESSAGES_TABLE_SQL);
+      setFormStatus({
+        type: "success",
+        message: "SQL copiado. Cole no SQL Editor do Supabase e execute.",
+      });
+    } catch (error) {
+      setFormStatus({
+        type: "error",
+        message: "Não foi possível copiar o SQL automaticamente.",
+      });
+    }
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
     setFormStatus(null);
@@ -139,10 +205,10 @@ export default function Communication() {
       });
       return;
     }
-    if (scope !== "todos" && !recipientLabel) {
+    if (scope === "pessoa" && !recipientLabel) {
       setFormStatus({
         type: "error",
-        message: "Informe para quem é a mensagem.",
+        message: "Selecione a pessoa destinatária.",
       });
       return;
     }
@@ -154,7 +220,7 @@ export default function Communication() {
         currentUser?.email ||
         "Usuário",
       sender_email: currentUser?.email || null,
-      recipient_scope: scope,
+      recipient_scope: scope === "pessoa" ? "pessoa" : "todos",
       recipient_label: scope === "todos" ? "Todos" : recipientLabel,
       subject: subjectText || null,
       message: messageText,
@@ -206,14 +272,14 @@ export default function Communication() {
     <div className="space-y-6">
       <PageHeader
         title="Canal de Comunicação"
-        subtitle="Todos os perfis visualizam as mensagens. Marque para quem é cada recado."
+        subtitle="Todos os perfis visualizam. Envie para todos ou para pessoa específica."
       />
 
       <Alert>
         <MessageSquare className="h-4 w-4" />
         <AlertDescription>
-          As mensagens ficam visíveis para todos os perfis. O campo "Para" serve
-          para identificar o público-alvo do recado.
+          O canal é público para todos os perfis. Você pode marcar uma pessoa
+          específica para dar contexto.
         </AlertDescription>
       </Alert>
 
@@ -229,7 +295,11 @@ export default function Communication() {
                 <Select
                   value={formData.recipient_scope}
                   onValueChange={(value) =>
-                    setFormData((prev) => ({ ...prev, recipient_scope: value }))
+                    setFormData((prev) => ({
+                      ...prev,
+                      recipient_scope: value,
+                      recipient_label: "",
+                    }))
                   }
                 >
                   <SelectTrigger>
@@ -253,28 +323,46 @@ export default function Communication() {
                 </Label>
                 {formData.recipient_scope === "todos" ? (
                   <Input value="Todos" readOnly />
-                ) : (
-                  <>
-                    <Input
-                      value={formData.recipient_label}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          recipient_label: event.target.value,
-                        }))
-                      }
-                      placeholder="Ex.: GVE 12, Coordenação, João Silva..."
-                      list="recipient-suggestions"
-                    />
-                    <datalist id="recipient-suggestions">
-                      {recipientSuggestions.map((item) => (
-                        <option key={item} value={item} />
+                ) : hasRecipientOptions ? (
+                  <Select
+                    value={formData.recipient_label}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, recipient_label: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a pessoa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {recipientAccounts.map((account) => (
+                        <SelectItem key={account.email} value={account.email}>
+                          {account.label}
+                        </SelectItem>
                       ))}
-                    </datalist>
-                  </>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={formData.recipient_label}
+                    onChange={(event) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        recipient_label: event.target.value,
+                      }))
+                    }
+                    placeholder="Digite o e-mail da pessoa"
+                  />
                 )}
               </div>
             </div>
+            {formData.recipient_scope === "pessoa" &&
+              managedUsersQuery.isError &&
+              !messagesQuery.isError && (
+                <p className="text-xs text-amber-700">
+                  Não foi possível listar todas as contas no momento. Você pode
+                  informar o e-mail manualmente.
+                </p>
+              )}
 
             <div className="space-y-2">
               <Label>Assunto (opcional)</Label>
@@ -351,9 +439,21 @@ export default function Communication() {
         <CardContent className="space-y-4">
           {messagesQuery.isError && (
             <Alert className="border-red-200 bg-red-50">
-              <AlertDescription className="text-red-800">
-                {loadErrorMessage}
-              </AlertDescription>
+              <div className="space-y-2">
+                <AlertDescription className="text-red-800">
+                  {loadErrorMessage}
+                </AlertDescription>
+                {missingTable && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCopySetupSql}
+                  >
+                    Copiar SQL de criação
+                  </Button>
+                )}
+              </div>
             </Alert>
           )}
 
@@ -369,9 +469,9 @@ export default function Communication() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os destinos</SelectItem>
-                {RECIPIENT_SCOPE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                {availableScopeFilters.map((scope) => (
+                  <SelectItem key={scope} value={scope}>
+                    {resolveScopeLabel(scope)}
                   </SelectItem>
                 ))}
               </SelectContent>
