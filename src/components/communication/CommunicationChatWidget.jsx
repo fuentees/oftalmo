@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Send, Loader2, X, Bell } from "lucide-react";
+import { MessageSquare, Send, Loader2, X, Bell, BellRing } from "lucide-react";
 import { dataClient } from "@/api/dataClient";
 import { formatDateSafe } from "@/lib/date";
 import {
@@ -19,20 +19,37 @@ import { Badge } from "@/components/ui/badge";
 const LAST_SEEN_STORAGE_KEY = "communication_chat_last_seen_at";
 const RECIPIENT_SCOPE_OPTIONS = [
   { value: "todos", label: "Todos" },
-  { value: "perfil", label: "Perfil / Setor" },
-  { value: "gve", label: "GVE" },
-  { value: "municipio", label: "Município" },
   { value: "pessoa", label: "Pessoa específica" },
 ];
+const COMMUNICATION_MESSAGES_TABLE_SQL = `create extension if not exists pgcrypto;
+
+create table if not exists public.communication_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_name text,
+  sender_email text,
+  recipient_scope text default 'todos',
+  recipient_label text,
+  subject text,
+  message text not null,
+  created_at timestamptz default now()
+);
+
+create index if not exists idx_communication_messages_created_at
+  on public.communication_messages (created_at desc);
+
+notify pgrst, 'reload schema';`;
 
 const resolveScopeLabel = (scope) =>
   RECIPIENT_SCOPE_OPTIONS.find((item) => item.value === scope)?.label || scope;
 
+const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
 const toTimestamp = (value) => {
   if (!value) return 0;
   const time = Date.parse(String(value));
   return Number.isNaN(time) ? 0 : time;
 };
+const buildAccountLabel = (name, email) =>
+  name && email ? `${name} (${email})` : name || email || "Usuário";
 
 export default function CommunicationChatWidget({ currentUser }) {
   const queryClient = useQueryClient();
@@ -58,6 +75,16 @@ export default function CommunicationChatWidget({ currentUser }) {
     refetchInterval: 15000,
   });
   const messages = messagesQuery.data || [];
+  const managedUsersQuery = useQuery({
+    queryKey: ["managed-users-recipient-options"],
+    queryFn: () => dataClient.integrations.Core.ListManagedUsers(),
+    enabled: open,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const managedUsers = Array.isArray(managedUsersQuery.data?.users)
+    ? managedUsersQuery.data.users
+    : [];
 
   const missingTable = isMissingSupabaseTableError(
     messagesQuery.error,
@@ -65,32 +92,50 @@ export default function CommunicationChatWidget({ currentUser }) {
   );
   const loadErrorMessage = messagesQuery.isError
     ? missingTable
-      ? "A tabela communication_messages não foi encontrada. Execute o script supabase/create_communication_messages_table.sql."
+      ? "A tabela communication_messages não foi encontrada. Execute o SQL de criação no Supabase (SQL Editor)."
       : getSupabaseErrorMessage(messagesQuery.error) || "Não foi possível carregar mensagens."
     : "";
 
   const unreadCount = useMemo(() => {
-    const currentUserEmail = String(currentUser?.email || "").trim().toLowerCase();
+    const currentUserEmail = normalizeEmail(currentUser?.email);
     return messages.filter((message) => {
       const createdAt = toTimestamp(message.created_at);
       if (createdAt <= lastSeenAt) return false;
-      const senderEmail = String(message.sender_email || "").trim().toLowerCase();
+      const senderEmail = normalizeEmail(message.sender_email);
       return !currentUserEmail || senderEmail !== currentUserEmail;
     }).length;
   }, [messages, lastSeenAt, currentUser?.email]);
 
-  const recipientSuggestions = useMemo(() => {
-    const values = new Set();
-    messages.forEach((item) => {
-      const label = String(item.recipient_label || "").trim();
-      if (label && label.toLowerCase() !== "todos") {
-        values.add(label);
-      }
+  const recipientAccounts = useMemo(() => {
+    const mapped = new Map();
+    const upsertAccount = (emailValue, nameValue) => {
+      const email = normalizeEmail(emailValue);
+      if (!email) return;
+      const current = mapped.get(email) || { email, name: "" };
+      const nextName = String(nameValue || "").trim();
+      mapped.set(email, {
+        email,
+        name: current.name || nextName,
+      });
+    };
+
+    managedUsers.forEach((user) => {
+      upsertAccount(user?.email, user?.full_name || user?.name);
     });
-    return Array.from(values).sort((a, b) =>
-      a.localeCompare(b, "pt-BR", { sensitivity: "base" })
-    );
-  }, [messages]);
+    messages.forEach((item) => {
+      upsertAccount(item?.sender_email, item?.sender_name);
+    });
+    upsertAccount(currentUser?.email, currentUser?.full_name || currentUser?.name);
+
+    return Array.from(mapped.values())
+      .map((item) => ({
+        email: item.email,
+        name: item.name,
+        label: buildAccountLabel(item.name, item.email),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+  }, [managedUsers, messages, currentUser?.email, currentUser?.full_name, currentUser?.name]);
+  const hasRecipientOptions = recipientAccounts.length > 0;
 
   useEffect(() => {
     if (!open || messages.length === 0) return;
@@ -104,6 +149,21 @@ export default function CommunicationChatWidget({ currentUser }) {
       );
     }
   }, [open, messages, lastSeenAt]);
+
+  const handleCopySetupSql = async () => {
+    try {
+      await navigator.clipboard.writeText(COMMUNICATION_MESSAGES_TABLE_SQL);
+      setStatus({
+        type: "success",
+        message: "SQL copiado. Cole no SQL Editor do Supabase e execute.",
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message: "Não foi possível copiar o SQL automaticamente.",
+      });
+    }
+  };
 
   const createMessage = useMutation({
     mutationFn: (payload) => dataClient.entities.CommunicationMessage.create(payload),
@@ -138,10 +198,10 @@ export default function CommunicationChatWidget({ currentUser }) {
       setStatus({ type: "error", message: "Digite uma mensagem antes de enviar." });
       return;
     }
-    if (scope !== "todos" && !recipientLabel) {
+    if (scope === "pessoa" && !recipientLabel) {
       setStatus({
         type: "error",
-        message: "Informe o destinatário para este tipo de mensagem.",
+        message: "Selecione a pessoa destinatária.",
       });
       return;
     }
@@ -150,7 +210,7 @@ export default function CommunicationChatWidget({ currentUser }) {
       sender_name:
         currentUser?.full_name || currentUser?.name || currentUser?.email || "Usuário",
       sender_email: currentUser?.email || null,
-      recipient_scope: scope,
+      recipient_scope: scope === "pessoa" ? "pessoa" : "todos",
       recipient_label: scope === "todos" ? "Todos" : recipientLabel,
       subject: subject || null,
       message,
@@ -166,7 +226,11 @@ export default function CommunicationChatWidget({ currentUser }) {
           className="h-14 w-14 rounded-full bg-blue-600 hover:bg-blue-700 shadow-xl"
           onClick={() => setOpen((prev) => !prev)}
         >
-          <MessageSquare className="h-6 w-6" />
+          {unreadCount > 0 ? (
+            <BellRing className="h-6 w-6" />
+          ) : (
+            <MessageSquare className="h-6 w-6" />
+          )}
           {unreadCount > 0 && (
             <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-bold flex items-center justify-center">
               {unreadCount > 99 ? "99+" : unreadCount}
@@ -184,7 +248,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                 Chat interno
               </CardTitle>
               <p className="text-xs text-slate-500 mt-1">
-                Todos visualizam. O campo "Para" dá contexto.
+                Mensagens para todos ou para uma pessoa específica.
               </p>
             </div>
             <Button
@@ -202,9 +266,22 @@ export default function CommunicationChatWidget({ currentUser }) {
             {messagesQuery.isError && (
               <div className="px-4 pt-3">
                 <Alert className="border-red-200 bg-red-50">
-                  <AlertDescription className="text-red-800 text-xs">
-                    {loadErrorMessage}
-                  </AlertDescription>
+                  <div className="space-y-2">
+                    <AlertDescription className="text-red-800 text-xs">
+                      {loadErrorMessage}
+                    </AlertDescription>
+                    {missingTable && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={handleCopySetupSql}
+                      >
+                        Copiar SQL de criação
+                      </Button>
+                    )}
+                  </div>
                 </Alert>
               </div>
             )}
@@ -275,7 +352,11 @@ export default function CommunicationChatWidget({ currentUser }) {
                 <Select
                   value={formData.recipient_scope}
                   onValueChange={(value) =>
-                    setFormData((prev) => ({ ...prev, recipient_scope: value }))
+                    setFormData((prev) => ({
+                      ...prev,
+                      recipient_scope: value,
+                      recipient_label: "",
+                    }))
                   }
                 >
                   <SelectTrigger className="h-8 text-xs">
@@ -292,28 +373,46 @@ export default function CommunicationChatWidget({ currentUser }) {
 
                 {formData.recipient_scope === "todos" ? (
                   <Input className="h-8 text-xs" value="Todos" readOnly />
-                ) : (
-                  <>
-                    <Input
-                      className="h-8 text-xs"
-                      value={formData.recipient_label}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          recipient_label: event.target.value,
-                        }))
-                      }
-                      placeholder="Destino"
-                      list="chat-recipient-suggestions"
-                    />
-                    <datalist id="chat-recipient-suggestions">
-                      {recipientSuggestions.map((item) => (
-                        <option key={item} value={item} />
+                ) : hasRecipientOptions ? (
+                  <Select
+                    value={formData.recipient_label}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, recipient_label: value }))
+                    }
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Selecione a pessoa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {recipientAccounts.map((account) => (
+                        <SelectItem key={account.email} value={account.email}>
+                          {account.label}
+                        </SelectItem>
                       ))}
-                    </datalist>
-                  </>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    className="h-8 text-xs"
+                    value={formData.recipient_label}
+                    onChange={(event) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        recipient_label: event.target.value,
+                      }))
+                    }
+                    placeholder="Digite o e-mail da pessoa"
+                  />
                 )}
               </div>
+              {formData.recipient_scope === "pessoa" &&
+                managedUsersQuery.isError &&
+                !messagesQuery.isError && (
+                  <p className="text-[11px] text-amber-700">
+                    Não foi possível listar todas as contas agora. Você pode informar
+                    o e-mail manualmente.
+                  </p>
+                )}
 
               <Input
                 className="h-8 text-xs"
