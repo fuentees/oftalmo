@@ -490,6 +490,12 @@ const getUserAdminFunctionError = (error) => {
     ? ` Projeto atual do frontend: "${projectRef}".`
     : "";
 
+  if (status === 401) {
+    return "Sessão expirada ou token inválido. Entre novamente no sistema para continuar.";
+  }
+  if (status === 403) {
+    return "Você não tem permissão para gerenciar usuários.";
+  }
   if (status >= 500 && lowered.includes("fetch failed")) {
     return `A função ${USER_ADMIN_FUNCTION_LABEL} respondeu com erro interno (${status}). Verifique os logs da função no Supabase e confirme os secrets SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no mesmo projeto.${projectHint}`;
   }

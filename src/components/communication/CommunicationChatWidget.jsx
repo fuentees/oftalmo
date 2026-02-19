@@ -412,15 +412,15 @@ export default function CommunicationChatWidget({ currentUser }) {
       </div>
 
       {open && (
-        <Card className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-40 w-auto sm:w-[390px] h-[66vh] max-h-[620px] shadow-2xl border-slate-200">
-          <CardHeader className="py-3 px-4 border-b flex flex-row items-center justify-between space-y-0">
+        <Card className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-40 w-auto sm:w-[360px] h-[62vh] max-h-[560px] shadow-2xl border-slate-200">
+          <CardHeader className="py-2.5 px-3 border-b flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
                 <MessageSquare className="h-4 w-4 text-blue-600" />
                 Chat interno
               </CardTitle>
               <p className="text-xs text-slate-500 mt-1">
-                Nome, data, assunto e mensagem.
+                Conversa rápida
               </p>
             </div>
             <Button
@@ -445,7 +445,7 @@ export default function CommunicationChatWidget({ currentUser }) {
               </div>
             )}
 
-            <ScrollArea className="flex-1 px-4 py-3">
+            <ScrollArea className="flex-1 px-3 py-2.5">
               {messagesQuery.isLoading ? (
                 <div className="h-full flex items-center justify-center text-slate-500 text-sm">
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -490,15 +490,19 @@ export default function CommunicationChatWidget({ currentUser }) {
                     return (
                       <div
                         key={message.id}
-                        className={`rounded-lg border p-2 text-sm ${
+                        className={`rounded-lg border p-1.5 text-sm ${
                           ownMessage
                             ? "bg-blue-50 border-blue-200"
                             : "bg-white border-slate-200"
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
-                          <p className="font-semibold text-slate-800 text-xs truncate text-right flex-1">
-                            {senderName}
+                          <p className="text-xs truncate text-right flex-1">
+                            <span className="font-semibold text-slate-800">{senderName}</span>
+                            <span className="text-slate-600">
+                              {" • "}
+                              {String(message.subject || "").trim() || "-"}
+                            </span>
                           </p>
                           {!isEditing && canManage && (
                             <DropdownMenu>
@@ -590,9 +594,6 @@ export default function CommunicationChatWidget({ currentUser }) {
                           </div>
                         ) : (
                           <>
-                            <p className="text-xs font-medium text-slate-700 mb-1">
-                              Assunto: {String(message.subject || "").trim() || "-"}
-                            </p>
                             <p className="text-slate-700 whitespace-pre-wrap break-words">
                               {message.message}
                             </p>
@@ -624,7 +625,7 @@ export default function CommunicationChatWidget({ currentUser }) {
 
             <form
               onSubmit={handleSubmit}
-              className="border-t px-3 py-2.5 space-y-2.5 bg-slate-50/70"
+              className="border-t px-2.5 py-2 space-y-2 bg-slate-50/70"
             >
               <div className="flex items-center justify-between">
                 <p className="text-[11px] text-slate-600">
@@ -656,7 +657,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                     }))
                   }
                 >
-                  <SelectTrigger className="h-8 text-xs">
+                  <SelectTrigger className="h-7 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -669,7 +670,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                 </Select>
 
                 {formData.recipient_scope === "todos" ? (
-                  <Input className="h-8 text-xs" value="Todos" readOnly />
+                  <Input className="h-7 text-xs" value="Todos" readOnly />
                 ) : hasRecipientOptions ? (
                   <Select
                     value={formData.recipient_label}
@@ -677,7 +678,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                       setFormData((prev) => ({ ...prev, recipient_label: value }))
                     }
                   >
-                    <SelectTrigger className="h-8 text-xs">
+                    <SelectTrigger className="h-7 text-xs">
                       <SelectValue placeholder="Selecione a pessoa" />
                     </SelectTrigger>
                     <SelectContent>
@@ -690,7 +691,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                   </Select>
                 ) : (
                   <Input
-                    className="h-8 text-xs"
+                    className="h-7 text-xs"
                     value={formData.recipient_label}
                     onChange={(event) =>
                       setFormData((prev) => ({
@@ -712,7 +713,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                 )}
 
               <Input
-                className="h-8 text-xs"
+                className="h-7 text-xs"
                 value={formData.subject}
                 onChange={(event) =>
                   setFormData((prev) => ({ ...prev, subject: event.target.value }))
@@ -722,7 +723,7 @@ export default function CommunicationChatWidget({ currentUser }) {
 
               <div className="flex gap-2 items-end">
                 <Textarea
-                  className="min-h-[68px] text-sm"
+                  className="min-h-[56px] text-sm"
                   value={formData.message}
                   onChange={(event) =>
                     setFormData((prev) => ({ ...prev, message: event.target.value }))
