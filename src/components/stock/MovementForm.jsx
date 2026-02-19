@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { useAuth } from "@/lib/AuthContext";
 import { useGveMapping } from "@/hooks/useGveMapping";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +46,15 @@ export default function MovementForm({
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const { gveMapping, municipalityOptions, getGveByMunicipio } = useGveMapping();
+  const loggedResponsible = useMemo(
+    () =>
+      String(
+        currentUser?.full_name || currentUser?.name || currentUser?.email || ""
+      ).trim(),
+    [currentUser?.full_name, currentUser?.name, currentUser?.email]
+  );
 
   useEffect(() => {
     if (movement) {
@@ -122,6 +131,19 @@ export default function MovementForm({
     setFormData((prev) => ({ ...prev, type }));
   }, [type, movement]);
 
+  useEffect(() => {
+    if (movement) return;
+    if (!loggedResponsible) return;
+    setFormData((prev) =>
+      prev.responsible
+        ? prev
+        : {
+            ...prev,
+            responsible: loggedResponsible,
+          }
+    );
+  }, [movement, loggedResponsible]);
+
   const normalizeText = (value) =>
     String(value ?? "")
       .normalize("NFD")
@@ -144,12 +166,13 @@ export default function MovementForm({
     formData.output_for_event ||
     formData.output_for_training ||
     formData.output_for_distribution;
-  const selectedGve =
-    formData.destination_mode === "gve"
-      ? formData.destination_gve || "-"
-    : getGveByMunicipio(formData.destination_municipio) ||
-      formData.destination_gve ||
-      "-";
+  const responsibleDisplayValue = String(
+    loggedResponsible || formData.responsible || ""
+  ).trim();
+  const linkedMunicipioGve =
+    getGveByMunicipio(formData.destination_municipio) ||
+    formData.destination_gve ||
+    "";
 
   const materialOptions = useMemo(
     () =>
@@ -240,6 +263,14 @@ export default function MovementForm({
       });
       return;
     }
+    const responsibleValue = responsibleDisplayValue;
+    if (!responsibleValue) {
+      setFormStatus({
+        type: "error",
+        message: "Não foi possível identificar o usuário responsável.",
+      });
+      return;
+    }
 
     const destinationMode =
       formData.destination_mode === "gve" ? "gve" : "municipio";
@@ -296,7 +327,7 @@ export default function MovementForm({
       type: formData.type,
       quantity: quantityValue,
       date: formData.date,
-      responsible: formData.responsible,
+      responsible: responsibleValue,
       sector: destinationSector,
       document_number: formData.document_number,
       notes: notesValue,
@@ -445,16 +476,24 @@ export default function MovementForm({
         <Label htmlFor="responsible">Responsável *</Label>
         <Input
           id="responsible"
-          value={formData.responsible}
+          value={responsibleDisplayValue}
           onChange={(e) => handleChange("responsible", e.target.value)}
+          readOnly={Boolean(loggedResponsible)}
           required
         />
+        {loggedResponsible && (
+          <p className="text-xs text-slate-500">
+            O responsável é preenchido automaticamente com o usuário logado.
+          </p>
+        )}
       </div>
 
       {formData.type === "saida" && (
         <div className="space-y-3">
           <div className="space-y-2 rounded-lg border border-slate-200 p-3">
-            <Label className="text-sm font-medium">Saída para</Label>
+            <Label className="text-sm font-medium">
+              Saída para (finalidade do setor)
+            </Label>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -498,8 +537,8 @@ export default function MovementForm({
             </div>
             {!hasPurposeSelection && (
               <p className="text-xs text-slate-500">
-                Sem marcar as opções acima, o destino territorial (Município ou
-                GVE) será obrigatório.
+                Se nenhuma finalidade for marcada, informe o destino territorial
+                (Município ou GVE).
               </p>
             )}
           </div>
@@ -605,12 +644,18 @@ export default function MovementForm({
                     </datalist>
                   </>
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>GVE Vinculado</Label>
-                    <Input value={selectedGve} readOnly placeholder="GVE" />
+                {formData.destination_mode === "municipio" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>GVE Vinculado</Label>
+                      <Input
+                        value={linkedMunicipioGve || "-"}
+                        readOnly
+                        placeholder="GVE"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
               </>
             )}
           </div>
