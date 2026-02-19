@@ -412,7 +412,7 @@ export default function CommunicationChatWidget({ currentUser }) {
       </div>
 
       {open && (
-        <Card className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-40 w-auto sm:w-[360px] h-[62vh] max-h-[560px] shadow-2xl border-slate-200">
+        <Card className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-40 w-auto sm:w-[340px] h-[58vh] max-h-[520px] shadow-2xl border-slate-200">
           <CardHeader className="py-2.5 px-3 border-b flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
@@ -445,7 +445,7 @@ export default function CommunicationChatWidget({ currentUser }) {
               </div>
             )}
 
-            <ScrollArea className="flex-1 px-3 py-2.5">
+            <ScrollArea className="flex-1 px-2.5 py-2">
               {messagesQuery.isLoading ? (
                 <div className="h-full flex items-center justify-center text-slate-500 text-sm">
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -595,25 +595,25 @@ export default function CommunicationChatWidget({ currentUser }) {
                         ) : (
                           <>
                             <p className="text-slate-700 whitespace-pre-wrap break-words">
-                              {message.message}
+                              {String(message.message || "").trim() || "-"}{" "}
+                              <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 align-middle whitespace-nowrap">
+                                {deliveryIndicator}
+                                {confirmed && (
+                                  <CheckCircle2
+                                    className="h-3.5 w-3.5 text-emerald-600"
+                                    title="Confirmado"
+                                  />
+                                )}
+                                <span>
+                                  {formatDateSafe(message.created_at, "dd/MM HH:mm") || "-"}
+                                </span>
+                              </span>
                             </p>
                             {message.edited_at && (
                               <p className="text-[11px] text-slate-500 mt-1">
                                 mensagem editada
                               </p>
                             )}
-                            <div className="flex items-center justify-end gap-1.5 mt-1 text-[11px] text-slate-500">
-                              {deliveryIndicator}
-                              {confirmed && (
-                                <CheckCircle2
-                                  className="h-3.5 w-3.5 text-emerald-600"
-                                  title="Confirmado"
-                                />
-                              )}
-                              <span>
-                                {formatDateSafe(message.created_at, "dd/MM HH:mm") || "-"}
-                              </span>
-                            </div>
                           </>
                         )}
                       </div>
@@ -625,7 +625,7 @@ export default function CommunicationChatWidget({ currentUser }) {
 
             <form
               onSubmit={handleSubmit}
-              className="border-t px-2.5 py-2 space-y-2 bg-slate-50/70"
+              className="border-t px-2 py-1.5 space-y-1.5 bg-slate-50/70"
             >
               <div className="flex items-center justify-between">
                 <p className="text-[11px] text-slate-600">
@@ -637,7 +637,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 text-[11px]"
+                  className="h-6 text-[11px] px-2"
                   onClick={() => setShowArchived((prev) => !prev)}
                 >
                   {showArchived
@@ -657,7 +657,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                     }))
                   }
                 >
-                  <SelectTrigger className="h-7 text-xs">
+                  <SelectTrigger className="h-6 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -670,7 +670,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                 </Select>
 
                 {formData.recipient_scope === "todos" ? (
-                  <Input className="h-7 text-xs" value="Todos" readOnly />
+                  <Input className="h-6 text-xs" value="Todos" readOnly />
                 ) : hasRecipientOptions ? (
                   <Select
                     value={formData.recipient_label}
@@ -678,7 +678,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                       setFormData((prev) => ({ ...prev, recipient_label: value }))
                     }
                   >
-                    <SelectTrigger className="h-7 text-xs">
+                    <SelectTrigger className="h-6 text-xs">
                       <SelectValue placeholder="Selecione a pessoa" />
                     </SelectTrigger>
                     <SelectContent>
@@ -691,7 +691,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                   </Select>
                 ) : (
                   <Input
-                    className="h-7 text-xs"
+                    className="h-6 text-xs"
                     value={formData.recipient_label}
                     onChange={(event) =>
                       setFormData((prev) => ({
@@ -713,7 +713,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                 )}
 
               <Input
-                className="h-7 text-xs"
+                className="h-6 text-xs"
                 value={formData.subject}
                 onChange={(event) =>
                   setFormData((prev) => ({ ...prev, subject: event.target.value }))
@@ -723,7 +723,7 @@ export default function CommunicationChatWidget({ currentUser }) {
 
               <div className="flex gap-2 items-end">
                 <Textarea
-                  className="min-h-[56px] text-sm"
+                  className="min-h-[48px] text-sm"
                   value={formData.message}
                   onChange={(event) =>
                     setFormData((prev) => ({ ...prev, message: event.target.value }))
