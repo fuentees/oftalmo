@@ -7,12 +7,16 @@ const SUPABASE_SERVICE_ROLE_KEY =
 const ADMIN_EMAILS_RAW =
   Deno.env.get("ADMIN_EMAILS") ?? Deno.env.get("VITE_ADMIN_EMAILS") ?? "";
 
-const corsHeaders = {
+const DEFAULT_ALLOWED_HEADERS =
+  "authorization, x-client-info, apikey, content-type, x-region, x-supabase-api-version";
+
+const buildCorsHeaders = (req?: Request) => ({
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    req?.headers.get("access-control-request-headers") || DEFAULT_ALLOWED_HEADERS,
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+  "Access-Control-Max-Age": "86400",
+});
 
 const normalizeText = (value: unknown) => String(value ?? "").trim().toLowerCase();
 
@@ -45,11 +49,15 @@ class ApiError extends Error {
   }
 }
 
-const jsonResponse = (status: number, body: Record<string, unknown>) =>
+const jsonResponse = (
+  status: number,
+  body: Record<string, unknown>,
+  req?: Request
+) =>
   new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...corsHeaders,
+      ...buildCorsHeaders(req),
       "Content-Type": "application/json",
     },
   });
@@ -277,11 +285,11 @@ const createUser = async (payload: Record<string, unknown>) => {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { status: 200, headers: corsHeaders });
+    return new Response("ok", { status: 200, headers: buildCorsHeaders(req) });
   }
 
   if (req.method !== "POST") {
-    return jsonResponse(405, { error: "Method not allowed." });
+    return jsonResponse(405, { error: "Method not allowed." }, req);
   }
 
   try {
@@ -290,28 +298,28 @@ serve(async (req) => {
     const action = String(payload?.action || "").trim().toLowerCase();
 
     if (action === "list_users") {
-      return jsonResponse(200, await listUsers());
+      return jsonResponse(200, await listUsers(), req);
     }
     if (action === "invite_user") {
-      return jsonResponse(200, await inviteUser(payload));
+      return jsonResponse(200, await inviteUser(payload), req);
     }
     if (action === "create_user") {
-      return jsonResponse(200, await createUser(payload));
+      return jsonResponse(200, await createUser(payload), req);
     }
     if (action === "set_role") {
-      return jsonResponse(200, await setRole(String(actingUser.id), payload));
+      return jsonResponse(200, await setRole(String(actingUser.id), payload), req);
     }
     if (action === "set_active") {
-      return jsonResponse(200, await setActive(String(actingUser.id), payload));
+      return jsonResponse(200, await setActive(String(actingUser.id), payload), req);
     }
 
-    return jsonResponse(400, { error: "Unknown action." });
+    return jsonResponse(400, { error: "Unknown action." }, req);
   } catch (error) {
     if (error instanceof ApiError) {
-      return jsonResponse(error.status, { error: error.message });
+      return jsonResponse(error.status, { error: error.message }, req);
     }
     return jsonResponse(500, {
       error: error instanceof Error ? error.message : "Unexpected error.",
-    });
+    }, req);
   }
 });
