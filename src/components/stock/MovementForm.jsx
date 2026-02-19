@@ -309,17 +309,24 @@ export default function MovementForm({
           : destinationMunicipio
         : String(formData.sector || "").trim();
 
-    const notesValue =
+    const metadataBase = {
+      responsible_auto: Boolean(loggedResponsible),
+      responsible_user: currentUser?.email || loggedResponsible || null,
+    };
+    const notesValue = buildStockMovementNotes(
+      formData.notes,
       formData.type === "saida"
-        ? buildStockMovementNotes(formData.notes, {
+        ? {
+            ...metadataBase,
             purpose_event: formData.output_for_event,
             purpose_training: formData.output_for_training,
             purpose_distribution: formData.output_for_distribution,
             destination_mode: destinationMode,
             destination_municipio: destinationMunicipio || null,
             destination_gve: destinationGve || null,
-          })
-        : String(formData.notes || "").trim();
+          }
+        : metadataBase
+    );
 
     const payload = {
       material_id: formData.material_id,

@@ -59,7 +59,19 @@ export default function MaterialDetails({ material, movements }) {
       ),
     },
     { header: "Quantidade", accessor: "quantity" },
-    { header: "Responsável", accessor: "responsible" },
+    {
+      header: "Responsável",
+      render: (row) => (
+        <div className="flex flex-col gap-1">
+          <span>{row.responsible || "-"}</span>
+          {row.responsible_auto && (
+            <Badge variant="outline" className="w-fit text-[11px]">
+              Automático
+            </Badge>
+          )}
+        </div>
+      ),
+    },
     {
       header: "Destino",
       render: (row) => row.destination_label || row.sector || "-",

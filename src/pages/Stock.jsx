@@ -773,12 +773,13 @@ LIM-002,Álcool 70%,saida,20,2025-01-15,João Silva,gve,,GVE Campinas,true,false
     () =>
       (movements || []).map((movement) => {
         const parsedNotes = parseStockMovementNotes(movement.notes);
+        const metadata = parsedNotes.metadata;
         const destinationInfo = resolveStockMovementDestination({
-          metadata: parsedNotes.metadata,
+          metadata,
           fallbackSector: movement.sector,
           getGveByMunicipio,
         });
-        const purposeLabels = getStockMovementPurposeLabels(parsedNotes.metadata);
+        const purposeLabels = getStockMovementPurposeLabels(metadata);
         return {
           ...movement,
           notes_raw: movement.notes,
@@ -788,6 +789,8 @@ LIM-002,Álcool 70%,saida,20,2025-01-15,João Silva,gve,,GVE Campinas,true,false
           destination_municipio: destinationInfo.municipio,
           destination_gve: destinationInfo.gve,
           purpose_labels: purposeLabels,
+          responsible_auto: Boolean(metadata?.responsible_auto),
+          responsible_user: String(metadata?.responsible_user || "").trim() || null,
         };
       }),
     [movements, getGveByMunicipio]
@@ -1025,7 +1028,19 @@ LIM-002,Álcool 70%,saida,20,2025-01-15,João Silva,gve,,GVE Campinas,true,false
       },
     },
     { header: "Quantidade", accessor: "quantity" },
-    { header: "Responsável", accessor: "responsible" },
+    {
+      header: "Responsável",
+      render: (row) => (
+        <div className="flex flex-col gap-1">
+          <span>{row.responsible || "-"}</span>
+          {row.responsible_auto && (
+            <Badge variant="outline" className="w-fit text-[11px]">
+              Automático
+            </Badge>
+          )}
+        </div>
+      ),
+    },
     { header: "Destino", accessor: "destination_label" },
     {
       header: "GVE",
@@ -1635,7 +1650,14 @@ LIM-002,Álcool 70%,saida,20,2025-01-15,João Silva,gve,,GVE Campinas,true,false
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Responsável:</span>
-                <span>{selectedMovement.responsible || "-"}</span>
+                <span className="text-right">
+                  {selectedMovement.responsible || "-"}
+                  {selectedMovement.responsible_auto && (
+                    <span className="block text-xs text-slate-500">
+                      preenchido automaticamente
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Finalidade:</span>
