@@ -469,12 +469,32 @@ const getUserAdminFunctionError = (error) => {
     lowered.includes("networkerror") ||
     lowered.includes("failed to fetch")
   ) {
-    return `Não foi possível conectar à função ${USER_ADMIN_FUNCTION_LABEL}. Verifique no Supabase se a Edge Function foi deployada e se o nome está correto em VITE_SUPABASE_USER_ADMIN_FUNCTION.`;
+    return `Não foi possível conectar à função ${USER_ADMIN_FUNCTION_LABEL}. Verifique no Supabase se a Edge Function foi deployada e se o nome está correto em VITE_SUPABASE_USER_ADMIN_FUNCTION. Se necessário, execute: supabase functions deploy user-admin.`;
   }
   if (lowered.includes("not found") || lowered.includes("404")) {
-    return `A função ${USER_ADMIN_FUNCTION_LABEL} não foi encontrada no projeto Supabase. Faça o deploy da função.`;
+    return `A função ${USER_ADMIN_FUNCTION_LABEL} não foi encontrada no projeto Supabase. Faça o deploy da função com: supabase functions deploy user-admin.`;
   }
   return message || "Falha ao executar operação de gestão de usuários.";
+};
+
+const invokeUserAdminFunctionFallback = async (
+  functionName,
+  action,
+  payload
+) => {
+  const accessToken = await getAccessToken();
+  const data = await invokeSupabaseFunction(
+    functionName,
+    {
+      action,
+      ...payload,
+    },
+    accessToken
+  );
+  if (data?.error) {
+    throw new Error(String(data.error));
+  }
+  return data || {};
 };
 
 const callUserAdminFunction = async (action, payload = {}) => {
@@ -502,10 +522,35 @@ const callUserAdminFunction = async (action, payload = {}) => {
       const isNotFound =
         lowered.includes("not found") || lowered.includes("404");
       const hasNextCandidate = i < USER_ADMIN_FUNCTION_CANDIDATES.length - 1;
+      const shouldTryFallback =
+        shouldFallbackFunctionCall(error?.message || "") ||
+        shouldFallbackByStatus(error?.status);
+
+      if (shouldTryFallback) {
+        try {
+          return await invokeUserAdminFunctionFallback(
+            functionName,
+            action,
+            payload
+          );
+        } catch (fallbackError) {
+          lastError = fallbackError;
+          const fallbackLowered = String(
+            fallbackError?.message || ""
+          ).toLowerCase();
+          const fallbackNotFound =
+            fallbackLowered.includes("not found") ||
+            fallbackLowered.includes("404");
+          if (fallbackNotFound && hasNextCandidate) {
+            continue;
+          }
+        }
+      }
+
       if (isNotFound && hasNextCandidate) {
         continue;
       }
-      throw new Error(getUserAdminFunctionError(error));
+      throw new Error(getUserAdminFunctionError(lastError || error));
     }
   }
 
@@ -588,13 +633,13 @@ const invokeSupabaseFunction = async (functionName, payload, accessToken) => {
   const url = getSupabaseFunctionUrl(functionName);
   if (!url) {
     throw new Error(
-      "Supabase: defina VITE_SUPABASE_URL para enviar email."
+      "Supabase: defina VITE_SUPABASE_URL para chamar funções."
     );
   }
   const anonKey = typeof SUPABASE_ANON_KEY === "string" ? SUPABASE_ANON_KEY.trim() : "";
   if (!anonKey) {
     throw new Error(
-      "Supabase: defina VITE_SUPABASE_ANON_KEY para enviar email."
+      "Supabase: defina VITE_SUPABASE_ANON_KEY para chamar funções."
     );
   }
   const token = typeof accessToken === "string" && accessToken.trim()
@@ -611,20 +656,19 @@ const invokeSupabaseFunction = async (functionName, payload, accessToken) => {
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || "Falha ao enviar email via função.");
+    throw new Error(text || `Falha ao chamar função ${functionName}.`);
   }
   return response.json().catch(() => ({}));
 };
 
 const shouldFallbackFunctionCall = (message) => {
-  if (!message) return false;
-  const normalized = String(message);
+  const normalized = String(message || "").toLowerCase();
   return (
-    normalized.includes("Failed to send a request to the Edge Function") ||
-    normalized.includes("Failed to fetch") ||
-    normalized.includes("NetworkError") ||
+    normalized.includes("failed to send a request to the edge function") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("networkerror") ||
     normalized.includes("fetch failed") ||
-    normalized.includes("Unauthorized") ||
+    normalized.includes("unauthorized") ||
     normalized.includes("401") ||
     normalized.includes("403")
   );
