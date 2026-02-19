@@ -4,6 +4,12 @@ import { dataClient } from "@/api/dataClient";
 import { useGveMapping } from "@/hooks/useGveMapping";
 import { format, differenceInCalendarDays } from "date-fns";
 import {
+  buildStockMovementNotes,
+  getStockMovementPurposeLabels,
+  parseStockMovementNotes,
+  resolveStockMovementDestination,
+} from "@/lib/stockMovementMetadata";
+import {
   Package,
   Plus,
   ArrowDownCircle,
@@ -80,7 +86,7 @@ export default function Stock() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [alertFilter, setAlertFilter] = useState("all");
   const [movementMaterialSearch, setMovementMaterialSearch] = useState("");
-  const [movementMunicipioSearch, setMovementMunicipioSearch] = useState("");
+  const [movementDestinationSearch, setMovementDestinationSearch] = useState("");
   const [materialsPageSize, setMaterialsPageSize] = useState("10");
   const [materialsPage, setMaterialsPage] = useState(1);
   const [movementsPageSize, setMovementsPageSize] = useState("10");
@@ -113,7 +119,7 @@ export default function Stock() {
 
   const queryClient = useQueryClient();
   const { getGveByMunicipio: getRawGveByMunicipio } = useGveMapping();
-  const getGveByMunicipio = (municipio) => getRawGveByMunicipio(municipio) || "-";
+  const getGveByMunicipio = (municipio) => getRawGveByMunicipio(municipio) || "";
 
   // Check URL params to auto-open form
   React.useEffect(() => {
@@ -486,6 +492,18 @@ export default function Stock() {
     return null;
   };
 
+  const parseBooleanValue = (value) => {
+    if (typeof value === "boolean") return value;
+    const normalized = normalizeHeader(value);
+    if (!normalized) return false;
+    return ["true", "sim", "yes", "1", "x"].includes(normalized);
+  };
+
+  const normalizeDestinationMode = (value) => {
+    const normalized = normalizeHeader(value);
+    return normalized.includes("gve") ? "gve" : "municipio";
+  };
+
   const importStock = useMutation({
     mutationFn: async (/** @type {{ file: File; target: "materials" | "movements" }} */ payload) => {
       const { file, target } = payload;
@@ -593,6 +611,52 @@ export default function Stock() {
             return null;
           }
 
+          const destinationMode = normalizeDestinationMode(
+            pickValue(row, [
+              "destination_mode",
+              "tipo_destino",
+              "destino_tipo",
+              "destination_type",
+            ])
+          );
+          const destinationMunicipio = cleanValue(
+            pickValue(row, [
+              "destination_municipio",
+              "municipio_destino",
+              "municipio",
+              "sector",
+              "setor",
+              "destino",
+            ])
+          );
+          const destinationGve = cleanValue(
+            pickValue(row, ["destination_gve", "gve_destino", "gve"])
+          );
+          const outputForEvent = parseBooleanValue(
+            pickValue(row, ["output_for_event", "saida_evento"])
+          );
+          const outputForTraining = parseBooleanValue(
+            pickValue(row, ["output_for_training", "saida_treinamento"])
+          );
+          const outputForDistribution = parseBooleanValue(
+            pickValue(row, ["output_for_distribution", "saida_distribuicao"])
+          );
+          const destinationSector =
+            destinationMode === "gve"
+              ? destinationGve
+                ? `GVE: ${destinationGve}`
+                : ""
+              : destinationMunicipio || "";
+          const notesText = cleanValue(pickValue(row, ["notes", "observacoes", "obs"]));
+          const notes = buildStockMovementNotes(notesText, {
+            purpose_event: outputForEvent,
+            purpose_training: outputForTraining,
+            purpose_distribution: outputForDistribution,
+            destination_mode: destinationMode,
+            destination_municipio: destinationMunicipio,
+            destination_gve: destinationGve,
+          });
+
           return {
             material_id: resolvedMaterialId,
             material_name: resolvedMaterialName,
@@ -600,11 +664,11 @@ export default function Stock() {
             quantity,
             date: normalizeDateValue(pickValue(row, ["date", "data"])),
             responsible: cleanValue(pickValue(row, ["responsible", "responsavel"])),
-            sector: cleanValue(pickValue(row, ["sector", "setor", "destino"])),
+            sector: destinationSector,
             document_number: cleanValue(
               pickValue(row, ["document_number", "documento", "numero_documento"])
             ),
-            notes: cleanValue(pickValue(row, ["notes", "observacoes", "obs"])),
+            notes,
           };
         })
         .filter(Boolean);
@@ -663,9 +727,10 @@ export default function Stock() {
 Papel A4,ESC-1001,Papel sulfite,caixa,escritorio,10,30,Almoxarifado,2026-01-01
 Álcool 70%,LIM-0002,Frasco 1L,un,limpeza,20,45,Depósito,2025-11-30
 Manual NR-10,MAN-0100,Manual de segurança,un,manuais,5,15,Arquivo,2027-12-31`
-        : `material_code,material_name,type,quantity,date,responsible,sector,document_number,notes
-EPI-001,Luvas de Proteção,entrada,100,2025-01-10,Almoxarifado,Manutenção,NF-123,Entrada inicial
-LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição`;
+        : `material_code,material_name,type,quantity,date,responsible,destination_mode,destination_municipio,destination_gve,output_for_event,output_for_training,output_for_distribution,document_number,notes
+EPI-001,Luvas de Proteção,entrada,100,2025-01-10,Almoxarifado,,,,false,false,false,NF-123,Entrada inicial
+LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,municipio,Campinas,,false,false,true,REQ-45,Distribuição para rede
+LIM-002,Álcool 70%,saida,20,2025-01-15,João Silva,gve,,GVE Campinas,true,false,false,REQ-46,Evento regional`;
 
     const blob = new Blob([template], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
@@ -704,16 +769,42 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     return matchesSearch && matchesCategory && matchesAlert;
   });
 
-  const filteredMovements = movements.filter((movement) => {
+  const enrichedMovements = React.useMemo(
+    () =>
+      (movements || []).map((movement) => {
+        const parsedNotes = parseStockMovementNotes(movement.notes);
+        const destinationInfo = resolveStockMovementDestination({
+          metadata: parsedNotes.metadata,
+          fallbackSector: movement.sector,
+          getGveByMunicipio,
+        });
+        const purposeLabels = getStockMovementPurposeLabels(parsedNotes.metadata);
+        return {
+          ...movement,
+          notes_raw: movement.notes,
+          notes: parsedNotes.notes,
+          destination_mode: destinationInfo.destinationMode,
+          destination_label: destinationInfo.destination,
+          destination_municipio: destinationInfo.municipio,
+          destination_gve: destinationInfo.gve,
+          purpose_labels: purposeLabels,
+        };
+      }),
+    [movements, getGveByMunicipio]
+  );
+
+  const filteredMovements = enrichedMovements.filter((movement) => {
     const materialQuery = movementMaterialSearch.trim().toLowerCase();
-    const municipioQuery = movementMunicipioSearch.trim().toLowerCase();
+    const destinationQuery = movementDestinationSearch.trim().toLowerCase();
     const materialName = movement.material_name?.toLowerCase() || "";
-    const municipioName = movement.sector?.toLowerCase() || "";
+    const destinationName = `${movement.destination_label || movement.sector || ""} ${
+      movement.destination_gve || ""
+    }`.toLowerCase();
     const matchesMaterial =
       !materialQuery || materialName.includes(materialQuery);
-    const matchesMunicipio =
-      !municipioQuery || municipioName.includes(municipioQuery);
-    return matchesMaterial && matchesMunicipio;
+    const matchesDestination =
+      !destinationQuery || destinationName.includes(destinationQuery);
+    return matchesMaterial && matchesDestination;
   });
 
   const materialsPagination = React.useMemo(
@@ -746,10 +837,13 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
       { key: "date", label: "Data" },
       { key: "type", label: "Tipo" },
       { key: "material_name", label: "Material" },
+      { key: "purpose", label: "Finalidade da Saída" },
+      { key: "destination_mode", label: "Tipo de Destino" },
+      { key: "destination_label", label: "Destino" },
+      { key: "destination_municipio", label: "Município" },
+      { key: "destination_gve", label: "GVE" },
       { key: "quantity", label: "Quantidade" },
       { key: "responsible", label: "Responsável" },
-      { key: "sector", label: "Município" },
-      { key: "gve", label: "GVE" },
       { key: "document_number", label: "Documento" },
       { key: "notes", label: "Observações" },
     ];
@@ -760,7 +854,16 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
     const rows = filteredMovements.map((movement) => ({
       ...movement,
       date: formatDate(movement.date),
-      gve: getGveByMunicipio(movement.sector),
+      destination_mode:
+        movement.destination_mode === "gve" ? "GVE" : "Município",
+      purpose:
+        movement.type === "saida" && movement.purpose_labels?.length
+          ? movement.purpose_labels.join(", ")
+          : movement.type === "saida"
+          ? "Territorial"
+          : "-",
+      destination_municipio: movement.destination_municipio || "",
+      destination_gve: movement.destination_gve || "",
     }));
 
     const csv = [
@@ -903,12 +1006,30 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
       ),
     },
     { header: "Material", accessor: "material_name", cellClassName: "font-medium" },
+    {
+      header: "Finalidade",
+      render: (row) => {
+        if (row.type !== "saida") return "-";
+        if (!row.purpose_labels || row.purpose_labels.length === 0) {
+          return <Badge variant="outline">Territorial</Badge>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {row.purpose_labels.map((label) => (
+              <Badge key={`${row.id}-${label}`} variant="outline">
+                {label}
+              </Badge>
+            ))}
+          </div>
+        );
+      },
+    },
     { header: "Quantidade", accessor: "quantity" },
     { header: "Responsável", accessor: "responsible" },
-    { header: "Município (Destino)", accessor: "sector" },
+    { header: "Destino", accessor: "destination_label" },
     {
       header: "GVE",
-      render: (row) => getGveByMunicipio(row.sector),
+      render: (row) => row.destination_gve || "-",
     },
     { header: "Documento", accessor: "document_number" },
     {
@@ -1236,12 +1357,12 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="movement-municipio-search">Buscar município</Label>
+                  <Label htmlFor="movement-municipio-search">Buscar destino</Label>
                   <Input
                     id="movement-municipio-search"
-                    value={movementMunicipioSearch}
-                    onChange={(e) => setMovementMunicipioSearch(e.target.value)}
-                    placeholder="Digite o município"
+                    value={movementDestinationSearch}
+                    onChange={(e) => setMovementDestinationSearch(e.target.value)}
+                    placeholder="Digite município ou GVE"
                   />
                 </div>
               </div>
@@ -1517,12 +1638,22 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
                 <span>{selectedMovement.responsible || "-"}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Município:</span>
-                <span>{selectedMovement.sector || "-"}</span>
+                <span className="text-slate-500">Finalidade:</span>
+                <span>
+                  {selectedMovement.type === "saida"
+                    ? selectedMovement.purpose_labels?.length
+                      ? selectedMovement.purpose_labels.join(", ")
+                      : "Territorial"
+                    : "-"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Destino:</span>
+                <span>{selectedMovement.destination_label || "-"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">GVE:</span>
-                <span>{getGveByMunicipio(selectedMovement.sector)}</span>
+                <span>{selectedMovement.destination_gve || "-"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Documento:</span>
@@ -1547,7 +1678,9 @@ LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,Enfermagem,REQ-45,Reposição
           </DialogHeader>
           <MaterialDetails
             material={selectedMaterial}
-            movements={movements.filter((m) => m.material_id === selectedMaterial?.id)}
+            movements={enrichedMovements.filter(
+              (movement) => movement.material_id === selectedMaterial?.id
+            )}
           />
         </DialogContent>
       </Dialog>

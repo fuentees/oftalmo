@@ -209,6 +209,17 @@ create table if not exists material_requests (
   details jsonb
 );
 
+create table if not exists communication_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_name text,
+  sender_email text,
+  recipient_scope text default 'todos',
+  recipient_label text,
+  subject text,
+  message text not null,
+  created_at timestamptz default now()
+);
+
 create table if not exists municipality_gve_mappings (
   id uuid primary key default gen_random_uuid(),
   municipio text not null,

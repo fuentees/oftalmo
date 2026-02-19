@@ -51,6 +51,8 @@ armazenamento de arquivos.
   Se aparecer o erro
   `Could not find the table 'public.training_feedback_questions' in the schema cache`,
   execute o script `supabase/create_training_feedback_questions_table.sql`.
+  Para o canal interno de mensagens, execute também
+  `supabase/create_communication_messages_table.sql`.
    O mapeamento de Município x GVE agora é persistido na tabela
    `municipality_gve_mappings`.
 3. Crie o bucket de armazenamento `uploads` e deixe como **public** (ou adapte
