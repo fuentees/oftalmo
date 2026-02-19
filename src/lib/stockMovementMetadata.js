@@ -24,10 +24,19 @@ const buildSanitizedMetadata = (metadata) => {
   const destinationGve = normalizeText(
     metadata?.destination_gve || metadata?.gve
   );
+  const responsibleAuto = Boolean(
+    metadata?.responsible_auto || metadata?.auto_responsible
+  );
+  const responsibleUser = normalizeText(
+    metadata?.responsible_user ||
+      metadata?.responsible_email ||
+      metadata?.responsible_actor
+  );
 
   const hasAnyPurpose = purpose.event || purpose.training || purpose.distribution;
   const hasDestination = destinationMunicipio || destinationGve;
-  if (!hasAnyPurpose && !hasDestination) return null;
+  const hasResponsibleMeta = responsibleAuto || responsibleUser;
+  if (!hasAnyPurpose && !hasDestination && !hasResponsibleMeta) return null;
 
   return {
     purpose_event: purpose.event,
@@ -36,6 +45,8 @@ const buildSanitizedMetadata = (metadata) => {
     destination_mode: destinationMode,
     destination_municipio: destinationMunicipio || null,
     destination_gve: destinationGve || null,
+    responsible_auto: responsibleAuto,
+    responsible_user: responsibleUser || null,
   };
 };
 
