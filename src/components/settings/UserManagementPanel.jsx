@@ -37,6 +37,14 @@ const formatDateTime = (value) => {
 
 const getReadableErrorMessage = (error, fallback) => {
   const message = String(error?.message || "").trim();
+  const lowered = message.toLowerCase();
+  if (
+    lowered.includes("invalid jwt") ||
+    lowered.includes("jwt expired") ||
+    lowered.includes("token inválido")
+  ) {
+    return "Sua sessão expirou. Entre novamente no sistema e tente de novo.";
+  }
   return message || fallback;
 };
 
