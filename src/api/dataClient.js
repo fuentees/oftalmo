@@ -570,9 +570,13 @@ const normalizeUserAdminInvokeError = async (error) => {
 const invokeUserAdminFunctionFallback = async (
   functionName,
   action,
-  payload
+  payload,
+  options = {}
 ) => {
-  const accessToken = await getAccessToken(true);
+  const accessToken = await getAccessToken({
+    refreshIfMissing: true,
+    forceRefresh: Boolean(options?.forceRefresh),
+  });
   if (!accessToken) {
     const authError = new Error(
       "Sessão expirada ou inválida. Faça login novamente para continuar."
@@ -629,7 +633,8 @@ const callUserAdminFunction = async (action, payload = {}) => {
           return await invokeUserAdminFunctionFallback(
             functionName,
             action,
-            payload
+            payload,
+            { forceRefresh: true }
           );
         } catch (jwtFallbackError) {
           lastError = jwtFallbackError;
@@ -730,15 +735,24 @@ const getSupabaseFunctionUrl = (functionName) => {
   return `${baseUrl}/functions/v1/${functionName}`;
 };
 
-const getAccessToken = async (refreshIfMissing = false) => {
+const getAccessToken = async (options = {}) => {
+  const refreshIfMissing = Boolean(options?.refreshIfMissing);
+  const forceRefresh = Boolean(options?.forceRefresh);
   try {
+    if (forceRefresh) {
+      const { data: refreshedData } = await supabase.auth.refreshSession();
+      const refreshedToken = refreshedData?.session?.access_token || "";
+      if (refreshedToken) {
+        return refreshedToken;
+      }
+    }
+
     const { data } = await supabase.auth.getSession();
     const token = data?.session?.access_token || "";
-    if (token || !refreshIfMissing) {
-      return token;
-    }
+    if (token || !refreshIfMissing) return token;
+
     const { data: refreshedData } = await supabase.auth.refreshSession();
-    return refreshedData?.session?.access_token || "";
+    return refreshedData?.session?.access_token || token;
   } catch (error) {
     return "";
   }
