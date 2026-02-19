@@ -501,7 +501,9 @@ export default function Stock() {
 
   const normalizeDestinationMode = (value) => {
     const normalized = normalizeHeader(value);
-    return normalized.includes("gve") ? "gve" : "municipio";
+    if (normalized.includes("gve")) return "gve";
+    if (normalized.includes("setor")) return "setor";
+    return "municipio";
   };
 
   const importStock = useMutation({
@@ -729,8 +731,9 @@ Papel A4,ESC-1001,Papel sulfite,caixa,escritorio,10,30,Almoxarifado,2026-01-01
 Manual NR-10,MAN-0100,Manual de segurança,un,manuais,5,15,Arquivo,2027-12-31`
         : `material_code,material_name,type,quantity,date,responsible,destination_mode,destination_municipio,destination_gve,output_for_event,output_for_training,output_for_distribution,document_number,notes
 EPI-001,Luvas de Proteção,entrada,100,2025-01-10,Almoxarifado,,,,false,false,false,NF-123,Entrada inicial
-LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,municipio,Campinas,,false,false,true,REQ-45,Distribuição para rede
-LIM-002,Álcool 70%,saida,20,2025-01-15,João Silva,gve,,GVE Campinas,true,false,false,REQ-46,Evento regional`;
+LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,municipio,Campinas,,false,false,false,REQ-45,Destino territorial por município
+LIM-002,Álcool 70%,saida,20,2025-01-15,João Silva,gve,,GVE Campinas,false,false,false,REQ-46,Destino territorial por GVE
+LIM-002,Álcool 70%,saida,12,2025-01-18,João Silva,setor,,,true,false,true,REQ-47,Saída para finalidade interna do setor`;
 
     const blob = new Blob([template], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
@@ -858,7 +861,11 @@ LIM-002,Álcool 70%,saida,20,2025-01-15,João Silva,gve,,GVE Campinas,true,false
       ...movement,
       date: formatDate(movement.date),
       destination_mode:
-        movement.destination_mode === "gve" ? "GVE" : "Município",
+        movement.destination_mode === "gve"
+          ? "GVE"
+          : movement.destination_mode === "setor"
+          ? "Setor"
+          : "Município",
       purpose:
         movement.type === "saida" && movement.purpose_labels?.length
           ? movement.purpose_labels.join(", ")
