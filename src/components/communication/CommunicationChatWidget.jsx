@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Loader2,
   MessageSquare,
+  MoreVertical,
   Pencil,
   Send,
   Trash2,
@@ -34,6 +35,12 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const RECIPIENT_SCOPE_OPTIONS = [
   { value: "todos", label: "Todos" },
@@ -465,8 +472,9 @@ export default function CommunicationChatWidget({ currentUser }) {
                     const archived = isArchivedMessage(message);
                     const isEditing = editingMessageId === message.id;
                     const canManage = canManageMessage(message);
-                    const isLoadingThisMessage =
-                      actionLoadingKey.endsWith(`:${message.id}`);
+                    const isLoadingThisMessage = actionLoadingKey.endsWith(
+                      `:${message.id}`
+                    );
                     const deliveryIndicator = ownMessage ? (
                       seenByOthers ? (
                         <CheckCheck className="h-3.5 w-3.5 text-blue-600" />
@@ -488,22 +496,58 @@ export default function CommunicationChatWidget({ currentUser }) {
                             : "bg-white border-slate-200"
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                            <span>
-                              {formatDateSafe(message.created_at, "dd/MM HH:mm") || "-"}
-                            </span>
-                            {deliveryIndicator}
-                            {confirmed && (
-                              <CheckCircle2
-                                className="h-3.5 w-3.5 text-emerald-600"
-                                title="Confirmado"
-                              />
-                            )}
-                          </div>
-                          <p className="font-semibold text-slate-800 text-xs truncate text-right max-w-[60%]">
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <p className="font-semibold text-slate-800 text-xs truncate text-right flex-1">
                             {senderName}
                           </p>
+                          {!isEditing && canManage && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6 shrink-0"
+                                  disabled={isLoadingThisMessage}
+                                >
+                                  {isLoadingThisMessage ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <MoreVertical className="h-3.5 w-3.5" />
+                                  )}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => startEditMessage(message)}>
+                                  <Pencil className="h-3.5 w-3.5 mr-2" />
+                                  Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => toggleConfirmedMessage(message)}
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5 mr-2" />
+                                  {confirmed ? "Remover confirmação" : "Confirmar"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => toggleArchiveMessage(message)}
+                                >
+                                  {archived ? (
+                                    <ArchiveRestore className="h-3.5 w-3.5 mr-2" />
+                                  ) : (
+                                    <Archive className="h-3.5 w-3.5 mr-2" />
+                                  )}
+                                  {archived ? "Desarquivar" : "Arquivar"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => deleteMessage(message)}
+                                  className="text-red-600 focus:text-red-700"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                  Excluir
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
 
                         {isEditing ? (
@@ -557,70 +601,19 @@ export default function CommunicationChatWidget({ currentUser }) {
                                 mensagem editada
                               </p>
                             )}
-                          </>
-                        )}
-
-                        {!isEditing && canManage && (
-                          <div className="flex items-center justify-end gap-1 mt-2">
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => startEditMessage(message)}
-                              disabled={isLoadingThisMessage}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => toggleConfirmedMessage(message)}
-                              disabled={actionLoadingKey === `confirm:${message.id}`}
-                            >
-                              {actionLoadingKey === `confirm:${message.id}` ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
+                            <div className="flex items-center justify-end gap-1.5 mt-1 text-[11px] text-slate-500">
+                              {deliveryIndicator}
+                              {confirmed && (
                                 <CheckCircle2
-                                  className={`h-3.5 w-3.5 ${
-                                    confirmed ? "text-emerald-600" : "text-slate-500"
-                                  }`}
+                                  className="h-3.5 w-3.5 text-emerald-600"
+                                  title="Confirmado"
                                 />
                               )}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => toggleArchiveMessage(message)}
-                              disabled={actionLoadingKey === `archive:${message.id}`}
-                            >
-                              {actionLoadingKey === `archive:${message.id}` ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : archived ? (
-                                <ArchiveRestore className="h-3.5 w-3.5 text-slate-500" />
-                              ) : (
-                                <Archive className="h-3.5 w-3.5 text-slate-500" />
-                              )}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 text-red-600 hover:text-red-700"
-                              onClick={() => deleteMessage(message)}
-                              disabled={actionLoadingKey === `delete:${message.id}`}
-                            >
-                              {actionLoadingKey === `delete:${message.id}` ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5" />
-                              )}
-                            </Button>
-                          </div>
+                              <span>
+                                {formatDateSafe(message.created_at, "dd/MM HH:mm") || "-"}
+                              </span>
+                            </div>
+                          </>
                         )}
                       </div>
                     );

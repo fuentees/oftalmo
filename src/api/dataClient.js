@@ -493,6 +493,13 @@ const getUserAdminFunctionError = (error) => {
   if (status >= 500 && lowered.includes("fetch failed")) {
     return `A função ${USER_ADMIN_FUNCTION_LABEL} respondeu com erro interno (${status}). Verifique os logs da função no Supabase e confirme os secrets SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no mesmo projeto.${projectHint}`;
   }
+  if (
+    lowered.includes("invalid jwt") ||
+    lowered.includes("jwt expired") ||
+    lowered.includes("jwt malformed")
+  ) {
+    return "Sessão expirada ou token inválido. Entre novamente no sistema para continuar.";
+  }
   if (lowered.includes("edge function returned a non-2xx status code")) {
     return `A função ${USER_ADMIN_FUNCTION_LABEL} respondeu com erro de permissão ou configuração.${projectHint} Verifique se a função foi deployada no mesmo projeto e se o usuário atual tem perfil de admin.`;
   }
@@ -507,6 +514,16 @@ const getUserAdminFunctionError = (error) => {
     return `A função ${USER_ADMIN_FUNCTION_LABEL} não foi encontrada no projeto Supabase.${projectHint} Faça o deploy da função com: supabase functions deploy user-admin.`;
   }
   return message || "Falha ao executar operação de gestão de usuários.";
+};
+
+const isInvalidJwtMessage = (value) => {
+  const lowered = String(value || "").toLowerCase();
+  return (
+    lowered.includes("invalid jwt") ||
+    lowered.includes("jwt expired") ||
+    lowered.includes("jwt malformed") ||
+    lowered.includes("jwt invalid")
+  );
 };
 
 const normalizeUserAdminInvokeError = async (error) => {
@@ -549,7 +566,14 @@ const invokeUserAdminFunctionFallback = async (
   action,
   payload
 ) => {
-  const accessToken = await getAccessToken();
+  const accessToken = await getAccessToken(true);
+  if (!accessToken) {
+    const authError = new Error(
+      "Sessão expirada ou inválida. Faça login novamente para continuar."
+    );
+    authError.status = 401;
+    throw authError;
+  }
   const data = await invokeSupabaseFunction(
     functionName,
     {
@@ -593,6 +617,18 @@ const callUserAdminFunction = async (action, payload = {}) => {
       const shouldTryFallback =
         shouldFallbackFunctionCall(normalizedError?.message || "") ||
         shouldFallbackByStatus(normalizedError?.status);
+
+      if (isInvalidJwtMessage(normalizedError?.message || "")) {
+        try {
+          return await invokeUserAdminFunctionFallback(
+            functionName,
+            action,
+            payload
+          );
+        } catch (jwtFallbackError) {
+          lastError = jwtFallbackError;
+        }
+      }
 
       if (shouldTryFallback) {
         try {
@@ -688,10 +724,15 @@ const getSupabaseFunctionUrl = (functionName) => {
   return `${baseUrl}/functions/v1/${functionName}`;
 };
 
-const getAccessToken = async () => {
+const getAccessToken = async (refreshIfMissing = false) => {
   try {
     const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token || "";
+    const token = data?.session?.access_token || "";
+    if (token || !refreshIfMissing) {
+      return token;
+    }
+    const { data: refreshedData } = await supabase.auth.refreshSession();
+    return refreshedData?.session?.access_token || "";
   } catch (error) {
     return "";
   }
@@ -746,6 +787,9 @@ const shouldFallbackFunctionCall = (message) => {
   return (
     normalized.includes("failed to send a request to the edge function") ||
     normalized.includes("edge function returned a non-2xx status code") ||
+    normalized.includes("invalid jwt") ||
+    normalized.includes("jwt expired") ||
+    normalized.includes("jwt malformed") ||
     normalized.includes("failed to fetch") ||
     normalized.includes("networkerror") ||
     normalized.includes("fetch failed") ||
