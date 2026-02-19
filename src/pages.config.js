@@ -63,6 +63,7 @@ import Enrolled from './pages/Enrolled';
 import EnrollmentFieldsManager from './pages/EnrollmentFieldsManager';
 import EnrollmentPage from './pages/EnrollmentPage';
 import TrainingFeedbackPage from './pages/TrainingFeedbackPage';
+import Communication from './pages/Communication';
 import __Layout from './Layout.jsx';
 
 
@@ -83,6 +84,7 @@ export const PAGES = {
     "EnrollmentFieldsManager": EnrollmentFieldsManager,
     "EnrollmentPage": EnrollmentPage,
     "TrainingFeedbackPage": TrainingFeedbackPage,
+    "Communication": Communication,
 }
 
 export const pagesConfig = {

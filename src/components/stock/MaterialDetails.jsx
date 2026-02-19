@@ -60,7 +60,10 @@ export default function MaterialDetails({ material, movements }) {
     },
     { header: "Quantidade", accessor: "quantity" },
     { header: "Responsável", accessor: "responsible" },
-    { header: "Setor", accessor: "sector" },
+    {
+      header: "Destino",
+      render: (row) => row.destination_label || row.sector || "-",
+    },
   ];
 
   return (

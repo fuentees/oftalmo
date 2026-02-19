@@ -103,6 +103,7 @@ const ENTITY_TABLES = {
   EnrollmentField: "enrollment_fields",
   AuditLog: "audit_logs",
   MaterialRequest: "material_requests",
+  CommunicationMessage: "communication_messages",
 };
 
 const applyOrder = (query, order) => {
