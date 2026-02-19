@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
-import { formatDateSafe } from "@/lib/date";
 import {
   getSupabaseErrorMessage,
   isMissingSupabaseTableError,
@@ -14,7 +13,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -28,26 +26,6 @@ const RECIPIENT_SCOPE_OPTIONS = [
   { value: "todos", label: "Todos" },
   { value: "pessoa", label: "Pessoa específica" },
 ];
-const COMMUNICATION_MESSAGES_TABLE_SQL = `create extension if not exists pgcrypto;
-
-create table if not exists public.communication_messages (
-  id uuid primary key default gen_random_uuid(),
-  sender_name text,
-  sender_email text,
-  recipient_scope text default 'todos',
-  recipient_label text,
-  subject text,
-  message text not null,
-  created_at timestamptz default now()
-);
-
-create index if not exists idx_communication_messages_created_at
-  on public.communication_messages (created_at desc);
-
-notify pgrst, 'reload schema';`;
-
-const resolveScopeLabel = (scope) =>
-  RECIPIENT_SCOPE_OPTIONS.find((item) => item.value === scope)?.label || scope;
 const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
 const buildAccountLabel = (name, email) =>
   name && email ? `${name} (${email})` : name || email || "Usuário";
@@ -55,7 +33,6 @@ const buildAccountLabel = (name, email) =>
 export default function Communication() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [scopeFilter, setScopeFilter] = useState("all");
   const [formStatus, setFormStatus] = useState(null);
   const [formData, setFormData] = useState({
     recipient_scope: "todos",
@@ -88,7 +65,7 @@ export default function Communication() {
   );
   const loadErrorMessage = messagesQuery.isError
     ? missingTable
-      ? "A tabela communication_messages não foi encontrada no Supabase. Execute o SQL de criação no SQL Editor."
+      ? "Canal de comunicação indisponível no momento."
       : getSupabaseErrorMessage(messagesQuery.error) ||
         "Não foi possível carregar as mensagens."
     : "";
@@ -123,33 +100,21 @@ export default function Communication() {
       .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
   }, [managedUsers, messages, currentUser?.email, currentUser?.full_name, currentUser?.name]);
   const hasRecipientOptions = recipientAccounts.length > 0;
-  const availableScopeFilters = useMemo(() => {
-    const knownScopes = new Set(["todos", "pessoa"]);
-    messages.forEach((item) => {
-      const scope = String(item?.recipient_scope || "").trim().toLowerCase();
-      if (scope) knownScopes.add(scope);
-    });
-    return Array.from(knownScopes);
-  }, [messages]);
 
   const filteredMessages = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
     return messages.filter((message) => {
-      const scope = String(message.recipient_scope || "todos");
-      if (scopeFilter !== "all" && scope !== scopeFilter) return false;
       if (!searchTerm) return true;
-      const sender = `${message.sender_name || ""} ${message.sender_email || ""}`.toLowerCase();
-      const recipient = `${message.recipient_label || ""} ${scope}`.toLowerCase();
+      const sender = `${message.sender_name || ""}`.toLowerCase();
       const subject = String(message.subject || "").toLowerCase();
       const body = String(message.message || "").toLowerCase();
       return (
         sender.includes(searchTerm) ||
-        recipient.includes(searchTerm) ||
         subject.includes(searchTerm) ||
         body.includes(searchTerm)
       );
     });
-  }, [messages, search, scopeFilter]);
+  }, [messages, search]);
 
   const createMessage = useMutation({
     mutationFn: (payload) => dataClient.entities.CommunicationMessage.create(payload),
@@ -174,21 +139,6 @@ export default function Communication() {
       });
     },
   });
-
-  const handleCopySetupSql = async () => {
-    try {
-      await navigator.clipboard.writeText(COMMUNICATION_MESSAGES_TABLE_SQL);
-      setFormStatus({
-        type: "success",
-        message: "SQL copiado. Cole no SQL Editor do Supabase e execute.",
-      });
-    } catch (error) {
-      setFormStatus({
-        type: "error",
-        message: "Não foi possível copiar o SQL automaticamente.",
-      });
-    }
-  };
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -229,28 +179,10 @@ export default function Communication() {
 
   const columns = [
     {
-      header: "Data/Hora",
-      render: (row) => formatDateSafe(row.created_at, "dd/MM/yyyy HH:mm") || "-",
-    },
-    {
-      header: "De",
+      header: "Nome",
       render: (row) => (
         <div>
           <p className="font-medium">{row.sender_name || "-"}</p>
-          {row.sender_email && (
-            <p className="text-xs text-slate-500">{row.sender_email}</p>
-          )}
-        </div>
-      ),
-    },
-    {
-      header: "Para",
-      render: (row) => (
-        <div className="flex flex-col gap-1">
-          <Badge variant="outline">{resolveScopeLabel(row.recipient_scope)}</Badge>
-          <span className="text-xs text-slate-600">
-            {row.recipient_label || "Todos"}
-          </span>
         </div>
       ),
     },
@@ -439,43 +371,18 @@ export default function Communication() {
         <CardContent className="space-y-4">
           {messagesQuery.isError && (
             <Alert className="border-red-200 bg-red-50">
-              <div className="space-y-2">
-                <AlertDescription className="text-red-800">
-                  {loadErrorMessage}
-                </AlertDescription>
-                {missingTable && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={handleCopySetupSql}
-                  >
-                    Copiar SQL de criação
-                  </Button>
-                )}
-              </div>
+              <AlertDescription className="text-red-800">
+                {loadErrorMessage}
+              </AlertDescription>
             </Alert>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por remetente, destino, assunto ou mensagem..."
+              placeholder="Buscar por nome, assunto ou mensagem..."
             />
-            <Select value={scopeFilter} onValueChange={setScopeFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filtrar por destino" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os destinos</SelectItem>
-                {availableScopeFilters.map((scope) => (
-                  <SelectItem key={scope} value={scope}>
-                    {resolveScopeLabel(scope)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           <DataTable
