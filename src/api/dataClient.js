@@ -493,6 +493,9 @@ const getUserAdminFunctionError = (error) => {
   if (status >= 500 && lowered.includes("fetch failed")) {
     return `A função ${USER_ADMIN_FUNCTION_LABEL} respondeu com erro interno (${status}). Verifique os logs da função no Supabase e confirme os secrets SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no mesmo projeto.${projectHint}`;
   }
+  if (lowered.includes("edge function returned a non-2xx status code")) {
+    return `A função ${USER_ADMIN_FUNCTION_LABEL} respondeu com erro de permissão ou configuração.${projectHint} Verifique se a função foi deployada no mesmo projeto e se o usuário atual tem perfil de admin.`;
+  }
   if (
     lowered.includes("failed to send a request to the edge function") ||
     lowered.includes("networkerror") ||
@@ -504,6 +507,41 @@ const getUserAdminFunctionError = (error) => {
     return `A função ${USER_ADMIN_FUNCTION_LABEL} não foi encontrada no projeto Supabase.${projectHint} Faça o deploy da função com: supabase functions deploy user-admin.`;
   }
   return message || "Falha ao executar operação de gestão de usuários.";
+};
+
+const normalizeUserAdminInvokeError = async (error) => {
+  const baseMessage = String(error?.message || "").trim();
+  const lowered = baseMessage.toLowerCase();
+  const isNon2xx =
+    lowered.includes("edge function returned a non-2xx status code") ||
+    lowered.includes("non-2xx");
+  const responseLike = error?.context;
+  if (!isNon2xx || !responseLike || typeof responseLike.clone !== "function") {
+    return error;
+  }
+
+  const status = Number(responseLike.status || 0);
+  let detail = "";
+  try {
+    const parsed = await responseLike.clone().json();
+    detail = String(parsed?.error || parsed?.message || "").trim();
+  } catch (parseJsonError) {
+    detail = "";
+  }
+  if (!detail) {
+    try {
+      detail = String(await responseLike.clone().text()).trim();
+    } catch (parseTextError) {
+      detail = "";
+    }
+  }
+  if (!detail) {
+    return error;
+  }
+
+  const normalized = new Error(detail);
+  normalized.status = status || Number(error?.status || 0);
+  return normalized;
 };
 
 const invokeUserAdminFunctionFallback = async (
@@ -546,14 +584,15 @@ const callUserAdminFunction = async (action, payload = {}) => {
       }
       return data || {};
     } catch (error) {
-      lastError = error;
-      const lowered = String(error?.message || "").toLowerCase();
+      const normalizedError = await normalizeUserAdminInvokeError(error);
+      lastError = normalizedError;
+      const lowered = String(normalizedError?.message || "").toLowerCase();
       const isNotFound =
         lowered.includes("not found") || lowered.includes("404");
       const hasNextCandidate = i < USER_ADMIN_FUNCTION_CANDIDATES.length - 1;
       const shouldTryFallback =
-        shouldFallbackFunctionCall(error?.message || "") ||
-        shouldFallbackByStatus(error?.status);
+        shouldFallbackFunctionCall(normalizedError?.message || "") ||
+        shouldFallbackByStatus(normalizedError?.status);
 
       if (shouldTryFallback) {
         try {
@@ -579,7 +618,7 @@ const callUserAdminFunction = async (action, payload = {}) => {
       if (isNotFound && hasNextCandidate) {
         continue;
       }
-      throw new Error(getUserAdminFunctionError(lastError || error));
+      throw new Error(getUserAdminFunctionError(lastError || normalizedError || error));
     }
   }
 
@@ -706,6 +745,7 @@ const shouldFallbackFunctionCall = (message) => {
   const normalized = String(message || "").toLowerCase();
   return (
     normalized.includes("failed to send a request to the edge function") ||
+    normalized.includes("edge function returned a non-2xx status code") ||
     normalized.includes("failed to fetch") ||
     normalized.includes("networkerror") ||
     normalized.includes("fetch failed") ||

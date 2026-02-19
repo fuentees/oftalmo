@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare, Send, Loader2, X, Bell, BellRing } from "lucide-react";
 import { dataClient } from "@/api/dataClient";
-import { formatDateSafe } from "@/lib/date";
 import {
   getSupabaseErrorMessage,
   isMissingSupabaseTableError,
@@ -14,33 +13,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 
 const LAST_SEEN_STORAGE_KEY = "communication_chat_last_seen_at";
 const RECIPIENT_SCOPE_OPTIONS = [
   { value: "todos", label: "Todos" },
   { value: "pessoa", label: "Pessoa específica" },
 ];
-const COMMUNICATION_MESSAGES_TABLE_SQL = `create extension if not exists pgcrypto;
-
-create table if not exists public.communication_messages (
-  id uuid primary key default gen_random_uuid(),
-  sender_name text,
-  sender_email text,
-  recipient_scope text default 'todos',
-  recipient_label text,
-  subject text,
-  message text not null,
-  created_at timestamptz default now()
-);
-
-create index if not exists idx_communication_messages_created_at
-  on public.communication_messages (created_at desc);
-
-notify pgrst, 'reload schema';`;
-
-const resolveScopeLabel = (scope) =>
-  RECIPIENT_SCOPE_OPTIONS.find((item) => item.value === scope)?.label || scope;
 
 const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
 const toTimestamp = (value) => {
@@ -92,7 +70,7 @@ export default function CommunicationChatWidget({ currentUser }) {
   );
   const loadErrorMessage = messagesQuery.isError
     ? missingTable
-      ? "A tabela communication_messages não foi encontrada. Execute o SQL de criação no Supabase (SQL Editor)."
+      ? "Canal de comunicação indisponível no momento."
       : getSupabaseErrorMessage(messagesQuery.error) || "Não foi possível carregar mensagens."
     : "";
 
@@ -149,21 +127,6 @@ export default function CommunicationChatWidget({ currentUser }) {
       );
     }
   }, [open, messages, lastSeenAt]);
-
-  const handleCopySetupSql = async () => {
-    try {
-      await navigator.clipboard.writeText(COMMUNICATION_MESSAGES_TABLE_SQL);
-      setStatus({
-        type: "success",
-        message: "SQL copiado. Cole no SQL Editor do Supabase e execute.",
-      });
-    } catch (error) {
-      setStatus({
-        type: "error",
-        message: "Não foi possível copiar o SQL automaticamente.",
-      });
-    }
-  };
 
   const createMessage = useMutation({
     mutationFn: (payload) => dataClient.entities.CommunicationMessage.create(payload),
@@ -248,7 +211,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                 Chat interno
               </CardTitle>
               <p className="text-xs text-slate-500 mt-1">
-                Mensagens para todos ou para uma pessoa específica.
+                Nome, assunto e mensagem.
               </p>
             </div>
             <Button
@@ -266,22 +229,9 @@ export default function CommunicationChatWidget({ currentUser }) {
             {messagesQuery.isError && (
               <div className="px-4 pt-3">
                 <Alert className="border-red-200 bg-red-50">
-                  <div className="space-y-2">
-                    <AlertDescription className="text-red-800 text-xs">
-                      {loadErrorMessage}
-                    </AlertDescription>
-                    {missingTable && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs"
-                        onClick={handleCopySetupSql}
-                      >
-                        Copiar SQL de criação
-                      </Button>
-                    )}
-                  </div>
+                  <AlertDescription className="text-red-800 text-xs">
+                    {loadErrorMessage}
+                  </AlertDescription>
                 </Alert>
               </div>
             )}
@@ -316,22 +266,9 @@ export default function CommunicationChatWidget({ currentUser }) {
                             : "bg-white border-slate-200"
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <p className="font-semibold text-slate-800 truncate">
-                            {message.sender_name || message.sender_email || "Usuário"}
-                          </p>
-                          <span className="text-[11px] text-slate-500 whitespace-nowrap">
-                            {formatDateSafe(message.created_at, "dd/MM HH:mm")}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                          <Badge variant="outline" className="text-[10px]">
-                            {resolveScopeLabel(message.recipient_scope)}
-                          </Badge>
-                          <span className="text-[11px] text-slate-600">
-                            {message.recipient_label || "Todos"}
-                          </span>
-                        </div>
+                        <p className="font-semibold text-slate-800 mb-1 truncate">
+                          {message.sender_name || message.sender_email || "Usuário"}
+                        </p>
                         {message.subject && (
                           <p className="text-xs font-medium text-slate-700 mb-1">
                             Assunto: {message.subject}
