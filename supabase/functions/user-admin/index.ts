@@ -1,9 +1,13 @@
 import { serve } from "https://deno.land/std/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+export const config = { verify_jwt: false };
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_ANON_KEY =
+  Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 const ADMIN_EMAILS_RAW =
   Deno.env.get("ADMIN_EMAILS") ?? Deno.env.get("VITE_ADMIN_EMAILS") ?? "";
 
@@ -62,26 +66,46 @@ const jsonResponse = (
     },
   });
 
-let adminClient: ReturnType<typeof createClient> | null = null;
+const adminClients = new Map<string, ReturnType<typeof createClient>>();
 
-const getAdminClient = () => {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+const getRequestOrigin = (req?: Request) => {
+  if (!req) return "";
+  try {
+    return new URL(req.url).origin || "";
+  } catch {
+    return "";
+  }
+};
+
+const resolveSupabaseUrl = (req?: Request) => {
+  const requestOrigin = getRequestOrigin(req);
+  if (requestOrigin) {
+    return requestOrigin;
+  }
+  return SUPABASE_URL.trim();
+};
+
+const getAdminClient = (req?: Request) => {
+  const resolvedSupabaseUrl = resolveSupabaseUrl(req);
+  if (!resolvedSupabaseUrl || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new ApiError(
       500,
       "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables."
     );
   }
 
-  if (!adminClient) {
-    adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  const cacheKey = `${resolvedSupabaseUrl}|service`;
+  if (!adminClients.has(cacheKey)) {
+    const client = createClient(resolvedSupabaseUrl, SUPABASE_SERVICE_ROLE_KEY, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
       },
     });
+    adminClients.set(cacheKey, client);
   }
 
-  return adminClient;
+  return adminClients.get(cacheKey)!;
 };
 
 const getBearerToken = (req: Request) => {
@@ -90,19 +114,48 @@ const getBearerToken = (req: Request) => {
   return header.replace(/^Bearer\s+/i, "").trim();
 };
 
+const getUserFromToken = async (
+  req: Request,
+  token: string
+) => {
+  const adminClient = getAdminClient(req);
+  const { data, error } = await adminClient.auth.getUser(token);
+  if (!error && data?.user) {
+    return data.user;
+  }
+
+  // Fallback: alguns ambientes respondem melhor com a chave anon + bearer explícito.
+  if (SUPABASE_ANON_KEY) {
+    const userClient = createClient(resolveSupabaseUrl(req), SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    });
+    const { data: anonData, error: anonError } = await userClient.auth.getUser();
+    if (!anonError && anonData?.user) {
+      return anonData.user;
+    }
+  }
+
+  return null;
+};
+
 const requireAdminUser = async (req: Request) => {
-  const adminClient = getAdminClient();
   const token = getBearerToken(req);
   if (!token) {
     throw new ApiError(401, "Authentication token is required.");
   }
 
-  const { data, error } = await adminClient.auth.getUser(token);
-  if (error || !data?.user) {
+  const user = await getUserFromToken(req, token);
+  if (!user) {
     throw new ApiError(401, "Invalid authentication token.");
   }
-
-  const user = data.user;
   const role = normalizeRole(user.app_metadata?.role || user.user_metadata?.role);
   const email = normalizeText(user.email);
   const isAdmin = role === "admin" || ADMIN_EMAILS.has(email);
@@ -134,8 +187,8 @@ const mapManagedUser = (user: any) => {
   };
 };
 
-const listUsers = async () => {
-  const adminClient = getAdminClient();
+const listUsers = async (req: Request) => {
+  const adminClient = getAdminClient(req);
   const users: any[] = [];
   let page = 1;
   const perPage = 200;
@@ -159,8 +212,12 @@ const listUsers = async () => {
   return { users: mapped };
 };
 
-const setRole = async (actingUserId: string, payload: Record<string, unknown>) => {
-  const adminClient = getAdminClient();
+const setRole = async (
+  req: Request,
+  actingUserId: string,
+  payload: Record<string, unknown>
+) => {
+  const adminClient = getAdminClient(req);
   const userId = String(payload.user_id || "").trim();
   const nextRole = normalizeRole(payload.role);
   if (!userId) throw new ApiError(400, "user_id is required.");
@@ -188,8 +245,12 @@ const setRole = async (actingUserId: string, payload: Record<string, unknown>) =
   return { user: mapManagedUser(data.user) };
 };
 
-const setActive = async (actingUserId: string, payload: Record<string, unknown>) => {
-  const adminClient = getAdminClient();
+const setActive = async (
+  req: Request,
+  actingUserId: string,
+  payload: Record<string, unknown>
+) => {
+  const adminClient = getAdminClient(req);
   const userId = String(payload.user_id || "").trim();
   const active = Boolean(payload.active);
   if (!userId) throw new ApiError(400, "user_id is required.");
@@ -213,8 +274,8 @@ const setActive = async (actingUserId: string, payload: Record<string, unknown>)
   return { user: mapManagedUser(refreshed.user) };
 };
 
-const inviteUser = async (payload: Record<string, unknown>) => {
-  const adminClient = getAdminClient();
+const inviteUser = async (req: Request, payload: Record<string, unknown>) => {
+  const adminClient = getAdminClient(req);
   const email = normalizeText(payload.email);
   const fullName = String(payload.full_name || "").trim();
   const role = normalizeRole(payload.role);
@@ -249,8 +310,8 @@ const inviteUser = async (payload: Record<string, unknown>) => {
   };
 };
 
-const createUser = async (payload: Record<string, unknown>) => {
-  const adminClient = getAdminClient();
+const createUser = async (req: Request, payload: Record<string, unknown>) => {
+  const adminClient = getAdminClient(req);
   const email = normalizeText(payload.email);
   const password = String(payload.password || "");
   const fullName = String(payload.full_name || "").trim();
@@ -298,19 +359,19 @@ serve(async (req) => {
     const action = String(payload?.action || "").trim().toLowerCase();
 
     if (action === "list_users") {
-      return jsonResponse(200, await listUsers(), req);
+      return jsonResponse(200, await listUsers(req), req);
     }
     if (action === "invite_user") {
-      return jsonResponse(200, await inviteUser(payload), req);
+      return jsonResponse(200, await inviteUser(req, payload), req);
     }
     if (action === "create_user") {
-      return jsonResponse(200, await createUser(payload), req);
+      return jsonResponse(200, await createUser(req, payload), req);
     }
     if (action === "set_role") {
-      return jsonResponse(200, await setRole(String(actingUser.id), payload), req);
+      return jsonResponse(200, await setRole(req, String(actingUser.id), payload), req);
     }
     if (action === "set_active") {
-      return jsonResponse(200, await setActive(String(actingUser.id), payload), req);
+      return jsonResponse(200, await setActive(req, String(actingUser.id), payload), req);
     }
 
     return jsonResponse(400, { error: "Unknown action." }, req);
