@@ -491,7 +491,7 @@ const getUserAdminFunctionError = (error) => {
     : "";
 
   if (status === 401) {
-    return "Sessão expirada ou token inválido. Entre novamente no sistema para continuar.";
+    return "Não foi possível validar sua sessão no serviço de usuários. Atualize a página e tente novamente. Se continuar, entre novamente no sistema.";
   }
   if (status === 403) {
     return "Você não tem permissão para gerenciar usuários.";
@@ -504,7 +504,7 @@ const getUserAdminFunctionError = (error) => {
     lowered.includes("jwt expired") ||
     lowered.includes("jwt malformed")
   ) {
-    return "Sessão expirada ou token inválido. Entre novamente no sistema para continuar.";
+    return "Não foi possível validar sua sessão no serviço de usuários. Atualize a página e tente novamente. Se continuar, entre novamente no sistema.";
   }
   if (lowered.includes("edge function returned a non-2xx status code")) {
     return `A função ${USER_ADMIN_FUNCTION_LABEL} respondeu com erro de permissão ou configuração.${projectHint} Verifique se a função foi deployada no mesmo projeto e se o usuário atual tem perfil de admin.`;
@@ -522,13 +522,21 @@ const getUserAdminFunctionError = (error) => {
   return message || "Falha ao executar operação de gestão de usuários.";
 };
 
-const isInvalidJwtMessage = (value) => {
-  const lowered = String(value || "").toLowerCase();
+const isAuthRelatedUserAdminError = (error) => {
+  const status = Number(error?.status || 0);
+  const lowered = String(error?.message || "").toLowerCase();
+  if (status === 401) return true;
   return (
     lowered.includes("invalid jwt") ||
     lowered.includes("jwt expired") ||
     lowered.includes("jwt malformed") ||
-    lowered.includes("jwt invalid")
+    lowered.includes("jwt invalid") ||
+    lowered.includes("token inválido") ||
+    lowered.includes("token invalido") ||
+    lowered.includes("unauthorized") ||
+    lowered.includes("sessão expirada") ||
+    lowered.includes("sessao expirada") ||
+    lowered.includes("auth session missing")
   );
 };
 
@@ -732,8 +740,10 @@ const callUserAdminFunction = async (action, payload = {}) => {
       const shouldTryFallback =
         shouldFallbackFunctionCall(normalizedError?.message || "") ||
         shouldFallbackByStatus(normalizedError?.status);
+      let attemptedForceRefresh = false;
 
-      if (isInvalidJwtMessage(normalizedError?.message || "")) {
+      if (isAuthRelatedUserAdminError(normalizedError)) {
+        attemptedForceRefresh = true;
         try {
           return await invokeUserAdminFunctionFallback(
             functionName,
@@ -741,8 +751,17 @@ const callUserAdminFunction = async (action, payload = {}) => {
             payload,
             { forceRefresh: true }
           );
-        } catch (jwtFallbackError) {
-          lastError = jwtFallbackError;
+        } catch (authFallbackError) {
+          lastError = normalizeKnownUserAdminError(authFallbackError);
+          const authFallbackLowered = String(
+            lastError?.message || ""
+          ).toLowerCase();
+          const authFallbackNotFound =
+            authFallbackLowered.includes("not found") ||
+            authFallbackLowered.includes("404");
+          if (authFallbackNotFound && hasNextCandidate) {
+            continue;
+          }
         }
       }
 
@@ -754,9 +773,22 @@ const callUserAdminFunction = async (action, payload = {}) => {
             payload
           );
         } catch (fallbackError) {
-          lastError = fallbackError;
+          lastError = normalizeKnownUserAdminError(fallbackError);
+          if (!attemptedForceRefresh && isAuthRelatedUserAdminError(lastError)) {
+            attemptedForceRefresh = true;
+            try {
+              return await invokeUserAdminFunctionFallback(
+                functionName,
+                action,
+                payload,
+                { forceRefresh: true }
+              );
+            } catch (refreshFallbackError) {
+              lastError = normalizeKnownUserAdminError(refreshFallbackError);
+            }
+          }
           const fallbackLowered = String(
-            fallbackError?.message || ""
+            lastError?.message || ""
           ).toLowerCase();
           const fallbackNotFound =
             fallbackLowered.includes("not found") ||
