@@ -6,6 +6,7 @@ const normalizeDestinationMode = (value) => {
   const normalized = normalizeText(value).toLowerCase();
   if (normalized === "gve") return "gve";
   if (normalized === "setor") return "setor";
+  if (normalized === "outros") return "outros";
   return "municipio";
 };
 
@@ -26,6 +27,12 @@ const buildSanitizedMetadata = (metadata) => {
   const destinationGve = normalizeText(
     metadata?.destination_gve || metadata?.gve
   );
+  const destinationSector = normalizeText(
+    metadata?.destination_sector || metadata?.sector_label
+  );
+  const destinationOther = normalizeText(
+    metadata?.destination_other || metadata?.other_destination
+  );
   const responsibleAuto = Boolean(
     metadata?.responsible_auto || metadata?.auto_responsible
   );
@@ -36,7 +43,8 @@ const buildSanitizedMetadata = (metadata) => {
   );
 
   const hasAnyPurpose = purpose.event || purpose.training || purpose.distribution;
-  const hasDestination = destinationMunicipio || destinationGve;
+  const hasDestination =
+    destinationMunicipio || destinationGve || destinationSector || destinationOther;
   const hasResponsibleMeta = responsibleAuto || responsibleUser;
   if (!hasAnyPurpose && !hasDestination && !hasResponsibleMeta) return null;
 
@@ -47,6 +55,8 @@ const buildSanitizedMetadata = (metadata) => {
     destination_mode: destinationMode,
     destination_municipio: destinationMunicipio || null,
     destination_gve: destinationGve || null,
+    destination_sector: destinationSector || null,
+    destination_other: destinationOther || null,
     responsible_auto: responsibleAuto,
     responsible_user: responsibleUser || null,
   };
@@ -105,25 +115,60 @@ export const resolveStockMovementDestination = ({
 }) => {
   const fallbackValue = normalizeText(fallbackSector);
   const isFallbackGve = /^gve\s*:/i.test(fallbackValue);
+  const isFallbackSetor = /^setor\s*:/i.test(fallbackValue);
+  const isFallbackOutros = /^outros\s*:/i.test(fallbackValue);
   const fallbackGve = isFallbackGve
     ? normalizeText(fallbackValue.replace(/^gve\s*:/i, ""))
     : "";
-  const fallbackMunicipio = isFallbackGve ? "" : fallbackValue;
+  const fallbackSectorLabel = isFallbackSetor
+    ? normalizeText(fallbackValue.replace(/^setor\s*:/i, ""))
+    : "";
+  const fallbackOther = isFallbackOutros
+    ? normalizeText(fallbackValue.replace(/^outros\s*:/i, ""))
+    : "";
+  const fallbackMunicipio =
+    isFallbackGve || isFallbackSetor || isFallbackOutros ? "" : fallbackValue;
 
   const destinationMode = normalizeDestinationMode(
-    metadata?.destination_mode || (fallbackGve ? "gve" : "municipio")
+    metadata?.destination_mode ||
+      (fallbackGve
+        ? "gve"
+        : fallbackSectorLabel
+        ? "setor"
+        : fallbackOther
+        ? "outros"
+        : "municipio")
   );
   const destinationMunicipio = normalizeText(
     metadata?.destination_municipio || fallbackMunicipio
   );
   const destinationGve = normalizeText(metadata?.destination_gve || fallbackGve);
+  const destinationSector = normalizeText(
+    metadata?.destination_sector || fallbackSectorLabel
+  );
+  const destinationOther = normalizeText(
+    metadata?.destination_other || fallbackOther
+  );
 
   if (destinationMode === "setor") {
     return {
-      destination: "Setor",
+      destination: destinationSector || "Setor",
       destinationMode: "setor",
       municipio: null,
       gve: null,
+      sector: destinationSector || null,
+      other: null,
+    };
+  }
+
+  if (destinationMode === "outros") {
+    return {
+      destination: destinationOther || fallbackValue || "-",
+      destinationMode: "outros",
+      municipio: null,
+      gve: null,
+      sector: null,
+      other: destinationOther || null,
     };
   }
 
@@ -133,6 +178,8 @@ export const resolveStockMovementDestination = ({
       destinationMode,
       municipio: destinationMunicipio || null,
       gve: destinationGve,
+      sector: null,
+      other: null,
     };
   }
 
@@ -149,5 +196,7 @@ export const resolveStockMovementDestination = ({
     destinationMode: "municipio",
     municipio: destinationMunicipio || null,
     gve: resolvedGve || null,
+    sector: null,
+    other: null,
   };
 };
