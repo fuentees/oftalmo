@@ -716,11 +716,17 @@ const callUserAdminFunction = async (action, payload = {}) => {
   for (let i = 0; i < USER_ADMIN_FUNCTION_CANDIDATES.length; i += 1) {
     const functionName = USER_ADMIN_FUNCTION_CANDIDATES[i];
     try {
+      const accessToken = await getAccessToken({ refreshIfMissing: true });
       const { data, error } = await supabase.functions.invoke(functionName, {
         body: {
           action,
           ...payload,
         },
+        headers: accessToken
+          ? {
+              Authorization: `Bearer ${accessToken}`,
+            }
+          : undefined,
       });
       if (error) {
         throw error;
@@ -872,24 +878,48 @@ const getSupabaseFunctionUrl = (functionName) => {
   return `${baseUrl}/functions/v1/${functionName}`;
 };
 
+const isSessionTokenUsable = (session, toleranceSeconds = 30) => {
+  const token = String(session?.access_token || "").trim();
+  if (!token) return false;
+  const expiresAt = Number(session?.expires_at || 0);
+  if (!expiresAt) return true;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  return expiresAt - nowSeconds > toleranceSeconds;
+};
+
 const getAccessToken = async (options = {}) => {
   const refreshIfMissing = Boolean(options?.refreshIfMissing);
   const forceRefresh = Boolean(options?.forceRefresh);
   try {
     if (forceRefresh) {
       const { data: refreshedData } = await supabase.auth.refreshSession();
-      const refreshedToken = refreshedData?.session?.access_token || "";
-      if (refreshedToken) {
-        return refreshedToken;
+      if (isSessionTokenUsable(refreshedData?.session)) {
+        return String(refreshedData?.session?.access_token || "").trim();
       }
+
+      const { data: currentAfterRefresh } = await supabase.auth.getSession();
+      if (isSessionTokenUsable(currentAfterRefresh?.session)) {
+        return String(currentAfterRefresh?.session?.access_token || "").trim();
+      }
+      return "";
     }
 
     const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token || "";
-    if (token || !refreshIfMissing) return token;
+    if (isSessionTokenUsable(data?.session)) {
+      return String(data?.session?.access_token || "").trim();
+    }
+    if (!refreshIfMissing) {
+      return String(data?.session?.access_token || "").trim();
+    }
 
     const { data: refreshedData } = await supabase.auth.refreshSession();
-    return refreshedData?.session?.access_token || token;
+    if (isSessionTokenUsable(refreshedData?.session)) {
+      return String(refreshedData?.session?.access_token || "").trim();
+    }
+    const { data: afterRefreshData } = await supabase.auth.getSession();
+    return isSessionTokenUsable(afterRefreshData?.session)
+      ? String(afterRefreshData?.session?.access_token || "").trim()
+      : "";
   } catch (error) {
     return "";
   }
