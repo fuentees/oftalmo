@@ -503,6 +503,7 @@ export default function Stock() {
     const normalized = normalizeHeader(value);
     if (normalized.includes("gve")) return "gve";
     if (normalized.includes("setor")) return "setor";
+    if (normalized.includes("outro")) return "outros";
     return "municipio";
   };
 
@@ -621,19 +622,44 @@ export default function Stock() {
               "destination_type",
             ])
           );
+          const fallbackDestination = cleanValue(
+            pickValue(row, ["sector", "setor", "destino"])
+          );
           const destinationMunicipio = cleanValue(
             pickValue(row, [
               "destination_municipio",
               "municipio_destino",
               "municipio",
-              "sector",
-              "setor",
-              "destino",
             ])
           );
           const destinationGve = cleanValue(
             pickValue(row, ["destination_gve", "gve_destino", "gve"])
           );
+          const destinationSectorLabel = cleanValue(
+            pickValue(row, [
+              "destination_sector",
+              "setor_destino",
+              "sector_destination",
+              "setor",
+            ])
+          );
+          const destinationOther = cleanValue(
+            pickValue(row, [
+              "destination_other",
+              "outros_destino",
+              "destino_outros",
+              "other_destination",
+              "destino",
+            ])
+          );
+          const resolvedDestinationMunicipio =
+            destinationMunicipio || (destinationMode === "municipio" ? fallbackDestination : null);
+          const resolvedDestinationSector =
+            destinationSectorLabel ||
+            (destinationMode === "setor" ? fallbackDestination : null) ||
+            (destinationMode === "setor" ? "Setor de Compras" : null);
+          const resolvedDestinationOther =
+            destinationOther || (destinationMode === "outros" ? fallbackDestination : null);
           const outputForEvent = parseBooleanValue(
             pickValue(row, ["output_for_event", "saida_evento"])
           );
@@ -648,15 +674,24 @@ export default function Stock() {
               ? destinationGve
                 ? `GVE: ${destinationGve}`
                 : ""
-              : destinationMunicipio || "";
+              : destinationMode === "setor"
+              ? `SETOR: ${resolvedDestinationSector || "Setor"}`
+              : destinationMode === "outros"
+              ? `OUTROS: ${resolvedDestinationOther || ""}`
+              : resolvedDestinationMunicipio || "";
           const notesText = cleanValue(pickValue(row, ["notes", "observacoes", "obs"]));
           const notes = buildStockMovementNotes(notesText, {
             purpose_event: outputForEvent,
             purpose_training: outputForTraining,
             purpose_distribution: outputForDistribution,
             destination_mode: destinationMode,
-            destination_municipio: destinationMunicipio,
-            destination_gve: destinationGve,
+            destination_municipio:
+              destinationMode === "municipio" ? resolvedDestinationMunicipio : null,
+            destination_gve: destinationMode === "gve" ? destinationGve : null,
+            destination_sector:
+              destinationMode === "setor" ? resolvedDestinationSector : null,
+            destination_other:
+              destinationMode === "outros" ? resolvedDestinationOther : null,
           });
 
           return {
@@ -729,11 +764,12 @@ export default function Stock() {
 Papel A4,ESC-1001,Papel sulfite,caixa,escritorio,10,30,Almoxarifado,2026-01-01
 Álcool 70%,LIM-0002,Frasco 1L,un,limpeza,20,45,Depósito,2025-11-30
 Manual NR-10,MAN-0100,Manual de segurança,un,manuais,5,15,Arquivo,2027-12-31`
-        : `material_code,material_name,type,quantity,date,responsible,destination_mode,destination_municipio,destination_gve,output_for_event,output_for_training,output_for_distribution,document_number,notes
-EPI-001,Luvas de Proteção,entrada,100,2025-01-10,Almoxarifado,,,,false,false,false,NF-123,Entrada inicial
-LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,municipio,Campinas,,false,false,false,REQ-45,Destino territorial por município
-LIM-002,Álcool 70%,saida,20,2025-01-15,João Silva,gve,,GVE Campinas,false,false,false,REQ-46,Destino territorial por GVE
-LIM-002,Álcool 70%,saida,12,2025-01-18,João Silva,setor,,,true,false,true,REQ-47,Saída para finalidade interna do setor`;
+        : `material_code,material_name,type,quantity,date,responsible,destination_mode,destination_municipio,destination_gve,destination_sector,destination_other,output_for_event,output_for_training,output_for_distribution,document_number,notes
+EPI-001,Luvas de Proteção,entrada,100,2025-01-10,Almoxarifado,setor,,,Setor de Compras,,false,false,false,NF-123,Entrada inicial
+LIM-002,Álcool 70%,saida,5,2025-01-12,João Silva,municipio,Campinas,,,,false,false,false,REQ-45,Destino territorial por município
+LIM-002,Álcool 70%,saida,20,2025-01-15,João Silva,gve,,GVE Campinas,,,false,false,false,REQ-46,Destino territorial por GVE
+LIM-002,Álcool 70%,saida,12,2025-01-18,João Silva,setor,,,Setor de Compras,,true,false,true,REQ-47,Saída para finalidade interna do setor
+LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,false,false,false,REQ-48,Saída com destino livre`;
 
     const blob = new Blob([template], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
@@ -865,6 +901,8 @@ LIM-002,Álcool 70%,saida,12,2025-01-18,João Silva,setor,,,true,false,true,REQ-
           ? "GVE"
           : movement.destination_mode === "setor"
           ? "Setor"
+          : movement.destination_mode === "outros"
+          ? "Outros"
           : "Município",
       purpose:
         movement.type === "saida" && movement.purpose_labels?.length

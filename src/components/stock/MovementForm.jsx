@@ -42,9 +42,11 @@ export default function MovementForm({
     output_for_event: false,
     output_for_training: false,
     output_for_distribution: false,
-    destination_mode: "municipio",
+    destination_mode: type === "entrada" ? "setor" : "municipio",
     destination_municipio: "",
     destination_gve: "",
+    destination_sector: type === "entrada" ? "Setor de Compras" : "",
+    destination_other: "",
     document_number: "",
     notes: "",
   });
@@ -71,10 +73,19 @@ export default function MovementForm({
       const metadata = parsedNotes.metadata;
       const fallbackSector = String(movement.sector || "").trim();
       const fallbackIsGve = /^gve\s*:/i.test(fallbackSector);
+      const fallbackIsSetor = /^setor\s*:/i.test(fallbackSector);
+      const fallbackIsOutros = /^outros\s*:/i.test(fallbackSector);
       const fallbackGve = fallbackIsGve
         ? fallbackSector.replace(/^gve\s*:/i, "").trim()
         : "";
-      const fallbackMunicipio = fallbackIsGve ? "" : fallbackSector;
+      const fallbackSectorLabel = fallbackIsSetor
+        ? fallbackSector.replace(/^setor\s*:/i, "").trim()
+        : "";
+      const fallbackOther = fallbackIsOutros
+        ? fallbackSector.replace(/^outros\s*:/i, "").trim()
+        : "";
+      const fallbackMunicipio =
+        fallbackIsGve || fallbackIsSetor || fallbackIsOutros ? "" : fallbackSector;
       const destinationMunicipio =
         metadata?.destination_municipio || fallbackMunicipio || "";
       const destinationGve =
@@ -82,8 +93,22 @@ export default function MovementForm({
         fallbackGve ||
         getGveByMunicipio(destinationMunicipio) ||
         "";
+      const destinationSector =
+        metadata?.destination_sector ||
+        fallbackSectorLabel ||
+        (movement.type === "entrada" ? "Setor de Compras" : "");
+      const destinationOther = metadata?.destination_other || fallbackOther || "";
       const destinationMode =
-        metadata?.destination_mode || (fallbackIsGve ? "gve" : "municipio");
+        metadata?.destination_mode ||
+        (fallbackIsGve
+          ? "gve"
+          : fallbackIsSetor
+          ? "setor"
+          : fallbackIsOutros
+          ? "outros"
+          : movement.type === "entrada"
+          ? "setor"
+          : "municipio");
 
       setFormData({
         material_id: movement.material_id || "",
@@ -103,9 +128,13 @@ export default function MovementForm({
             ? "gve"
             : destinationMode === "setor"
             ? "setor"
+            : destinationMode === "outros"
+            ? "outros"
             : "municipio",
         destination_municipio: destinationMunicipio,
         destination_gve: destinationGve,
+        destination_sector: destinationSector,
+        destination_other: destinationOther,
         document_number: movement.document_number || "",
         notes: parsedNotes.notes || "",
       });
@@ -140,7 +169,18 @@ export default function MovementForm({
 
   useEffect(() => {
     if (movement) return;
-    setFormData((prev) => ({ ...prev, type }));
+    setFormData((prev) => ({
+      ...prev,
+      type,
+      destination_mode: type === "entrada" ? "setor" : "municipio",
+      destination_sector:
+        type === "entrada"
+          ? prev.destination_sector || "Setor de Compras"
+          : prev.destination_sector,
+      output_for_event: type === "saida" ? prev.output_for_event : false,
+      output_for_training: type === "saida" ? prev.output_for_training : false,
+      output_for_distribution: type === "saida" ? prev.output_for_distribution : false,
+    }));
   }, [type, movement]);
 
   useEffect(() => {
@@ -289,21 +329,47 @@ export default function MovementForm({
         ? "gve"
         : formData.destination_mode === "setor"
         ? "setor"
+        : formData.destination_mode === "outros"
+        ? "outros"
         : "municipio";
     const destinationMunicipio = String(formData.destination_municipio || "").trim();
     let destinationGve = String(formData.destination_gve || "").trim();
+    const destinationSectorLabel = String(
+      formData.destination_sector || ""
+    ).trim();
+    const destinationOther = String(formData.destination_other || "").trim();
 
-    if (formData.type === "saida" && destinationMode === "municipio" && !destinationMunicipio) {
+    if (destinationMode === "municipio" && !destinationMunicipio) {
       setFormStatus({
         type: "error",
-        message: "Informe o município de destino.",
+        message:
+          formData.type === "entrada"
+            ? "Informe o município de origem da entrada."
+            : "Informe o município de destino.",
       });
       return;
     }
-    if (formData.type === "saida" && destinationMode === "gve" && !destinationGve) {
+    if (destinationMode === "gve" && !destinationGve) {
       setFormStatus({
         type: "error",
-        message: "Informe o GVE de destino.",
+        message:
+          formData.type === "entrada"
+            ? "Informe o GVE de origem da entrada."
+            : "Informe o GVE de destino.",
+      });
+      return;
+    }
+    if (destinationMode === "setor" && !destinationSectorLabel) {
+      setFormStatus({
+        type: "error",
+        message: "Informe o setor.",
+      });
+      return;
+    }
+    if (destinationMode === "outros" && !destinationOther) {
+      setFormStatus({
+        type: "error",
+        message: "Descreva o destino/origem em Outros.",
       });
       return;
     }
@@ -327,9 +393,17 @@ export default function MovementForm({
             ? `GVE: ${destinationGve}`
             : ""
           : destinationMode === "setor"
-          ? "Setor"
+          ? `SETOR: ${destinationSectorLabel}`
+          : destinationMode === "outros"
+          ? `OUTROS: ${destinationOther}`
           : destinationMunicipio
-        : String(formData.sector || "").trim();
+        : destinationMode === "gve"
+        ? `GVE: ${destinationGve}`
+        : destinationMode === "setor"
+        ? `SETOR: ${destinationSectorLabel}`
+        : destinationMode === "outros"
+        ? `OUTROS: ${destinationOther}`
+        : destinationMunicipio;
 
     const metadataBase = {
       responsible_auto: Boolean(loggedResponsible),
@@ -337,18 +411,22 @@ export default function MovementForm({
     };
     const notesValue = buildStockMovementNotes(
       formData.notes,
-      formData.type === "saida"
-        ? {
-            ...metadataBase,
-            purpose_event: formData.output_for_event,
-            purpose_training: formData.output_for_training,
-            purpose_distribution: formData.output_for_distribution,
-            destination_mode: destinationMode,
-            destination_municipio:
-              destinationMode === "municipio" ? destinationMunicipio || null : null,
-            destination_gve: destinationMode === "gve" ? destinationGve || null : null,
-          }
-        : metadataBase
+      {
+        ...metadataBase,
+        purpose_event: formData.type === "saida" ? formData.output_for_event : false,
+        purpose_training:
+          formData.type === "saida" ? formData.output_for_training : false,
+        purpose_distribution:
+          formData.type === "saida" ? formData.output_for_distribution : false,
+        destination_mode: destinationMode,
+        destination_municipio:
+          destinationMode === "municipio" ? destinationMunicipio || null : null,
+        destination_gve: destinationMode === "gve" ? destinationGve || null : null,
+        destination_sector:
+          destinationMode === "setor" ? destinationSectorLabel || null : null,
+        destination_other:
+          destinationMode === "outros" ? destinationOther || null : null,
+      }
     );
 
     const payload = {
@@ -378,7 +456,13 @@ export default function MovementForm({
       }
       if (field === "destination_mode") {
         const nextMode =
-          value === "gve" ? "gve" : value === "setor" ? "setor" : "municipio";
+          value === "gve"
+            ? "gve"
+            : value === "setor"
+            ? "setor"
+            : value === "outros"
+            ? "outros"
+            : "municipio";
         const nextGve =
           nextMode === "municipio"
             ? getGveByMunicipio(prev.destination_municipio) ||
@@ -391,10 +475,24 @@ export default function MovementForm({
           ...prev,
           destination_mode: nextMode,
           destination_gve: nextGve,
-          output_for_event: nextMode === "setor" ? prev.output_for_event : false,
-          output_for_training: nextMode === "setor" ? prev.output_for_training : false,
+          destination_sector:
+            nextMode === "setor"
+              ? prev.destination_sector ||
+                (prev.type === "entrada" ? "Setor de Compras" : "")
+              : prev.destination_sector,
+          destination_other: nextMode === "outros" ? prev.destination_other : "",
+          output_for_event:
+            nextMode === "setor" && prev.type === "saida"
+              ? prev.output_for_event
+              : false,
+          output_for_training:
+            nextMode === "setor" && prev.type === "saida"
+              ? prev.output_for_training
+              : false,
           output_for_distribution:
-            nextMode === "setor" ? prev.output_for_distribution : false,
+            nextMode === "setor" && prev.type === "saida"
+              ? prev.output_for_distribution
+              : false,
         };
       }
       return { ...prev, [field]: value };
@@ -525,202 +623,236 @@ export default function MovementForm({
         )}
       </div>
 
-      {formData.type === "saida" && (
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <Label>Destino da saída</Label>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant={
-                  formData.destination_mode === "municipio" ? "default" : "outline"
-                }
-                size="sm"
-                onClick={() => handleChange("destination_mode", "municipio")}
-                className="gap-1.5"
-              >
-                <MapPin className="h-3.5 w-3.5" />
-                Município
-              </Button>
-              <Button
-                type="button"
-                variant={formData.destination_mode === "gve" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleChange("destination_mode", "gve")}
-                className="gap-1.5"
-              >
-                <Package className="h-3.5 w-3.5" />
-                GVE
-              </Button>
-              <Button
-                type="button"
-                variant={
-                  formData.destination_mode === "setor" ? "default" : "outline"
-                }
-                size="sm"
-                onClick={() => handleChange("destination_mode", "setor")}
-                className="gap-1.5"
-              >
-                <Briefcase className="h-3.5 w-3.5" />
-                Setor
-              </Button>
-            </div>
+      <div className="space-y-3">
+        <div className="space-y-2">
+          <Label>
+            {formData.type === "entrada" ? "Origem da entrada" : "Destino da saída"}
+          </Label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={
+                formData.destination_mode === "municipio" ? "default" : "outline"
+              }
+              size="sm"
+              onClick={() => handleChange("destination_mode", "municipio")}
+              className="gap-1.5"
+            >
+              <MapPin className="h-3.5 w-3.5" />
+              Município
+            </Button>
+            <Button
+              type="button"
+              variant={formData.destination_mode === "gve" ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleChange("destination_mode", "gve")}
+              className="gap-1.5"
+            >
+              <Package className="h-3.5 w-3.5" />
+              GVE
+            </Button>
+            <Button
+              type="button"
+              variant={formData.destination_mode === "setor" ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleChange("destination_mode", "setor")}
+              className="gap-1.5"
+            >
+              <Briefcase className="h-3.5 w-3.5" />
+              Setor
+            </Button>
+            <Button
+              type="button"
+              variant={formData.destination_mode === "outros" ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleChange("destination_mode", "outros")}
+              className="gap-1.5"
+            >
+              Outros
+            </Button>
           </div>
+        </div>
 
-          {formData.destination_mode === "setor" ? (
-            <div className="space-y-2 rounded-lg border border-slate-200 p-3">
-              <Label className="text-sm font-medium">
-                Saída para o setor interno
-              </Label>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="output_for_event"
-                    checked={formData.output_for_event}
-                    onCheckedChange={(checked) =>
-                      handleChange("output_for_event", Boolean(checked))
-                    }
-                  />
-                  <Label htmlFor="output_for_event" className="text-sm font-normal">
-                    Evento
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="output_for_training"
-                    checked={formData.output_for_training}
-                    onCheckedChange={(checked) =>
-                      handleChange("output_for_training", Boolean(checked))
-                    }
-                  />
-                  <Label
-                    htmlFor="output_for_training"
-                    className="text-sm font-normal"
-                  >
-                    Treinamento
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="output_for_distribution"
-                    checked={formData.output_for_distribution}
-                    onCheckedChange={(checked) =>
-                      handleChange("output_for_distribution", Boolean(checked))
-                    }
-                  />
-                  <Label
-                    htmlFor="output_for_distribution"
-                    className="text-sm font-normal"
-                  >
-                    Distribuição
-                  </Label>
-                </div>
-              </div>
-              {!hasPurposeSelection && (
-                <p className="text-xs text-slate-500">
-                  Selecione ao menos uma finalidade para a saída do setor.
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label>Destino Territorial</Label>
-              {gveMapping.length === 0 ? (
-                <>
-                  <Alert>
-                    <AlertDescription>
-                      Carregue a planilha de municípios/GVE nas configurações para
-                      preencher vínculos automáticos de destino.
-                    </AlertDescription>
-                  </Alert>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => navigate("/Settings")}
-                    >
-                      Abrir Configurações
-                    </Button>
+        {formData.destination_mode === "setor" ? (
+          <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+            <Label htmlFor="destination_sector" className="text-sm font-medium">
+              Setor
+            </Label>
+            <Input
+              id="destination_sector"
+              value={formData.destination_sector}
+              onChange={(e) => handleChange("destination_sector", e.target.value)}
+              placeholder="Ex.: Setor de Compras"
+            />
+            {formData.type === "saida" && (
+              <>
+                <Label className="text-sm font-medium">Finalidade no setor</Label>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="output_for_event"
+                      checked={formData.output_for_event}
+                      onCheckedChange={(checked) =>
+                        handleChange("output_for_event", Boolean(checked))
+                      }
+                    />
+                    <Label htmlFor="output_for_event" className="text-sm font-normal">
+                      Evento
+                    </Label>
                   </div>
-                  {formData.destination_mode === "municipio" ? (
-                    <>
-                      <Input
-                        id="destination_municipio_manual"
-                        value={formData.destination_municipio}
-                        onChange={(e) =>
-                          handleChange("destination_municipio", e.target.value)
-                        }
-                        placeholder="Digite o município manualmente"
-                      />
-                      <Input
-                        id="destination_gve_manual"
-                        value={formData.destination_gve}
-                        onChange={(e) =>
-                          handleChange("destination_gve", e.target.value)
-                        }
-                        placeholder="Informe o GVE manualmente (opcional)"
-                      />
-                    </>
-                  ) : (
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="output_for_training"
+                      checked={formData.output_for_training}
+                      onCheckedChange={(checked) =>
+                        handleChange("output_for_training", Boolean(checked))
+                      }
+                    />
+                    <Label
+                      htmlFor="output_for_training"
+                      className="text-sm font-normal"
+                    >
+                      Treinamento
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="output_for_distribution"
+                      checked={formData.output_for_distribution}
+                      onCheckedChange={(checked) =>
+                        handleChange("output_for_distribution", Boolean(checked))
+                      }
+                    />
+                    <Label
+                      htmlFor="output_for_distribution"
+                      className="text-sm font-normal"
+                    >
+                      Distribuição
+                    </Label>
+                  </div>
+                </div>
+                {!hasPurposeSelection && (
+                  <p className="text-xs text-slate-500">
+                    Selecione ao menos uma finalidade para a saída do setor.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        ) : formData.destination_mode === "outros" ? (
+          <div className="space-y-2">
+            <Label htmlFor="destination_other">
+              {formData.type === "entrada" ? "Origem (outros)" : "Destino (outros)"}
+            </Label>
+            <Input
+              id="destination_other"
+              value={formData.destination_other}
+              onChange={(e) => handleChange("destination_other", e.target.value)}
+              placeholder="Descreva livremente"
+            />
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label>
+              {formData.type === "entrada"
+                ? "Origem territorial"
+                : "Destino territorial"}
+            </Label>
+            {gveMapping.length === 0 ? (
+              <>
+                <Alert>
+                  <AlertDescription>
+                    Carregue a planilha de municípios/GVE nas configurações para
+                    preencher vínculos automáticos de destino.
+                  </AlertDescription>
+                </Alert>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => navigate("/Settings")}
+                  >
+                    Abrir Configurações
+                  </Button>
+                </div>
+                {formData.destination_mode === "municipio" ? (
+                  <>
                     <Input
-                      id="destination_gve_only_manual"
+                      id="destination_municipio_manual"
+                      value={formData.destination_municipio}
+                      onChange={(e) =>
+                        handleChange("destination_municipio", e.target.value)
+                      }
+                      placeholder="Digite o município manualmente"
+                    />
+                    <Input
+                      id="destination_gve_manual"
+                      value={formData.destination_gve}
+                      onChange={(e) =>
+                        handleChange("destination_gve", e.target.value)
+                      }
+                      placeholder="Informe o GVE manualmente (opcional)"
+                    />
+                  </>
+                ) : (
+                  <Input
+                    id="destination_gve_only_manual"
+                    value={formData.destination_gve}
+                    onChange={(e) => handleChange("destination_gve", e.target.value)}
+                    placeholder="Informe o GVE"
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                {formData.destination_mode === "municipio" ? (
+                  <>
+                    <Input
+                      value={formData.destination_municipio}
+                      onChange={(e) =>
+                        handleChange("destination_municipio", e.target.value)
+                      }
+                      placeholder="Digite o município"
+                      list="municipios-list"
+                    />
+                    <datalist id="municipios-list">
+                      {municipalityOptions.map((municipio) => (
+                        <option key={municipio} value={municipio} />
+                      ))}
+                    </datalist>
+                  </>
+                ) : (
+                  <>
+                    <Input
                       value={formData.destination_gve}
                       onChange={(e) => handleChange("destination_gve", e.target.value)}
-                      placeholder="Informe o GVE de destino"
+                      placeholder="Digite o GVE"
+                      list="gves-list"
                     />
-                  )}
-                </>
-              ) : (
-                <>
-                  {formData.destination_mode === "municipio" ? (
-                    <>
+                    <datalist id="gves-list">
+                      {gveOptions.map((gve) => (
+                        <option key={gve} value={gve} />
+                      ))}
+                    </datalist>
+                  </>
+                )}
+                {formData.destination_mode === "municipio" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>GVE Vinculado</Label>
                       <Input
-                        value={formData.destination_municipio}
-                        onChange={(e) =>
-                          handleChange("destination_municipio", e.target.value)
-                        }
-                        placeholder="Digite o município"
-                        list="municipios-list"
+                        value={linkedMunicipioGve || "-"}
+                        readOnly
+                        placeholder="GVE"
                       />
-                      <datalist id="municipios-list">
-                        {municipalityOptions.map((municipio) => (
-                          <option key={municipio} value={municipio} />
-                        ))}
-                      </datalist>
-                    </>
-                  ) : (
-                    <>
-                      <Input
-                        value={formData.destination_gve}
-                        onChange={(e) => handleChange("destination_gve", e.target.value)}
-                        placeholder="Digite o GVE de destino"
-                        list="gves-list"
-                      />
-                      <datalist id="gves-list">
-                        {gveOptions.map((gve) => (
-                          <option key={gve} value={gve} />
-                        ))}
-                      </datalist>
-                    </>
-                  )}
-                  {formData.destination_mode === "municipio" && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>GVE Vinculado</Label>
-                        <Input
-                          value={linkedMunicipioGve || "-"}
-                          readOnly
-                          placeholder="GVE"
-                        />
-                      </div>
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {formStatus && (
         <Alert className="border-red-200 bg-red-50">
