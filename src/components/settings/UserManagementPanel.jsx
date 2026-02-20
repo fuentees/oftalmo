@@ -43,7 +43,7 @@ const getReadableErrorMessage = (error, fallback) => {
     lowered.includes("jwt expired") ||
     lowered.includes("token inválido")
   ) {
-    return "Sua sessão expirou. Entre novamente no sistema e tente de novo.";
+    return "Não foi possível validar sua sessão no serviço de usuários. Atualize a página e tente novamente. Se persistir, entre novamente no sistema.";
   }
   if (
     lowered.includes("edge function returned a non-2xx status code") ||
@@ -66,7 +66,7 @@ const getReadableErrorMessage = (error, fallback) => {
 };
 
 export default function UserManagementPanel() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isLoadingAuth } = useAuth();
   const [users, setUsers] = React.useState([]);
   const [usersLoading, setUsersLoading] = React.useState(false);
   const [status, setStatus] = React.useState(null);
@@ -81,6 +81,7 @@ export default function UserManagementPanel() {
   });
 
   const loadUsers = React.useCallback(async () => {
+    if (isLoadingAuth || !currentUser?.email) return;
     setUsersLoading(true);
     try {
       const result = await dataClient.integrations.Core.ListManagedUsers();
@@ -94,11 +95,13 @@ export default function UserManagementPanel() {
     } finally {
       setUsersLoading(false);
     }
-  }, []);
+  }, [isLoadingAuth, currentUser?.email]);
 
   React.useEffect(() => {
+    if (isLoadingAuth) return;
+    if (!currentUser?.email) return;
     loadUsers();
-  }, [loadUsers]);
+  }, [loadUsers, isLoadingAuth, currentUser?.email]);
 
   const sortedUsers = React.useMemo(() => {
     return [...users].sort((a, b) => {
@@ -400,7 +403,7 @@ export default function UserManagementPanel() {
             type="button"
             variant="outline"
             onClick={loadUsers}
-            disabled={usersLoading}
+            disabled={usersLoading || isLoadingAuth}
           >
             {usersLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
