@@ -45,6 +45,23 @@ const getReadableErrorMessage = (error, fallback) => {
   ) {
     return "Sua sessão expirou. Entre novamente no sistema e tente de novo.";
   }
+  if (
+    lowered.includes("edge function returned a non-2xx status code") ||
+    lowered.includes("failed to send a request to the edge function") ||
+    lowered.includes("failed to fetch") ||
+    lowered.includes("fetch failed")
+  ) {
+    return "Não foi possível conectar ao serviço de usuários agora. Atualize a página e tente novamente em alguns segundos.";
+  }
+  if (
+    lowered.includes("user-admin") &&
+    (lowered.includes("not found") || lowered.includes("404"))
+  ) {
+    return "A função de gestão de usuários não foi encontrada no Supabase. Verifique o deploy da função user-admin.";
+  }
+  if (lowered.includes("não tem permissão") || lowered.includes("forbidden")) {
+    return "Você não tem permissão para gerenciar usuários.";
+  }
   return message || fallback;
 };
 
