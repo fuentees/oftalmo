@@ -532,6 +532,71 @@ const isInvalidJwtMessage = (value) => {
   );
 };
 
+const extractErrorMessage = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return extractErrorMessage(
+          parsed?.error ||
+            parsed?.message ||
+            parsed?.msg ||
+            parsed?.detail ||
+            parsed?.details
+        );
+      } catch (parseError) {
+        // mantém mensagem original quando não for JSON válido
+      }
+    }
+    return trimmed;
+  }
+  if (typeof value === "object") {
+    return extractErrorMessage(
+      value.error ||
+        value.message ||
+        value.msg ||
+        value.detail ||
+        value.details
+    );
+  }
+  return String(value || "").trim();
+};
+
+const readFunctionErrorContext = async (context) => {
+  if (!context) return { status: 0, detail: "" };
+  const status = Number(context?.status || 0);
+
+  const tryReadText = async (responseLike) => {
+    if (!responseLike || typeof responseLike.text !== "function") return "";
+    try {
+      const text = await responseLike.text();
+      return String(text || "").trim();
+    } catch (error) {
+      return "";
+    }
+  };
+
+  let rawText = "";
+  if (typeof context?.clone === "function") {
+    rawText = await tryReadText(context.clone());
+  } else {
+    rawText = await tryReadText(context);
+  }
+
+  if (!rawText) {
+    return { status, detail: "" };
+  }
+
+  const parsedMessage = extractErrorMessage(rawText);
+  if (parsedMessage) {
+    return { status, detail: parsedMessage };
+  }
+  return { status, detail: rawText };
+};
+
 const normalizeUserAdminInvokeError = async (error) => {
   const baseMessage = String(error?.message || "").trim();
   const lowered = baseMessage.toLowerCase();
@@ -539,32 +604,64 @@ const normalizeUserAdminInvokeError = async (error) => {
     lowered.includes("edge function returned a non-2xx status code") ||
     lowered.includes("non-2xx");
   const responseLike = error?.context;
-  if (!isNon2xx || !responseLike || typeof responseLike.clone !== "function") {
+  if (!isNon2xx) {
     return error;
   }
 
-  const status = Number(responseLike.status || 0);
-  let detail = "";
-  try {
-    const parsed = await responseLike.clone().json();
-    detail = String(parsed?.error || parsed?.message || "").trim();
-  } catch (parseJsonError) {
-    detail = "";
-  }
-  if (!detail) {
-    try {
-      detail = String(await responseLike.clone().text()).trim();
-    } catch (parseTextError) {
-      detail = "";
-    }
-  }
-  if (!detail) {
-    return error;
+  const fallbackStatus = Number(error?.status || 0);
+  const { status, detail } = await readFunctionErrorContext(responseLike);
+
+  if (detail) {
+    const normalized = new Error(detail);
+    normalized.status = status || fallbackStatus;
+    return normalized;
   }
 
-  const normalized = new Error(detail);
-  normalized.status = status || Number(error?.status || 0);
-  return normalized;
+  const parsedBaseMessage = extractErrorMessage(baseMessage);
+  if (
+    parsedBaseMessage &&
+    !parsedBaseMessage.toLowerCase().includes("edge function returned a non-2xx")
+  ) {
+    const normalized = new Error(parsedBaseMessage);
+    normalized.status = status || fallbackStatus;
+    return normalized;
+  }
+
+  if (status || fallbackStatus) {
+    const normalized = new Error(
+      `Falha ao comunicar com o serviço de usuários (status ${
+        status || fallbackStatus
+      }).`
+    );
+    normalized.status = status || fallbackStatus;
+    return normalized;
+  }
+
+  return error;
+};
+
+const normalizeKnownUserAdminError = (error) => {
+  const status = Number(error?.status || 0);
+  const normalizedMessage = extractErrorMessage(error?.message || "");
+  const lowered = normalizedMessage.toLowerCase();
+
+  if (lowered.includes("edge function returned a non-2xx status code")) {
+    const fallback = new Error(
+      `Falha ao comunicar com o serviço de usuários${
+        status ? ` (status ${status})` : ""
+      }.`
+    );
+    fallback.status = status;
+    return fallback;
+  }
+
+  if (normalizedMessage && normalizedMessage !== String(error?.message || "").trim()) {
+    const wrapped = new Error(normalizedMessage);
+    wrapped.status = status;
+    return wrapped;
+  }
+
+  return error;
 };
 
 const invokeUserAdminFunctionFallback = async (
@@ -618,7 +715,8 @@ const callUserAdminFunction = async (action, payload = {}) => {
       }
       return data || {};
     } catch (error) {
-      const normalizedError = await normalizeUserAdminInvokeError(error);
+      const non2xxNormalizedError = await normalizeUserAdminInvokeError(error);
+      const normalizedError = normalizeKnownUserAdminError(non2xxNormalizedError);
       lastError = normalizedError;
       const lowered = String(normalizedError?.message || "").toLowerCase();
       const isNotFound =
