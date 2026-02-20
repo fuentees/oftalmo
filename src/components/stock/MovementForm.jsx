@@ -10,7 +10,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useNavigate } from "react-router-dom";
-import { Loader2, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import {
+  Loader2,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  MapPin,
+  Briefcase,
+  Package,
+} from "lucide-react";
 import { format } from "date-fns";
 import {
   buildStockMovementNotes,
@@ -530,7 +537,9 @@ export default function MovementForm({
                 }
                 size="sm"
                 onClick={() => handleChange("destination_mode", "municipio")}
+                className="gap-1.5"
               >
+                <MapPin className="h-3.5 w-3.5" />
                 Município
               </Button>
               <Button
@@ -538,7 +547,9 @@ export default function MovementForm({
                 variant={formData.destination_mode === "gve" ? "default" : "outline"}
                 size="sm"
                 onClick={() => handleChange("destination_mode", "gve")}
+                className="gap-1.5"
               >
+                <Package className="h-3.5 w-3.5" />
                 GVE
               </Button>
               <Button
@@ -548,7 +559,9 @@ export default function MovementForm({
                 }
                 size="sm"
                 onClick={() => handleChange("destination_mode", "setor")}
+                className="gap-1.5"
               >
+                <Briefcase className="h-3.5 w-3.5" />
                 Setor
               </Button>
             </div>
