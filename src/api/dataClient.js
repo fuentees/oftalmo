@@ -841,6 +841,114 @@ const SetManagedUserRole = async ({ user_id, role }) =>
 const SetManagedUserActive = async ({ user_id, active }) =>
   callUserAdminFunction("set_active", { user_id, active });
 
+const normalizeManagedUserEmail = (value) => String(value || "").trim().toLowerCase();
+
+const resolveManagedUserName = (user) =>
+  String(user?.full_name || user?.name || user?.email || "").trim();
+
+const SyncProfessionalsFromManagedUsers = async (options = {}) => {
+  const sourceUsers = Array.isArray(options?.users) ? options.users : null;
+  const managedUsersResult = sourceUsers
+    ? { users: sourceUsers }
+    : await ListManagedUsers();
+  const rawUsers = Array.isArray(managedUsersResult?.users)
+    ? managedUsersResult.users
+    : [];
+
+  const managedUsers = [];
+  const seenEmails = new Set();
+  rawUsers.forEach((user) => {
+    const email = normalizeManagedUserEmail(user?.email);
+    if (!email || seenEmails.has(email)) return;
+    seenEmails.add(email);
+    managedUsers.push({
+      ...user,
+      email,
+      full_name: resolveManagedUserName(user),
+    });
+  });
+
+  if (managedUsers.length === 0) {
+    return {
+      total: 0,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+    };
+  }
+
+  const professionals = await list("professionals");
+  const professionalsByEmail = new Map();
+  (professionals || []).forEach((professional) => {
+    const professionalEmail = normalizeManagedUserEmail(professional?.email);
+    if (professionalEmail && !professionalsByEmail.has(professionalEmail)) {
+      professionalsByEmail.set(professionalEmail, professional);
+    }
+  });
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const managedUser of managedUsers) {
+    const email = normalizeManagedUserEmail(managedUser?.email);
+    if (!email) {
+      skipped += 1;
+      continue;
+    }
+
+    const managedName = resolveManagedUserName(managedUser);
+    const nextStatus = managedUser?.is_active === false ? "inativo" : "ativo";
+    const existing = professionalsByEmail.get(email);
+
+    if (!existing) {
+      const createdProfessional = await create("professionals", {
+        name: managedName || email,
+        email,
+        status: nextStatus,
+      });
+      if (createdProfessional?.id) {
+        professionalsByEmail.set(email, createdProfessional);
+      }
+      created += 1;
+      continue;
+    }
+
+    const updates = {};
+    const currentName = String(existing?.name || "").trim();
+    const currentEmail = normalizeManagedUserEmail(existing?.email);
+    const currentStatus = String(existing?.status || "").trim().toLowerCase();
+
+    if (!currentName && managedName) {
+      updates.name = managedName;
+    }
+    if (currentEmail !== email) {
+      updates.email = email;
+    }
+    if (currentStatus !== nextStatus) {
+      updates.status = nextStatus;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      skipped += 1;
+      continue;
+    }
+
+    const updatedProfessional = await update("professionals", existing.id, updates);
+    if (updatedProfessional?.id) {
+      professionalsByEmail.set(email, updatedProfessional);
+    }
+    updated += 1;
+  }
+
+  return {
+    total: managedUsers.length,
+    created,
+    updated,
+    skipped,
+  };
+};
+
 const getWebhookUrl = (value) => {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -1138,6 +1246,7 @@ export const dataClient = {
       CreateManagedUser,
       SetManagedUserRole,
       SetManagedUserActive,
+      SyncProfessionalsFromManagedUsers,
     },
   },
   appLogs: {

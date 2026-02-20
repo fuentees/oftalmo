@@ -1,4 +1,5 @@
 import React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { dataClient } from "@/api/dataClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,6 +68,7 @@ const getReadableErrorMessage = (error, fallback) => {
 
 export default function UserManagementPanel() {
   const { user: currentUser, isLoadingAuth } = useAuth();
+  const queryClient = useQueryClient();
   const [users, setUsers] = React.useState([]);
   const [usersLoading, setUsersLoading] = React.useState(false);
   const [status, setStatus] = React.useState(null);
@@ -87,6 +89,18 @@ export default function UserManagementPanel() {
       const result = await dataClient.integrations.Core.ListManagedUsers();
       const list = Array.isArray(result?.users) ? result.users : [];
       setUsers(list);
+
+      try {
+        const syncResult =
+          await dataClient.integrations.Core.SyncProfessionalsFromManagedUsers({
+            users: list,
+          });
+        if (Number(syncResult?.created || 0) > 0 || Number(syncResult?.updated || 0) > 0) {
+          queryClient.invalidateQueries({ queryKey: ["professionals"] });
+        }
+      } catch (syncError) {
+        // sincronização é complementar: não deve bloquear a gestão de usuários
+      }
     } catch (error) {
       setStatus({
         type: "error",
@@ -95,7 +109,7 @@ export default function UserManagementPanel() {
     } finally {
       setUsersLoading(false);
     }
-  }, [isLoadingAuth, currentUser?.email]);
+  }, [isLoadingAuth, currentUser?.email, queryClient]);
 
   React.useEffect(() => {
     if (isLoadingAuth) return;

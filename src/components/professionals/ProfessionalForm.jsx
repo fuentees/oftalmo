@@ -46,7 +46,10 @@ export default function ProfessionalForm({ professional, onClose }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    saveProfessional.mutate({ ...formData });
+    saveProfessional.mutate({
+      ...formData,
+      status: professional?.status || "ativo",
+    });
   };
 
   const handleChange = (field, value) => {
