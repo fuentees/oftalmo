@@ -537,6 +537,13 @@ const extractErrorMessage = (value) => {
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return "";
+    if (
+      /^<!doctype html/i.test(trimmed) ||
+      /^<html[\s>]/i.test(trimmed) ||
+      /^<body[\s>]/i.test(trimmed)
+    ) {
+      return "";
+    }
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
       try {
         const parsed = JSON.parse(trimmed);
@@ -594,7 +601,7 @@ const readFunctionErrorContext = async (context) => {
   if (parsedMessage) {
     return { status, detail: parsedMessage };
   }
-  return { status, detail: rawText };
+  return { status, detail: "" };
 };
 
 const normalizeUserAdminInvokeError = async (error) => {
