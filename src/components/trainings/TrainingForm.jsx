@@ -505,7 +505,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
 
   const activeProfessionals = useMemo(
     () => (professionals || []).filter(
-      (prof) => !prof.status || prof.status === "ativo"
+      (prof) => String(prof?.status || "").trim().toLowerCase() !== "inativo"
     ),
     [professionals]
   );

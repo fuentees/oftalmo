@@ -80,9 +80,11 @@ export default function EnrollmentManager({ training, professionals, existingPar
   });
 
   const existingProfessionalIds = existingParticipants.map((p) => p.professional_id);
+  const isProfessionalActive = (professional) =>
+    String(professional?.status || "").trim().toLowerCase() !== "inativo";
   
   const availableProfessionals = professionals.filter(
-    (p) => p.status === "ativo" && !existingProfessionalIds.includes(p.id)
+    (p) => isProfessionalActive(p) && !existingProfessionalIds.includes(p.id)
   );
 
   const statusColors = {
