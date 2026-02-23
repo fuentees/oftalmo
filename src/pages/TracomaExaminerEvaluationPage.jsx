@@ -67,6 +67,10 @@ import {
 } from "@/lib/supabaseErrors";
 import { formatDateSafe } from "@/lib/date";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
+import {
+  buildParticipantIdentity,
+  resolveTrainingParticipantMatch,
+} from "@/lib/trainingParticipantMatch";
 import { useNavigate } from "react-router-dom";
 
 const CHART_COLORS = ["#16a34a", "#f59e0b", "#2563eb", "#ef4444"];
@@ -237,6 +241,17 @@ export default function TracomaExaminerEvaluationPage() {
   });
   const training = trainingQuery.data;
   const trainingIsRepadronizacao = isRepadronizacaoTraining(training);
+
+  const enrolledParticipantsQuery = useQuery({
+    queryKey: ["tracoma-exam-enrolled-management", trainingId],
+    queryFn: () =>
+      dataClient.entities.TrainingParticipant.filter(
+        { training_id: trainingId },
+        "-enrollment_date"
+      ),
+    enabled: Boolean(trainingId),
+  });
+  const enrolledParticipants = enrolledParticipantsQuery.data || [];
 
   const allTrainingsQuery = useQuery({
     queryKey: ["tracoma-exam-training-list"],
@@ -595,6 +610,19 @@ export default function TracomaExaminerEvaluationPage() {
       if (!currentId) {
         throw new Error("Treinamento atual invalido para importacao.");
       }
+      if (enrolledParticipantsQuery.isLoading) {
+        throw new Error("Carregando inscritos do treinamento atual. Tente novamente.");
+      }
+      if (enrolledParticipantsQuery.isError) {
+        throw new Error(
+          "Nao foi possivel carregar os inscritos para vincular as respostas."
+        );
+      }
+      if (!enrolledParticipants.length) {
+        throw new Error(
+          "Nao ha inscritos neste treinamento para vincular as respostas importadas."
+        );
+      }
 
       let query = supabase.from("tracoma_exam_results").select("*");
       if (sourceId === "all") {
@@ -629,12 +657,26 @@ export default function TracomaExaminerEvaluationPage() {
           invalidCount += 1;
           return;
         }
+        const linkedParticipant = resolveTrainingParticipantMatch(enrolledParticipants, {
+          name: row?.participant_name,
+          email: row?.participant_email,
+          cpf: row?.participant_cpf,
+        });
+        if (!linkedParticipant) {
+          invalidCount += 1;
+          return;
+        }
+        const linkedIdentity = buildParticipantIdentity(linkedParticipant, {
+          name: row?.participant_name,
+          email: row?.participant_email,
+          cpf: row?.participant_cpf,
+        });
         const cloned = {
           training_id: currentId,
           training_title: training?.title || row?.training_title || null,
-          participant_name: row?.participant_name || "Formando sem nome",
-          participant_email: row?.participant_email || null,
-          participant_cpf: row?.participant_cpf || null,
+          participant_name: linkedIdentity.name,
+          participant_email: linkedIdentity.email,
+          participant_cpf: linkedIdentity.cpf,
           total_questions: Number(row?.total_questions || TRACOMA_TOTAL_QUESTIONS),
           total_matches: Number(row?.total_matches || 0),
           matrix_a: Number(row?.matrix_a || 0),
@@ -711,6 +753,19 @@ export default function TracomaExaminerEvaluationPage() {
       if (!currentTrainingId) {
         throw new Error("Treinamento atual invalido para importacao.");
       }
+      if (enrolledParticipantsQuery.isLoading) {
+        throw new Error("Carregando inscritos do treinamento atual. Tente novamente.");
+      }
+      if (enrolledParticipantsQuery.isError) {
+        throw new Error(
+          "Nao foi possivel carregar os inscritos para vincular as respostas."
+        );
+      }
+      if (!enrolledParticipants.length) {
+        throw new Error(
+          "Nao ha inscritos neste treinamento para vincular as respostas importadas."
+        );
+      }
 
       const rows = await parseSpreadsheetRows(importSpreadsheetFile);
       if (!Array.isArray(rows) || rows.length === 0) {
@@ -750,6 +805,39 @@ export default function TracomaExaminerEvaluationPage() {
           }
           return;
         }
+
+        const participantEmail = String(
+          pickImportValue(normalizedRow, [
+            "participant_email",
+            "email",
+            "e_mail",
+            "mail",
+          ]) || ""
+        )
+          .trim()
+          .toLowerCase();
+        const participantCpf = normalizeDigits(
+          pickImportValue(normalizedRow, ["participant_cpf", "cpf", "cpf_formando"])
+        );
+        const linkedParticipant = resolveTrainingParticipantMatch(enrolledParticipants, {
+          name: participantName,
+          email: participantEmail,
+          cpf: participantCpf,
+        });
+        if (!linkedParticipant) {
+          invalidCount += 1;
+          if (invalidPreview.length < 5) {
+            invalidPreview.push(
+              `Linha ${lineNumber}: formando nao encontrado entre os inscritos deste treinamento.`
+            );
+          }
+          return;
+        }
+        const linkedIdentity = buildParticipantIdentity(linkedParticipant, {
+          name: participantName,
+          email: participantEmail,
+          cpf: participantCpf,
+        });
 
         const rawKeyCode = pickImportValue(normalizedRow, [
           "answer_key_code",
@@ -801,26 +889,12 @@ export default function TracomaExaminerEvaluationPage() {
           return;
         }
 
-        const participantEmail = String(
-          pickImportValue(normalizedRow, [
-            "participant_email",
-            "email",
-            "e_mail",
-            "mail",
-          ]) || ""
-        )
-          .trim()
-          .toLowerCase();
-        const participantCpf = normalizeDigits(
-          pickImportValue(normalizedRow, ["participant_cpf", "cpf", "cpf_formando"])
-        );
-
         const importedRow = {
           training_id: currentTrainingId,
           training_title: training?.title || null,
-          participant_name: participantName,
-          participant_email: participantEmail || null,
-          participant_cpf: participantCpf || null,
+          participant_name: linkedIdentity.name,
+          participant_email: linkedIdentity.email,
+          participant_cpf: linkedIdentity.cpf,
           total_questions: computed.totalQuestions,
           total_matches: computed.totalMatches,
           matrix_a: computed.matrix.a,
@@ -1688,12 +1762,40 @@ export default function TracomaExaminerEvaluationPage() {
                 </div>
               </div>
 
+              {enrolledParticipantsQuery.isError && (
+                <Alert className="border-amber-200 bg-amber-50">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800">
+                    Nao foi possivel carregar os inscritos para vincular importacoes.
+                    Atualize a pagina e tente novamente.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {!enrolledParticipantsQuery.isLoading &&
+                !enrolledParticipantsQuery.isError &&
+                enrolledParticipants.length === 0 && (
+                  <Alert className="border-amber-200 bg-amber-50">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-800">
+                      Este treinamento nao possui inscritos. As importacoes ficam
+                      bloqueadas ate haver inscricoes vinculadas.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
               <div className="flex justify-end gap-2 flex-wrap">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setImportDialogOpen(true)}
-                  disabled={importSourceTrainings.length === 0 || importPastResults.isPending}
+                  disabled={
+                    importSourceTrainings.length === 0 ||
+                    importPastResults.isPending ||
+                    enrolledParticipantsQuery.isLoading ||
+                    enrolledParticipantsQuery.isError ||
+                    enrolledParticipants.length === 0
+                  }
                 >
                   <Upload className="h-4 w-4 mr-2" />
                   Importar respostas de treinamentos passados
@@ -1702,7 +1804,12 @@ export default function TracomaExaminerEvaluationPage() {
                   type="button"
                   variant="outline"
                   onClick={handleOpenImportSpreadsheetDialog}
-                  disabled={answerKeyCollections.length === 0}
+                  disabled={
+                    answerKeyCollections.length === 0 ||
+                    enrolledParticipantsQuery.isLoading ||
+                    enrolledParticipantsQuery.isError ||
+                    enrolledParticipants.length === 0
+                  }
                 >
                   <Upload className="h-4 w-4 mr-2" />
                   Importar formulario preenchido (Excel)

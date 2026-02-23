@@ -33,9 +33,10 @@ import {
   isMissingSupabaseTableError,
 } from "@/lib/supabaseErrors";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
-
-const normalizeCpf = (value) => String(value || "").replace(/\D/g, "");
-const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+import {
+  buildParticipantIdentity,
+  resolveTrainingParticipantMatch,
+} from "@/lib/trainingParticipantMatch";
 
 const formatNumber = (value, digits = 3) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
@@ -65,6 +66,17 @@ export default function TracomaExaminerTest() {
     },
     enabled: Boolean(trainingId),
   });
+
+  const enrolledParticipantsQuery = useQuery({
+    queryKey: ["tracoma-exam-enrolled-public", trainingId],
+    queryFn: () =>
+      dataClient.entities.TrainingParticipant.filter(
+        { training_id: trainingId },
+        "-enrollment_date"
+      ),
+    enabled: Boolean(trainingId),
+  });
+  const enrolledParticipants = enrolledParticipantsQuery.data || [];
 
   const answerKeyQuery = useQuery({
     queryKey: ["tracoma-exam-answer-key-public"],
@@ -135,6 +147,35 @@ export default function TracomaExaminerTest() {
           selectedAnswerKey?.error || "Gabarito do teste selecionado nao disponivel."
         );
       }
+      if (enrolledParticipantsQuery.isLoading) {
+        throw new Error("Carregando lista de inscritos. Tente novamente em instantes.");
+      }
+      if (enrolledParticipantsQuery.isError) {
+        throw new Error(
+          "Nao foi possivel validar os inscritos deste treinamento. Atualize a pagina e tente de novo."
+        );
+      }
+      if (!enrolledParticipants.length) {
+        throw new Error(
+          "Este treinamento ainda nao possui inscritos para vincular o resultado."
+        );
+      }
+
+      const linkedParticipant = resolveTrainingParticipantMatch(enrolledParticipants, {
+        name: cleanName,
+        email: participantEmail,
+        cpf: participantCpf,
+      });
+      if (!linkedParticipant) {
+        throw new Error(
+          "Formando nao encontrado entre os inscritos deste treinamento. Use o nome/CPF/e-mail cadastrado na inscricao."
+        );
+      }
+      const linkedIdentity = buildParticipantIdentity(linkedParticipant, {
+        name: cleanName,
+        email: participantEmail,
+        cpf: participantCpf,
+      });
 
       const candidateAnswers = [];
       for (let question = 1; question <= TRACOMA_TOTAL_QUESTIONS; question += 1) {
@@ -156,9 +197,9 @@ export default function TracomaExaminerTest() {
       const payload = {
         training_id: trainingId,
         training_title: training.title || null,
-        participant_name: cleanName,
-        participant_email: normalizeEmail(participantEmail) || null,
-        participant_cpf: normalizeCpf(participantCpf) || null,
+        participant_name: linkedIdentity.name,
+        participant_email: linkedIdentity.email,
+        participant_cpf: linkedIdentity.cpf,
         total_questions: computed.totalQuestions,
         total_matches: computed.totalMatches,
         matrix_a: computed.matrix.a,
@@ -183,13 +224,15 @@ export default function TracomaExaminerTest() {
         computed,
         created,
         answerKeyCode: selectedAnswerKey.code,
+        participantName: linkedIdentity.name,
       };
     },
     onSuccess: (data) => {
       setSubmissionResult({
         ...data.computed,
         createdAt: data.created?.created_at || new Date().toISOString(),
-        participantName: data.created?.participant_name || participantName,
+        participantName:
+          data.participantName || data.created?.participant_name || participantName,
         answerKeyCode: data.answerKeyCode || selectedAnswerKey?.code || "-",
       });
     },
@@ -444,6 +487,28 @@ export default function TracomaExaminerTest() {
           </Alert>
         )}
 
+        {enrolledParticipantsQuery.isError && (
+          <Alert className="border-red-200 bg-red-50">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-800">
+              {getSupabaseErrorMessage(enrolledParticipantsQuery.error) ||
+                "Nao foi possivel carregar os inscritos deste treinamento."}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!enrolledParticipantsQuery.isLoading &&
+          !enrolledParticipantsQuery.isError &&
+          enrolledParticipants.length === 0 && (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800">
+                Nenhum inscrito encontrado neste treinamento. O resultado so pode ser
+                enviado quando houver inscricao vinculada.
+              </AlertDescription>
+            </Alert>
+          )}
+
         <Card>
           <CardHeader>
             <CardTitle>Planilha de preenchimento (0/1)</CardTitle>
@@ -528,7 +593,13 @@ export default function TracomaExaminerTest() {
 
             <Button
               className="w-full"
-              disabled={saveResult.isPending || blockByKeyIssue}
+              disabled={
+                saveResult.isPending ||
+                blockByKeyIssue ||
+                enrolledParticipantsQuery.isLoading ||
+                enrolledParticipantsQuery.isError ||
+                enrolledParticipants.length === 0
+              }
               onClick={() => saveResult.mutate()}
             >
               {saveResult.isPending ? (
