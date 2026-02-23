@@ -118,6 +118,100 @@ export default function Trainings() {
     queryFn: () => dataClient.entities.TrainingParticipant.list(),
   });
 
+  const normalizeComparisonText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const normalizeDateKey = (value) => {
+    if (!value) return "";
+    const text = String(value).trim();
+    if (!text) return "";
+    const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return "";
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTrainingDateKeys = (training) => {
+    const keys = new Set();
+    if (Array.isArray(training?.dates)) {
+      training.dates.forEach((item) => {
+        const dateValue = typeof item === "object" ? item?.date : item;
+        const normalized = normalizeDateKey(dateValue);
+        if (normalized) keys.add(normalized);
+      });
+    }
+    const baseDate = normalizeDateKey(training?.date);
+    if (baseDate) keys.add(baseDate);
+    const startDate = normalizeDateKey(training?.start_date);
+    if (startDate) keys.add(startDate);
+    return Array.from(keys);
+  };
+
+  const participantsByTrainingMap = React.useMemo(() => {
+    const map = new Map();
+    const trainingsById = new Map();
+    const trainingsByTitle = new Map();
+
+    (trainings || []).forEach((training) => {
+      const trainingId = String(training?.id || "").trim();
+      if (trainingId) {
+        trainingsById.set(trainingId, training);
+        map.set(trainingId, []);
+      }
+      const titleKey = normalizeComparisonText(training?.title);
+      if (!titleKey) return;
+      if (!trainingsByTitle.has(titleKey)) {
+        trainingsByTitle.set(titleKey, []);
+      }
+      trainingsByTitle.get(titleKey).push(training);
+    });
+
+    const resolveParticipantTraining = (participant) => {
+      const participantTrainingId = String(participant?.training_id || "").trim();
+      if (participantTrainingId && trainingsById.has(participantTrainingId)) {
+        return trainingsById.get(participantTrainingId);
+      }
+
+      const titleKey = normalizeComparisonText(participant?.training_title);
+      if (!titleKey) return null;
+      const candidates = trainingsByTitle.get(titleKey) || [];
+      if (!candidates.length) return null;
+      if (candidates.length === 1) return candidates[0];
+
+      const participantDate = normalizeDateKey(participant?.training_date);
+      if (!participantDate) return candidates[0];
+      return (
+        candidates.find((training) =>
+          getTrainingDateKeys(training).includes(participantDate)
+        ) || candidates[0]
+      );
+    };
+
+    (participants || []).forEach((participant) => {
+      const matchedTraining = resolveParticipantTraining(participant);
+      const trainingId = String(matchedTraining?.id || "").trim();
+      if (!trainingId) return;
+      if (!map.has(trainingId)) map.set(trainingId, []);
+      map.get(trainingId).push(participant);
+    });
+
+    return map;
+  }, [participants, trainings]);
+
+  const getTrainingParticipants = (training) => {
+    const trainingId = String(training?.id || "").trim();
+    if (!trainingId) return [];
+    return participantsByTrainingMap.get(trainingId) || [];
+  };
+
   React.useEffect(() => {
     if (orphanCleanupDoneRef.current) return;
     if (isLoading) return;
@@ -172,27 +266,6 @@ export default function Trainings() {
       if (!trainingId) {
         throw new Error("Treinamento inválido para exclusão.");
       }
-
-      const normalizeComparisonText = (value) =>
-        String(value ?? "")
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase()
-          .trim();
-
-      const normalizeDateKey = (value) => {
-        if (!value) return "";
-        const text = String(value).trim();
-        if (!text) return "";
-        const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
-        if (match) return match[1];
-        const parsed = new Date(text);
-        if (Number.isNaN(parsed.getTime())) return "";
-        const year = parsed.getFullYear();
-        const month = String(parsed.getMonth() + 1).padStart(2, "0");
-        const day = String(parsed.getDate()).padStart(2, "0");
-        return `${year}-${month}-${day}`;
-      };
 
       const expectedDateKeys = new Set();
       if (Array.isArray(trainingToDelete?.dates)) {
@@ -723,16 +796,25 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       .map((year) => ({ value: String(year), label: String(year) }));
   }, [trainings, currentYearValue]);
 
-  const filteredTrainings = trainings.filter((t) => {
-    const effectiveStatus = getTrainingStatus(t);
-    const matchesSearch = t.title?.toLowerCase().includes(search.toLowerCase()) ||
-                          t.coordinator?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || effectiveStatus === statusFilter;
-    const matchesType = typeFilter === "all" || t.type === typeFilter;
-    const trainingYear = getTrainingYear(t);
-    const matchesYear = yearFilter === "all" || String(trainingYear || "") === yearFilter;
-    return matchesSearch && matchesStatus && matchesType && matchesYear;
-  });
+  const filteredTrainings = trainings
+    .filter((t) => {
+      const effectiveStatus = getTrainingStatus(t);
+      const matchesSearch =
+        t.title?.toLowerCase().includes(search.toLowerCase()) ||
+        t.coordinator?.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === "all" || effectiveStatus === statusFilter;
+      const matchesType = typeFilter === "all" || t.type === typeFilter;
+      const trainingYear = getTrainingYear(t);
+      const matchesYear = yearFilter === "all" || String(trainingYear || "") === yearFilter;
+      return matchesSearch && matchesStatus && matchesType && matchesYear;
+    })
+    .map((training) => {
+      const liveCount = getTrainingParticipants(training).length;
+      return {
+        ...training,
+        participants_count: liveCount,
+      };
+    });
 
   const statusColors = {
     agendado: "bg-blue-100 text-blue-700",
@@ -1221,7 +1303,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           </DialogHeader>
           <TrainingDetails
             training={selectedTraining}
-            participants={participants.filter(p => p.training_id === selectedTraining?.id)}
+            participants={getTrainingParticipants(selectedTraining)}
           />
         </DialogContent>
       </Dialog>
@@ -1235,7 +1317,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
               {selectedTraining && (
                 <SendLinkButton 
                   training={selectedTraining}
-                  participants={participants.filter(p => p.training_id === selectedTraining?.id)}
+                  participants={getTrainingParticipants(selectedTraining)}
                 />
               )}
             </DialogTitle>
@@ -1243,7 +1325,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           <EnrollmentManager
             training={selectedTraining}
             professionals={professionals}
-            existingParticipants={participants.filter(p => p.training_id === selectedTraining?.id)}
+            existingParticipants={getTrainingParticipants(selectedTraining)}
             onClose={() => {
               setShowEnrollment(false);
               setSelectedTraining(null);
@@ -1260,7 +1342,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           </DialogHeader>
           <AttendanceControl
             training={selectedTraining}
-            participants={participants.filter(p => p.training_id === selectedTraining?.id)}
+            participants={getTrainingParticipants(selectedTraining)}
             onClose={() => {
               setShowAttendance(false);
               setSelectedTraining(null);
@@ -1278,7 +1360,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           {selectedTraining ? (
             <CertificateManager
               training={selectedTraining}
-              participants={participants.filter(p => p.training_id === selectedTraining?.id)}
+              participants={getTrainingParticipants(selectedTraining)}
               onClose={() => {
                 setShowCertificates(false);
                 setSelectedTraining(null);
