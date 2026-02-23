@@ -29,6 +29,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { parseDateSafe, formatDateSafe } from "@/lib/date";
+import { isRepadronizacaoTraining } from "@/lib/trainingType";
 
 export default function AttendanceControl({ training, participants, onClose }) {
   const [search, setSearch] = useState("");
@@ -44,6 +45,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
   );
   const [generatedLink, setGeneratedLink] = useState(null);
   const queryClient = useQueryClient();
+  const isRepadTraining = isRepadronizacaoTraining(training);
 
   const formatDate = (value, pattern = "dd/MM/yyyy") => {
     const formatted = formatDateSafe(value, pattern);
@@ -84,11 +86,14 @@ export default function AttendanceControl({ training, participants, onClose }) {
       const presentCount = updatedRecords.filter(r => r.status === "presente").length;
       const percentage = Math.round((presentCount / totalDates) * 100);
 
-      return dataClient.entities.TrainingParticipant.update(participantId, {
+      const payload = {
         attendance_records: updatedRecords,
         attendance_percentage: percentage,
-        approved: percentage >= 75
-      });
+      };
+      if (!isRepadTraining) {
+        payload.approved = percentage >= 75;
+      }
+      return dataClient.entities.TrainingParticipant.update(participantId, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["participants"] });
@@ -129,11 +134,14 @@ export default function AttendanceControl({ training, participants, onClose }) {
           ).length;
           const percentage = Math.round((presentCount / totalDates) * 100);
 
-          return dataClient.entities.TrainingParticipant.update(participant.id, {
+          const payload = {
             attendance_records: updatedRecords,
             attendance_percentage: percentage,
-            approved: percentage >= 75,
-          });
+          };
+          if (!isRepadTraining) {
+            payload.approved = percentage >= 75;
+          }
+          return dataClient.entities.TrainingParticipant.update(participant.id, payload);
         })
       );
     },
@@ -435,7 +443,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
                           <span className="font-medium">
                             {participant.attendance_percentage || 0}%
                           </span>
-                          {participant.approved && (
+                          {!isRepadTraining && participant.approved && (
                             <CheckCircle className="h-4 w-4 text-green-600" />
                           )}
                         </div>

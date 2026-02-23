@@ -42,6 +42,78 @@ const buildTrainingDays = (dates) => {
   return dates.join(", ");
 };
 
+const toNumeric = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const normalized = String(value).replace(",", ".").trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const formatDecimal = (value, digits) => {
+  if (!Number.isFinite(value)) return "";
+  return Number(value).toFixed(digits).replace(".", ",");
+};
+
+const resolveParticipantScore = (participant) => {
+  const rawKappa = toNumeric(
+    participant?.certificate_kappa ?? participant?.kappa ?? null
+  );
+  const rawScore = toNumeric(
+    participant?.certificate_score ??
+      participant?.grade ??
+      participant?.nota ??
+      participant?.score ??
+      null
+  );
+
+  let kappa = Number.isFinite(rawKappa) ? rawKappa : null;
+  let score = Number.isFinite(rawScore) ? rawScore : null;
+
+  if (kappa !== null && kappa >= 0 && kappa <= 100 && score === null && kappa > 1) {
+    score = kappa;
+    kappa = null;
+  }
+
+  if (kappa === null && score !== null && score >= 0 && score <= 1) {
+    kappa = score;
+    score = null;
+  }
+
+  if (kappa !== null) {
+    kappa = clamp(kappa, 0, 1);
+  }
+
+  if (score !== null) {
+    score = clamp(score, 0, 100);
+  }
+
+  if (score === null && kappa !== null) {
+    score = kappa * 100;
+  }
+
+  if (kappa === null && score !== null) {
+    kappa = score / 100;
+  }
+
+  const scoreLabel = score === null ? "" : formatDecimal(score, 1);
+  const kappaLabel = kappa === null ? "" : formatDecimal(kappa, 3);
+  const scoreText = scoreLabel
+    ? `Nota final (Kappa x100): ${scoreLabel}%`
+    : "";
+
+  return {
+    kappa,
+    score,
+    kappaLabel,
+    scoreLabel,
+    scoreText,
+  };
+};
+
 const interpolateText = (text, data) =>
   text.replace(/\{\{(\w+)\}\}/g, (_, key) =>
     data[key] !== undefined && data[key] !== null ? String(data[key]) : ""
@@ -335,6 +407,7 @@ export const generateParticipantCertificate = (participant, training, templateOv
   const trainingPeriod = buildTrainingPeriod(trainingDates);
   const trainingDays = buildTrainingDays(trainingDates);
   const participantDate = trainingDates[0] || formatDateSafe(training?.dates?.[0]?.date);
+  const scoreInfo = resolveParticipantScore(participant);
 
   const textData = {
     nome: participant.professional_name || "",
@@ -350,6 +423,10 @@ export const generateParticipantCertificate = (participant, training, templateOv
     aula: "",
     periodo_treinamento: trainingPeriod,
     dias_treinamento: trainingDays,
+    nota: scoreInfo.scoreLabel,
+    nota_percentual: scoreInfo.scoreLabel ? `${scoreInfo.scoreLabel}%` : "",
+    kappa: scoreInfo.kappaLabel,
+    nota_texto: scoreInfo.scoreText,
   };
 
   // Title
@@ -520,6 +597,10 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
     aula: monitor.lecture || "",
     periodo_treinamento: trainingPeriod,
     dias_treinamento: trainingDays,
+    nota: "",
+    nota_percentual: "",
+    kappa: "",
+    nota_texto: "",
   };
 
   // Title
@@ -690,6 +771,10 @@ export const generateSpeakerCertificate = (speaker, training, templateOverride) 
     aula: speaker.lecture || "",
     periodo_treinamento: trainingPeriod,
     dias_treinamento: trainingDays,
+    nota: "",
+    nota_percentual: "",
+    kappa: "",
+    nota_texto: "",
   };
 
   // Title

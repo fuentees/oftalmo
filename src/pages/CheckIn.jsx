@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatDateSafe } from "@/lib/date";
+import { isRepadronizacaoTraining } from "@/lib/trainingType";
 
 export default function CheckIn() {
   const [rgPrefix, setRgPrefix] = useState("");
@@ -98,15 +99,19 @@ export default function CheckIn() {
       }
 
       const training = await dataClient.entities.Training.filter({ id: linkData.training_id });
-      const totalDates = training[0]?.dates?.length || 1;
+      const selectedTraining = training[0] || null;
+      const totalDates = selectedTraining?.dates?.length || 1;
       const presentCount = updatedRecords.filter(r => r.status === "presente").length;
       const percentage = Math.round((presentCount / totalDates) * 100);
-
-      await dataClient.entities.TrainingParticipant.update(participant.id, {
+      const payload = {
         attendance_records: updatedRecords,
         attendance_percentage: percentage,
-        approved: percentage >= 75,
-      });
+      };
+      if (!isRepadronizacaoTraining(selectedTraining)) {
+        payload.approved = percentage >= 75;
+      }
+
+      await dataClient.entities.TrainingParticipant.update(participant.id, payload);
 
       await dataClient.entities.AttendanceLink.update(linkData.id, {
         check_ins_count: (linkData.check_ins_count || 0) + 1,

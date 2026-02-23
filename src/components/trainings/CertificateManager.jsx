@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import React, { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { format, addMonths } from "date-fns";
 import { generateParticipantCertificate, generateMonitorCertificate, generateSpeakerCertificate } from "./CertificateGenerator";
@@ -23,6 +23,18 @@ import {
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
 import { resolveCertificateTemplate } from "@/lib/certificateTemplate";
+import { isRepadronizacaoTraining } from "@/lib/trainingType";
+import { resolveTrainingParticipantMatch } from "@/lib/trainingParticipantMatch";
+
+const REPAD_APPROVAL_KAPPA = 0.7;
+const toNumeric = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(String(value).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+const formatScore = (value, digits = 1) =>
+  Number.isFinite(value) ? Number(value).toFixed(digits).replace(".", ",") : "-";
 
 export default function CertificateManager({ training, participants = [], onClose }) {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
@@ -32,6 +44,77 @@ export default function CertificateManager({ training, participants = [], onClos
   const queryClient = useQueryClient();
   const emailTemplate = loadCertificateEmailTemplate();
   const safeParticipants = Array.isArray(participants) ? participants : [];
+  const isRepadTraining = isRepadronizacaoTraining(training);
+
+  const tracomaResultsQuery = useQuery({
+    queryKey: ["certificateManagerTracomaResults", training?.id],
+    queryFn: () =>
+      dataClient.entities.TracomaExamResult.filter(
+        { training_id: training?.id },
+        "-created_at"
+      ),
+    enabled: Boolean(training?.id && isRepadTraining),
+  });
+
+  const repadPerformanceByParticipantId = useMemo(() => {
+    if (!isRepadTraining) return new Map();
+    const map = new Map();
+    const rows = Array.isArray(tracomaResultsQuery.data)
+      ? tracomaResultsQuery.data
+      : [];
+
+    rows.forEach((row) => {
+      const participant = resolveTrainingParticipantMatch(safeParticipants, {
+        name: row?.participant_name,
+        email: row?.participant_email,
+        rg: row?.participant_cpf,
+      });
+      if (!participant?.id) return;
+
+      const rawKappa = toNumeric(row?.kappa);
+      const kappa =
+        rawKappa === null ? null : clamp(rawKappa, 0, 1);
+      const score = kappa === null ? null : kappa * 100;
+      const approvedByStatus =
+        String(row?.aptitude_status || "").trim().toLowerCase() === "apto";
+      const approvedByKappa =
+        Number.isFinite(kappa) && kappa >= REPAD_APPROVAL_KAPPA;
+      const approved = approvedByStatus || approvedByKappa;
+
+      const current = map.get(participant.id) || {
+        hasResult: false,
+        approved: false,
+        bestKappa: null,
+        bestScore: null,
+      };
+
+      const bestKappa =
+        Number.isFinite(current.bestKappa) && Number.isFinite(kappa)
+          ? Math.max(current.bestKappa, kappa)
+          : Number.isFinite(current.bestKappa)
+          ? current.bestKappa
+          : Number.isFinite(kappa)
+          ? kappa
+          : null;
+      const bestScore =
+        Number.isFinite(current.bestScore) && Number.isFinite(score)
+          ? Math.max(current.bestScore, score)
+          : Number.isFinite(current.bestScore)
+          ? current.bestScore
+          : Number.isFinite(score)
+          ? score
+          : null;
+
+      map.set(participant.id, {
+        hasResult: true,
+        approved: current.approved || approved,
+        bestKappa,
+        bestScore,
+      });
+    });
+
+    return map;
+  }, [isRepadTraining, safeParticipants, tracomaResultsQuery.data]);
 
   const resolveEmailContent = (emailData) => {
     const subject = interpolateEmailTemplate(emailTemplate.subject, emailData).trim();
@@ -73,7 +156,7 @@ export default function CertificateManager({ training, participants = [], onClos
 
       setProcessing(true);
       const results = [];
-      const templateOverride = await resolveCertificateTemplate();
+      const templateOverride = await resolveCertificateTemplate(training);
 
       for (const monitor of training.monitors) {
         if (!monitor.name || !monitor.email) continue;
@@ -95,7 +178,7 @@ export default function CertificateManager({ training, participants = [], onClos
           };
 
           // Upload PDF
-          const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
+          await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
           let warning = null;
           try {
@@ -154,7 +237,7 @@ export default function CertificateManager({ training, participants = [], onClos
 
       setProcessing(true);
       const results = [];
-      const templateOverride = await resolveCertificateTemplate();
+      const templateOverride = await resolveCertificateTemplate(training);
 
       for (const speaker of training.speakers) {
         if (!speaker.name || !speaker.email) continue;
@@ -235,12 +318,30 @@ export default function CertificateManager({ training, participants = [], onClos
       );
 
       const results = [];
-      const templateOverride = await resolveCertificateTemplate();
+      const templateOverride = await resolveCertificateTemplate(training);
 
       for (const participant of participantsToIssue) {
         try {
+          const repadPerformance = repadPerformanceByParticipantId.get(participant.id);
+          const participantWithMetrics =
+            isRepadTraining && repadPerformance
+              ? {
+                  ...participant,
+                  certificate_kappa: repadPerformance.bestKappa,
+                  certificate_score: repadPerformance.bestScore,
+                  grade:
+                    participant.grade ??
+                    (Number.isFinite(repadPerformance.bestScore)
+                      ? formatScore(repadPerformance.bestScore, 1)
+                      : participant.grade),
+                }
+              : participant;
           // Generate PDF
-          const pdf = generateParticipantCertificate(participant, training, templateOverride);
+          const pdf = generateParticipantCertificate(
+            participantWithMetrics,
+            training,
+            templateOverride
+          );
           const pdfBlob = pdf.output('blob');
           const pdfFileName = `certificado-${participant.professional_name}.pdf`;
           const pdfFile = new File([pdfBlob], pdfFileName, { type: 'application/pdf' });
@@ -308,6 +409,9 @@ export default function CertificateManager({ training, participants = [], onClos
             certificate_sent_date: new Date().toISOString(),
             certificate_url: file_url,
             validity_date: validityDate,
+            ...(isRepadTraining && Number.isFinite(repadPerformance?.bestScore)
+              ? { grade: formatScore(repadPerformance.bestScore, 1) }
+              : {}),
           });
 
           results.push({ name: participant.professional_name, success: true, warnings });
@@ -360,9 +464,14 @@ export default function CertificateManager({ training, participants = [], onClos
     }
   };
 
-  // Participantes com presença registrada e frequência satisfatória
+  // Em repadronização, certificado depende de nota (kappa x100).
+  // Nos demais treinamentos, mantém regra por frequência.
   const eligibleParticipants = safeParticipants.filter((p) => {
     if (p.enrollment_status === "cancelado") return false;
+    if (isRepadTraining) {
+      const status = repadPerformanceByParticipantId.get(p.id);
+      return Boolean(status?.approved);
+    }
     const hasRecords =
       Array.isArray(p.attendance_records) && p.attendance_records.length > 0;
     if (!hasRecords) return false;
@@ -402,7 +511,28 @@ export default function CertificateManager({ training, participants = [], onClos
         <p className="text-xs text-slate-500 mt-1">
           Ao emitir, o certificado é enviado por e-mail automaticamente para quem tem e-mail cadastrado.
         </p>
+        <p className="text-xs text-slate-500 mt-1">
+          {isRepadTraining
+            ? "Critério de aprovação: nota do teste (Kappa x100 >= 70)."
+            : "Critério de aprovação: frequência mínima de 75%."}
+        </p>
       </div>
+
+      {isRepadTraining && tracomaResultsQuery.isLoading && (
+        <Alert className="border-blue-200 bg-blue-50">
+          <AlertDescription className="text-blue-800">
+            Carregando notas de repadronização para validar aprovados...
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {isRepadTraining && tracomaResultsQuery.isError && (
+        <Alert className="border-amber-200 bg-amber-50">
+          <AlertDescription className="text-amber-800">
+            Não foi possível carregar as notas de repadronização. Atualize a página para tentar novamente.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {result && (
         <Alert className={result.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
@@ -425,6 +555,7 @@ export default function CertificateManager({ training, participants = [], onClos
               </TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Email</TableHead>
+              {isRepadTraining && <TableHead>Nota (Kappa x100)</TableHead>}
               <TableHead>Status</TableHead>
               <TableHead>Certificado</TableHead>
             </TableRow>
@@ -432,7 +563,10 @@ export default function CertificateManager({ training, participants = [], onClos
           <TableBody>
             {eligibleParticipants.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-slate-500">
+                <TableCell
+                  colSpan={isRepadTraining ? 6 : 5}
+                  className="text-center py-8 text-slate-500"
+                >
                   Nenhum participante elegível para certificado
                 </TableCell>
               </TableRow>
@@ -456,8 +590,19 @@ export default function CertificateManager({ training, participants = [], onClos
                       <span className="text-red-600 text-sm">Sem email</span>
                     )}
                   </TableCell>
+                  {isRepadTraining && (
+                    <TableCell>
+                      {(() => {
+                        const metrics = repadPerformanceByParticipantId.get(participant.id);
+                        if (!Number.isFinite(metrics?.bestScore)) return "-";
+                        return `${formatScore(metrics.bestScore, 1)}%`;
+                      })()}
+                    </TableCell>
+                  )}
                   <TableCell>
-                    <Badge className="bg-green-100 text-green-700">Aprovado</Badge>
+                    <Badge className="bg-green-100 text-green-700">
+                      {isRepadTraining ? "Aprovado por nota" : "Aprovado"}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     {participant.certificate_issued ? (

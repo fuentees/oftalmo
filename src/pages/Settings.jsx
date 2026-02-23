@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,10 +47,12 @@ import { format } from "date-fns";
 import {
   DEFAULT_CERTIFICATE_TEMPLATE,
   loadCertificateTemplate,
-  loadCertificateTemplateFromStorage,
   resetCertificateTemplate,
   saveCertificateTemplate,
   saveCertificateTemplateToStorage,
+  saveCertificateTemplateForTraining,
+  resetCertificateTemplateForTraining,
+  resolveCertificateTemplate,
 } from "@/lib/certificateTemplate";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
@@ -62,6 +64,8 @@ import {
 } from "@/lib/certificateEmailTemplate";
 import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
 
+const CERTIFICATE_SCOPE_GLOBAL = "__global__";
+
 export default function Settings() {
   const [selectedColor, setSelectedColor] = useState("blue");
   const [mappingStatus, setMappingStatus] = useState(null);
@@ -69,6 +73,9 @@ export default function Settings() {
   const [isRunningOrphanCleanup, setIsRunningOrphanCleanup] = useState(false);
   const [certificateTemplate, setCertificateTemplate] = useState(
     DEFAULT_CERTIFICATE_TEMPLATE
+  );
+  const [certificateScope, setCertificateScope] = useState(
+    CERTIFICATE_SCOPE_GLOBAL
   );
   const [certificateStatus, setCertificateStatus] = useState(null);
   const [emailSettings, setEmailSettings] = useState({
@@ -87,6 +94,10 @@ export default function Settings() {
   const bodyTextRef = useRef(null);
   const queryClient = useQueryClient();
   const { gveMapping, isLoading: isGveMappingLoading } = useGveMapping();
+  const { data: trainings = [] } = useQuery({
+    queryKey: ["trainings"],
+    queryFn: () => dataClient.entities.Training.list("-date"),
+  });
 
   useEffect(() => {
     const savedColor = localStorage.getItem("theme-color") || "blue";
@@ -95,18 +106,24 @@ export default function Settings() {
   }, []);
 
   useEffect(() => {
-    const template = loadCertificateTemplate();
-    setCertificateTemplate(template);
     let active = true;
-    loadCertificateTemplateFromStorage().then((remote) => {
-      if (!active || !remote) return;
-      setCertificateTemplate(remote);
-      saveCertificateTemplate(remote);
-    });
+    const loadTemplateByScope = async () => {
+      const trainingScope =
+        certificateScope === CERTIFICATE_SCOPE_GLOBAL ? null : certificateScope;
+      try {
+        const template = await resolveCertificateTemplate(trainingScope);
+        if (!active) return;
+        setCertificateTemplate(template || loadCertificateTemplate());
+      } catch (error) {
+        if (!active) return;
+        setCertificateTemplate(loadCertificateTemplate());
+      }
+    };
+    loadTemplateByScope();
     return () => {
       active = false;
     };
-  }, []);
+  }, [certificateScope]);
 
   useEffect(() => {
     try {
@@ -137,6 +154,30 @@ export default function Settings() {
     { name: "Rosa", value: "pink", classes: "bg-pink-900 border-pink-800 bg-pink-500 text-pink-100 hover:bg-pink-800 bg-pink-600 hover:bg-pink-700" },
     { name: "Ciano", value: "cyan", classes: "bg-cyan-900 border-cyan-800 bg-cyan-500 text-cyan-100 hover:bg-cyan-800 bg-cyan-600 hover:bg-cyan-700" },
   ];
+
+  const certificateTrainingOptions = useMemo(
+    () =>
+      (trainings || [])
+        .map((training) => ({
+          id: String(training?.id || "").trim(),
+          title: String(training?.title || "").trim() || "Treinamento sem título",
+          date: training?.date || "",
+        }))
+        .filter((training) => training.id)
+        .sort((a, b) =>
+          a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" })
+        ),
+    [trainings]
+  );
+
+  const selectedCertificateTraining = useMemo(
+    () =>
+      certificateScope === CERTIFICATE_SCOPE_GLOBAL
+        ? null
+        : certificateTrainingOptions.find((item) => item.id === certificateScope) ||
+          null,
+    [certificateScope, certificateTrainingOptions]
+  );
 
   const applyColor = (colorValue) => {
     // Just save to localStorage, reload will apply it via layout
@@ -684,24 +725,70 @@ export default function Settings() {
       updatedAt: new Date().toISOString(),
     };
     setCertificateTemplate(payload);
+    const scopedTrainingId =
+      certificateScope === CERTIFICATE_SCOPE_GLOBAL ? "" : certificateScope;
+    const scopeLabel = selectedCertificateTraining?.title || "treinamento selecionado";
+
+    if (scopedTrainingId) {
+      try {
+        await saveCertificateTemplateForTraining(scopedTrainingId, payload);
+        setCertificateStatus({
+          type: "success",
+          message: `Modelo de certificado salvo para "${scopeLabel}".`,
+        });
+      } catch (error) {
+        setCertificateTemplate(loadCertificateTemplate());
+        setCertificateStatus({
+          type: "error",
+          message:
+            error?.message ||
+            `Modelo salvo localmente para "${scopeLabel}", mas falhou ao sincronizar no Supabase.`,
+        });
+      }
+      return;
+    }
+
     saveCertificateTemplate(payload);
     try {
       await saveCertificateTemplateToStorage(payload);
       setCertificateStatus({
         type: "success",
-        message: "Modelo de certificado salvo com sucesso.",
+        message: "Modelo padrão de certificado salvo com sucesso.",
       });
     } catch (error) {
       setCertificateStatus({
         type: "error",
         message:
           error?.message ||
-          "Modelo salvo localmente, mas falhou ao sincronizar no Supabase.",
+          "Modelo padrão salvo localmente, mas falhou ao sincronizar no Supabase.",
       });
     }
   };
 
   const handleResetCertificate = async () => {
+    const scopedTrainingId =
+      certificateScope === CERTIFICATE_SCOPE_GLOBAL ? "" : certificateScope;
+    const scopeLabel = selectedCertificateTraining?.title || "treinamento selecionado";
+
+    if (scopedTrainingId) {
+      try {
+        const fallback = await resetCertificateTemplateForTraining(scopedTrainingId);
+        setCertificateTemplate(fallback);
+        setCertificateStatus({
+          type: "success",
+          message: `Modelo específico removido para "${scopeLabel}". Agora será usado o modelo padrão.`,
+        });
+      } catch (error) {
+        setCertificateStatus({
+          type: "error",
+          message:
+            error?.message ||
+            `Modelo local removido para "${scopeLabel}", mas falhou ao sincronizar no Supabase.`,
+        });
+      }
+      return;
+    }
+
     const reset = {
       ...resetCertificateTemplate(),
       updatedAt: new Date().toISOString(),
@@ -729,10 +816,14 @@ export default function Settings() {
       .trim();
 
   const handlePreviewPdf = () => {
+    const previewScore = Number(String(previewData.nota || "").replace(",", "."));
+    const previewKappa = Number(String(previewData.kappa || "").replace(",", "."));
     const participant = {
       professional_name: previewData.nome,
       professional_rg: normalizeRgValue(previewData.rg),
       professional_email: "exemplo@email.com",
+      certificate_score: Number.isFinite(previewScore) ? previewScore : null,
+      certificate_kappa: Number.isFinite(previewKappa) ? previewKappa : null,
     };
     const training = {
       title: previewData.treinamento,
@@ -818,6 +909,10 @@ export default function Settings() {
     aula: "Aula de Exemplo",
     periodo_treinamento: "de 10/02/2026 a 12/02/2026",
     dias_treinamento: "10/02/2026, 11/02/2026, 12/02/2026",
+    nota: "82,0",
+    nota_percentual: "82,0%",
+    kappa: "0,820",
+    nota_texto: "Nota final (Kappa x100): 82,0%",
   };
 
   const emailPreviewData = buildCertificateEmailData({
@@ -1439,16 +1534,59 @@ export default function Settings() {
                     Modelo de Certificado
                   </CardTitle>
                   <CardDescription>
-                    Configure textos, assinaturas e logos do certificado padrão.
+                    Configure textos, assinaturas e logos. Você pode salvar um
+                    modelo padrão geral ou um modelo específico para cada
+                    treinamento.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Escopo do modelo</Label>
+                  <Select
+                    value={certificateScope}
+                    onValueChange={(value) => {
+                      setCertificateScope(value);
+                      setCertificateStatus(null);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o escopo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={CERTIFICATE_SCOPE_GLOBAL}>
+                        Modelo padrão (todos os treinamentos)
+                      </SelectItem>
+                      {certificateTrainingOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-slate-500">
+                    Selecione um treinamento para criar um modelo exclusivo
+                    dele. Sem modelo específico, o sistema usa o padrão geral.
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-slate-50 p-3 text-sm">
+                  <p className="font-medium text-slate-700">Modelo em edição</p>
+                  <p className="text-slate-600 mt-1">
+                    {selectedCertificateTraining
+                      ? `Treinamento: ${selectedCertificateTraining.title}`
+                      : "Padrão geral (aplicado a todos os treinamentos)."}
+                  </p>
+                </div>
+              </div>
+
               <Alert>
                 <AlertDescription>
                   Variáveis disponíveis: {"{{nome}}"}, {"{{rg}}"}, {"{{treinamento}}"},
                   {"{{carga_horaria}}"}, {"{{data}}"}, {"{{entidade}}"},
                   {"{{coordenador}}"}, {"{{instrutor}}"}, {"{{funcao}}"},
-                  {"{{tipo_certificado}}"}, {"{{aula}}"}, {"{{periodo_treinamento}}"} e {"{{dias_treinamento}}"}.
+                  {"{{tipo_certificado}}"}, {"{{aula}}"}, {"{{periodo_treinamento}}"},
+                  {"{{dias_treinamento}}"}, {"{{nota}}"}, {"{{nota_percentual}}"},
+                  {"{{kappa}}"} e {"{{nota_texto}}"}.
                 </AlertDescription>
               </Alert>
 
@@ -1879,13 +2017,19 @@ export default function Settings() {
               </Accordion>
 
               <div className="flex flex-wrap gap-2">
-                <Button onClick={handleSaveCertificate}>Salvar modelo</Button>
+                <Button onClick={handleSaveCertificate}>
+                  {selectedCertificateTraining
+                    ? "Salvar modelo deste treinamento"
+                    : "Salvar modelo padrão"}
+                </Button>
                 <Button variant="outline" onClick={handlePreviewPdf}>
                   <Eye className="h-4 w-4 mr-2" />
                   Visualizar PDF
                 </Button>
                 <Button variant="outline" onClick={handleResetCertificate}>
-                  Restaurar padrão
+                  {selectedCertificateTraining
+                    ? "Remover modelo deste treinamento"
+                    : "Restaurar padrão"}
                 </Button>
               </div>
 

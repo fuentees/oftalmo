@@ -22,6 +22,7 @@ import {
 import { Search, UserPlus, Trash2, Loader2 } from "lucide-react";
 import { addMonths, format } from "date-fns";
 import { parseDateSafe } from "@/lib/date";
+import { isRepadronizacaoTraining } from "@/lib/trainingType";
 
 export default function ParticipantsManager({ training, professionals, existingParticipants, onClose }) {
   const [search, setSearch] = useState("");
@@ -36,6 +37,7 @@ export default function ParticipantsManager({ training, professionals, existingP
       }
     }), {})
   );
+  const isRepadTraining = isRepadronizacaoTraining(training);
 
   const queryClient = useQueryClient();
 
@@ -63,7 +65,7 @@ export default function ParticipantsManager({ training, professionals, existingP
           professional_email: professional?.email,
           professional_sector: professional?.sector,
           attendance: "presente",
-          approved: true,
+          approved: isRepadTraining ? false : true,
           validity_date: validityDate,
         };
       });
@@ -244,10 +246,16 @@ export default function ParticipantsManager({ training, professionals, existingP
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <Checkbox
-                        checked={participantData[participant.professional_id]?.approved !== false}
-                        onCheckedChange={(v) => handleUpdateParticipant(participant, "approved", v)}
-                      />
+                      {isRepadTraining ? (
+                        <span className="text-xs text-slate-500">
+                          Definido por nota (Kappa)
+                        </span>
+                      ) : (
+                        <Checkbox
+                          checked={participantData[participant.professional_id]?.approved !== false}
+                          onCheckedChange={(v) => handleUpdateParticipant(participant, "approved", v)}
+                        />
+                      )}
                     </TableCell>
                     <TableCell>
                       <Button

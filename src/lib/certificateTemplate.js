@@ -1,9 +1,13 @@
 import { supabase } from "@/api/supabaseClient";
 
 export const CERTIFICATE_TEMPLATE_KEY = "certificateTemplate";
+export const CERTIFICATE_TEMPLATE_BY_TRAINING_KEY =
+  "certificateTemplateByTraining";
 const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
 const CERTIFICATE_TEMPLATE_STORAGE_PATH = "certificates/certificate-template.json";
+const CERTIFICATE_TEMPLATE_BY_TRAINING_STORAGE_PATH =
+  "certificates/certificate-template-by-training.json";
 
 export const DEFAULT_CERTIFICATE_TEMPLATE = {
   headerLines: [
@@ -13,7 +17,7 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
   title: "CERTIFICADO",
   entityName: "Centro de Oftalmologia Sanitária",
   body:
-    "Certificamos que {{nome}} {{rg}}, participou do treinamento \"{{treinamento}}\" promovido por {{entidade}}, com carga horária de {{carga_horaria}} horas, realizado em {{data}}.",
+    "Certificamos que {{nome}} {{rg}}, participou do treinamento \"{{treinamento}}\" promovido por {{entidade}}, com carga horária de {{carga_horaria}} horas, realizado em {{data}}. {{nota_texto}}",
   footer: "São Paulo, {{data}}",
   signature1: {
     source: "coordinator",
@@ -127,6 +131,33 @@ const mergeTemplate = (template) => {
   return cleanLegacyLogos(merged);
 };
 
+const normalizeTrainingTemplateId = (value) =>
+  String(
+    typeof value === "object" && value
+      ? value.id || value.training_id || ""
+      : value || ""
+  ).trim();
+
+const mergeTemplateMap = (templateMap) => {
+  const rows = Object.entries(templateMap || {});
+  return rows.reduce((acc, [key, value]) => {
+    const normalizedKey = normalizeTrainingTemplateId(key);
+    if (!normalizedKey || !value || typeof value !== "object") return acc;
+    acc[normalizedKey] = mergeTemplate(value);
+    return acc;
+  }, {});
+};
+
+const stableStringifyMap = (templateMap) => {
+  const sorted = Object.keys(templateMap || {})
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = templateMap[key];
+      return acc;
+    }, {});
+  return JSON.stringify(sorted);
+};
+
 const getTemplateUpdatedAt = (template) => {
   const value = template?.updatedAt;
   if (!value) return null;
@@ -181,11 +212,34 @@ export const loadCertificateTemplate = () => {
   }
 };
 
+const loadCertificateTemplateMap = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = window.localStorage.getItem(
+      CERTIFICATE_TEMPLATE_BY_TRAINING_KEY
+    );
+    if (!stored) return {};
+    const parsed = JSON.parse(stored);
+    return mergeTemplateMap(parsed);
+  } catch (error) {
+    return {};
+  }
+};
+
 export const saveCertificateTemplate = (template) => {
   if (typeof window === "undefined") return;
   const payload = mergeTemplate(template);
   window.localStorage.setItem(
     CERTIFICATE_TEMPLATE_KEY,
+    JSON.stringify(payload)
+  );
+};
+
+const saveCertificateTemplateMap = (templateMap) => {
+  if (typeof window === "undefined") return;
+  const payload = mergeTemplateMap(templateMap);
+  window.localStorage.setItem(
+    CERTIFICATE_TEMPLATE_BY_TRAINING_KEY,
     JSON.stringify(payload)
   );
 };
@@ -205,6 +259,21 @@ export const loadCertificateTemplateFromStorage = async () => {
   }
 };
 
+const loadCertificateTemplateMapFromStorage = async () => {
+  try {
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .download(CERTIFICATE_TEMPLATE_BY_TRAINING_STORAGE_PATH);
+    if (error || !data) return null;
+    const text = await data.text();
+    if (!text) return null;
+    const parsed = JSON.parse(text);
+    return mergeTemplateMap(parsed);
+  } catch (error) {
+    return null;
+  }
+};
+
 export const saveCertificateTemplateToStorage = async (template) => {
   const payload = mergeTemplate(template);
   const content = JSON.stringify(payload);
@@ -219,7 +288,36 @@ export const saveCertificateTemplateToStorage = async (template) => {
   return true;
 };
 
-export const resolveCertificateTemplate = async () => {
+const saveCertificateTemplateMapToStorage = async (templateMap) => {
+  const payload = mergeTemplateMap(templateMap);
+  const content = JSON.stringify(payload);
+  const blob = new Blob([content], { type: "application/json" });
+  const file = new File([blob], "certificate-template-by-training.json", {
+    type: "application/json",
+  });
+  const { error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(CERTIFICATE_TEMPLATE_BY_TRAINING_STORAGE_PATH, file, {
+      upsert: true,
+    });
+  if (error) throw error;
+  return true;
+};
+
+const mergeTemplateMapsByFreshness = (localMap, remoteMap) => {
+  const local = mergeTemplateMap(localMap);
+  const remote = mergeTemplateMap(remoteMap);
+  const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  const merged = {};
+  keys.forEach((key) => {
+    const { template } = pickBestTemplate(local[key], remote[key]);
+    if (!template) return;
+    merged[key] = mergeTemplate(template);
+  });
+  return merged;
+};
+
+const resolveGlobalCertificateTemplate = async () => {
   const local = loadCertificateTemplate();
   const remote = await loadCertificateTemplateFromStorage();
   const { template, source } = pickBestTemplate(local, remote);
@@ -235,6 +333,105 @@ export const resolveCertificateTemplate = async () => {
     }
   }
   return template;
+};
+
+const resolveCertificateTemplateMap = async () => {
+  const localMap = loadCertificateTemplateMap();
+  const remoteMap = await loadCertificateTemplateMapFromStorage();
+
+  if (!remoteMap) {
+    if (Object.keys(localMap).length > 0) {
+      try {
+        await saveCertificateTemplateMapToStorage(localMap);
+      } catch (error) {
+        // Falha ao sincronizar não deve impedir uso local.
+      }
+    }
+    return localMap;
+  }
+
+  const mergedMap = mergeTemplateMapsByFreshness(localMap, remoteMap);
+  saveCertificateTemplateMap(mergedMap);
+
+  if (stableStringifyMap(mergedMap) !== stableStringifyMap(remoteMap)) {
+    try {
+      await saveCertificateTemplateMapToStorage(mergedMap);
+    } catch (error) {
+      // Falha ao sincronizar não deve impedir uso local.
+    }
+  }
+
+  return mergedMap;
+};
+
+export const saveCertificateTemplateForTraining = async (
+  trainingId,
+  template
+) => {
+  const normalizedId = normalizeTrainingTemplateId(trainingId);
+  if (!normalizedId) {
+    throw new Error("Treinamento inválido para salvar modelo.");
+  }
+
+  const payload = mergeTemplate(template);
+  const localMap = loadCertificateTemplateMap();
+  const nextMap = {
+    ...localMap,
+    [normalizedId]: payload,
+  };
+  saveCertificateTemplateMap(nextMap);
+
+  try {
+    const remoteMap = await loadCertificateTemplateMapFromStorage();
+    const mergedMap = mergeTemplateMapsByFreshness(nextMap, remoteMap || {});
+    mergedMap[normalizedId] = payload;
+    saveCertificateTemplateMap(mergedMap);
+    await saveCertificateTemplateMapToStorage(mergedMap);
+  } catch (error) {
+    throw error;
+  }
+
+  return payload;
+};
+
+export const resetCertificateTemplateForTraining = async (trainingId) => {
+  const normalizedId = normalizeTrainingTemplateId(trainingId);
+  if (!normalizedId) {
+    return loadCertificateTemplate();
+  }
+
+  const localMap = loadCertificateTemplateMap();
+  const nextMap = { ...localMap };
+  delete nextMap[normalizedId];
+  saveCertificateTemplateMap(nextMap);
+
+  try {
+    const remoteMap = await loadCertificateTemplateMapFromStorage();
+    const mergedMap = mergeTemplateMapsByFreshness(nextMap, remoteMap || {});
+    delete mergedMap[normalizedId];
+    saveCertificateTemplateMap(mergedMap);
+    await saveCertificateTemplateMapToStorage(mergedMap);
+  } catch (error) {
+    throw error;
+  }
+
+  return loadCertificateTemplate();
+};
+
+export const resolveCertificateTemplate = async (trainingScope = null) => {
+  const globalTemplate = await resolveGlobalCertificateTemplate();
+  const normalizedId = normalizeTrainingTemplateId(trainingScope);
+  if (!normalizedId) {
+    return globalTemplate;
+  }
+
+  const templateMap = await resolveCertificateTemplateMap();
+  const scopedTemplate = templateMap[normalizedId];
+  if (!scopedTemplate) {
+    return globalTemplate;
+  }
+
+  return mergeTemplate(scopedTemplate);
 };
 
 export const resetCertificateTemplate = () => {

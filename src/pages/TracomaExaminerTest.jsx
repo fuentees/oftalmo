@@ -179,6 +179,23 @@ export default function TracomaExaminerTest() {
       };
 
       const created = await dataClient.entities.TracomaExamResult.create(payload);
+
+      const previousGrade = Number(linkedParticipant?.grade);
+      const currentScore = Number((computed.kappa * 100).toFixed(1));
+      const persistedGrade = Number.isFinite(previousGrade)
+        ? Math.max(previousGrade, currentScore)
+        : currentScore;
+      const approvedNow =
+        String(computed.aptitudeStatus || "").trim().toLowerCase() === "apto" ||
+        linkedParticipant?.approved === true;
+
+      await dataClient.entities.TrainingParticipant.update(linkedParticipant.id, {
+        approved: approvedNow,
+        grade: Number.isFinite(persistedGrade)
+          ? persistedGrade.toFixed(1)
+          : linkedParticipant?.grade || null,
+      });
+
       return {
         computed,
         created,
