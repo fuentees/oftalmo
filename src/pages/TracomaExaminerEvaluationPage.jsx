@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
@@ -8,6 +8,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -29,6 +31,7 @@ import {
   ClipboardCheck,
   Copy,
   Loader2,
+  Plus,
   Search,
 } from "lucide-react";
 import {
@@ -78,6 +81,12 @@ const matrixChartFromResult = (result) => [
   { label: "d (0/0)", total: Number(result?.matrix_d || 0) },
 ];
 
+const buildQuestionColumns = (totalQuestions = TRACOMA_TOTAL_QUESTIONS) => {
+  const items = Array.from({ length: totalQuestions }, (_, index) => index + 1);
+  const half = Math.ceil(totalQuestions / 2);
+  return [items.slice(0, half), items.slice(half)];
+};
+
 export default function TracomaExaminerEvaluationPage() {
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
@@ -92,6 +101,11 @@ export default function TracomaExaminerEvaluationPage() {
   const [monitorPersonFilter, setMonitorPersonFilter] = useState("");
   const [selectedMaskKeyCode, setSelectedMaskKeyCode] = useState("");
   const [selectedResult, setSelectedResult] = useState(null);
+  const [newMaskDialogOpen, setNewMaskDialogOpen] = useState(false);
+  const [newMaskCode, setNewMaskCode] = useState("");
+  const [newMaskAnswers, setNewMaskAnswers] = useState({});
+  const [maskActionStatus, setMaskActionStatus] = useState(null);
+  const queryClient = useQueryClient();
 
   const trainingQuery = useQuery({
     queryKey: ["tracoma-exam-training-management", trainingId],
@@ -194,6 +208,25 @@ export default function TracomaExaminerEvaluationPage() {
       String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base" })
     );
   }, [answerKeyCollections, results]);
+
+  const existingAnswerKeyCodes = useMemo(
+    () => new Set(answerKeyCollections.map((item) => item.code)),
+    [answerKeyCollections]
+  );
+
+  const maskQuestionColumns = useMemo(
+    () => buildQuestionColumns(TRACOMA_TOTAL_QUESTIONS),
+    []
+  );
+
+  const newMaskAnsweredCount = useMemo(
+    () =>
+      Array.from({ length: TRACOMA_TOTAL_QUESTIONS }, (_, index) => index + 1).filter(
+        (questionNumber) =>
+          normalizeBinaryAnswer(newMaskAnswers[questionNumber]) !== null
+      ).length,
+    [newMaskAnswers]
+  );
 
   const filteredHistory = useMemo(() => {
     const searchTerm = String(search || "").trim().toLowerCase();
@@ -421,6 +454,75 @@ export default function TracomaExaminerEvaluationPage() {
     },
   ];
 
+  const createAnswerKeyModel = useMutation({
+    mutationFn: async () => {
+      const normalizedCode = normalizeAnswerKeyCode(newMaskCode);
+      if (!normalizedCode) {
+        throw new Error("Informe o codigo do novo teste (ex.: E2_RETAKE).");
+      }
+      if (normalizedCode === "ALL") {
+        throw new Error("Codigo de teste invalido.");
+      }
+      if (existingAnswerKeyCodes.has(normalizedCode)) {
+        throw new Error(`Ja existe um gabarito com o codigo "${normalizedCode}".`);
+      }
+
+      const expectedAnswers = [];
+      for (let i = 1; i <= TRACOMA_TOTAL_QUESTIONS; i += 1) {
+        const answer = normalizeBinaryAnswer(newMaskAnswers[i]);
+        if (answer === null) {
+          throw new Error(
+            `A questao ${i} esta em branco ou invalida. Preencha com 0 ou 1.`
+          );
+        }
+        expectedAnswers.push(answer);
+      }
+
+      const payload = expectedAnswers.map((answer, index) => ({
+        answer_key_code: normalizedCode,
+        question_number: index + 1,
+        expected_answer: answer,
+        is_locked: true,
+      }));
+
+      await dataClient.entities.TracomaExamAnswerKey.bulkCreate(payload);
+      return normalizedCode;
+    },
+    onSuccess: async (createdCode) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["tracoma-exam-answer-key-management"],
+      });
+      setSelectedMaskKeyCode(createdCode);
+      setMaskActionStatus({
+        type: "success",
+        message: `Modelo "${createdCode}" criado com sucesso.`,
+      });
+      setNewMaskDialogOpen(false);
+      setNewMaskCode("");
+      setNewMaskAnswers({});
+    },
+    onError: (error) => {
+      setMaskActionStatus({
+        type: "error",
+        message: error?.message || "Nao foi possivel criar o novo modelo.",
+      });
+    },
+  });
+
+  const openNewMaskDialog = () => {
+    setMaskActionStatus(null);
+    setNewMaskCode("");
+    setNewMaskAnswers({});
+    setNewMaskDialogOpen(true);
+  };
+
+  const handleMaskAnswerChange = (questionNumber, value) => {
+    setNewMaskAnswers((prev) => ({
+      ...prev,
+      [questionNumber]: normalizeBinaryAnswer(value),
+    }));
+  };
+
   const handleCopyLink = async () => {
     if (!testLink) return;
     try {
@@ -531,6 +633,33 @@ export default function TracomaExaminerEvaluationPage() {
         </TabsList>
 
         <TabsContent value="mask" className="space-y-4 mt-6">
+          <div className="flex flex-wrap gap-3">
+            <Button type="button" onClick={openNewMaskDialog}>
+              <Plus className="h-4 w-4 mr-2" />
+              Novo modelo (padrão ouro)
+            </Button>
+          </div>
+
+          {maskActionStatus && (
+            <Alert
+              className={
+                maskActionStatus.type === "error"
+                  ? "border-red-200 bg-red-50"
+                  : "border-green-200 bg-green-50"
+              }
+            >
+              <AlertDescription
+                className={
+                  maskActionStatus.type === "error"
+                    ? "text-red-800"
+                    : "text-green-800"
+                }
+              >
+                {maskActionStatus.message}
+              </AlertDescription>
+            </Alert>
+          )}
+
           {answerKeyLoadError && (
             <Alert className="border-red-200 bg-red-50">
               <AlertCircle className="h-4 w-4 text-red-600" />
@@ -563,8 +692,8 @@ export default function TracomaExaminerEvaluationPage() {
             <>
               <Alert>
                 <AlertDescription>
-                  Gabarito bloqueado para edicao no sistema. Para incluir novo teste
-                  (ex.: E2_RETAKE), use script SQL.
+                  Gabarito bloqueado para edicao no sistema. Para novo teste,
+                  utilize o botao "Novo modelo (padrao ouro)".
                 </AlertDescription>
               </Alert>
 
@@ -853,6 +982,116 @@ export default function TracomaExaminerEvaluationPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={newMaskDialogOpen} onOpenChange={setNewMaskDialogOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Novo modelo de padrão ouro (50 questões)</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-mask-code">Código do teste</Label>
+              <Input
+                id="new-mask-code"
+                value={newMaskCode}
+                onChange={(event) => setNewMaskCode(event.target.value)}
+                placeholder="Ex.: E2_RETAKE"
+              />
+              <p className="text-xs text-slate-500">
+                Use um código único para identificar este gabarito.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <p className="text-sm text-slate-600">
+                Respondidas:{" "}
+                <span className="font-semibold">
+                  {newMaskAnsweredCount}/{TRACOMA_TOTAL_QUESTIONS}
+                </span>
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {maskQuestionColumns.map((column, columnIndex) => (
+                <div key={`mask-column-${columnIndex}`} className="space-y-2">
+                  {column.map((questionNumber) => {
+                    const selectedValue =
+                      newMaskAnswers[questionNumber] === 0 ||
+                      newMaskAnswers[questionNumber] === 1
+                        ? String(newMaskAnswers[questionNumber])
+                        : "";
+                    return (
+                      <div
+                        key={`new-mask-question-${questionNumber}`}
+                        className="rounded-md border bg-white px-3 py-2"
+                      >
+                        <div className="grid grid-cols-[1fr_auto] items-center gap-3">
+                          <p className="text-sm font-medium">
+                            Questão {String(questionNumber).padStart(2, "0")}
+                          </p>
+                          <RadioGroup
+                            value={selectedValue}
+                            onValueChange={(value) =>
+                              handleMaskAnswerChange(questionNumber, value)
+                            }
+                            className="flex items-center gap-2"
+                          >
+                            <div className="flex items-center gap-1 rounded border px-2 py-1">
+                              <RadioGroupItem
+                                id={`new-mask-q-${questionNumber}-0`}
+                                value="0"
+                              />
+                              <Label
+                                htmlFor={`new-mask-q-${questionNumber}-0`}
+                                className="font-normal"
+                              >
+                                0
+                              </Label>
+                            </div>
+                            <div className="flex items-center gap-1 rounded border px-2 py-1">
+                              <RadioGroupItem
+                                id={`new-mask-q-${questionNumber}-1`}
+                                value="1"
+                              />
+                              <Label
+                                htmlFor={`new-mask-q-${questionNumber}-1`}
+                                className="font-normal"
+                              >
+                                1
+                              </Label>
+                            </div>
+                          </RadioGroup>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setNewMaskDialogOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => createAnswerKeyModel.mutate()}
+                disabled={createAnswerKeyModel.isPending}
+              >
+                {createAnswerKeyModel.isPending && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                Salvar novo modelo
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(selectedResult)} onOpenChange={() => setSelectedResult(null)}>
         <DialogContent className="max-w-4xl">
