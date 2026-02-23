@@ -359,9 +359,16 @@ export default function TracomaExaminerTest() {
                 <p className="text-2xl font-semibold">{submissionResult.totalMatches}</p>
               </div>
               <div className="rounded-lg border p-3">
-                <p className="text-slate-500">Concordancia observada</p>
+                <p className="text-slate-500">Kappa (valor principal)</p>
                 <p className="text-2xl font-semibold">
-                  {formatNumber(submissionResult.rounded.poPercent, 2)}%
+                  {formatNumber(
+                    submissionResult.rounded?.kappa ?? submissionResult.kappa,
+                    3
+                  )}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {formatNumber(Number(submissionResult.kappa) * 100, 1)}% (kappa x
+                  100)
                 </p>
               </div>
               <div className="rounded-lg border p-3 sm:col-span-2">
