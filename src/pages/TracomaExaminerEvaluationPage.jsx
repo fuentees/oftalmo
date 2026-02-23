@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { supabase } from "@/api/supabaseClient";
+import jsPDF from "jspdf";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,11 +32,13 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Copy,
+  Download,
   Loader2,
   Pencil,
   Plus,
   Search,
   Trash2,
+  Upload,
 } from "lucide-react";
 import {
   Bar,
@@ -91,6 +94,18 @@ const buildQuestionColumns = (totalQuestions = TRACOMA_TOTAL_QUESTIONS) => {
   return [items.slice(0, half), items.slice(half)];
 };
 
+const normalizeIdentityText = (value) => String(value || "").trim().toLowerCase();
+
+const normalizeDigits = (value) => String(value || "").replace(/\D/g, "");
+
+const toSafeFileName = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
 export default function TracomaExaminerEvaluationPage() {
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
@@ -108,6 +123,8 @@ export default function TracomaExaminerEvaluationPage() {
   const [newMaskDialogOpen, setNewMaskDialogOpen] = useState(false);
   const [newMaskCode, setNewMaskCode] = useState("");
   const [newMaskAnswers, setNewMaskAnswers] = useState({});
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importSourceTrainingId, setImportSourceTrainingId] = useState("all");
   const [editMaskDialogOpen, setEditMaskDialogOpen] = useState(false);
   const [editMaskOriginalCode, setEditMaskOriginalCode] = useState("");
   const [editMaskCode, setEditMaskCode] = useState("");
@@ -126,6 +143,12 @@ export default function TracomaExaminerEvaluationPage() {
   });
   const training = trainingQuery.data;
   const trainingIsRepadronizacao = isRepadronizacaoTraining(training);
+
+  const allTrainingsQuery = useQuery({
+    queryKey: ["tracoma-exam-training-list"],
+    queryFn: () => dataClient.entities.Training.list("-date"),
+  });
+  const allTrainings = allTrainingsQuery.data || [];
 
   const answerKeyQuery = useQuery({
     queryKey: ["tracoma-exam-answer-key-management"],
@@ -223,6 +246,30 @@ export default function TracomaExaminerEvaluationPage() {
     () => new Set(answerKeyCollections.map((item) => item.code)),
     [answerKeyCollections]
   );
+
+  const importSourceTrainings = useMemo(() => {
+    const currentId = String(trainingId || "").trim();
+    return allTrainings
+      .filter((item) => {
+        const id = String(item?.id || "").trim();
+        if (!id || id === currentId) return false;
+        return isRepadronizacaoTraining(item);
+      })
+      .map((item) => ({
+        id: String(item.id),
+        title: String(item.title || "Treinamento sem título"),
+      }));
+  }, [allTrainings, trainingId]);
+
+  useEffect(() => {
+    if (importSourceTrainingId === "all") return;
+    const exists = importSourceTrainings.some(
+      (item) => item.id === importSourceTrainingId
+    );
+    if (!exists) {
+      setImportSourceTrainingId("all");
+    }
+  }, [importSourceTrainingId, importSourceTrainings]);
 
   const maskQuestionColumns = useMemo(
     () => buildQuestionColumns(TRACOMA_TOTAL_QUESTIONS),
@@ -331,11 +378,11 @@ export default function TracomaExaminerEvaluationPage() {
     }));
   }, [monitorFilteredResults, answerKeyByCode]);
 
-  const selectedResultDetails = useMemo(() => {
-    if (!selectedResult) return null;
-    const keyCode = normalizeAnswerKeyCode(selectedResult?.answer_key_code || "E2");
+  const buildResultDetailsFromRow = (resultRow) => {
+    if (!resultRow) return null;
+    const keyCode = normalizeAnswerKeyCode(resultRow?.answer_key_code || "E2");
     const answerKey = answerKeyByCode.get(keyCode);
-    const traineeAnswers = parseStoredAnswers(selectedResult?.answers);
+    const traineeAnswers = parseStoredAnswers(resultRow?.answers);
     if (!answerKey || !traineeAnswers) {
       return {
         keyCode,
@@ -368,7 +415,12 @@ export default function TracomaExaminerEvaluationPage() {
       wrongQuestions,
       error: "",
     };
-  }, [selectedResult, answerKeyByCode]);
+  };
+
+  const selectedResultDetails = useMemo(
+    () => buildResultDetailsFromRow(selectedResult),
+    [selectedResult, answerKeyByCode]
+  );
 
   const deleteExamResult = useMutation({
     mutationFn: async (resultRow) => {
@@ -398,6 +450,229 @@ export default function TracomaExaminerEvaluationPage() {
       });
     },
   });
+
+  const buildResultFingerprint = (row) => {
+    const answersArray = parseStoredAnswers(row?.answers) || [];
+    return [
+      normalizeIdentityText(row?.participant_name),
+      normalizeIdentityText(row?.participant_email),
+      normalizeDigits(row?.participant_cpf),
+      normalizeAnswerKeyCode(row?.answer_key_code || "E2"),
+      Number(row?.total_matches || 0),
+      Number(row?.total_questions || TRACOMA_TOTAL_QUESTIONS),
+      JSON.stringify(answersArray),
+    ].join("|");
+  };
+
+  const importPastResults = useMutation({
+    mutationFn: async () => {
+      const sourceId = String(importSourceTrainingId || "all").trim() || "all";
+      const currentId = String(trainingId || "").trim();
+      if (!currentId) {
+        throw new Error("Treinamento atual invalido para importacao.");
+      }
+
+      let query = supabase.from("tracoma_exam_results").select("*");
+      if (sourceId === "all") {
+        query = query.neq("training_id", currentId);
+      } else {
+        query = query.eq("training_id", sourceId);
+      }
+      const { data: sourceRows, error: sourceError } = await query;
+      if (sourceError) throw sourceError;
+
+      const validSourceRows = (sourceRows || []).filter(
+        (row) => String(row?.training_id || "").trim() !== currentId
+      );
+      if (validSourceRows.length === 0) {
+        throw new Error("Nenhuma resposta encontrada para importar.");
+      }
+
+      const existingRows = await dataClient.entities.TracomaExamResult.filter({
+        training_id: currentId,
+      });
+      const existingFingerprints = new Set(
+        (existingRows || []).map((row) => buildResultFingerprint(row))
+      );
+
+      let invalidCount = 0;
+      let duplicateCount = 0;
+      const payload = [];
+
+      validSourceRows.forEach((row) => {
+        const answersArray = parseStoredAnswers(row?.answers);
+        if (!answersArray) {
+          invalidCount += 1;
+          return;
+        }
+        const cloned = {
+          training_id: currentId,
+          training_title: training?.title || row?.training_title || null,
+          participant_name: row?.participant_name || "Formando sem nome",
+          participant_email: row?.participant_email || null,
+          participant_cpf: row?.participant_cpf || null,
+          total_questions: Number(row?.total_questions || TRACOMA_TOTAL_QUESTIONS),
+          total_matches: Number(row?.total_matches || 0),
+          matrix_a: Number(row?.matrix_a || 0),
+          matrix_b: Number(row?.matrix_b || 0),
+          matrix_c: Number(row?.matrix_c || 0),
+          matrix_d: Number(row?.matrix_d || 0),
+          observed_agreement: row?.observed_agreement ?? null,
+          expected_agreement: row?.expected_agreement ?? null,
+          kappa: row?.kappa ?? null,
+          kappa_ci_low: row?.kappa_ci_low ?? null,
+          kappa_ci_high: row?.kappa_ci_high ?? null,
+          sensitivity: row?.sensitivity ?? null,
+          specificity: row?.specificity ?? null,
+          interpretation: row?.interpretation || null,
+          aptitude_status: row?.aptitude_status || null,
+          answer_key_code: normalizeAnswerKeyCode(row?.answer_key_code || "E2"),
+          answers: answersArray,
+        };
+
+        const fingerprint = buildResultFingerprint(cloned);
+        if (existingFingerprints.has(fingerprint)) {
+          duplicateCount += 1;
+          return;
+        }
+        existingFingerprints.add(fingerprint);
+        payload.push(cloned);
+      });
+
+      if (payload.length === 0) {
+        throw new Error(
+          "Nenhuma resposta nova para importar (todas ja existem ou estao invalidas)."
+        );
+      }
+
+      await dataClient.entities.TracomaExamResult.bulkCreate(payload);
+      return {
+        importedCount: payload.length,
+        duplicateCount,
+        invalidCount,
+      };
+    },
+    onSuccess: async ({ importedCount, duplicateCount, invalidCount }) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["tracoma-exam-results", trainingId],
+      });
+      setImportDialogOpen(false);
+      setImportSourceTrainingId("all");
+      const details = [
+        `${importedCount} resposta(s) importada(s)`,
+        duplicateCount > 0 ? `${duplicateCount} duplicada(s) ignorada(s)` : null,
+        invalidCount > 0 ? `${invalidCount} invalida(s) ignorada(s)` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      setResultActionStatus({
+        type: "success",
+        message: `Importacao concluida: ${details}.`,
+      });
+    },
+    onError: (error) => {
+      setResultActionStatus({
+        type: "error",
+        message: error?.message || "Nao foi possivel importar respostas passadas.",
+      });
+    },
+  });
+
+  const handleExportResultPdf = (resultRow) => {
+    if (!resultRow) return;
+    const details = buildResultDetailsFromRow(resultRow);
+    if (!details || details.error) {
+      window.alert(
+        details?.error || "Nao foi possivel reconstruir os dados para exportar."
+      );
+      return;
+    }
+
+    const pdf = new jsPDF("p", "mm", "a4");
+    const marginX = 14;
+    const maxX = 196;
+    let y = 14;
+
+    const addLine = (text, size = 10, spacing = 6) => {
+      pdf.setFontSize(size);
+      const lines = pdf.splitTextToSize(String(text || ""), maxX - marginX);
+      pdf.text(lines, marginX, y);
+      y += lines.length * (size * 0.35 + 2) + (spacing - 4);
+    };
+
+    const ensureSpace = (minHeight = 10) => {
+      if (y + minHeight > 285) {
+        pdf.addPage();
+        y = 14;
+      }
+    };
+
+    pdf.setFont("helvetica", "bold");
+    addLine("Relatorio de resposta - Avaliacao de Tracoma", 14, 7);
+    pdf.setFont("helvetica", "normal");
+    addLine(`Treinamento: ${resultRow?.training_title || training?.title || "-"}`, 10, 5);
+    addLine(`Data do envio: ${formatDateSafe(resultRow?.created_at, "dd/MM/yyyy HH:mm") || "-"}`, 10, 6);
+
+    pdf.setFont("helvetica", "bold");
+    addLine("Resumo", 12, 6);
+    pdf.setFont("helvetica", "normal");
+    addLine(`Formando: ${resultRow?.participant_name || "-"}`, 10, 5);
+    addLine(`Teste: ${resultRow?.answer_key_code || "-"}`, 10, 5);
+    addLine(
+      `Acertos: ${resultRow?.total_matches || 0}/${resultRow?.total_questions || TRACOMA_TOTAL_QUESTIONS}`,
+      10,
+      5
+    );
+    addLine(
+      `Concordancia observada: ${formatNumber(Number(resultRow?.observed_agreement) * 100, 2)}%`,
+      10,
+      5
+    );
+    addLine(`Kappa: ${formatNumber(resultRow?.kappa, 3)}`, 10, 5);
+    addLine(`Classificacao: ${resultRow?.aptitude_status || "-"}`, 10, 7);
+
+    ensureSpace(28);
+    pdf.setFont("helvetica", "bold");
+    addLine("Matriz 2x2", 12, 6);
+    pdf.setFont("helvetica", "normal");
+    addLine(
+      `a (1/1): ${Number(resultRow?.matrix_a || 0)} | b (0/1): ${Number(resultRow?.matrix_b || 0)}`,
+      10,
+      5
+    );
+    addLine(
+      `c (1/0): ${Number(resultRow?.matrix_c || 0)} | d (0/0): ${Number(resultRow?.matrix_d || 0)}`,
+      10,
+      7
+    );
+
+    pdf.setFont("helvetica", "bold");
+    addLine("Questoes erradas para reanalise", 12, 6);
+    pdf.setFont("helvetica", "normal");
+    addLine(
+      details.wrongQuestions.length > 0
+        ? details.wrongQuestions.map((item) => `Q${String(item).padStart(2, "0")}`).join(", ")
+        : "Nenhuma questao errada.",
+      10,
+      7
+    );
+
+    pdf.setFont("helvetica", "bold");
+    addLine("Respostas por questao", 12, 6);
+    pdf.setFont("helvetica", "normal");
+    details.rows.forEach((row) => {
+      ensureSpace(6);
+      addLine(
+        `Q${String(row.questionNumber).padStart(2, "0")} | Gabarito: ${row.expected} | Formando: ${row.observed} | ${row.isCorrect ? "Correta" : "Errada"}`,
+        9,
+        4
+      );
+    });
+
+    const safeName = toSafeFileName(resultRow?.participant_name || "formando");
+    const dateStamp = new Date().toISOString().split("T")[0];
+    pdf.save(`tracoma-resposta-${safeName || "formando"}-${dateStamp}.pdf`);
+  };
 
   const createAnswerPayload = (answerMap, code, contextLabel) => {
     const payload = [];
@@ -584,7 +859,18 @@ export default function TracomaExaminerEvaluationPage() {
       sortable: false,
       cellClassName: "text-right",
       render: (row) => (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleExportResultPdf(row);
+            }}
+          >
+            <Download className="h-4 w-4" />
+          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -1073,6 +1359,18 @@ export default function TracomaExaminerEvaluationPage() {
                 </div>
               </div>
 
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setImportDialogOpen(true)}
+                  disabled={importSourceTrainings.length === 0 || importPastResults.isPending}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Importar respostas de treinamentos passados
+                </Button>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="pt-6">
@@ -1383,6 +1681,62 @@ export default function TracomaExaminerEvaluationPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Importar respostas de treinamentos passados</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Origem das respostas</Label>
+              <Select
+                value={importSourceTrainingId}
+                onValueChange={setImportSourceTrainingId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a origem" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os treinamentos passados</SelectItem>
+                  {importSourceTrainings.map((item) => (
+                    <SelectItem key={`import-training-${item.id}`} value={item.id}>
+                      {item.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Alert>
+              <AlertDescription>
+                As respostas importadas serao copiadas para este treinamento.
+                Itens duplicados ou invalidos sao ignorados automaticamente.
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setImportDialogOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => importPastResults.mutate()}
+                disabled={importPastResults.isPending}
+              >
+                {importPastResults.isPending && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                Importar respostas
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={editMaskDialogOpen} onOpenChange={setEditMaskDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1501,6 +1855,16 @@ export default function TracomaExaminerEvaluationPage() {
 
           {selectedResult && (
             <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleExportResultPdf(selectedResult)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar resposta em PDF
+                </Button>
+              </div>
               <Card>
                 <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
