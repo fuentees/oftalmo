@@ -32,6 +32,7 @@ import {
   getSupabaseErrorMessage,
   isMissingSupabaseTableError,
 } from "@/lib/supabaseErrors";
+import { isRepadronizacaoTraining } from "@/lib/trainingType";
 
 const normalizeCpf = (value) => String(value || "").replace(/\D/g, "");
 const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
@@ -123,6 +124,11 @@ export default function TracomaExaminerTest() {
       }
       if (!training) {
         throw new Error("Treinamento nao encontrado.");
+      }
+      if (!isRepadronizacaoTraining(training)) {
+        throw new Error(
+          "Este formulario esta disponivel apenas para treinamentos de repadronizacao."
+        );
       }
       if (!selectedAnswerKey || selectedAnswerKey.error || !selectedAnswerKey.answers) {
         throw new Error(
@@ -258,6 +264,22 @@ export default function TracomaExaminerTest() {
             <AlertCircle className="h-4 w-4 text-red-600" />
             <AlertDescription className="text-red-800">
               Treinamento nao encontrado para este link.
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isRepadronizacaoTraining(training)) {
+    return (
+      <div className="min-h-screen bg-slate-50 py-8 px-4">
+        <div className="max-w-2xl mx-auto">
+          <Alert className="border-amber-200 bg-amber-50">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-amber-800">
+              Este formulario so pode ser aplicado em treinamentos do tipo
+              repadronizacao.
             </AlertDescription>
           </Alert>
         </div>

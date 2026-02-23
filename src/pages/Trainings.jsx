@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { extractTrainingIdFromEventNotes } from "@/lib/eventMetadata";
+import { isRepadronizacaoTraining } from "@/lib/trainingType";
 import {
   getEffectiveTrainingStatus,
   getTrainingDateItems,
@@ -914,19 +915,21 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
                 <MessageSquare className="h-4 w-4 mr-2" />
                 Página de Avaliação
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(
-                    `/TracomaExaminerEvaluationPage?training=${encodeURIComponent(
-                      row.id
-                    )}`
-                  );
-                }}
-              >
-                <ClipboardCheck className="h-4 w-4 mr-2" />
-                Avaliação de Tracoma (50)
-              </DropdownMenuItem>
+              {isRepadronizacaoTraining(row) && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(
+                      `/TracomaExaminerEvaluationPage?training=${encodeURIComponent(
+                        row.id
+                      )}`
+                    );
+                  }}
+                >
+                  <ClipboardCheck className="h-4 w-4 mr-2" />
+                  Avaliação de Tracoma (50)
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={(e) => {
