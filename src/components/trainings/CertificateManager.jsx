@@ -53,11 +53,16 @@ export default function CertificateManager({ training, participants = [], onClos
         { training_id: training?.id },
         "-created_at"
       ),
-    enabled: Boolean(training?.id && isRepadTraining),
+    enabled: Boolean(training?.id),
   });
 
+  const tracomaRows = Array.isArray(tracomaResultsQuery.data)
+    ? tracomaResultsQuery.data
+    : [];
+  const useRepadScoreCriteria = isRepadTraining || tracomaRows.length > 0;
+
   const repadPerformanceByParticipantId = useMemo(() => {
-    if (!isRepadTraining) return new Map();
+    if (!useRepadScoreCriteria) return new Map();
     const map = new Map();
     const rows = Array.isArray(tracomaResultsQuery.data)
       ? [...tracomaResultsQuery.data]
@@ -92,7 +97,7 @@ export default function CertificateManager({ training, participants = [], onClos
     });
 
     return map;
-  }, [isRepadTraining, safeParticipants, tracomaResultsQuery.data]);
+  }, [safeParticipants, tracomaResultsQuery.data, useRepadScoreCriteria]);
 
   const resolveEmailContent = (emailData) => {
     const subject = interpolateEmailTemplate(emailTemplate.subject, emailData).trim();
@@ -301,16 +306,25 @@ export default function CertificateManager({ training, participants = [], onClos
       for (const participant of participantsToIssue) {
         try {
           const repadPerformance = repadPerformanceByParticipantId.get(participant.id);
+          const fallbackScore = toNumeric(participant?.grade);
+          const fallbackKappa =
+            Number.isFinite(fallbackScore) && fallbackScore >= 0
+              ? clamp(fallbackScore / 100, 0, 1)
+              : null;
+          const resolvedScore =
+            repadPerformance?.latestScore ??
+            (Number.isFinite(fallbackScore) ? clamp(fallbackScore, 0, 100) : null);
+          const resolvedKappa = repadPerformance?.latestKappa ?? fallbackKappa;
           const participantWithMetrics =
-            isRepadTraining && repadPerformance
+            useRepadScoreCriteria && (repadPerformance || Number.isFinite(resolvedScore))
               ? {
                   ...participant,
-                  certificate_kappa: repadPerformance.latestKappa,
-                  certificate_score: repadPerformance.latestScore,
+                  certificate_kappa: resolvedKappa,
+                  certificate_score: resolvedScore,
                   grade:
                     participant.grade ??
-                    (Number.isFinite(repadPerformance.latestScore)
-                      ? formatScore(repadPerformance.latestScore, 1)
+                    (Number.isFinite(resolvedScore)
+                      ? formatScore(resolvedScore, 1)
                       : participant.grade),
                 }
               : participant;
@@ -387,8 +401,8 @@ export default function CertificateManager({ training, participants = [], onClos
             certificate_sent_date: new Date().toISOString(),
             certificate_url: file_url,
             validity_date: validityDate,
-            ...(isRepadTraining && Number.isFinite(repadPerformance?.latestScore)
-              ? { grade: formatScore(repadPerformance.latestScore, 1) }
+            ...(useRepadScoreCriteria && Number.isFinite(participantWithMetrics?.certificate_score)
+              ? { grade: formatScore(participantWithMetrics.certificate_score, 1) }
               : {}),
           });
 
@@ -446,9 +460,17 @@ export default function CertificateManager({ training, participants = [], onClos
   // Nos demais treinamentos, mantém regra por frequência.
   const eligibleParticipants = safeParticipants.filter((p) => {
     if (p.enrollment_status === "cancelado") return false;
-    if (isRepadTraining) {
+    if (useRepadScoreCriteria) {
       const status = repadPerformanceByParticipantId.get(p.id);
-      return Boolean(status?.approved);
+      if (status?.hasResult) {
+        return Boolean(status?.approved);
+      }
+      const gradeValue = toNumeric(p?.grade);
+      return (
+        p?.approved === true &&
+        Number.isFinite(gradeValue) &&
+        gradeValue >= REPAD_APPROVAL_KAPPA * 100
+      );
     }
     const hasRecords =
       Array.isArray(p.attendance_records) && p.attendance_records.length > 0;
@@ -490,13 +512,13 @@ export default function CertificateManager({ training, participants = [], onClos
           Ao emitir, o certificado é enviado por e-mail automaticamente para quem tem e-mail cadastrado.
         </p>
         <p className="text-xs text-slate-500 mt-1">
-          {isRepadTraining
+          {useRepadScoreCriteria
             ? "Critério de aprovação: nota da última prova (Kappa x100 >= 70)."
             : "Critério de aprovação: frequência mínima de 75%."}
         </p>
       </div>
 
-      {isRepadTraining && tracomaResultsQuery.isLoading && (
+      {useRepadScoreCriteria && tracomaResultsQuery.isLoading && (
         <Alert className="border-blue-200 bg-blue-50">
           <AlertDescription className="text-blue-800">
             Carregando notas de repadronização para validar aprovados...
@@ -504,7 +526,7 @@ export default function CertificateManager({ training, participants = [], onClos
         </Alert>
       )}
 
-      {isRepadTraining && tracomaResultsQuery.isError && (
+      {useRepadScoreCriteria && tracomaResultsQuery.isError && (
         <Alert className="border-amber-200 bg-amber-50">
           <AlertDescription className="text-amber-800">
             Não foi possível carregar as notas de repadronização. Atualize a página para tentar novamente.
@@ -533,7 +555,7 @@ export default function CertificateManager({ training, participants = [], onClos
               </TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Email</TableHead>
-              {isRepadTraining && <TableHead>Nota (Kappa x100)</TableHead>}
+              {useRepadScoreCriteria && <TableHead>Nota (Kappa x100)</TableHead>}
               <TableHead>Status</TableHead>
               <TableHead>Certificado</TableHead>
             </TableRow>
@@ -542,7 +564,7 @@ export default function CertificateManager({ training, participants = [], onClos
             {eligibleParticipants.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={isRepadTraining ? 6 : 5}
+                  colSpan={useRepadScoreCriteria ? 6 : 5}
                   className="text-center py-8 text-slate-500"
                 >
                   Nenhum participante elegível para certificado
@@ -568,18 +590,22 @@ export default function CertificateManager({ training, participants = [], onClos
                       <span className="text-red-600 text-sm">Sem email</span>
                     )}
                   </TableCell>
-                  {isRepadTraining && (
+                  {useRepadScoreCriteria && (
                     <TableCell>
                       {(() => {
                         const metrics = repadPerformanceByParticipantId.get(participant.id);
-                        if (!Number.isFinite(metrics?.latestScore)) return "-";
-                        return `${formatScore(metrics.latestScore, 1)}%`;
+                        if (Number.isFinite(metrics?.latestScore)) {
+                          return `${formatScore(metrics.latestScore, 1)}%`;
+                        }
+                        const gradeValue = toNumeric(participant?.grade);
+                        if (!Number.isFinite(gradeValue)) return "-";
+                        return `${formatScore(gradeValue, 1)}%`;
                       })()}
                     </TableCell>
                   )}
                   <TableCell>
                     <Badge className="bg-green-100 text-green-700">
-                      {isRepadTraining ? "Aprovado por nota" : "Aprovado"}
+                      {useRepadScoreCriteria ? "Aprovado por nota" : "Aprovado"}
                     </Badge>
                   </TableCell>
                   <TableCell>
