@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertCircle,
+  ArrowLeft,
   BarChart3,
   CheckCircle2,
   ClipboardCheck,
@@ -66,6 +67,7 @@ import {
 } from "@/lib/supabaseErrors";
 import { formatDateSafe } from "@/lib/date";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
+import { useNavigate } from "react-router-dom";
 
 const CHART_COLORS = ["#16a34a", "#f59e0b", "#2563eb", "#ef4444"];
 
@@ -176,6 +178,7 @@ const parseSpreadsheetRows = async (file) => {
 };
 
 export default function TracomaExaminerEvaluationPage() {
+  const navigate = useNavigate();
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
@@ -206,6 +209,23 @@ export default function TracomaExaminerEvaluationPage() {
   const [maskActionStatus, setMaskActionStatus] = useState(null);
   const [resultActionStatus, setResultActionStatus] = useState(null);
   const queryClient = useQueryClient();
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/Trainings");
+  };
+
+  const renderBackButton = () => (
+    <div>
+      <Button variant="ghost" size="sm" onClick={handleGoBack} className="-ml-2">
+        <ArrowLeft className="h-4 w-4 mr-1" />
+        Voltar
+      </Button>
+    </div>
+  );
 
   const trainingQuery = useQuery({
     queryKey: ["tracoma-exam-training-management", trainingId],
@@ -1360,6 +1380,7 @@ export default function TracomaExaminerEvaluationPage() {
   if (!trainingId) {
     return (
       <div className="space-y-6">
+        {renderBackButton()}
         <PageHeader
           title="Avaliacao de Examinadores de tracoma"
           subtitle="Teste de 50 questoes"
@@ -1385,6 +1406,7 @@ export default function TracomaExaminerEvaluationPage() {
   if (!training) {
     return (
       <div className="space-y-6">
+        {renderBackButton()}
         <PageHeader
           title="Avaliacao de Examinadores de tracoma"
           subtitle="Treinamento nao encontrado"
@@ -1402,6 +1424,7 @@ export default function TracomaExaminerEvaluationPage() {
   if (!trainingIsRepadronizacao) {
     return (
       <div className="space-y-6">
+        {renderBackButton()}
         <PageHeader
           title="Avaliacao de Examinadores de tracoma"
           subtitle={`Treinamento: ${training.title}`}
@@ -1419,6 +1442,7 @@ export default function TracomaExaminerEvaluationPage() {
 
   return (
     <div className="space-y-6">
+      {renderBackButton()}
       <PageHeader
         title="Avaliacao de Examinadores de tracoma - Teste de 50 Questoes"
         subtitle={`Treinamento: ${training.title}`}

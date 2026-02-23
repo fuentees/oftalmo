@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { 
+  ArrowLeft,
   GraduationCap, 
   CheckCircle,
   AlertCircle,
@@ -38,6 +39,7 @@ import {
   Link2
 } from "lucide-react";
 import { format } from "date-fns";
+import { useNavigate } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
 import SearchFilter from "@/components/common/SearchFilter";
@@ -52,6 +54,7 @@ import {
 } from "@/lib/enrollmentSchema";
 
 export default function EnrollmentPage() {
+  const navigate = useNavigate();
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
@@ -83,6 +86,14 @@ export default function EnrollmentPage() {
   const [showEditParticipant, setShowEditParticipant] = useState(false);
   const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
   const [deleteAllStatus, setDeleteAllStatus] = useState(null);
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/Trainings");
+  };
 
   const queryClient = useQueryClient();
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
@@ -1515,6 +1526,12 @@ export default function EnrollmentPage() {
 
   return (
     <div className="space-y-6">
+      <div>
+        <Button variant="ghost" size="sm" onClick={handleGoBack} className="-ml-2">
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Voltar
+        </Button>
+      </div>
       <PageHeader
         title={`Inscrições - ${training.title}`}
         subtitle="Gerencie as inscrições do treinamento"

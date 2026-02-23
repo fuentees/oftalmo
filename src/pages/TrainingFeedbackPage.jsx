@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   AlertCircle,
+  ArrowLeft,
   Copy,
   ExternalLink,
   Loader2,
@@ -68,6 +69,7 @@ import {
   extractQuestionMeta,
   normalizeChoiceOptions,
 } from "@/lib/trainingFeedbackSchema";
+import { useNavigate } from "react-router-dom";
 
 const createDefaultQuestion = (trainingId) => ({
   training_id: trainingId || null,
@@ -149,6 +151,7 @@ const resolveQuestionMutationError = (error, fallbackMessage) => {
 };
 
 export default function TrainingFeedbackPage() {
+  const navigate = useNavigate();
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
@@ -158,6 +161,23 @@ export default function TrainingFeedbackPage() {
     : "";
 
   const queryClient = useQueryClient();
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/Trainings");
+  };
+
+  const renderBackButton = () => (
+    <div>
+      <Button variant="ghost" size="sm" onClick={handleGoBack} className="-ml-2">
+        <ArrowLeft className="h-4 w-4 mr-1" />
+        Voltar
+      </Button>
+    </div>
+  );
 
   const [questionFormOpen, setQuestionFormOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
@@ -823,6 +843,7 @@ export default function TrainingFeedbackPage() {
   if (!trainingId) {
     return (
       <div className="space-y-6">
+        {renderBackButton()}
         <PageHeader
           title="Pagina de Avaliacao"
           subtitle="Configure o treinamento para gerar o link publico"
@@ -848,6 +869,7 @@ export default function TrainingFeedbackPage() {
   if (!training) {
     return (
       <div className="space-y-6">
+        {renderBackButton()}
         <PageHeader
           title="Pagina de Avaliacao"
           subtitle="Treinamento nao encontrado"
@@ -869,6 +891,7 @@ export default function TrainingFeedbackPage() {
 
   return (
     <div className="space-y-6">
+      {renderBackButton()}
       <PageHeader
         title={`Avaliacao - ${training.title}`}
         subtitle="Configure a mascara e visualize o formulario de avaliacao"
