@@ -60,8 +60,13 @@ export default function CertificateManager({ training, participants = [], onClos
     if (!isRepadTraining) return new Map();
     const map = new Map();
     const rows = Array.isArray(tracomaResultsQuery.data)
-      ? tracomaResultsQuery.data
+      ? [...tracomaResultsQuery.data]
       : [];
+    rows.sort(
+      (a, b) =>
+        new Date(b?.created_at || 0).getTime() -
+        new Date(a?.created_at || 0).getTime()
+    );
 
     rows.forEach((row) => {
       const participant = resolveTrainingParticipantMatch(safeParticipants, {
@@ -70,46 +75,19 @@ export default function CertificateManager({ training, participants = [], onClos
         rg: row?.participant_cpf,
       });
       if (!participant?.id) return;
+      if (map.has(participant.id)) return;
 
       const rawKappa = toNumeric(row?.kappa);
-      const kappa =
-        rawKappa === null ? null : clamp(rawKappa, 0, 1);
+      const kappa = rawKappa === null ? null : clamp(rawKappa, 0, 1);
       const score = kappa === null ? null : kappa * 100;
-      const approvedByStatus =
-        String(row?.aptitude_status || "").trim().toLowerCase() === "apto";
-      const approvedByKappa =
+      const approved =
         Number.isFinite(kappa) && kappa >= REPAD_APPROVAL_KAPPA;
-      const approved = approvedByStatus || approvedByKappa;
-
-      const current = map.get(participant.id) || {
-        hasResult: false,
-        approved: false,
-        bestKappa: null,
-        bestScore: null,
-      };
-
-      const bestKappa =
-        Number.isFinite(current.bestKappa) && Number.isFinite(kappa)
-          ? Math.max(current.bestKappa, kappa)
-          : Number.isFinite(current.bestKappa)
-          ? current.bestKappa
-          : Number.isFinite(kappa)
-          ? kappa
-          : null;
-      const bestScore =
-        Number.isFinite(current.bestScore) && Number.isFinite(score)
-          ? Math.max(current.bestScore, score)
-          : Number.isFinite(current.bestScore)
-          ? current.bestScore
-          : Number.isFinite(score)
-          ? score
-          : null;
 
       map.set(participant.id, {
         hasResult: true,
-        approved: current.approved || approved,
-        bestKappa,
-        bestScore,
+        approved,
+        latestKappa: kappa,
+        latestScore: score,
       });
     });
 
@@ -327,12 +305,12 @@ export default function CertificateManager({ training, participants = [], onClos
             isRepadTraining && repadPerformance
               ? {
                   ...participant,
-                  certificate_kappa: repadPerformance.bestKappa,
-                  certificate_score: repadPerformance.bestScore,
+                  certificate_kappa: repadPerformance.latestKappa,
+                  certificate_score: repadPerformance.latestScore,
                   grade:
                     participant.grade ??
-                    (Number.isFinite(repadPerformance.bestScore)
-                      ? formatScore(repadPerformance.bestScore, 1)
+                    (Number.isFinite(repadPerformance.latestScore)
+                      ? formatScore(repadPerformance.latestScore, 1)
                       : participant.grade),
                 }
               : participant;
@@ -409,8 +387,8 @@ export default function CertificateManager({ training, participants = [], onClos
             certificate_sent_date: new Date().toISOString(),
             certificate_url: file_url,
             validity_date: validityDate,
-            ...(isRepadTraining && Number.isFinite(repadPerformance?.bestScore)
-              ? { grade: formatScore(repadPerformance.bestScore, 1) }
+            ...(isRepadTraining && Number.isFinite(repadPerformance?.latestScore)
+              ? { grade: formatScore(repadPerformance.latestScore, 1) }
               : {}),
           });
 
@@ -513,7 +491,7 @@ export default function CertificateManager({ training, participants = [], onClos
         </p>
         <p className="text-xs text-slate-500 mt-1">
           {isRepadTraining
-            ? "Critério de aprovação: nota do teste (Kappa x100 >= 70)."
+            ? "Critério de aprovação: nota da última prova (Kappa x100 >= 70)."
             : "Critério de aprovação: frequência mínima de 75%."}
         </p>
       </div>
@@ -594,8 +572,8 @@ export default function CertificateManager({ training, participants = [], onClos
                     <TableCell>
                       {(() => {
                         const metrics = repadPerformanceByParticipantId.get(participant.id);
-                        if (!Number.isFinite(metrics?.bestScore)) return "-";
-                        return `${formatScore(metrics.bestScore, 1)}%`;
+                        if (!Number.isFinite(metrics?.latestScore)) return "-";
+                        return `${formatScore(metrics.latestScore, 1)}%`;
                       })()}
                     </TableCell>
                   )}

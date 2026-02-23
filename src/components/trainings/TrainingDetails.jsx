@@ -155,28 +155,28 @@ export default function TrainingDetails({ training, participants = [] }) {
   const repadStatusByParticipant = useMemo(() => {
     if (!isRepadTraining) return new Map();
     const map = new Map();
-    (tracomaResults || []).forEach((result) => {
+    const rows = Array.isArray(tracomaResults) ? [...tracomaResults] : [];
+    rows.sort(
+      (a, b) =>
+        new Date(b?.created_at || 0).getTime() -
+        new Date(a?.created_at || 0).getTime()
+    );
+    rows.forEach((result) => {
       const participant = resolveTrainingParticipantMatch(activeParticipants, {
         name: result?.participant_name,
         email: result?.participant_email,
         rg: result?.participant_cpf,
       });
       if (!participant?.id) return;
+      if (map.has(participant.id)) return;
 
       const kappaValue = Number(result?.kappa);
-      const approvedByStatus =
-        String(result?.aptitude_status || "").trim().toLowerCase() === "apto";
       const approvedByKappa =
         Number.isFinite(kappaValue) && Math.max(0, Math.min(1, kappaValue)) >= 0.7;
-      const approved = approvedByStatus || approvedByKappa;
-
-      const previous = map.get(participant.id) || {
-        hasResult: false,
-        approved: false,
-      };
+      const approved = approvedByKappa;
       map.set(participant.id, {
         hasResult: true,
-        approved: previous.approved || approved,
+        approved,
       });
     });
     return map;

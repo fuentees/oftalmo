@@ -180,19 +180,14 @@ export default function TracomaExaminerTest() {
 
       const created = await dataClient.entities.TracomaExamResult.create(payload);
 
-      const previousGrade = Number(linkedParticipant?.grade);
       const currentScore = Number((computed.kappa * 100).toFixed(1));
-      const persistedGrade = Number.isFinite(previousGrade)
-        ? Math.max(previousGrade, currentScore)
-        : currentScore;
       const approvedNow =
-        String(computed.aptitudeStatus || "").trim().toLowerCase() === "apto" ||
-        linkedParticipant?.approved === true;
+        Number.isFinite(computed?.kappa) && Number(computed.kappa) >= 0.7;
 
       await dataClient.entities.TrainingParticipant.update(linkedParticipant.id, {
         approved: approvedNow,
-        grade: Number.isFinite(persistedGrade)
-          ? persistedGrade.toFixed(1)
+        grade: Number.isFinite(currentScore)
+          ? currentScore.toFixed(1)
           : linkedParticipant?.grade || null,
       });
 
