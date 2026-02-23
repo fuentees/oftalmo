@@ -86,14 +86,14 @@ export default function AttendanceControl({ training, participants, onClose }) {
       const presentCount = updatedRecords.filter(r => r.status === "presente").length;
       const percentage = Math.round((presentCount / totalDates) * 100);
 
-      const payload = {
+      const updatePayload = {
         attendance_records: updatedRecords,
         attendance_percentage: percentage,
       };
       if (!isRepadTraining) {
-        payload.approved = percentage >= 75;
+        updatePayload.approved = percentage >= 75;
       }
-      return dataClient.entities.TrainingParticipant.update(participantId, payload);
+      return dataClient.entities.TrainingParticipant.update(participantId, updatePayload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["participants"] });
