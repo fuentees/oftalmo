@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import PageHeader from "@/components/common/PageHeader";
@@ -8,6 +8,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -18,9 +25,11 @@ import {
 import {
   AlertCircle,
   BarChart3,
+  CheckCircle2,
   ClipboardCheck,
   Copy,
   Loader2,
+  Search,
 } from "lucide-react";
 import {
   Bar,
@@ -36,7 +45,9 @@ import {
 } from "recharts";
 import {
   TRACOMA_TOTAL_QUESTIONS,
-  buildAnswerKeyFromRows,
+  buildAnswerKeyCollections,
+  normalizeAnswerKeyCode,
+  normalizeBinaryAnswer,
 } from "@/lib/tracomaExamKappa";
 import {
   getSupabaseErrorMessage,
@@ -53,6 +64,13 @@ const formatNumber = (value, digits = 3) => {
   return numeric.toFixed(digits);
 };
 
+const parseStoredAnswers = (value, totalQuestions = TRACOMA_TOTAL_QUESTIONS) => {
+  if (!Array.isArray(value) || value.length !== totalQuestions) return null;
+  const parsed = value.map((item) => normalizeBinaryAnswer(item));
+  if (parsed.some((item) => item === null)) return null;
+  return parsed;
+};
+
 const matrixChartFromResult = (result) => [
   { label: "a (1/1)", total: Number(result?.matrix_a || 0) },
   { label: "b (0/1)", total: Number(result?.matrix_b || 0) },
@@ -65,15 +83,15 @@ export default function TracomaExaminerEvaluationPage() {
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
   const trainingId = String(urlParams.get("training") || "").trim();
+  const initialKeyCode = normalizeAnswerKeyCode(urlParams.get("key"));
+
   const [activeTab, setActiveTab] = useState("mask");
   const [search, setSearch] = useState("");
+  const [historyKeyFilter, setHistoryKeyFilter] = useState("all");
+  const [monitorKeyFilter, setMonitorKeyFilter] = useState("all");
+  const [monitorPersonFilter, setMonitorPersonFilter] = useState("");
+  const [selectedMaskKeyCode, setSelectedMaskKeyCode] = useState("");
   const [selectedResult, setSelectedResult] = useState(null);
-
-  const testLink = trainingId
-    ? `${window.location.origin}/TracomaExaminerTest?training=${encodeURIComponent(
-        trainingId
-      )}`
-    : "";
 
   const trainingQuery = useQuery({
     queryKey: ["tracoma-exam-training-management", trainingId],
@@ -87,8 +105,7 @@ export default function TracomaExaminerEvaluationPage() {
 
   const answerKeyQuery = useQuery({
     queryKey: ["tracoma-exam-answer-key-management"],
-    queryFn: () =>
-      dataClient.entities.TracomaExamAnswerKey.list("question_number"),
+    queryFn: () => dataClient.entities.TracomaExamAnswerKey.list("question_number"),
   });
   const answerKeyRows = answerKeyQuery.data || [];
   const answerKeyLoadError = answerKeyQuery.isError
@@ -98,28 +115,49 @@ export default function TracomaExaminerEvaluationPage() {
         "Nao foi possivel carregar o gabarito."
     : "";
 
-  const answerKeyStatus = useMemo(() => {
-    try {
-      const values = buildAnswerKeyFromRows(answerKeyRows, TRACOMA_TOTAL_QUESTIONS);
-      const positives = values.filter((value) => value === 1).length;
-      const negatives = values.length - positives;
-      return {
-        values,
-        positives,
-        negatives,
-        error: "",
-      };
-    } catch (error) {
-      return {
-        values: [],
-        positives: 0,
-        negatives: 0,
-        error:
-          error?.message ||
-          "Gabarito padrao ouro nao esta completo para as 50 questoes.",
-      };
+  const answerKeyCollections = useMemo(
+    () => buildAnswerKeyCollections(answerKeyRows, TRACOMA_TOTAL_QUESTIONS),
+    [answerKeyRows]
+  );
+
+  useEffect(() => {
+    if (!answerKeyCollections.length) return;
+    const hasInitial = answerKeyCollections.some(
+      (item) => item.code === initialKeyCode
+    );
+    if (!selectedMaskKeyCode) {
+      setSelectedMaskKeyCode(hasInitial ? initialKeyCode : answerKeyCollections[0].code);
+      return;
     }
-  }, [answerKeyRows]);
+    const hasCurrent = answerKeyCollections.some(
+      (item) => item.code === selectedMaskKeyCode
+    );
+    if (!hasCurrent) {
+      setSelectedMaskKeyCode(answerKeyCollections[0].code);
+    }
+  }, [answerKeyCollections, initialKeyCode, selectedMaskKeyCode]);
+
+  const selectedMaskKey = useMemo(
+    () =>
+      answerKeyCollections.find((item) => item.code === selectedMaskKeyCode) || null,
+    [answerKeyCollections, selectedMaskKeyCode]
+  );
+
+  const answerKeyByCode = useMemo(() => {
+    const map = new Map();
+    answerKeyCollections.forEach((item) => {
+      if (item.answers && !item.error) {
+        map.set(item.code, item.answers);
+      }
+    });
+    return map;
+  }, [answerKeyCollections]);
+
+  const testLink = trainingId
+    ? `${window.location.origin}/TracomaExaminerTest?training=${encodeURIComponent(
+        trainingId
+      )}${selectedMaskKeyCode ? `&key=${encodeURIComponent(selectedMaskKeyCode)}` : ""}`
+    : "";
 
   const resultsQuery = useQuery({
     queryKey: ["tracoma-exam-results", trainingId],
@@ -130,7 +168,16 @@ export default function TracomaExaminerEvaluationPage() {
       ),
     enabled: Boolean(trainingId),
   });
-  const results = resultsQuery.data || [];
+  const rawResults = resultsQuery.data || [];
+  const results = useMemo(
+    () =>
+      rawResults.map((row) => ({
+        ...row,
+        answer_key_code: normalizeAnswerKeyCode(row?.answer_key_code || "E2"),
+      })),
+    [rawResults]
+  );
+
   const resultsLoadError = resultsQuery.isError
     ? isMissingSupabaseTableError(resultsQuery.error, "tracoma_exam_results")
       ? "A tabela de resultados de tracoma nao foi encontrada. Execute o script supabase/create_tracoma_exam_tables.sql."
@@ -138,21 +185,35 @@ export default function TracomaExaminerEvaluationPage() {
         "Nao foi possivel carregar o historico de desempenho."
     : "";
 
-  const filteredResults = useMemo(() => {
-    const searchTerm = String(search || "").trim().toLowerCase();
-    if (!searchTerm) return results;
-    return results.filter((row) =>
-      String(row?.participant_name || "").toLowerCase().includes(searchTerm)
+  const availableKeyCodes = useMemo(() => {
+    const codes = new Set(answerKeyCollections.map((item) => item.code));
+    results.forEach((row) => {
+      if (row.answer_key_code) codes.add(row.answer_key_code);
+    });
+    return Array.from(codes).sort((a, b) =>
+      String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base" })
     );
-  }, [results, search]);
+  }, [answerKeyCollections, results]);
+
+  const filteredHistory = useMemo(() => {
+    const searchTerm = String(search || "").trim().toLowerCase();
+    return results.filter((row) => {
+      const matchesKey =
+        historyKeyFilter === "all" || row.answer_key_code === historyKeyFilter;
+      const matchesSearch =
+        !searchTerm ||
+        String(row?.participant_name || "").toLowerCase().includes(searchTerm);
+      return matchesKey && matchesSearch;
+    });
+  }, [results, historyKeyFilter, search]);
 
   const historySummary = useMemo(() => {
-    const total = results.length;
-    const aptCount = results.filter(
+    const total = filteredHistory.length;
+    const aptCount = filteredHistory.filter(
       (row) => String(row?.aptitude_status || "").toLowerCase() === "apto"
     ).length;
     const retrainingCount = total - aptCount;
-    const validKappas = results
+    const validKappas = filteredHistory
       .map((row) => Number(row?.kappa))
       .filter((value) => Number.isFinite(value));
     const kappaAverage =
@@ -170,13 +231,103 @@ export default function TracomaExaminerEvaluationPage() {
         { label: "Necessita retreinamento", total: retrainingCount },
       ],
     };
-  }, [results]);
+  }, [filteredHistory]);
+
+  const monitorFilteredResults = useMemo(() => {
+    const personTerm = String(monitorPersonFilter || "").trim().toLowerCase();
+    return results.filter((row) => {
+      const matchesKey =
+        monitorKeyFilter === "all" || row.answer_key_code === monitorKeyFilter;
+      const matchesPerson =
+        !personTerm ||
+        String(row?.participant_name || "").toLowerCase().includes(personTerm);
+      return matchesKey && matchesPerson;
+    });
+  }, [results, monitorKeyFilter, monitorPersonFilter]);
+
+  const monitorQuestionStats = useMemo(() => {
+    const totals = Array.from({ length: TRACOMA_TOTAL_QUESTIONS }, (_, index) => ({
+      questionNumber: index + 1,
+      correct: 0,
+      wrong: 0,
+      total: 0,
+    }));
+
+    monitorFilteredResults.forEach((row) => {
+      const keyCode = normalizeAnswerKeyCode(row?.answer_key_code || "E2");
+      const answerKey = answerKeyByCode.get(keyCode);
+      const traineeAnswers = parseStoredAnswers(row?.answers);
+      if (!answerKey || !traineeAnswers) return;
+
+      for (let i = 0; i < TRACOMA_TOTAL_QUESTIONS; i += 1) {
+        const expected = answerKey[i];
+        const observed = traineeAnswers[i];
+        const item = totals[i];
+        item.total += 1;
+        if (observed === expected) {
+          item.correct += 1;
+        } else {
+          item.wrong += 1;
+        }
+      }
+    });
+
+    return totals.map((item) => ({
+      ...item,
+      accuracyPercent:
+        item.total > 0 ? (item.correct / item.total) * 100 : null,
+    }));
+  }, [monitorFilteredResults, answerKeyByCode]);
+
+  const selectedResultDetails = useMemo(() => {
+    if (!selectedResult) return null;
+    const keyCode = normalizeAnswerKeyCode(selectedResult?.answer_key_code || "E2");
+    const answerKey = answerKeyByCode.get(keyCode);
+    const traineeAnswers = parseStoredAnswers(selectedResult?.answers);
+    if (!answerKey || !traineeAnswers) {
+      return {
+        keyCode,
+        rows: [],
+        wrongQuestions: [],
+        error:
+          "Nao foi possivel reconstruir as respostas deste teste (gabarito ou respostas invalidas).",
+      };
+    }
+
+    const rows = Array.from({ length: TRACOMA_TOTAL_QUESTIONS }, (_, index) => {
+      const questionNumber = index + 1;
+      const expected = answerKey[index];
+      const observed = traineeAnswers[index];
+      const isCorrect = expected === observed;
+      return {
+        questionNumber,
+        expected,
+        observed,
+        isCorrect,
+      };
+    });
+    const wrongQuestions = rows
+      .filter((row) => !row.isCorrect)
+      .map((row) => row.questionNumber);
+
+    return {
+      keyCode,
+      rows,
+      wrongQuestions,
+      error: "",
+    };
+  }, [selectedResult, answerKeyByCode]);
 
   const historyColumns = [
     {
       header: "Formando",
       accessor: "participant_name",
       cellClassName: "font-medium",
+    },
+    {
+      header: "Teste",
+      accessor: "answer_key_code",
+      render: (row) => row.answer_key_code || "-",
     },
     {
       header: "Acertos",
@@ -194,10 +345,6 @@ export default function TracomaExaminerEvaluationPage() {
       accessor: "kappa",
       render: (row) => formatNumber(row.kappa, 3),
       sortType: "number",
-    },
-    {
-      header: "Interpretacao",
-      accessor: "interpretation",
     },
     {
       header: "Status",
@@ -218,6 +365,59 @@ export default function TracomaExaminerEvaluationPage() {
       accessor: "created_at",
       render: (row) => formatDateSafe(row.created_at, "dd/MM/yyyy HH:mm") || "-",
       sortType: "date",
+    },
+  ];
+
+  const monitorQuestionColumns = [
+    {
+      header: "Questao",
+      render: (row) => String(row.questionNumber).padStart(2, "0"),
+      sortType: "number",
+    },
+    {
+      header: "Acertos",
+      accessor: "correct",
+      sortType: "number",
+    },
+    {
+      header: "Erros",
+      accessor: "wrong",
+      sortType: "number",
+    },
+    {
+      header: "Taxa de acerto",
+      render: (row) =>
+        row.accuracyPercent === null
+          ? "-"
+          : `${formatNumber(row.accuracyPercent, 2)}%`,
+      sortType: "number",
+    },
+  ];
+
+  const detailColumns = [
+    {
+      header: "Questao",
+      render: (row) => String(row.questionNumber).padStart(2, "0"),
+      sortType: "number",
+    },
+    {
+      header: "Gabarito",
+      accessor: "expected",
+      sortType: "number",
+    },
+    {
+      header: "Formando",
+      accessor: "observed",
+      sortType: "number",
+    },
+    {
+      header: "Status",
+      render: (row) =>
+        row.isCorrect ? (
+          <Badge className="bg-green-100 text-green-700">Correta</Badge>
+        ) : (
+          <Badge className="bg-red-100 text-red-700">Errada</Badge>
+        ),
     },
   ];
 
@@ -287,7 +487,28 @@ export default function TracomaExaminerEvaluationPage() {
             Aplicacao do teste padronizado
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
+        <CardContent className="flex flex-wrap items-end gap-3">
+          <div className="w-full sm:w-64 space-y-2">
+            <Label>Teste</Label>
+            <Select value={selectedMaskKeyCode} onValueChange={setSelectedMaskKeyCode}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o teste" />
+              </SelectTrigger>
+              <SelectContent>
+                  {answerKeyCollections.map((item) => (
+                    <SelectItem key={item.code} value={item.code}>
+                      {item.code}
+                    </SelectItem>
+                  ))}
+                  {answerKeyCollections.length === 0 &&
+                    availableKeyCodes.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {code}
+                  </SelectItem>
+                    ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button type="button" variant="outline" onClick={handleCopyLink}>
             <Copy className="h-4 w-4 mr-2" />
             Copiar link do teste
@@ -303,9 +524,10 @@ export default function TracomaExaminerEvaluationPage() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="mask">Gabarito padrao ouro</TabsTrigger>
-          <TabsTrigger value="history">Historico e desempenho</TabsTrigger>
+          <TabsTrigger value="history">Historico</TabsTrigger>
+          <TabsTrigger value="monitor">Monitoria</TabsTrigger>
         </TabsList>
 
         <TabsContent value="mask" className="space-y-4 mt-6">
@@ -318,34 +540,51 @@ export default function TracomaExaminerEvaluationPage() {
             </Alert>
           )}
 
-          {!answerKeyLoadError && answerKeyStatus.error && (
+          {!answerKeyLoadError && selectedMaskKey?.error && (
             <Alert className="border-amber-200 bg-amber-50">
               <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertDescription className="text-amber-800">
-                {answerKeyStatus.error}
+                {selectedMaskKey.error}
               </AlertDescription>
             </Alert>
           )}
 
-          {!answerKeyLoadError && !answerKeyStatus.error && (
+          {!answerKeyLoadError && !selectedMaskKey && (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800">
+                Nenhum gabarito de teste foi encontrado. Cadastre ao menos um teste
+                (ex.: E2) na tabela tracoma_exam_answer_keys.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {!answerKeyLoadError && selectedMaskKey?.answers && (
             <>
+              <Alert>
+                <AlertDescription>
+                  Gabarito bloqueado para edicao no sistema. Para incluir novo teste
+                  (ex.: E2_RETAKE), use script SQL.
+                </AlertDescription>
+              </Alert>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Card>
                   <CardContent className="pt-6">
-                    <p className="text-sm text-slate-500">Total de questoes</p>
-                    <p className="text-3xl font-semibold">{TRACOMA_TOTAL_QUESTIONS}</p>
+                    <p className="text-sm text-slate-500">Teste selecionado</p>
+                    <p className="text-2xl font-semibold">{selectedMaskKey.code}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
                     <p className="text-sm text-slate-500">Respostas positivas (1)</p>
-                    <p className="text-3xl font-semibold">{answerKeyStatus.positives}</p>
+                    <p className="text-3xl font-semibold">{selectedMaskKey.positives}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
                     <p className="text-sm text-slate-500">Respostas negativas (0)</p>
-                    <p className="text-3xl font-semibold">{answerKeyStatus.negatives}</p>
+                    <p className="text-3xl font-semibold">{selectedMaskKey.negatives}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -353,14 +592,14 @@ export default function TracomaExaminerEvaluationPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">
-                    Gabarito bloqueado (somente leitura)
+                    Gabarito somente leitura
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2">
-                    {answerKeyStatus.values.map((value, index) => (
+                    {selectedMaskKey.answers.map((value, index) => (
                       <div
-                        key={`answer-key-${index + 1}`}
+                        key={`answer-key-${selectedMaskKey.code}-${index + 1}`}
                         className="rounded-md border bg-slate-50 px-2 py-2 text-center"
                       >
                         <p className="text-xs text-slate-500">
@@ -388,6 +627,33 @@ export default function TracomaExaminerEvaluationPage() {
 
           {!resultsLoadError && (
             <>
+              <div className="flex flex-col lg:flex-row gap-3">
+                <div className="flex-1 relative">
+                  <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Buscar formando..."
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </div>
+                <div className="w-full lg:w-56">
+                  <Select value={historyKeyFilter} onValueChange={setHistoryKeyFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Filtrar teste" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os testes</SelectItem>
+                      {availableKeyCodes.map((code) => (
+                        <SelectItem key={`history-${code}`} value={code}>
+                          {code}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="pt-6">
@@ -477,17 +743,108 @@ export default function TracomaExaminerEvaluationPage() {
                 <CardHeader>
                   <CardTitle className="text-base">Historico de desempenho</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <Input
-                    placeholder="Buscar por nome do formando..."
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                  />
+                <CardContent>
                   <DataTable
                     columns={historyColumns}
-                    data={filteredResults}
+                    data={filteredHistory}
                     isLoading={resultsQuery.isLoading}
                     emptyMessage="Nenhum resultado registrado ainda."
+                    onRowClick={(row) => setSelectedResult(row)}
+                  />
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="monitor" className="space-y-4 mt-6">
+          {resultsLoadError && (
+            <Alert className="border-red-200 bg-red-50">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800">
+                {resultsLoadError}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {!resultsLoadError && (
+            <>
+              <div className="flex flex-col lg:flex-row gap-3">
+                <div className="w-full lg:w-56">
+                  <Select value={monitorKeyFilter} onValueChange={setMonitorKeyFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Filtrar teste" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os testes</SelectItem>
+                      {availableKeyCodes.map((code) => (
+                        <SelectItem key={`monitor-${code}`} value={code}>
+                          {code}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Input
+                    placeholder="Filtrar por pessoa (nome)..."
+                    value={monitorPersonFilter}
+                    onChange={(event) => setMonitorPersonFilter(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-slate-500">Tentativas analisadas</p>
+                    <p className="text-3xl font-semibold">
+                      {monitorFilteredResults.length}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-slate-500">Questoes monitoradas</p>
+                    <p className="text-3xl font-semibold">{TRACOMA_TOTAL_QUESTIONS}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-slate-500">Filtro atual</p>
+                    <p className="text-xl font-semibold">
+                      {monitorKeyFilter === "all" ? "Todos" : monitorKeyFilter}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    Acertos e erros por questao
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DataTable
+                    columns={monitorQuestionColumns}
+                    data={monitorQuestionStats}
+                    isLoading={resultsQuery.isLoading}
+                    emptyMessage="Nenhuma estatistica disponivel."
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Tentativas para reanalise</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DataTable
+                    columns={historyColumns}
+                    data={monitorFilteredResults}
+                    isLoading={resultsQuery.isLoading}
+                    emptyMessage="Nenhuma tentativa encontrada para o filtro."
                     onRowClick={(row) => setSelectedResult(row)}
                   />
                 </CardContent>
@@ -498,9 +855,9 @@ export default function TracomaExaminerEvaluationPage() {
       </Tabs>
 
       <Dialog open={Boolean(selectedResult)} onOpenChange={() => setSelectedResult(null)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Detalhes do desempenho</DialogTitle>
+            <DialogTitle>Reanalise detalhada da tentativa</DialogTitle>
           </DialogHeader>
 
           {selectedResult && (
@@ -512,105 +869,127 @@ export default function TracomaExaminerEvaluationPage() {
                     <p className="font-semibold">{selectedResult.participant_name}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Data</p>
+                    <p className="text-xs text-slate-500">Teste</p>
+                    <p className="font-semibold">{selectedResult.answer_key_code}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Acertos</p>
                     <p className="font-semibold">
-                      {formatDateSafe(selectedResult.created_at, "dd/MM/yyyy HH:mm") || "-"}
+                      {selectedResult.total_matches}/{selectedResult.total_questions}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Kappa</p>
-                    <p className="font-semibold">{formatNumber(selectedResult.kappa, 3)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">IC95%</p>
-                    <p className="font-semibold">
-                      {formatNumber(selectedResult.kappa_ci_low, 3)} a{" "}
-                      {formatNumber(selectedResult.kappa_ci_high, 3)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Sensibilidade</p>
-                    <p className="font-semibold">
-                      {formatNumber(selectedResult.sensitivity, 3)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Especificidade</p>
-                    <p className="font-semibold">
-                      {formatNumber(selectedResult.specificity, 3)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Concordancia observada</p>
+                    <p className="text-xs text-slate-500">Concordancia</p>
                     <p className="font-semibold">
                       {formatNumber(Number(selectedResult.observed_agreement) * 100, 2)}%
                     </p>
                   </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Status</p>
-                    <Badge
-                      className={
-                        String(selectedResult?.aptitude_status || "").toLowerCase() ===
-                        "apto"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-amber-100 text-amber-700"
-                      }
-                    >
-                      {selectedResult.aptitude_status || "-"}
-                    </Badge>
-                  </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Matriz 2x2</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="overflow-x-auto">
-                    <table className="w-full border text-sm">
-                      <thead>
-                        <tr className="bg-slate-50">
-                          <th className="border px-3 py-2"></th>
-                          <th className="border px-3 py-2">Formando = 1</th>
-                          <th className="border px-3 py-2">Formando = 0</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td className="border px-3 py-2 font-medium">Padrao = 1</td>
-                          <td className="border px-3 py-2">
-                            {selectedResult.matrix_a || 0}
-                          </td>
-                          <td className="border px-3 py-2">
-                            {selectedResult.matrix_c || 0}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="border px-3 py-2 font-medium">Padrao = 0</td>
-                          <td className="border px-3 py-2">
-                            {selectedResult.matrix_b || 0}
-                          </td>
-                          <td className="border px-3 py-2">
-                            {selectedResult.matrix_d || 0}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="h-[220px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={matrixChartFromResult(selectedResult)}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="label" />
-                        <YAxis allowDecimals={false} />
-                        <Tooltip />
-                        <Bar dataKey="total" fill="#2563eb" radius={[6, 6, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
+              {selectedResultDetails?.error ? (
+                <Alert className="border-red-200 bg-red-50">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800">
+                    {selectedResultDetails.error}
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Questoes erradas para reanalise
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {selectedResultDetails?.wrongQuestions?.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {selectedResultDetails.wrongQuestions.map((questionNumber) => (
+                            <Badge
+                              key={`wrong-question-${questionNumber}`}
+                              className="bg-red-100 text-red-700"
+                            >
+                              Q{String(questionNumber).padStart(2, "0")}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-green-700">
+                          Nenhuma questao errada. Concordancia total.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Matriz 2x2</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="overflow-x-auto">
+                        <table className="w-full border text-sm">
+                          <thead>
+                            <tr className="bg-slate-50">
+                              <th className="border px-3 py-2"></th>
+                              <th className="border px-3 py-2">Formando = 1</th>
+                              <th className="border px-3 py-2">Formando = 0</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td className="border px-3 py-2 font-medium">Padrao = 1</td>
+                              <td className="border px-3 py-2">
+                                {selectedResult.matrix_a || 0}
+                              </td>
+                              <td className="border px-3 py-2">
+                                {selectedResult.matrix_c || 0}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="border px-3 py-2 font-medium">Padrao = 0</td>
+                              <td className="border px-3 py-2">
+                                {selectedResult.matrix_b || 0}
+                              </td>
+                              <td className="border px-3 py-2">
+                                {selectedResult.matrix_d || 0}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="h-[220px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={matrixChartFromResult(selectedResult)}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="label" />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip />
+                            <Bar dataKey="total" fill="#2563eb" radius={[6, 6, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">
+                        Resposta por questao (certa/errada)
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <DataTable
+                        columns={detailColumns}
+                        data={selectedResultDetails?.rows || []}
+                        isLoading={false}
+                        emptyMessage="Nenhum detalhe encontrado."
+                      />
+                    </CardContent>
+                  </Card>
+                </>
+              )}
             </div>
           )}
         </DialogContent>

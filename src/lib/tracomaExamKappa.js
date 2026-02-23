@@ -2,6 +2,12 @@ export const TRACOMA_TOTAL_QUESTIONS = 50;
 
 const EPSILON = 1e-12;
 
+export const normalizeAnswerKeyCode = (value) =>
+  String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+
 export const normalizeBinaryAnswer = (value) => {
   if (value === 0 || value === 1) return value;
   if (value === "0" || value === "1") return Number(value);
@@ -37,6 +43,50 @@ export const buildAnswerKeyFromRows = (
     key.push(map.get(i));
   }
   return key;
+};
+
+export const buildAnswerKeyCollections = (
+  rows,
+  totalQuestions = TRACOMA_TOTAL_QUESTIONS
+) => {
+  const grouped = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const code = normalizeAnswerKeyCode(row?.answer_key_code || "E2");
+    if (!code) return;
+    if (!grouped.has(code)) grouped.set(code, []);
+    grouped.get(code).push(row);
+  });
+
+  const collections = [];
+  grouped.forEach((groupRows, code) => {
+    try {
+      const answers = buildAnswerKeyFromRows(groupRows, totalQuestions);
+      const positives = answers.filter((value) => value === 1).length;
+      const negatives = answers.length - positives;
+      collections.push({
+        code,
+        answers,
+        rows: groupRows,
+        positives,
+        negatives,
+      });
+    } catch (error) {
+      collections.push({
+        code,
+        answers: null,
+        rows: groupRows,
+        positives: 0,
+        negatives: 0,
+        error: error?.message || "Gabarito incompleto.",
+      });
+    }
+  });
+
+  return collections.sort((a, b) =>
+    String(a.code || "").localeCompare(String(b.code || ""), "pt-BR", {
+      sensitivity: "base",
+    })
+  );
 };
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
