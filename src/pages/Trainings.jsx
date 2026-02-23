@@ -899,7 +899,17 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       cellClassName: "font-medium",
       render: (row) => (
         <div>
-          <p className="font-medium">{row.title}</p>
+          <button
+            type="button"
+            className="font-medium text-left text-slate-900 hover:text-blue-700 hover:underline"
+            onClick={(event) => {
+              event.stopPropagation();
+              setSelectedTraining(row);
+              setShowDetails(true);
+            }}
+          >
+            {row.title}
+          </button>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {row.code && <p className="text-xs text-slate-500">{row.code}</p>}
             {row.online_link && (
