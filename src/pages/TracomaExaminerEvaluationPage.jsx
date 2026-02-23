@@ -104,7 +104,11 @@ const buildQuestionColumns = (totalQuestions = TRACOMA_TOTAL_QUESTIONS) => {
 
 const normalizeIdentityText = (value) => String(value || "").trim().toLowerCase();
 
-const normalizeDigits = (value) => String(value || "").replace(/\D/g, "");
+const normalizeDocumentText = (value) =>
+  String(value || "")
+    .replace(/[^0-9a-zA-Z]/g, "")
+    .toUpperCase()
+    .trim();
 
 const toSafeFileName = (value) =>
   String(value || "")
@@ -180,6 +184,86 @@ const parseSpreadsheetRows = async (file) => {
   const worksheet = workbook.Sheets[firstSheet];
   return XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 };
+
+const extractImportIdentity = (normalizedRow) => {
+  const name = String(
+    pickImportValue(normalizedRow, [
+      "participant_name",
+      "nome",
+      "nome_participante",
+      "nome_formando",
+      "formando",
+      "profissional",
+    ]) || ""
+  ).trim();
+  const email = String(
+    pickImportValue(normalizedRow, [
+      "participant_email",
+      "email",
+      "e_mail",
+      "mail",
+    ]) || ""
+  )
+    .trim()
+    .toLowerCase();
+  const rg = normalizeDocumentText(
+    pickImportValue(normalizedRow, [
+      "participant_rg",
+      "rg",
+      "rg_formando",
+      "documento",
+      "participant_cpf",
+      "cpf",
+      "cpf_formando",
+    ])
+  );
+  return {
+    name,
+    email,
+    rg,
+  };
+};
+
+const resolveImportAnswerKeyCode = (normalizedRow, fallbackCode = "E2") =>
+  normalizeAnswerKeyCode(
+    pickImportValue(normalizedRow, [
+      "answer_key_code",
+      "codigo_teste",
+      "codigo_do_teste",
+      "teste",
+      "gabarito",
+      "modelo",
+      "tipo_teste",
+    ]) || fallbackCode
+  );
+
+const parseQuestionNumberFromRow = (normalizedRow) => {
+  const raw = pickImportValue(normalizedRow, [
+    "question_number",
+    "question",
+    "questao",
+    "numero_questao",
+    "n_questao",
+    "pergunta",
+    "q",
+  ]);
+  const digits = String(raw || "").match(/\d+/)?.[0] || "";
+  const numeric = Number(digits);
+  if (!Number.isInteger(numeric)) return null;
+  if (numeric < 1 || numeric > TRACOMA_TOTAL_QUESTIONS) return null;
+  return numeric;
+};
+
+const parseVerticalAnswerFromRow = (normalizedRow) =>
+  normalizeBinaryAnswer(
+    pickImportValue(normalizedRow, [
+      "answer",
+      "resposta",
+      "valor",
+      "value",
+      "resposta_binaria",
+    ])
+  );
 
 export default function TracomaExaminerEvaluationPage() {
   const navigate = useNavigate();
@@ -595,7 +679,7 @@ export default function TracomaExaminerEvaluationPage() {
     return [
       normalizeIdentityText(row?.participant_name),
       normalizeIdentityText(row?.participant_email),
-      normalizeDigits(row?.participant_cpf),
+      normalizeDocumentText(row?.participant_cpf),
       normalizeAnswerKeyCode(row?.answer_key_code || "E2"),
       Number(row?.total_matches || 0),
       Number(row?.total_questions || TRACOMA_TOTAL_QUESTIONS),
@@ -660,7 +744,7 @@ export default function TracomaExaminerEvaluationPage() {
         const linkedParticipant = resolveTrainingParticipantMatch(enrolledParticipants, {
           name: row?.participant_name,
           email: row?.participant_email,
-          cpf: row?.participant_cpf,
+          rg: row?.participant_cpf,
         });
         if (!linkedParticipant) {
           invalidCount += 1;
@@ -669,14 +753,14 @@ export default function TracomaExaminerEvaluationPage() {
         const linkedIdentity = buildParticipantIdentity(linkedParticipant, {
           name: row?.participant_name,
           email: row?.participant_email,
-          cpf: row?.participant_cpf,
+          rg: row?.participant_cpf,
         });
         const cloned = {
           training_id: currentId,
           training_title: training?.title || row?.training_title || null,
           participant_name: linkedIdentity.name,
           participant_email: linkedIdentity.email,
-          participant_cpf: linkedIdentity.cpf,
+          participant_cpf: linkedIdentity.rg,
           total_questions: Number(row?.total_questions || TRACOMA_TOTAL_QUESTIONS),
           total_matches: Number(row?.total_matches || 0),
           matrix_a: Number(row?.matrix_a || 0),
@@ -784,106 +868,196 @@ export default function TracomaExaminerEvaluationPage() {
       let invalidCount = 0;
       const invalidPreview = [];
 
-      rows.forEach((row, index) => {
-        const lineNumber = index + 2;
-        const normalizedRow = normalizeImportRow(row);
-        const participantName = String(
-          pickImportValue(normalizedRow, [
-            "participant_name",
-            "nome",
-            "nome_participante",
-            "nome_formando",
-            "formando",
-            "profissional",
-          ]) || ""
-        ).trim();
+      const fallbackKeyCode = spreadsheetFallbackKeyCode || "E2";
+      const normalizedRows = rows.map((row, index) => ({
+        lineNumber: index + 2,
+        normalizedRow: normalizeImportRow(row),
+      }));
 
-        if (!participantName) {
+      const hasHorizontalFormat = normalizedRows.some(({ normalizedRow }) => {
+        const keys = Object.keys(normalizedRow || {});
+        return keys.some((key) =>
+          [
+            "q1",
+            "q01",
+            "questao1",
+            "questao01",
+            "resposta1",
+            "resposta01",
+            "1",
+            "01",
+          ].includes(key)
+        );
+      });
+
+      const hasVerticalFormat = normalizedRows.some(({ normalizedRow }) => {
+        const identity = extractImportIdentity(normalizedRow);
+        return (
+          Boolean(identity.name) &&
+          parseQuestionNumberFromRow(normalizedRow) !== null &&
+          parseVerticalAnswerFromRow(normalizedRow) !== null
+        );
+      });
+
+      const parsedEntries = [];
+      if (hasHorizontalFormat) {
+        normalizedRows.forEach(({ lineNumber, normalizedRow }) => {
+          const identity = extractImportIdentity(normalizedRow);
+          if (!identity.name) {
+            invalidCount += 1;
+            if (invalidPreview.length < 5) {
+              invalidPreview.push(`Linha ${lineNumber}: nome do formando ausente.`);
+            }
+            return;
+          }
+
+          const answerKeyCode = resolveImportAnswerKeyCode(
+            normalizedRow,
+            fallbackKeyCode
+          );
+          let answers = [];
+          try {
+            answers = parseAnswersFromImportRow(normalizedRow);
+          } catch (error) {
+            invalidCount += 1;
+            if (invalidPreview.length < 5) {
+              invalidPreview.push(
+                `Linha ${lineNumber}: ${error?.message || "respostas invalidas."}`
+              );
+            }
+            return;
+          }
+
+          parsedEntries.push({
+            lineNumber,
+            identity,
+            answerKeyCode,
+            answers,
+          });
+        });
+      } else if (hasVerticalFormat) {
+        const groupedEntries = new Map();
+        normalizedRows.forEach(({ lineNumber, normalizedRow }) => {
+          const identity = extractImportIdentity(normalizedRow);
+          if (!identity.name) {
+            invalidCount += 1;
+            if (invalidPreview.length < 5) {
+              invalidPreview.push(
+                `Linha ${lineNumber}: nome do formando ausente para formato vertical.`
+              );
+            }
+            return;
+          }
+
+          const questionNumber = parseQuestionNumberFromRow(normalizedRow);
+          const answer = parseVerticalAnswerFromRow(normalizedRow);
+          if (questionNumber === null || answer === null) {
+            invalidCount += 1;
+            if (invalidPreview.length < 5) {
+              invalidPreview.push(
+                `Linha ${lineNumber}: questao/valor invalido no formato vertical.`
+              );
+            }
+            return;
+          }
+
+          const answerKeyCode = resolveImportAnswerKeyCode(
+            normalizedRow,
+            fallbackKeyCode
+          );
+          const groupKey = [
+            normalizeIdentityText(identity.name),
+            normalizeIdentityText(identity.email),
+            normalizeDocumentText(identity.rg),
+            normalizeAnswerKeyCode(answerKeyCode),
+          ].join("|");
+          if (!groupedEntries.has(groupKey)) {
+            groupedEntries.set(groupKey, {
+              lineNumber,
+              identity,
+              answerKeyCode,
+              answers: Array.from(
+                { length: TRACOMA_TOTAL_QUESTIONS },
+                () => null
+              ),
+            });
+          }
+          const group = groupedEntries.get(groupKey);
+          group.answers[questionNumber - 1] = answer;
+        });
+
+        groupedEntries.forEach((entry) => {
+          const missingQuestion = entry.answers.findIndex(
+            (item) => item === null
+          );
+          if (missingQuestion >= 0) {
+            invalidCount += 1;
+            if (invalidPreview.length < 5) {
+              invalidPreview.push(
+                `Linha ${entry.lineNumber}: faltou resposta da questao ${missingQuestion + 1} no formato vertical.`
+              );
+            }
+            return;
+          }
+          parsedEntries.push({
+            lineNumber: entry.lineNumber,
+            identity: entry.identity,
+            answerKeyCode: entry.answerKeyCode,
+            answers: entry.answers,
+          });
+        });
+      } else {
+        throw new Error(
+          "Formato nao reconhecido. Use Q1..Q50 em colunas (horizontal) ou questao/valor por linha (vertical)."
+        );
+      }
+
+      parsedEntries.forEach((entry) => {
+        const answerKey = answerKeyByCode.get(entry.answerKeyCode);
+        if (!answerKey) {
           invalidCount += 1;
           if (invalidPreview.length < 5) {
-            invalidPreview.push(`Linha ${lineNumber}: nome do formando ausente.`);
+            invalidPreview.push(
+              `Linha ${entry.lineNumber}: codigo de teste "${entry.answerKeyCode || "-"}" sem gabarito.`
+            );
           }
           return;
         }
 
-        const participantEmail = String(
-          pickImportValue(normalizedRow, [
-            "participant_email",
-            "email",
-            "e_mail",
-            "mail",
-          ]) || ""
-        )
-          .trim()
-          .toLowerCase();
-        const participantCpf = normalizeDigits(
-          pickImportValue(normalizedRow, ["participant_cpf", "cpf", "cpf_formando"])
+        const linkedParticipant = resolveTrainingParticipantMatch(
+          enrolledParticipants,
+          {
+            name: entry.identity.name,
+            email: entry.identity.email,
+            rg: entry.identity.rg,
+          }
         );
-        const linkedParticipant = resolveTrainingParticipantMatch(enrolledParticipants, {
-          name: participantName,
-          email: participantEmail,
-          cpf: participantCpf,
-        });
         if (!linkedParticipant) {
           invalidCount += 1;
           if (invalidPreview.length < 5) {
             invalidPreview.push(
-              `Linha ${lineNumber}: formando nao encontrado entre os inscritos deste treinamento.`
+              `Linha ${entry.lineNumber}: formando nao encontrado entre os inscritos (nome/RG/e-mail).`
             );
           }
           return;
         }
         const linkedIdentity = buildParticipantIdentity(linkedParticipant, {
-          name: participantName,
-          email: participantEmail,
-          cpf: participantCpf,
+          name: entry.identity.name,
+          email: entry.identity.email,
+          rg: entry.identity.rg,
         });
-
-        const rawKeyCode = pickImportValue(normalizedRow, [
-          "answer_key_code",
-          "codigo_teste",
-          "codigo_do_teste",
-          "teste",
-          "gabarito",
-          "modelo",
-          "tipo_teste",
-        ]);
-        const answerKeyCode = normalizeAnswerKeyCode(
-          rawKeyCode || spreadsheetFallbackKeyCode || "E2"
-        );
-        const answerKey = answerKeyByCode.get(answerKeyCode);
-        if (!answerKey) {
-          invalidCount += 1;
-          if (invalidPreview.length < 5) {
-            invalidPreview.push(
-              `Linha ${lineNumber}: codigo de teste "${answerKeyCode || "-"}" sem gabarito.`
-            );
-          }
-          return;
-        }
-
-        let answers = [];
-        try {
-          answers = parseAnswersFromImportRow(normalizedRow);
-        } catch (error) {
-          invalidCount += 1;
-          if (invalidPreview.length < 5) {
-            invalidPreview.push(`Linha ${lineNumber}: ${error?.message || "respostas invalidas."}`);
-          }
-          return;
-        }
 
         let computed = null;
         try {
           computed = computeTracomaKappaMetrics({
             answerKey,
-            traineeAnswers: answers,
+            traineeAnswers: entry.answers,
           });
         } catch (error) {
           invalidCount += 1;
           if (invalidPreview.length < 5) {
             invalidPreview.push(
-              `Linha ${lineNumber}: falha no calculo do Kappa (${error?.message || "erro"}).`
+              `Linha ${entry.lineNumber}: falha no calculo do Kappa (${error?.message || "erro"}).`
             );
           }
           return;
@@ -894,7 +1068,7 @@ export default function TracomaExaminerEvaluationPage() {
           training_title: training?.title || null,
           participant_name: linkedIdentity.name,
           participant_email: linkedIdentity.email,
-          participant_cpf: linkedIdentity.cpf,
+          participant_cpf: linkedIdentity.rg,
           total_questions: computed.totalQuestions,
           total_matches: computed.totalMatches,
           matrix_a: computed.matrix.a,
@@ -910,8 +1084,8 @@ export default function TracomaExaminerEvaluationPage() {
           specificity: computed.specificity,
           interpretation: computed.interpretation,
           aptitude_status: computed.aptitudeStatus,
-          answer_key_code: answerKeyCode,
-          answers,
+          answer_key_code: entry.answerKeyCode,
+          answers: entry.answers,
         };
 
         const fingerprint = buildResultFingerprint(importedRow);
@@ -1441,6 +1615,91 @@ export default function TracomaExaminerEvaluationPage() {
     setImportSpreadsheetDialogOpen(true);
   };
 
+  const handleDownloadSpreadsheetTemplate = () => {
+    const fallbackCode =
+      spreadsheetFallbackKeyCode || selectedMaskKeyCode || "E2";
+
+    const horizontalColumns = [
+      "participant_name",
+      "participant_email",
+      "participant_rg",
+      "answer_key_code",
+      ...Array.from(
+        { length: TRACOMA_TOTAL_QUESTIONS },
+        (_, index) => `Q${index + 1}`
+      ),
+    ];
+    const horizontalSample = {
+      participant_name: "NOME DO INSCRITO",
+      participant_email: "email@dominio.com",
+      participant_rg: "1234567X",
+      answer_key_code: fallbackCode,
+    };
+    for (let i = 1; i <= TRACOMA_TOTAL_QUESTIONS; i += 1) {
+      horizontalSample[`Q${i}`] = "";
+    }
+    const horizontalSheet = XLSX.utils.json_to_sheet([horizontalSample], {
+      header: horizontalColumns,
+    });
+
+    const verticalRows = Array.from(
+      { length: TRACOMA_TOTAL_QUESTIONS },
+      (_, index) => ({
+        participant_name: "NOME DO INSCRITO",
+        participant_email: "email@dominio.com",
+        participant_rg: "1234567X",
+        answer_key_code: fallbackCode,
+        question_number: index + 1,
+        answer: "",
+      })
+    );
+    const verticalSheet = XLSX.utils.json_to_sheet(verticalRows, {
+      header: [
+        "participant_name",
+        "participant_email",
+        "participant_rg",
+        "answer_key_code",
+        "question_number",
+        "answer",
+      ],
+    });
+
+    const instructions = [
+      {
+        instrucoes:
+          "Modelo de importacao de respostas de tracoma (50 questoes).",
+      },
+      {
+        instrucoes:
+          "Formato horizontal: uma linha por formando e colunas Q1..Q50.",
+      },
+      {
+        instrucoes:
+          "Formato vertical: uma linha por questao com colunas question_number e answer.",
+      },
+      {
+        instrucoes:
+          "Vinculacao do inscrito: usar nome, RG ou e-mail cadastrados na inscricao.",
+      },
+      {
+        instrucoes: "Respostas devem ser apenas 0 ou 1.",
+      },
+      {
+        instrucoes:
+          "Se answer_key_code estiver vazio, sera usado o codigo selecionado no sistema.",
+      },
+    ];
+    const instructionSheet = XLSX.utils.json_to_sheet(instructions, {
+      header: ["instrucoes"],
+    });
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, horizontalSheet, "MODELO_HORIZONTAL");
+    XLSX.utils.book_append_sheet(workbook, verticalSheet, "MODELO_VERTICAL");
+    XLSX.utils.book_append_sheet(workbook, instructionSheet, "INSTRUCOES");
+    XLSX.writeFile(workbook, "modelo_importacao_tracoma.xlsx");
+  };
+
   const handleCopyLink = async () => {
     if (!testLink) return;
     try {
@@ -1813,6 +2072,14 @@ export default function TracomaExaminerEvaluationPage() {
                 >
                   <Upload className="h-4 w-4 mr-2" />
                   Importar formulario preenchido (Excel)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDownloadSpreadsheetTemplate}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Baixar planilha modelo
                 </Button>
               </div>
 
@@ -2203,8 +2470,20 @@ export default function TracomaExaminerEvaluationPage() {
                 }}
               />
               <p className="text-xs text-slate-500">
-                Use colunas para nome do formando e respostas Q1..Q50 (0/1).
+                Aceita formato horizontal (Q1..Q50 em colunas) e vertical
+                (question_number + answer por linha).
               </p>
+            </div>
+
+            <div className="flex justify-start">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleDownloadSpreadsheetTemplate}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Baixar planilha modelo
+              </Button>
             </div>
 
             <div className="space-y-2">
@@ -2229,7 +2508,8 @@ export default function TracomaExaminerEvaluationPage() {
             <Alert>
               <AlertDescription>
                 O sistema recalcula Kappa automaticamente para cada linha valida.
-                Duplicados e linhas invalidas sao ignorados.
+                Duplicados e linhas invalidas sao ignorados. A vinculacao com
+                inscrito e feita por nome, RG ou e-mail.
               </AlertDescription>
             </Alert>
 

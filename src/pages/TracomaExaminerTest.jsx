@@ -52,7 +52,7 @@ export default function TracomaExaminerTest() {
 
   const [participantName, setParticipantName] = useState("");
   const [participantEmail, setParticipantEmail] = useState("");
-  const [participantCpf, setParticipantCpf] = useState("");
+  const [participantRg, setParticipantRg] = useState("");
   const [selectedKeyCode, setSelectedKeyCode] = useState("");
   const [answers, setAnswers] = useState({});
   const [formError, setFormError] = useState("");
@@ -164,17 +164,17 @@ export default function TracomaExaminerTest() {
       const linkedParticipant = resolveTrainingParticipantMatch(enrolledParticipants, {
         name: cleanName,
         email: participantEmail,
-        cpf: participantCpf,
+        rg: participantRg,
       });
       if (!linkedParticipant) {
         throw new Error(
-          "Formando nao encontrado entre os inscritos deste treinamento. Use o nome/CPF/e-mail cadastrado na inscricao."
+          "Formando nao encontrado entre os inscritos deste treinamento. Use o nome/RG/e-mail cadastrado na inscricao."
         );
       }
       const linkedIdentity = buildParticipantIdentity(linkedParticipant, {
         name: cleanName,
         email: participantEmail,
-        cpf: participantCpf,
+        rg: participantRg,
       });
 
       const candidateAnswers = [];
@@ -199,7 +199,7 @@ export default function TracomaExaminerTest() {
         training_title: training.title || null,
         participant_name: linkedIdentity.name,
         participant_email: linkedIdentity.email,
-        participant_cpf: linkedIdentity.cpf,
+        participant_cpf: linkedIdentity.rg,
         total_questions: computed.totalQuestions,
         total_matches: computed.totalMatches,
         matrix_a: computed.matrix.a,
@@ -448,12 +448,12 @@ export default function TracomaExaminerTest() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="participant-cpf">CPF (opcional)</Label>
+              <Label htmlFor="participant-rg">RG (opcional)</Label>
               <Input
-                id="participant-cpf"
-                value={participantCpf}
-                onChange={(event) => setParticipantCpf(event.target.value)}
-                placeholder="000.000.000-00"
+                id="participant-rg"
+                value={participantRg}
+                onChange={(event) => setParticipantRg(event.target.value)}
+                placeholder="RG do inscrito"
               />
             </div>
           </CardContent>

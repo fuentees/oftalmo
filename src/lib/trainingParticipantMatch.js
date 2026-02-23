@@ -9,19 +9,24 @@ export const normalizeParticipantText = (value) =>
 export const normalizeParticipantEmail = (value) =>
   String(value ?? "").trim().toLowerCase();
 
-export const normalizeParticipantCpf = (value) =>
-  String(value ?? "").replace(/\D/g, "").trim();
+export const normalizeParticipantRg = (value) =>
+  String(value ?? "")
+    .replace(/[^0-9a-zA-Z]/g, "")
+    .toUpperCase()
+    .trim();
 
 const toParticipantIdentity = (participant) => ({
   name: String(participant?.professional_name || "").trim(),
   email: String(participant?.professional_email || "").trim(),
-  cpf: String(participant?.professional_cpf || "").trim(),
+  rg: String(
+    participant?.professional_rg || participant?.professional_cpf || ""
+  ).trim(),
 });
 
 const toNormalizedIdentity = (identity) => ({
   name: normalizeParticipantText(identity?.name),
   email: normalizeParticipantEmail(identity?.email),
-  cpf: normalizeParticipantCpf(identity?.cpf),
+  rg: normalizeParticipantRg(identity?.rg || identity?.cpf),
 });
 
 export const resolveTrainingParticipantMatch = (participants, identity) => {
@@ -31,30 +36,17 @@ export const resolveTrainingParticipantMatch = (participants, identity) => {
   if (
     !normalizedTarget.name &&
     !normalizedTarget.email &&
-    !normalizedTarget.cpf
+    !normalizedTarget.rg
   ) {
     return null;
   }
 
-  if (normalizedTarget.cpf) {
-    const byCpf = rows.find((item) => {
+  if (normalizedTarget.rg) {
+    const byRg = rows.find((item) => {
       const normalized = toNormalizedIdentity(toParticipantIdentity(item));
-      return normalized.cpf && normalized.cpf === normalizedTarget.cpf;
+      return normalized.rg && normalized.rg === normalizedTarget.rg;
     });
-    if (byCpf) return byCpf;
-  }
-
-  if (normalizedTarget.email && normalizedTarget.name) {
-    const byEmailName = rows.find((item) => {
-      const normalized = toNormalizedIdentity(toParticipantIdentity(item));
-      return (
-        normalized.email &&
-        normalized.name &&
-        normalized.email === normalizedTarget.email &&
-        normalized.name === normalizedTarget.name
-      );
-    });
-    if (byEmailName) return byEmailName;
+    if (byRg) return byRg;
   }
 
   if (normalizedTarget.email) {
@@ -79,10 +71,16 @@ export const resolveTrainingParticipantMatch = (participants, identity) => {
 export const buildParticipantIdentity = (participant, fallback = {}) => {
   const rawName = String(participant?.professional_name || fallback?.name || "").trim();
   const rawEmail = String(participant?.professional_email || fallback?.email || "").trim();
-  const rawCpf = String(participant?.professional_cpf || fallback?.cpf || "").trim();
+  const rawRg = String(
+    participant?.professional_rg ||
+      participant?.professional_cpf ||
+      fallback?.rg ||
+      fallback?.cpf ||
+      ""
+  ).trim();
   return {
     name: rawName || "Formando sem nome",
     email: normalizeParticipantEmail(rawEmail) || null,
-    cpf: normalizeParticipantCpf(rawCpf) || null,
+    rg: normalizeParticipantRg(rawRg) || null,
   };
 };
