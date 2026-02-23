@@ -384,9 +384,9 @@ create table if not exists app_logs (
 
 create table if not exists tracoma_exam_answer_keys (
   id uuid primary key default gen_random_uuid(),
-  question_number integer not null unique,
+  question_number integer not null,
   expected_answer smallint not null check (expected_answer in (0, 1)),
-  answer_key_code text not null default 'TF_PADRAO_OURO_V1',
+  answer_key_code text not null default 'E2',
   is_locked boolean not null default true,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
@@ -415,7 +415,7 @@ create table if not exists tracoma_exam_results (
   specificity numeric(8, 6),
   interpretation text,
   aptitude_status text,
-  answer_key_code text default 'TF_PADRAO_OURO_V1',
+  answer_key_code text default 'E2',
   answers jsonb not null,
   created_at timestamptz default now(),
   check (total_questions > 0)
@@ -423,6 +423,27 @@ create table if not exists tracoma_exam_results (
 
 do $$
 begin
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'tracoma_exam_answer_keys_question_number_key'
+      and conrelid = 'public.tracoma_exam_answer_keys'::regclass
+  ) then
+    alter table public.tracoma_exam_answer_keys
+      drop constraint tracoma_exam_answer_keys_question_number_key;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'tracoma_exam_answer_keys_code_question_key'
+      and conrelid = 'public.tracoma_exam_answer_keys'::regclass
+  ) then
+    alter table public.tracoma_exam_answer_keys
+      add constraint tracoma_exam_answer_keys_code_question_key
+      unique (answer_key_code, question_number);
+  end if;
+
   if not exists (
     select 1
     from pg_indexes
@@ -441,6 +462,16 @@ begin
   ) then
     create index idx_tracoma_exam_results_participant_name
       on public.tracoma_exam_results (participant_name);
+  end if;
+
+  if not exists (
+    select 1
+    from pg_indexes
+    where schemaname = 'public'
+      and indexname = 'idx_tracoma_exam_results_answer_key_code'
+  ) then
+    create index idx_tracoma_exam_results_answer_key_code
+      on public.tracoma_exam_results (answer_key_code);
   end if;
 end $$;
 

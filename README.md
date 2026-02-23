@@ -55,6 +55,8 @@ armazenamento de arquivos.
   `supabase/create_communication_messages_table.sql`.
   Para o módulo "Avaliacao de Examinadores de tracoma - Teste de 50 Questoes",
   execute `supabase/create_tracoma_exam_tables.sql` (tabelas de gabarito e resultados).
+  O script cria o gabarito `E2` e deixa pronto para incluir novos testes
+  (ex.: `E2_RETAKE`) no mesmo formato de 50 respostas binárias.
    O mapeamento de Município x GVE agora é persistido na tabela
    `municipality_gve_mappings`.
 3. Crie o bucket de armazenamento `uploads` e deixe como **public** (ou adapte
