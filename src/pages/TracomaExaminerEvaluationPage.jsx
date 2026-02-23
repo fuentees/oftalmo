@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { supabase } from "@/api/supabaseClient";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,8 +32,10 @@ import {
   ClipboardCheck,
   Copy,
   Loader2,
+  Pencil,
   Plus,
   Search,
+  Trash2,
 } from "lucide-react";
 import {
   Bar,
@@ -57,6 +60,7 @@ import {
   isMissingSupabaseTableError,
 } from "@/lib/supabaseErrors";
 import { formatDateSafe } from "@/lib/date";
+import { isRepadronizacaoTraining } from "@/lib/trainingType";
 
 const CHART_COLORS = ["#16a34a", "#f59e0b", "#2563eb", "#ef4444"];
 
@@ -104,7 +108,12 @@ export default function TracomaExaminerEvaluationPage() {
   const [newMaskDialogOpen, setNewMaskDialogOpen] = useState(false);
   const [newMaskCode, setNewMaskCode] = useState("");
   const [newMaskAnswers, setNewMaskAnswers] = useState({});
+  const [editMaskDialogOpen, setEditMaskDialogOpen] = useState(false);
+  const [editMaskOriginalCode, setEditMaskOriginalCode] = useState("");
+  const [editMaskCode, setEditMaskCode] = useState("");
+  const [editMaskAnswers, setEditMaskAnswers] = useState({});
   const [maskActionStatus, setMaskActionStatus] = useState(null);
+  const [resultActionStatus, setResultActionStatus] = useState(null);
   const queryClient = useQueryClient();
 
   const trainingQuery = useQuery({
@@ -116,6 +125,7 @@ export default function TracomaExaminerEvaluationPage() {
     enabled: Boolean(trainingId),
   });
   const training = trainingQuery.data;
+  const trainingIsRepadronizacao = isRepadronizacaoTraining(training);
 
   const answerKeyQuery = useQuery({
     queryKey: ["tracoma-exam-answer-key-management"],
@@ -226,6 +236,15 @@ export default function TracomaExaminerEvaluationPage() {
           normalizeBinaryAnswer(newMaskAnswers[questionNumber]) !== null
       ).length,
     [newMaskAnswers]
+  );
+
+  const editMaskAnsweredCount = useMemo(
+    () =>
+      Array.from({ length: TRACOMA_TOTAL_QUESTIONS }, (_, index) => index + 1).filter(
+        (questionNumber) =>
+          normalizeBinaryAnswer(editMaskAnswers[questionNumber]) !== null
+      ).length,
+    [editMaskAnswers]
   );
 
   const filteredHistory = useMemo(() => {
@@ -351,6 +370,167 @@ export default function TracomaExaminerEvaluationPage() {
     };
   }, [selectedResult, answerKeyByCode]);
 
+  const deleteExamResult = useMutation({
+    mutationFn: async (resultRow) => {
+      const resultId = String(resultRow?.id || "").trim();
+      if (!resultId) {
+        throw new Error("Tentativa invalida para exclusao.");
+      }
+      await dataClient.entities.TracomaExamResult.delete(resultId);
+      return resultRow;
+    },
+    onSuccess: async (deletedRow) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["tracoma-exam-results", trainingId],
+      });
+      setSelectedResult((current) =>
+        String(current?.id || "") === String(deletedRow?.id || "") ? null : current
+      );
+      setResultActionStatus({
+        type: "success",
+        message: `Tentativa de "${deletedRow?.participant_name || "formando"}" excluida com sucesso.`,
+      });
+    },
+    onError: (error) => {
+      setResultActionStatus({
+        type: "error",
+        message: error?.message || "Nao foi possivel excluir a tentativa.",
+      });
+    },
+  });
+
+  const createAnswerPayload = (answerMap, code, contextLabel) => {
+    const payload = [];
+    for (let i = 1; i <= TRACOMA_TOTAL_QUESTIONS; i += 1) {
+      const answer = normalizeBinaryAnswer(answerMap[i]);
+      if (answer === null) {
+        throw new Error(
+          `A questao ${i} esta em branco ou invalida no ${contextLabel}. Preencha com 0 ou 1.`
+        );
+      }
+      payload.push({
+        answer_key_code: code,
+        question_number: i,
+        expected_answer: answer,
+        is_locked: true,
+      });
+    }
+    return payload;
+  };
+
+  const editAnswerKeyModel = useMutation({
+    mutationFn: async () => {
+      const previousCode = normalizeAnswerKeyCode(editMaskOriginalCode);
+      const nextCode = normalizeAnswerKeyCode(editMaskCode);
+      if (!previousCode) {
+        throw new Error("Modelo original invalido.");
+      }
+      if (!nextCode) {
+        throw new Error("Informe o codigo do teste.");
+      }
+      if (nextCode === "ALL") {
+        throw new Error("Codigo de teste invalido.");
+      }
+      if (previousCode !== nextCode && existingAnswerKeyCodes.has(nextCode)) {
+        throw new Error(`Ja existe um modelo com o codigo "${nextCode}".`);
+      }
+
+      const payload = createAnswerPayload(editMaskAnswers, nextCode, "modelo editado");
+      const { error: upsertError } = await supabase
+        .from("tracoma_exam_answer_keys")
+        .upsert(payload, { onConflict: "answer_key_code,question_number" });
+      if (upsertError) throw upsertError;
+
+      if (previousCode !== nextCode) {
+        const { error: deleteOldModelError } = await supabase
+          .from("tracoma_exam_answer_keys")
+          .delete()
+          .eq("answer_key_code", previousCode);
+        if (deleteOldModelError) throw deleteOldModelError;
+
+        const { error: renameResultsError } = await supabase
+          .from("tracoma_exam_results")
+          .update({ answer_key_code: nextCode })
+          .eq("answer_key_code", previousCode);
+        if (renameResultsError) throw renameResultsError;
+      }
+
+      return { previousCode, nextCode };
+    },
+    onSuccess: async ({ previousCode, nextCode }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["tracoma-exam-answer-key-management"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["tracoma-exam-results", trainingId],
+        }),
+      ]);
+      setSelectedMaskKeyCode(nextCode);
+      setEditMaskDialogOpen(false);
+      setEditMaskOriginalCode("");
+      setEditMaskCode("");
+      setEditMaskAnswers({});
+      setMaskActionStatus({
+        type: "success",
+        message:
+          previousCode === nextCode
+            ? `Modelo "${nextCode}" atualizado com sucesso.`
+            : `Modelo renomeado de "${previousCode}" para "${nextCode}" com sucesso.`,
+      });
+    },
+    onError: (error) => {
+      setMaskActionStatus({
+        type: "error",
+        message: error?.message || "Nao foi possivel editar o modelo selecionado.",
+      });
+    },
+  });
+
+  const deleteAnswerKeyModel = useMutation({
+    mutationFn: async (maskCode) => {
+      const normalizedCode = normalizeAnswerKeyCode(maskCode);
+      if (!normalizedCode) {
+        throw new Error("Modelo invalido para exclusao.");
+      }
+      const { count, error: countError } = await supabase
+        .from("tracoma_exam_results")
+        .select("id", { count: "exact", head: true })
+        .eq("answer_key_code", normalizedCode);
+      if (countError) throw countError;
+      const filledTestsCount = Number(count || 0);
+      if (filledTestsCount > 0) {
+        throw new Error(
+          `Existem ${filledTestsCount} teste(s) preenchido(s) com "${normalizedCode}". Exclua as tentativas no historico antes de remover o modelo.`
+        );
+      }
+      const { error: deleteError } = await supabase
+        .from("tracoma_exam_answer_keys")
+        .delete()
+        .eq("answer_key_code", normalizedCode);
+      if (deleteError) throw deleteError;
+      return normalizedCode;
+    },
+    onSuccess: async (deletedCode) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["tracoma-exam-answer-key-management"],
+      });
+      if (selectedMaskKeyCode === deletedCode) {
+        setSelectedMaskKeyCode("");
+      }
+      setMaskActionStatus({
+        type: "success",
+        message: `Modelo "${deletedCode}" excluido com sucesso.`,
+      });
+    },
+    onError: (error) => {
+      setMaskActionStatus({
+        type: "error",
+        message: error?.message || "Nao foi possivel excluir o modelo selecionado.",
+      });
+    },
+  });
+
   const historyColumns = [
     {
       header: "Formando",
@@ -398,6 +578,28 @@ export default function TracomaExaminerEvaluationPage() {
       accessor: "created_at",
       render: (row) => formatDateSafe(row.created_at, "dd/MM/yyyy HH:mm") || "-",
       sortType: "date",
+    },
+    {
+      header: "Acoes",
+      sortable: false,
+      cellClassName: "text-right",
+      render: (row) => (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="text-red-600 hover:text-red-700"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleDeleteResult(row);
+            }}
+            disabled={deleteExamResult.isPending}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
     },
   ];
 
@@ -467,23 +669,11 @@ export default function TracomaExaminerEvaluationPage() {
         throw new Error(`Ja existe um gabarito com o codigo "${normalizedCode}".`);
       }
 
-      const expectedAnswers = [];
-      for (let i = 1; i <= TRACOMA_TOTAL_QUESTIONS; i += 1) {
-        const answer = normalizeBinaryAnswer(newMaskAnswers[i]);
-        if (answer === null) {
-          throw new Error(
-            `A questao ${i} esta em branco ou invalida. Preencha com 0 ou 1.`
-          );
-        }
-        expectedAnswers.push(answer);
-      }
-
-      const payload = expectedAnswers.map((answer, index) => ({
-        answer_key_code: normalizedCode,
-        question_number: index + 1,
-        expected_answer: answer,
-        is_locked: true,
-      }));
+      const payload = createAnswerPayload(
+        newMaskAnswers,
+        normalizedCode,
+        "novo modelo"
+      );
 
       await dataClient.entities.TracomaExamAnswerKey.bulkCreate(payload);
       return normalizedCode;
@@ -516,11 +706,54 @@ export default function TracomaExaminerEvaluationPage() {
     setNewMaskDialogOpen(true);
   };
 
+  const openEditMaskDialog = (maskModel) => {
+    if (!maskModel?.answers) return;
+    const answerState = {};
+    maskModel.answers.forEach((answer, index) => {
+      answerState[index + 1] = normalizeBinaryAnswer(answer);
+    });
+    setMaskActionStatus(null);
+    setEditMaskOriginalCode(maskModel.code);
+    setEditMaskCode(maskModel.code);
+    setEditMaskAnswers(answerState);
+    setEditMaskDialogOpen(true);
+  };
+
   const handleMaskAnswerChange = (questionNumber, value) => {
     setNewMaskAnswers((prev) => ({
       ...prev,
       [questionNumber]: normalizeBinaryAnswer(value),
     }));
+  };
+
+  const handleEditMaskAnswerChange = (questionNumber, value) => {
+    setEditMaskAnswers((prev) => ({
+      ...prev,
+      [questionNumber]: normalizeBinaryAnswer(value),
+    }));
+  };
+
+  const handleDeleteMaskModel = (maskCode) => {
+    const normalizedCode = normalizeAnswerKeyCode(maskCode);
+    if (!normalizedCode) return;
+    const confirmed = window.confirm(
+      `Tem certeza que deseja excluir o modelo "${normalizedCode}"?`
+    );
+    if (!confirmed) return;
+    setMaskActionStatus(null);
+    deleteAnswerKeyModel.mutate(normalizedCode);
+  };
+
+  const handleDeleteResult = (resultRow) => {
+    const resultId = String(resultRow?.id || "").trim();
+    if (!resultId) return;
+    const candidateName = String(resultRow?.participant_name || "formando").trim();
+    const confirmed = window.confirm(
+      `Excluir o teste preenchido de "${candidateName}"? Esta acao nao pode ser desfeita.`
+    );
+    if (!confirmed) return;
+    setResultActionStatus(null);
+    deleteExamResult.mutate(resultRow);
   };
 
   const handleCopyLink = async () => {
@@ -575,12 +808,50 @@ export default function TracomaExaminerEvaluationPage() {
     );
   }
 
+  if (!trainingIsRepadronizacao) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Avaliacao de Examinadores de tracoma"
+          subtitle={`Treinamento: ${training.title}`}
+        />
+        <Alert className="border-amber-200 bg-amber-50">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800">
+            Este formulario esta disponivel somente para treinamentos do tipo
+            repadronizacao.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Avaliacao de Examinadores de tracoma - Teste de 50 Questoes"
         subtitle={`Treinamento: ${training.title}`}
       />
+
+      {resultActionStatus && (
+        <Alert
+          className={
+            resultActionStatus.type === "error"
+              ? "border-red-200 bg-red-50"
+              : "border-green-200 bg-green-50"
+          }
+        >
+          <AlertDescription
+            className={
+              resultActionStatus.type === "error"
+                ? "text-red-800"
+                : "text-green-800"
+            }
+          >
+            {resultActionStatus.message}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card>
         <CardHeader className="pb-3">
@@ -638,6 +909,25 @@ export default function TracomaExaminerEvaluationPage() {
               <Plus className="h-4 w-4 mr-2" />
               Novo modelo (padrão ouro)
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => openEditMaskDialog(selectedMaskKey)}
+              disabled={!selectedMaskKey?.answers}
+            >
+              <Pencil className="h-4 w-4 mr-2" />
+              Editar/renomear modelo
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="text-red-600 hover:text-red-700"
+              onClick={() => handleDeleteMaskModel(selectedMaskKey?.code)}
+              disabled={!selectedMaskKey?.code || deleteAnswerKeyModel.isPending}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir modelo
+            </Button>
           </div>
 
           {maskActionStatus && (
@@ -692,8 +982,8 @@ export default function TracomaExaminerEvaluationPage() {
             <>
               <Alert>
                 <AlertDescription>
-                  Gabarito bloqueado para edicao no sistema. Para novo teste,
-                  utilize o botao "Novo modelo (padrao ouro)".
+                  Voce pode editar respostas, renomear o codigo do teste e
+                  excluir modelos (se nao houver testes preenchidos vinculados).
                 </AlertDescription>
               </Alert>
 
@@ -1087,6 +1377,116 @@ export default function TracomaExaminerEvaluationPage() {
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 )}
                 Salvar novo modelo
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editMaskDialogOpen} onOpenChange={setEditMaskDialogOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar modelo de padrão ouro (50 questões)</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-mask-code">Código do teste</Label>
+              <Input
+                id="edit-mask-code"
+                value={editMaskCode}
+                onChange={(event) => setEditMaskCode(event.target.value)}
+                placeholder="Ex.: E2_RETAKE"
+              />
+              <p className="text-xs text-slate-500">
+                Altere o codigo para renomear o teste.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <p className="text-sm text-slate-600">
+                Respondidas:{" "}
+                <span className="font-semibold">
+                  {editMaskAnsweredCount}/{TRACOMA_TOTAL_QUESTIONS}
+                </span>
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {maskQuestionColumns.map((column, columnIndex) => (
+                <div key={`edit-mask-column-${columnIndex}`} className="space-y-2">
+                  {column.map((questionNumber) => {
+                    const selectedValue =
+                      editMaskAnswers[questionNumber] === 0 ||
+                      editMaskAnswers[questionNumber] === 1
+                        ? String(editMaskAnswers[questionNumber])
+                        : "";
+                    return (
+                      <div
+                        key={`edit-mask-question-${questionNumber}`}
+                        className="rounded-md border bg-white px-3 py-2"
+                      >
+                        <div className="grid grid-cols-[1fr_auto] items-center gap-3">
+                          <p className="text-sm font-medium">
+                            Questão {String(questionNumber).padStart(2, "0")}
+                          </p>
+                          <RadioGroup
+                            value={selectedValue}
+                            onValueChange={(value) =>
+                              handleEditMaskAnswerChange(questionNumber, value)
+                            }
+                            className="flex items-center gap-2"
+                          >
+                            <div className="flex items-center gap-1 rounded border px-2 py-1">
+                              <RadioGroupItem
+                                id={`edit-mask-q-${questionNumber}-0`}
+                                value="0"
+                              />
+                              <Label
+                                htmlFor={`edit-mask-q-${questionNumber}-0`}
+                                className="font-normal"
+                              >
+                                0
+                              </Label>
+                            </div>
+                            <div className="flex items-center gap-1 rounded border px-2 py-1">
+                              <RadioGroupItem
+                                id={`edit-mask-q-${questionNumber}-1`}
+                                value="1"
+                              />
+                              <Label
+                                htmlFor={`edit-mask-q-${questionNumber}-1`}
+                                className="font-normal"
+                              >
+                                1
+                              </Label>
+                            </div>
+                          </RadioGroup>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditMaskDialogOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => editAnswerKeyModel.mutate()}
+                disabled={editAnswerKeyModel.isPending}
+              >
+                {editAnswerKeyModel.isPending && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                Salvar alterações
               </Button>
             </div>
           </div>

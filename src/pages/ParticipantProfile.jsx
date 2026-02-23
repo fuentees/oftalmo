@@ -9,6 +9,7 @@ import {
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
 import { resolveCertificateTemplate } from "@/lib/certificateTemplate";
+import { isRepadronizacaoTraining } from "@/lib/trainingType";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +64,11 @@ export default function ParticipantProfile() {
       .replace(/\s+/g, " ");
 
   const normalizeEmail = (value) => String(value ?? "").trim().toLowerCase();
+
+  const normalizeCpf = (value) =>
+    String(value ?? "")
+      .replace(/\D/g, "")
+      .trim();
 
   const normalizeRg = (value) =>
     String(value ?? "")
@@ -266,6 +272,12 @@ export default function ParticipantProfile() {
     [participants, participantId]
   );
 
+  const { data: tracomaResults = [] } = useQuery({
+    queryKey: ["tracoma-results-profile", participantId],
+    queryFn: () => dataClient.entities.TracomaExamResult.list("-created_at", 3000),
+    enabled: Boolean(participantId),
+  });
+
   const allParticipations = useMemo(() => {
     if (!participant) return [];
     return participants.filter((p) => isSameParticipant(participant, p));
@@ -358,6 +370,70 @@ export default function ParticipantProfile() {
     () => mergeParticipantData(allParticipations),
     [allParticipations]
   );
+
+  const buildTrainingKey = (trainingId, trainingTitle) => {
+    const normalizedId = String(trainingId || "").trim();
+    if (normalizedId) return `id:${normalizedId}`;
+    const normalizedTitle = normalizeText(trainingTitle);
+    if (!normalizedTitle) return "";
+    return `title:${normalizedTitle}`;
+  };
+
+  const participantTracomaResults = useMemo(() => {
+    const baseName = normalizeText(
+      mergedParticipant?.professional_name || participant?.professional_name
+    );
+    const baseEmail = normalizeEmail(
+      mergedParticipant?.professional_email || participant?.professional_email
+    );
+    const baseCpf = normalizeCpf(
+      mergedParticipant?.professional_cpf || participant?.professional_cpf
+    );
+
+    return (tracomaResults || []).filter((row) => {
+      const rowName = normalizeText(row?.participant_name);
+      const rowEmail = normalizeEmail(row?.participant_email);
+      const rowCpf = normalizeCpf(row?.participant_cpf);
+
+      const cpfMatch = baseCpf && rowCpf && baseCpf === rowCpf;
+      if (cpfMatch) return true;
+
+      const emailMatch = baseEmail && rowEmail && baseEmail === rowEmail;
+      if (emailMatch) return true;
+
+      let matches = 0;
+      if (baseName && rowName && baseName === rowName) matches += 1;
+      if (baseEmail && rowEmail && baseEmail === rowEmail) matches += 1;
+      if (baseCpf && rowCpf && baseCpf === rowCpf) matches += 1;
+      if (matches >= 2) return true;
+
+      if (baseName && rowName && baseName === rowName && !rowEmail && !rowCpf) {
+        return true;
+      }
+      return false;
+    });
+  }, [tracomaResults, mergedParticipant, participant]);
+
+  const repadronizedTrainingKeys = useMemo(() => {
+    const keys = new Set();
+    participantTracomaResults.forEach((row) => {
+      if (String(row?.aptitude_status || "").trim().toLowerCase() !== "apto") {
+        return;
+      }
+      const key = buildTrainingKey(row?.training_id, row?.training_title);
+      if (key) keys.add(key);
+    });
+    return keys;
+  }, [participantTracomaResults]);
+
+  const isParticipationRepadronized = (participation, fallbackTitle = "") => {
+    const key = buildTrainingKey(
+      participation?.training_id,
+      participation?.training_title || fallbackTitle
+    );
+    if (!key) return false;
+    return repadronizedTrainingKeys.has(key);
+  };
 
   const participationsSorted = useMemo(
     () =>
@@ -605,6 +681,16 @@ export default function ParticipantProfile() {
       "";
     const participationDateLabel = formatParticipationDate(participationDate);
     const trainingType = resolveTrainingType(participation);
+    const isRepadTraining =
+      trainingType === "repadronizacao" ||
+      isRepadronizacaoTraining(matchedTraining) ||
+      isRepadronizacaoTraining({
+        type: trainingType,
+        title: trainingTitle,
+      });
+    const repadronized = isRepadTraining
+      ? isParticipationRepadronized(participation, trainingTitle)
+      : false;
 
     return (
       <Card
@@ -647,6 +733,11 @@ export default function ParticipantProfile() {
                   <Badge className="bg-green-100 text-green-700 text-xs">
                     <CheckCircle className="h-3 w-3 mr-1" />
                     Aprovado
+                  </Badge>
+                )}
+                {repadronized && (
+                  <Badge className="bg-emerald-100 text-emerald-700 text-xs">
+                    Repadronizado
                   </Badge>
                 )}
                 {participation.certificate_issued && (
