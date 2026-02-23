@@ -69,8 +69,12 @@ export const resolveTrainingParticipantMatch = (participants, identity) => {
 };
 
 export const buildParticipantIdentity = (participant, fallback = {}) => {
-  const rawName = String(participant?.professional_name || fallback?.name || "").trim();
-  const rawEmail = String(participant?.professional_email || fallback?.email || "").trim();
+  const rawName = String(
+    participant?.professional_name || fallback?.name || ""
+  ).trim();
+  const rawEmail = String(
+    participant?.professional_email || fallback?.email || ""
+  ).trim();
   const rawRg = String(
     participant?.professional_rg ||
       participant?.professional_cpf ||

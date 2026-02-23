@@ -435,6 +435,23 @@ export default function ParticipantProfile() {
     return repadronizedTrainingKeys.has(key);
   };
 
+  const repadBestScoreByTrainingKey = useMemo(() => {
+    const map = new Map();
+    participantTracomaResults.forEach((row) => {
+      const key = buildTrainingKey(row?.training_id, row?.training_title);
+      if (!key) return;
+      const kappaValue = Number(row?.kappa);
+      if (!Number.isFinite(kappaValue)) return;
+      const clampedKappa = Math.max(0, Math.min(1, kappaValue));
+      const score = clampedKappa * 100;
+      const previous = map.get(key);
+      if (!previous || score > previous.score) {
+        map.set(key, { kappa: clampedKappa, score });
+      }
+    });
+    return map;
+  }, [participantTracomaResults]);
+
   const participationsSorted = useMemo(
     () =>
       [...validParticipations].sort((a, b) => {
@@ -512,6 +529,24 @@ export default function ParticipantProfile() {
     return training;
   };
 
+  const buildCertificateParticipantPayload = (participation, training) => {
+    if (!participation) return participation;
+    const trainingKey = buildTrainingKey(
+      participation.training_id || training?.id,
+      participation.training_title || training?.title
+    );
+    const repadScore = repadBestScoreByTrainingKey.get(trainingKey);
+    if (!repadScore) return participation;
+    return {
+      ...participation,
+      certificate_kappa: repadScore.kappa,
+      certificate_score: repadScore.score,
+      grade:
+        participation.grade ??
+        Number(repadScore.score).toFixed(1).replace(".", ","),
+    };
+  };
+
   const handleDownloadCertificate = async (participation) => {
     if (!participation) return;
     if (participation.certificate_url) {
@@ -524,8 +559,16 @@ export default function ParticipantProfile() {
 
     const training = resolveTrainingForCertificate(participation);
     if (!training) return;
-    const templateOverride = await resolveCertificateTemplate();
-    const pdf = generateParticipantCertificate(participation, training, templateOverride);
+    const participantPayload = buildCertificateParticipantPayload(
+      participation,
+      training
+    );
+    const templateOverride = await resolveCertificateTemplate(training);
+    const pdf = generateParticipantCertificate(
+      participantPayload,
+      training,
+      templateOverride
+    );
     const fileName = `certificado-${participation.professional_name || "participante"}.pdf`;
     pdf.save(fileName);
   };
@@ -542,8 +585,16 @@ export default function ParticipantProfile() {
       if (!training) {
         throw new Error("Treinamento não encontrado para regenerar.");
       }
-      const templateOverride = await resolveCertificateTemplate();
-      const pdf = generateParticipantCertificate(participation, training, templateOverride);
+      const participantPayload = buildCertificateParticipantPayload(
+        participation,
+        training
+      );
+      const templateOverride = await resolveCertificateTemplate(training);
+      const pdf = generateParticipantCertificate(
+        participantPayload,
+        training,
+        templateOverride
+      );
       const pdfBlob = pdf.output("blob");
       const safeName = toSafeFileName(participation.professional_name || "participante");
       const fileName = `certificado-${safeName || "participante"}.pdf`;
@@ -608,8 +659,16 @@ export default function ParticipantProfile() {
         throw new Error("Treinamento não encontrado para enviar.");
       }
       const emailTemplate = loadCertificateEmailTemplate();
-      const templateOverride = await resolveCertificateTemplate();
-      const pdf = generateParticipantCertificate(participation, training, templateOverride);
+      const participantPayload = buildCertificateParticipantPayload(
+        participation,
+        training
+      );
+      const templateOverride = await resolveCertificateTemplate(training);
+      const pdf = generateParticipantCertificate(
+        participantPayload,
+        training,
+        templateOverride
+      );
       const pdfBlob = pdf.output("blob");
       const safeName = toSafeFileName(participation.professional_name || "participante");
       const fileName = `certificado-${safeName || "participante"}.pdf`;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +9,12 @@ import { Calendar, MapPin, User, Users, GraduationCap, FileText, Video } from "l
 import { Download, Trash2, Upload } from "lucide-react";
 import { formatDateSafe } from "@/lib/date";
 import { getEffectiveTrainingStatus } from "@/lib/statusRules";
+import { isRepadronizacaoTraining } from "@/lib/trainingType";
+import { resolveTrainingParticipantMatch } from "@/lib/trainingParticipantMatch";
 
 export default function TrainingDetails({ training, participants = [] }) {
   const trainingId = String(training?.id || "").trim();
+  const isRepadTraining = isRepadronizacaoTraining(training);
   const queryClient = useQueryClient();
   const [reportFile, setReportFile] = useState(null);
   const [reportStatus, setReportStatus] = useState(null);
@@ -33,6 +36,16 @@ export default function TrainingDetails({ training, participants = [] }) {
         )
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
     enabled: !!trainingId,
+  });
+
+  const { data: tracomaResults = [] } = useQuery({
+    queryKey: ["trainingTracomaSummary", trainingId],
+    queryFn: () =>
+      dataClient.entities.TracomaExamResult.filter(
+        { training_id: trainingId },
+        "-created_at"
+      ),
+    enabled: Boolean(trainingId && isRepadTraining),
   });
 
   const currentReport = reports[0] || null;
@@ -88,7 +101,7 @@ export default function TrainingDetails({ training, participants = [] }) {
     return formatted || "-";
   };
 
-  const trainingDates = Array.isArray(training.dates)
+  const trainingDates = Array.isArray(training?.dates)
     ? training.dates.filter((dateItem) => dateItem?.date)
     : [];
 
@@ -116,14 +129,13 @@ export default function TrainingDetails({ training, participants = [] }) {
     return () => window.clearInterval(timer);
   }, [trainingId]);
 
-  if (!training) return null;
-
   const effectiveStatus = getEffectiveStatus();
 
   const typeLabels = {
     teorico: "Teórico",
     pratico: "Prático",
     teorico_pratico: "Teórico e Prático",
+    repadronizacao: "Repadronização",
   };
 
   const categoryLabels = {
@@ -140,16 +152,59 @@ export default function TrainingDetails({ training, participants = [] }) {
     (item) => item.enrollment_status !== "cancelado"
   );
   const totalParticipants = activeParticipants.length;
-  const approvedCount = activeParticipants.filter((item) => item.approved).length;
-  const failedCount = activeParticipants.filter(
-    (item) => item.approved === false
-  ).length;
-  const pendingCount = activeParticipants.filter(
-    (item) => item.approved !== true && item.approved !== false
-  ).length;
+  const repadStatusByParticipant = useMemo(() => {
+    if (!isRepadTraining) return new Map();
+    const map = new Map();
+    const rows = Array.isArray(tracomaResults) ? [...tracomaResults] : [];
+    rows.sort(
+      (a, b) =>
+        new Date(b?.created_at || 0).getTime() -
+        new Date(a?.created_at || 0).getTime()
+    );
+    rows.forEach((result) => {
+      const participant = resolveTrainingParticipantMatch(activeParticipants, {
+        name: result?.participant_name,
+        email: result?.participant_email,
+        rg: result?.participant_cpf,
+      });
+      if (!participant?.id) return;
+      if (map.has(participant.id)) return;
+
+      const kappaValue = Number(result?.kappa);
+      const approvedByKappa =
+        Number.isFinite(kappaValue) && Math.max(0, Math.min(1, kappaValue)) >= 0.7;
+      const approved = approvedByKappa;
+      map.set(participant.id, {
+        hasResult: true,
+        approved,
+      });
+    });
+    return map;
+  }, [activeParticipants, isRepadTraining, tracomaResults]);
+
+  const approvedCount = isRepadTraining
+    ? activeParticipants.filter(
+        (item) => repadStatusByParticipant.get(item.id)?.approved
+      ).length
+    : activeParticipants.filter((item) => item.approved).length;
+  const failedCount = isRepadTraining
+    ? activeParticipants.filter((item) => {
+        const status = repadStatusByParticipant.get(item.id);
+        return status?.hasResult && !status?.approved;
+      }).length
+    : activeParticipants.filter((item) => item.approved === false).length;
+  const pendingCount = isRepadTraining
+    ? activeParticipants.filter(
+        (item) => !repadStatusByParticipant.get(item.id)?.hasResult
+      ).length
+    : activeParticipants.filter(
+        (item) => item.approved !== true && item.approved !== false
+      ).length;
   const canceledCount = trainingParticipants.filter(
     (item) => item.enrollment_status === "cancelado"
   ).length;
+
+  if (!training) return null;
 
   return (
     <div className="space-y-6">
@@ -238,6 +293,12 @@ export default function TrainingDetails({ training, participants = [] }) {
             <div className="flex justify-between">
               <span className="text-slate-500">Tipo:</span>
               <Badge variant="outline">{typeLabels[training.type]}</Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Critério de aprovação:</span>
+              <span>
+                {isRepadTraining ? "Nota (Kappa x100)" : "Frequência (>= 75%)"}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Categoria:</span>
