@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { supabase } from "@/api/supabaseClient";
 import jsPDF from "jspdf";
+import * as XLSX from "xlsx";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +56,7 @@ import {
 import {
   TRACOMA_TOTAL_QUESTIONS,
   buildAnswerKeyCollections,
+  computeTracomaKappaMetrics,
   normalizeAnswerKeyCode,
   normalizeBinaryAnswer,
 } from "@/lib/tracomaExamKappa";
@@ -106,6 +108,73 @@ const toSafeFileName = (value) =>
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
 
+const normalizeImportHeader = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]/g, "");
+
+const normalizeImportRow = (row) =>
+  Object.entries(row || {}).reduce((acc, [key, value]) => {
+    const normalizedKey = normalizeImportHeader(key);
+    if (!normalizedKey) return acc;
+    acc[normalizedKey] = value;
+    return acc;
+  }, {});
+
+const pickImportValue = (normalizedRow, candidates) => {
+  for (let i = 0; i < candidates.length; i += 1) {
+    const key = normalizeImportHeader(candidates[i]);
+    if (!key) continue;
+    const value = normalizedRow[key];
+    if (value === undefined || value === null) continue;
+    if (String(value).trim() === "") continue;
+    return value;
+  }
+  return "";
+};
+
+const parseAnswersFromImportRow = (
+  normalizedRow,
+  totalQuestions = TRACOMA_TOTAL_QUESTIONS
+) => {
+  const answers = [];
+  for (let question = 1; question <= totalQuestions; question += 1) {
+    const padded = String(question).padStart(2, "0");
+    const rawValue = pickImportValue(normalizedRow, [
+      `q${question}`,
+      `q${padded}`,
+      `questao${question}`,
+      `questao${padded}`,
+      `resposta${question}`,
+      `resposta${padded}`,
+      `pergunta${question}`,
+      `pergunta${padded}`,
+      String(question),
+      padded,
+    ]);
+    const normalized = normalizeBinaryAnswer(rawValue);
+    if (normalized === null) {
+      throw new Error(
+        `Questao ${question} ausente ou invalida (use apenas 0 ou 1).`
+      );
+    }
+    answers.push(normalized);
+  }
+  return answers;
+};
+
+const parseSpreadsheetRows = async (file) => {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const firstSheet = workbook.SheetNames?.[0];
+  if (!firstSheet) return [];
+  const worksheet = workbook.Sheets[firstSheet];
+  return XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+};
+
 export default function TracomaExaminerEvaluationPage() {
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
@@ -125,6 +194,11 @@ export default function TracomaExaminerEvaluationPage() {
   const [newMaskAnswers, setNewMaskAnswers] = useState({});
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importSourceTrainingId, setImportSourceTrainingId] = useState("all");
+  const [importSpreadsheetDialogOpen, setImportSpreadsheetDialogOpen] =
+    useState(false);
+  const [importSpreadsheetFile, setImportSpreadsheetFile] = useState(null);
+  const [spreadsheetFallbackKeyCode, setSpreadsheetFallbackKeyCode] =
+    useState("");
   const [editMaskDialogOpen, setEditMaskDialogOpen] = useState(false);
   const [editMaskOriginalCode, setEditMaskOriginalCode] = useState("");
   const [editMaskCode, setEditMaskCode] = useState("");
@@ -247,6 +321,19 @@ export default function TracomaExaminerEvaluationPage() {
     [answerKeyCollections]
   );
 
+  const spreadsheetFallbackOptions = useMemo(() => {
+    const codes = new Set();
+    answerKeyCollections.forEach((item) => {
+      if (item?.code) codes.add(item.code);
+    });
+    availableKeyCodes.forEach((code) => {
+      if (code) codes.add(code);
+    });
+    return Array.from(codes).sort((a, b) =>
+      String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base" })
+    );
+  }, [answerKeyCollections, availableKeyCodes]);
+
   const importSourceTrainings = useMemo(() => {
     const currentId = String(trainingId || "").trim();
     return allTrainings
@@ -270,6 +357,23 @@ export default function TracomaExaminerEvaluationPage() {
       setImportSourceTrainingId("all");
     }
   }, [importSourceTrainingId, importSourceTrainings]);
+
+  useEffect(() => {
+    const fallbackOptions = [
+      selectedMaskKeyCode,
+      ...spreadsheetFallbackOptions,
+    ].filter(Boolean);
+    if (!fallbackOptions.length) {
+      setSpreadsheetFallbackKeyCode("");
+      return;
+    }
+    if (fallbackOptions.includes(spreadsheetFallbackKeyCode)) return;
+    setSpreadsheetFallbackKeyCode(fallbackOptions[0]);
+  }, [
+    selectedMaskKeyCode,
+    spreadsheetFallbackOptions,
+    spreadsheetFallbackKeyCode,
+  ]);
 
   const maskQuestionColumns = useMemo(
     () => buildQuestionColumns(TRACOMA_TOTAL_QUESTIONS),
@@ -574,6 +678,201 @@ export default function TracomaExaminerEvaluationPage() {
       setResultActionStatus({
         type: "error",
         message: error?.message || "Nao foi possivel importar respostas passadas.",
+      });
+    },
+  });
+
+  const importSpreadsheetResults = useMutation({
+    mutationFn: async () => {
+      if (!importSpreadsheetFile) {
+        throw new Error("Selecione o arquivo Excel/CSV preenchido.");
+      }
+      const currentTrainingId = String(trainingId || "").trim();
+      if (!currentTrainingId) {
+        throw new Error("Treinamento atual invalido para importacao.");
+      }
+
+      const rows = await parseSpreadsheetRows(importSpreadsheetFile);
+      if (!Array.isArray(rows) || rows.length === 0) {
+        throw new Error("A planilha esta vazia ou sem linhas de dados.");
+      }
+
+      const existingRows = await dataClient.entities.TracomaExamResult.filter({
+        training_id: currentTrainingId,
+      });
+      const existingFingerprints = new Set(
+        (existingRows || []).map((row) => buildResultFingerprint(row))
+      );
+
+      const payload = [];
+      let duplicateCount = 0;
+      let invalidCount = 0;
+      const invalidPreview = [];
+
+      rows.forEach((row, index) => {
+        const lineNumber = index + 2;
+        const normalizedRow = normalizeImportRow(row);
+        const participantName = String(
+          pickImportValue(normalizedRow, [
+            "participant_name",
+            "nome",
+            "nome_participante",
+            "nome_formando",
+            "formando",
+            "profissional",
+          ]) || ""
+        ).trim();
+
+        if (!participantName) {
+          invalidCount += 1;
+          if (invalidPreview.length < 5) {
+            invalidPreview.push(`Linha ${lineNumber}: nome do formando ausente.`);
+          }
+          return;
+        }
+
+        const rawKeyCode = pickImportValue(normalizedRow, [
+          "answer_key_code",
+          "codigo_teste",
+          "codigo_do_teste",
+          "teste",
+          "gabarito",
+          "modelo",
+          "tipo_teste",
+        ]);
+        const answerKeyCode = normalizeAnswerKeyCode(
+          rawKeyCode || spreadsheetFallbackKeyCode || "E2"
+        );
+        const answerKey = answerKeyByCode.get(answerKeyCode);
+        if (!answerKey) {
+          invalidCount += 1;
+          if (invalidPreview.length < 5) {
+            invalidPreview.push(
+              `Linha ${lineNumber}: codigo de teste "${answerKeyCode || "-"}" sem gabarito.`
+            );
+          }
+          return;
+        }
+
+        let answers = [];
+        try {
+          answers = parseAnswersFromImportRow(normalizedRow);
+        } catch (error) {
+          invalidCount += 1;
+          if (invalidPreview.length < 5) {
+            invalidPreview.push(`Linha ${lineNumber}: ${error?.message || "respostas invalidas."}`);
+          }
+          return;
+        }
+
+        let computed = null;
+        try {
+          computed = computeTracomaKappaMetrics({
+            answerKey,
+            traineeAnswers: answers,
+          });
+        } catch (error) {
+          invalidCount += 1;
+          if (invalidPreview.length < 5) {
+            invalidPreview.push(
+              `Linha ${lineNumber}: falha no calculo do Kappa (${error?.message || "erro"}).`
+            );
+          }
+          return;
+        }
+
+        const participantEmail = String(
+          pickImportValue(normalizedRow, [
+            "participant_email",
+            "email",
+            "e_mail",
+            "mail",
+          ]) || ""
+        )
+          .trim()
+          .toLowerCase();
+        const participantCpf = normalizeDigits(
+          pickImportValue(normalizedRow, ["participant_cpf", "cpf", "cpf_formando"])
+        );
+
+        const importedRow = {
+          training_id: currentTrainingId,
+          training_title: training?.title || null,
+          participant_name: participantName,
+          participant_email: participantEmail || null,
+          participant_cpf: participantCpf || null,
+          total_questions: computed.totalQuestions,
+          total_matches: computed.totalMatches,
+          matrix_a: computed.matrix.a,
+          matrix_b: computed.matrix.b,
+          matrix_c: computed.matrix.c,
+          matrix_d: computed.matrix.d,
+          observed_agreement: computed.po,
+          expected_agreement: computed.pe,
+          kappa: computed.kappa,
+          kappa_ci_low: computed.ci95.low,
+          kappa_ci_high: computed.ci95.high,
+          sensitivity: computed.sensitivity,
+          specificity: computed.specificity,
+          interpretation: computed.interpretation,
+          aptitude_status: computed.aptitudeStatus,
+          answer_key_code: answerKeyCode,
+          answers,
+        };
+
+        const fingerprint = buildResultFingerprint(importedRow);
+        if (existingFingerprints.has(fingerprint)) {
+          duplicateCount += 1;
+          return;
+        }
+        existingFingerprints.add(fingerprint);
+        payload.push(importedRow);
+      });
+
+      if (!payload.length) {
+        const previewMessage = invalidPreview.length
+          ? ` Detalhes: ${invalidPreview.join(" | ")}`
+          : "";
+        throw new Error(
+          `Nenhuma linha valida para importar.${previewMessage}`
+        );
+      }
+
+      await dataClient.entities.TracomaExamResult.bulkCreate(payload);
+      return {
+        importedCount: payload.length,
+        duplicateCount,
+        invalidCount,
+        invalidPreview,
+      };
+    },
+    onSuccess: async ({ importedCount, duplicateCount, invalidCount, invalidPreview }) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["tracoma-exam-results", trainingId],
+      });
+      setImportSpreadsheetDialogOpen(false);
+      setImportSpreadsheetFile(null);
+      const details = [
+        `${importedCount} resposta(s) importada(s)`,
+        duplicateCount > 0 ? `${duplicateCount} duplicada(s) ignorada(s)` : null,
+        invalidCount > 0 ? `${invalidCount} invalida(s) ignorada(s)` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      const previewText =
+        invalidPreview && invalidPreview.length
+          ? ` Primeiros erros: ${invalidPreview.join(" | ")}`
+          : "";
+      setResultActionStatus({
+        type: "success",
+        message: `Importacao da planilha concluida: ${details}.${previewText}`,
+      });
+    },
+    onError: (error) => {
+      setResultActionStatus({
+        type: "error",
+        message:
+          error?.message || "Nao foi possivel importar a planilha preenchida.",
       });
     },
   });
@@ -1042,6 +1341,12 @@ export default function TracomaExaminerEvaluationPage() {
     deleteExamResult.mutate(resultRow);
   };
 
+  const handleOpenImportSpreadsheetDialog = () => {
+    setResultActionStatus(null);
+    setImportSpreadsheetFile(null);
+    setImportSpreadsheetDialogOpen(true);
+  };
+
   const handleCopyLink = async () => {
     if (!testLink) return;
     try {
@@ -1359,7 +1664,7 @@ export default function TracomaExaminerEvaluationPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2 flex-wrap">
                 <Button
                   type="button"
                   variant="outline"
@@ -1368,6 +1673,15 @@ export default function TracomaExaminerEvaluationPage() {
                 >
                   <Upload className="h-4 w-4 mr-2" />
                   Importar respostas de treinamentos passados
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleOpenImportSpreadsheetDialog}
+                  disabled={answerKeyCollections.length === 0}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Importar formulario preenchido (Excel)
                 </Button>
               </div>
 
@@ -1731,6 +2045,80 @@ export default function TracomaExaminerEvaluationPage() {
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 )}
                 Importar respostas
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={importSpreadsheetDialogOpen}
+        onOpenChange={setImportSpreadsheetDialogOpen}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Importar formulario preenchido (Excel/CSV)</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="import-spreadsheet-file">Arquivo preenchido</Label>
+              <Input
+                id="import-spreadsheet-file"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={(event) => {
+                  const selectedFile = event.target.files?.[0] || null;
+                  setImportSpreadsheetFile(selectedFile);
+                }}
+              />
+              <p className="text-xs text-slate-500">
+                Use colunas para nome do formando e respostas Q1..Q50 (0/1).
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Codigo de teste padrao (se a planilha nao tiver coluna)</Label>
+              <Select
+                value={spreadsheetFallbackKeyCode}
+                onValueChange={setSpreadsheetFallbackKeyCode}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o codigo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {spreadsheetFallbackOptions.map((code) => (
+                    <SelectItem key={`spreadsheet-key-${code}`} value={code}>
+                      {code}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Alert>
+              <AlertDescription>
+                O sistema recalcula Kappa automaticamente para cada linha valida.
+                Duplicados e linhas invalidas sao ignorados.
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setImportSpreadsheetDialogOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => importSpreadsheetResults.mutate()}
+                disabled={importSpreadsheetResults.isPending || !importSpreadsheetFile}
+              >
+                {importSpreadsheetResults.isPending && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                Importar planilha
               </Button>
             </div>
           </div>
