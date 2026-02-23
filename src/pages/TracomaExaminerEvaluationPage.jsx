@@ -409,13 +409,50 @@ export default function TracomaExaminerEvaluationPage() {
     enabled: Boolean(trainingId),
   });
   const rawResults = resultsQuery.data || [];
-  const results = useMemo(
+  const normalizedResults = useMemo(
     () =>
       rawResults.map((row) => ({
         ...row,
         answer_key_code: normalizeAnswerKeyCode(row?.answer_key_code || "E2"),
       })),
     [rawResults]
+  );
+
+  const results = useMemo(
+    () =>
+      normalizedResults.map((row) => {
+        const keyCode = normalizeAnswerKeyCode(row?.answer_key_code || "E2");
+        const answerKey = answerKeyByCode.get(keyCode);
+        const traineeAnswers = parseStoredAnswers(row?.answers);
+        if (!answerKey || !traineeAnswers) return row;
+        try {
+          const computed = computeTracomaKappaMetrics({
+            answerKey,
+            traineeAnswers,
+          });
+          return {
+            ...row,
+            total_questions: computed.totalQuestions,
+            total_matches: computed.totalMatches,
+            matrix_a: computed.matrix.a,
+            matrix_b: computed.matrix.b,
+            matrix_c: computed.matrix.c,
+            matrix_d: computed.matrix.d,
+            observed_agreement: computed.po,
+            expected_agreement: computed.pe,
+            kappa: computed.kappa,
+            kappa_ci_low: computed.ci95.low,
+            kappa_ci_high: computed.ci95.high,
+            sensitivity: computed.sensitivity,
+            specificity: computed.specificity,
+            interpretation: computed.interpretation,
+            aptitude_status: computed.aptitudeStatus,
+          };
+        } catch {
+          return row;
+        }
+      }),
+    [normalizedResults, answerKeyByCode]
   );
 
   const resultsLoadError = resultsQuery.isError
