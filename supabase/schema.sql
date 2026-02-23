@@ -382,6 +382,68 @@ create table if not exists app_logs (
   created_at timestamptz default now()
 );
 
+create table if not exists tracoma_exam_answer_keys (
+  id uuid primary key default gen_random_uuid(),
+  question_number integer not null unique,
+  expected_answer smallint not null check (expected_answer in (0, 1)),
+  answer_key_code text not null default 'TF_PADRAO_OURO_V1',
+  is_locked boolean not null default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  check (question_number between 1 and 50)
+);
+
+create table if not exists tracoma_exam_results (
+  id uuid primary key default gen_random_uuid(),
+  training_id uuid references trainings(id) on delete set null,
+  training_title text,
+  participant_name text not null,
+  participant_email text,
+  participant_cpf text,
+  total_questions integer not null default 50,
+  total_matches integer not null default 0,
+  matrix_a integer not null default 0,
+  matrix_b integer not null default 0,
+  matrix_c integer not null default 0,
+  matrix_d integer not null default 0,
+  observed_agreement numeric(8, 6),
+  expected_agreement numeric(8, 6),
+  kappa numeric(8, 6),
+  kappa_ci_low numeric(8, 6),
+  kappa_ci_high numeric(8, 6),
+  sensitivity numeric(8, 6),
+  specificity numeric(8, 6),
+  interpretation text,
+  aptitude_status text,
+  answer_key_code text default 'TF_PADRAO_OURO_V1',
+  answers jsonb not null,
+  created_at timestamptz default now(),
+  check (total_questions > 0)
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_indexes
+    where schemaname = 'public'
+      and indexname = 'idx_tracoma_exam_results_training_created_at'
+  ) then
+    create index idx_tracoma_exam_results_training_created_at
+      on public.tracoma_exam_results (training_id, created_at desc);
+  end if;
+
+  if not exists (
+    select 1
+    from pg_indexes
+    where schemaname = 'public'
+      and indexname = 'idx_tracoma_exam_results_participant_name'
+  ) then
+    create index idx_tracoma_exam_results_participant_name
+      on public.tracoma_exam_results (participant_name);
+  end if;
+end $$;
+
 -- Validação de CPF (backend)
 create or replace function public.is_valid_cpf(cpf text)
 returns boolean

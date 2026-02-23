@@ -104,6 +104,8 @@ const ENTITY_TABLES = {
   AuditLog: "audit_logs",
   MaterialRequest: "material_requests",
   CommunicationMessage: "communication_messages",
+  TracomaExamAnswerKey: "tracoma_exam_answer_keys",
+  TracomaExamResult: "tracoma_exam_results",
 };
 
 const applyOrder = (query, order) => {

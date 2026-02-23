@@ -64,6 +64,7 @@ import EnrollmentFieldsManager from './pages/EnrollmentFieldsManager';
 import EnrollmentPage from './pages/EnrollmentPage';
 import TrainingFeedbackPage from './pages/TrainingFeedbackPage';
 import Communication from './pages/Communication';
+import TracomaExaminerEvaluationPage from './pages/TracomaExaminerEvaluationPage';
 import __Layout from './Layout.jsx';
 
 
@@ -85,6 +86,7 @@ export const PAGES = {
     "EnrollmentPage": EnrollmentPage,
     "TrainingFeedbackPage": TrainingFeedbackPage,
     "Communication": Communication,
+    "TracomaExaminerEvaluationPage": TracomaExaminerEvaluationPage,
 }
 
 export const pagesConfig = {
