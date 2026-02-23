@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Login from './pages/Login';
 import TrainingFeedback from './pages/TrainingFeedback';
+import TracomaExaminerTest from './pages/TracomaExaminerTest';
 import { ADMIN_ONLY_PAGES } from "@/lib/accessControl";
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -20,7 +21,12 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
   : <>{children}</>;
 
-const PUBLIC_ROUTES = ["/publicenrollment", "/checkin", "/trainingfeedback"];
+const PUBLIC_ROUTES = [
+  "/publicenrollment",
+  "/checkin",
+  "/trainingfeedback",
+  "/tracomaexaminertest",
+];
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, isAdmin } = useAuth();
@@ -99,6 +105,7 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/TrainingFeedback" element={<TrainingFeedback />} />
+            <Route path="/TracomaExaminerTest" element={<TracomaExaminerTest />} />
             <Route path="/*" element={<AuthenticatedApp />} />
           </Routes>
         </Router>
