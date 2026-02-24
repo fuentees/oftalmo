@@ -2,11 +2,19 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { extractTrainingIdFromEventNotes } from "@/lib/eventMetadata";
-import { isRepadronizacaoTraining } from "@/lib/trainingType";
+import { isRepadronizacaoTraining, isRepadronizacaoType } from "@/lib/trainingType";
 import {
   getEffectiveTrainingStatus,
   getTrainingDateItems,
 } from "@/lib/statusRules";
+import { resolveTrainingParticipantMatch } from "@/lib/trainingParticipantMatch";
+import {
+  TRACOMA_TOTAL_QUESTIONS,
+  buildAnswerKeyCollections,
+  computeTracomaKappaMetrics,
+  normalizeAnswerKeyCode,
+  normalizeBinaryAnswer,
+} from "@/lib/tracomaExamKappa";
 import { format } from "date-fns";
 import {
   Edit,
@@ -69,6 +77,30 @@ import CertificateManager from "@/components/trainings/CertificateManager";
 import SendLinkButton from "@/components/trainings/SendLinkButton";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
 
+const KNOWN_TRAINING_TYPE_LABELS = {
+  teorico: "Teórico",
+  pratico: "Prático",
+  teorico_pratico: "Teórico/Prático",
+  repadronizacao: "Repadronização",
+};
+
+const KNOWN_TRAINING_TYPE_ORDER = [
+  "teorico",
+  "pratico",
+  "teorico_pratico",
+  "repadronizacao",
+];
+
+const parseStoredAnswers = (
+  value,
+  totalQuestions = TRACOMA_TOTAL_QUESTIONS
+) => {
+  if (!Array.isArray(value) || value.length !== totalQuestions) return null;
+  const parsed = value.map((item) => normalizeBinaryAnswer(item));
+  if (parsed.some((item) => item === null)) return null;
+  return parsed;
+};
+
 export default function Trainings() {
   const currentYearValue = String(new Date().getFullYear());
   const [search, setSearch] = useState("");
@@ -117,6 +149,16 @@ export default function Trainings() {
   const { data: participants = [] } = useQuery({
     queryKey: ["participants"],
     queryFn: () => dataClient.entities.TrainingParticipant.list(),
+  });
+
+  const { data: tracomaResults = [] } = useQuery({
+    queryKey: ["trainings-tracoma-results"],
+    queryFn: () => dataClient.entities.TracomaExamResult.list("-created_at"),
+  });
+
+  const { data: tracomaAnswerKeys = [] } = useQuery({
+    queryKey: ["trainings-tracoma-answer-keys"],
+    queryFn: () => dataClient.entities.TracomaExamAnswerKey.list("question_number"),
   });
 
   const normalizeComparisonText = (value) =>
@@ -212,6 +254,80 @@ export default function Trainings() {
     if (!trainingId) return [];
     return participantsByTrainingMap.get(trainingId) || [];
   };
+
+  const answerKeyByCode = React.useMemo(() => {
+    const map = new Map();
+    const collections = buildAnswerKeyCollections(
+      Array.isArray(tracomaAnswerKeys) ? tracomaAnswerKeys : [],
+      TRACOMA_TOTAL_QUESTIONS
+    );
+    collections.forEach((item) => {
+      if (item?.answers && !item?.error) {
+        map.set(item.code, item.answers);
+      }
+    });
+    return map;
+  }, [tracomaAnswerKeys]);
+
+  const repadApprovalByTrainingId = React.useMemo(() => {
+    const map = new Map();
+    const rows = Array.isArray(tracomaResults) ? [...tracomaResults] : [];
+    rows.sort(
+      (a, b) =>
+        new Date(b?.created_at || 0).getTime() -
+        new Date(a?.created_at || 0).getTime()
+    );
+
+    rows.forEach((row) => {
+      const trainingId = String(row?.training_id || "").trim();
+      if (!trainingId) return;
+
+      const trainingParticipants = participantsByTrainingMap.get(trainingId) || [];
+      if (!trainingParticipants.length) return;
+
+      const participant = resolveTrainingParticipantMatch(trainingParticipants, {
+        name: row?.participant_name,
+        email: row?.participant_email,
+        rg: row?.participant_cpf,
+      });
+      if (!participant?.id) return;
+
+      const participantId = String(participant.id).trim();
+      if (!participantId) return;
+      if (!map.has(trainingId)) map.set(trainingId, new Map());
+      const trainingMap = map.get(trainingId);
+      if (trainingMap.has(participantId)) return;
+
+      const keyCode = normalizeAnswerKeyCode(row?.answer_key_code || "E2");
+      const answerKey = answerKeyByCode.get(keyCode);
+      const traineeAnswers = parseStoredAnswers(row?.answers);
+      let latestKappa = Number(row?.kappa);
+      if (!Number.isFinite(latestKappa)) latestKappa = null;
+
+      if (answerKey && traineeAnswers) {
+        try {
+          const computed = computeTracomaKappaMetrics({
+            answerKey,
+            traineeAnswers,
+          });
+          latestKappa = Number(computed?.kappa);
+        } catch {
+          // Mantém o valor persistido quando não for possível recomputar.
+        }
+      }
+
+      const statusText = String(row?.aptitude_status || "")
+        .trim()
+        .toLowerCase();
+      const approved =
+        statusText === "apto" ||
+        (Number.isFinite(latestKappa) && latestKappa >= 0.7);
+
+      trainingMap.set(participantId, { approved, latestKappa });
+    });
+
+    return map;
+  }, [answerKeyByCode, participantsByTrainingMap, tracomaResults]);
 
   React.useEffect(() => {
     if (orphanCleanupDoneRef.current) return;
@@ -417,12 +533,6 @@ export default function Trainings() {
     { value: "cancelado", label: "Cancelado" },
   ];
 
-  const typeOptions = [
-    { value: "teorico", label: "Teórico" },
-    { value: "pratico", label: "Prático" },
-    { value: "teorico_pratico", label: "Teórico/Prático" },
-  ];
-
   const normalizeHeader = (value) => {
     if (value === null || value === undefined) return "";
     return String(value)
@@ -432,6 +542,31 @@ export default function Trainings() {
       .trim()
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "");
+  };
+
+  const normalizeTrainingTypeValue = (value) => {
+    const normalized = normalizeHeader(value);
+    if (!normalized) return "";
+    if (isRepadronizacaoType(value) || normalized.includes("repadronizacao")) {
+      return "repadronizacao";
+    }
+    if (normalized.includes("teorico") && normalized.includes("pratico")) {
+      return "teorico_pratico";
+    }
+    if (normalized.includes("teorico")) return "teorico";
+    if (normalized.includes("pratico")) return "pratico";
+    return normalized;
+  };
+
+  const formatTrainingTypeLabel = (value) => {
+    const normalized = normalizeTrainingTypeValue(value);
+    if (!normalized) return "Não informado";
+    if (KNOWN_TRAINING_TYPE_LABELS[normalized]) {
+      return KNOWN_TRAINING_TYPE_LABELS[normalized];
+    }
+    return normalized
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
   const normalizeRow = (row) => {
@@ -520,14 +655,8 @@ export default function Trainings() {
   };
 
   const normalizeType = (value) => {
-    const normalized = normalizeHeader(value);
-    if (!normalized) return null;
-    if (normalized.includes("teorico") && normalized.includes("pratico")) {
-      return "teorico_pratico";
-    }
-    if (normalized.includes("teorico")) return "teorico";
-    if (normalized.includes("pratico")) return "pratico";
-    return normalized;
+    const normalized = normalizeTrainingTypeValue(value);
+    return normalized || null;
   };
 
   const normalizeStatus = (value) => {
@@ -794,12 +923,21 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
   const isApprovedParticipant = (participant, training) => {
     if (!participant || isCancelledEnrollment(participant)) return false;
     if (participant?.certificate_issued) return true;
-    if (participant?.approved === true) return true;
-    const gradePercent = toGradePercent(participant);
+
     if (isRepadronizacaoTraining(training)) {
-      return gradePercent !== null && gradePercent >= 70;
+      const trainingId = String(training?.id || "").trim();
+      const participantId = String(participant?.id || "").trim();
+      const repadStatus = repadApprovalByTrainingId
+        .get(trainingId)
+        ?.get(participantId);
+      if (repadStatus) return Boolean(repadStatus.approved);
+
+      const gradePercent = toGradePercent(participant);
+      if (gradePercent !== null) return gradePercent >= 70;
+      return participant?.approved === true;
     }
-    return false;
+
+    return participant?.approved === true;
   };
 
   const getTrainingYear = (training) => {
@@ -823,6 +961,29 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       .map((year) => ({ value: String(year), label: String(year) }));
   }, [trainings, currentYearValue]);
 
+  const typeOptions = React.useMemo(() => {
+    const knownOptions = KNOWN_TRAINING_TYPE_ORDER.map((value) => ({
+      value,
+      label: KNOWN_TRAINING_TYPE_LABELS[value],
+    }));
+
+    const dynamicTypes = new Set();
+    (trainings || []).forEach((training) => {
+      const normalized = normalizeTrainingTypeValue(training?.type);
+      if (!normalized || KNOWN_TRAINING_TYPE_LABELS[normalized]) return;
+      dynamicTypes.add(normalized);
+    });
+
+    const dynamicOptions = Array.from(dynamicTypes)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
+      .map((value) => ({
+        value,
+        label: formatTrainingTypeLabel(value),
+      }));
+
+    return [...knownOptions, ...dynamicOptions];
+  }, [trainings]);
+
   const filteredTrainings = trainings
     .filter((t) => {
       const effectiveStatus = getTrainingStatus(t);
@@ -830,7 +991,9 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
         t.title?.toLowerCase().includes(search.toLowerCase()) ||
         t.coordinator?.toLowerCase().includes(search.toLowerCase());
       const matchesStatus = statusFilter === "all" || effectiveStatus === statusFilter;
-      const matchesType = typeFilter === "all" || t.type === typeFilter;
+      const matchesType =
+        typeFilter === "all" ||
+        normalizeTrainingTypeValue(t.type) === typeFilter;
       const trainingYear = getTrainingYear(t);
       const matchesYear = yearFilter === "all" || String(trainingYear || "") === yearFilter;
       return matchesSearch && matchesStatus && matchesType && matchesYear;
@@ -890,12 +1053,6 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     return new Date(value);
   }
 
-  const typeLabels = {
-    teorico: "Teórico",
-    pratico: "Prático",
-    teorico_pratico: "Teórico/Prático",
-  };
-
   const columns = [
     {
       header: "Data(s)",
@@ -946,7 +1103,6 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
             {row.title}
           </button>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            {row.code && <p className="text-xs text-slate-500">{row.code}</p>}
             {row.online_link && (
               <button
                 type="button"
@@ -966,7 +1122,9 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     },
     {
       header: "Tipo",
-      render: (row) => <Badge variant="outline">{typeLabels[row.type]}</Badge>,
+      render: (row) => (
+        <Badge variant="outline">{formatTrainingTypeLabel(row.type)}</Badge>
+      ),
     },
     {
       header: "Coordenador",

@@ -56,6 +56,12 @@ export default function EnrollmentPage() {
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
   const trainingId = urlParams.get("training");
+  const requestedTabRaw = String(urlParams.get("tab") || "")
+    .trim()
+    .toLowerCase();
+  const requestedMainTab = ["mask", "form", "list"].includes(requestedTabRaw)
+    ? requestedTabRaw
+    : "form";
   const sectionStorageKey = trainingId
     ? `enrollment_sections_${trainingId}`
     : "enrollment_sections_global";
@@ -83,9 +89,14 @@ export default function EnrollmentPage() {
   const [showEditParticipant, setShowEditParticipant] = useState(false);
   const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
   const [deleteAllStatus, setDeleteAllStatus] = useState(null);
+  const [activeMainTab, setActiveMainTab] = useState(requestedMainTab);
 
   const queryClient = useQueryClient();
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
+
+  React.useEffect(() => {
+    setActiveMainTab(requestedMainTab);
+  }, [requestedMainTab, trainingId]);
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
@@ -1537,7 +1548,11 @@ export default function EnrollmentPage() {
         </CardHeader>
 
         <CardContent className="pt-6">
-          <Tabs defaultValue="form" className="w-full">
+          <Tabs
+            value={activeMainTab}
+            onValueChange={setActiveMainTab}
+            className="w-full"
+          >
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="mask">
                 <SlidersHorizontal className="h-4 w-4 mr-2" />
