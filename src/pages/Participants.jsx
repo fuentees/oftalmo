@@ -73,6 +73,12 @@ export default function Participants() {
       .toUpperCase()
       .trim();
 
+  const toNumeric = (value) => {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = Number(String(value).replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   const isSameParticipant = (base, candidate) => {
     if (!base || !candidate) return false;
     const baseName = normalizeText(base.professional_name);
@@ -253,6 +259,21 @@ export default function Participants() {
     return null;
   };
 
+  const isApprovedParticipation = (participant) => {
+    if (!participant) return false;
+    if (participant.enrollment_status === "cancelado") return false;
+    if (participant.certificate_issued) return true;
+    if (participant.approved === true) return true;
+
+    const trainingType = resolveTrainingType(participant);
+    if (trainingType === "repadronizacao") {
+      const gradeValue = toNumeric(participant.grade);
+      return Number.isFinite(gradeValue) && gradeValue >= 70;
+    }
+
+    return false;
+  };
+
   const { validParticipants, invalidParticipants } = useMemo(() => {
     const valid = [];
     const invalid = [];
@@ -275,6 +296,11 @@ export default function Participants() {
     });
     return { validParticipants: valid, invalidParticipants: invalid };
   }, [participants, trainingMaps]);
+
+  const approvedParticipants = useMemo(
+    () => validParticipants.filter((participant) => isApprovedParticipation(participant)),
+    [validParticipants]
+  );
 
   const invalidParticipantIds = useMemo(
     () =>
@@ -510,7 +536,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
 
   const groupedParticipants = useMemo(() => {
     const groups = [];
-    validParticipants.forEach((participant) => {
+    approvedParticipants.forEach((participant) => {
       const existingGroup = groups.find((group) =>
         group.members.some((member) => isSameParticipant(member, participant))
       );
@@ -544,7 +570,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         courseTitles: Array.from(titleSet),
       };
     });
-  }, [validParticipants, trainingMaps]);
+  }, [approvedParticipants, trainingMaps]);
 
   const filteredParticipants = groupedParticipants
     .filter((group) => {
@@ -601,10 +627,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
 
   const courseOptions = useMemo(() => {
     const titles = new Set();
-    trainings.forEach((training) => {
-      if (training.title) titles.add(training.title);
-    });
-    validParticipants.forEach((participant) => {
+    approvedParticipants.forEach((participant) => {
       if (participant.training_title) {
         titles.add(participant.training_title);
         return;
@@ -619,7 +642,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     return Array.from(titles)
       .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
       .map((title) => ({ value: title, label: title }));
-  }, [validParticipants, trainings, trainingMaps]);
+  }, [approvedParticipants, trainingMaps]);
 
   const municipalityOptions = useMemo(() => {
     const values = new Set();
@@ -726,7 +749,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     <div className="space-y-6">
       <PageHeader
         title="Participantes"
-        subtitle="Todos os participantes de treinamentos"
+        subtitle="Somente participantes aprovados/concluintes"
       />
 
       <div className="flex flex-col sm:flex-row gap-3 justify-between">
@@ -816,7 +839,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         columns={columns}
         data={paginatedParticipants}
         isLoading={isLoading || loadingTrainings}
-        emptyMessage="Nenhum participante registrado"
+        emptyMessage="Nenhum participante aprovado encontrado"
       />
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
