@@ -10,7 +10,29 @@ import { Download, Trash2, Upload } from "lucide-react";
 import { formatDateSafe } from "@/lib/date";
 import { getEffectiveTrainingStatus } from "@/lib/statusRules";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
-import { resolveTrainingParticipantMatch } from "@/lib/trainingParticipantMatch";
+import {
+  normalizeParticipantEmail,
+  normalizeParticipantRg,
+  normalizeParticipantText,
+  resolveTrainingParticipantMatch,
+} from "@/lib/trainingParticipantMatch";
+import {
+  TRACOMA_TOTAL_QUESTIONS,
+  buildAnswerKeyCollections,
+  computeTracomaKappaMetrics,
+  normalizeAnswerKeyCode,
+  normalizeBinaryAnswer,
+} from "@/lib/tracomaExamKappa";
+
+const parseStoredAnswers = (
+  value,
+  totalQuestions = TRACOMA_TOTAL_QUESTIONS
+) => {
+  if (!Array.isArray(value) || value.length !== totalQuestions) return null;
+  const parsed = value.map((item) => normalizeBinaryAnswer(item));
+  if (parsed.some((item) => item === null)) return null;
+  return parsed;
+};
 
 export default function TrainingDetails({ training, participants = [] }) {
   const trainingId = String(training?.id || "").trim();
@@ -45,6 +67,12 @@ export default function TrainingDetails({ training, participants = [] }) {
         { training_id: trainingId },
         "-created_at"
       ),
+    enabled: Boolean(trainingId && isRepadTraining),
+  });
+
+  const { data: tracomaAnswerKeys = [] } = useQuery({
+    queryKey: ["trainingTracomaSummaryAnswerKeys"],
+    queryFn: () => dataClient.entities.TracomaExamAnswerKey.list("question_number"),
     enabled: Boolean(trainingId && isRepadTraining),
   });
 
@@ -152,17 +180,63 @@ export default function TrainingDetails({ training, participants = [] }) {
     (item) => item.enrollment_status !== "cancelado"
   );
   const totalParticipants = activeParticipants.length;
+  const answerKeyByCode = useMemo(() => {
+    const map = new Map();
+    const collections = buildAnswerKeyCollections(
+      Array.isArray(tracomaAnswerKeys) ? tracomaAnswerKeys : [],
+      TRACOMA_TOTAL_QUESTIONS
+    );
+    collections.forEach((item) => {
+      if (item?.answers && !item?.error) {
+        map.set(item.code, item.answers);
+      }
+    });
+    return map;
+  }, [tracomaAnswerKeys]);
+
   const repadStatusByParticipant = useMemo(() => {
     if (!isRepadTraining) return new Map();
     const map = new Map();
     const rows = Array.isArray(tracomaResults) ? [...tracomaResults] : [];
+    const resolveParticipantForSummary = (identity) => {
+      const matched = resolveTrainingParticipantMatch(activeParticipants, identity);
+      if (matched) return matched;
+
+      const targetRg = normalizeParticipantRg(identity?.rg || identity?.cpf);
+      if (targetRg) {
+        const byRg = activeParticipants.find(
+          (item) =>
+            normalizeParticipantRg(item?.professional_rg || item?.professional_cpf) ===
+            targetRg
+        );
+        if (byRg) return byRg;
+      }
+
+      const targetEmail = normalizeParticipantEmail(identity?.email);
+      if (targetEmail) {
+        const byEmail = activeParticipants.find(
+          (item) => normalizeParticipantEmail(item?.professional_email) === targetEmail
+        );
+        if (byEmail) return byEmail;
+      }
+
+      const targetName = normalizeParticipantText(identity?.name);
+      if (targetName) {
+        const byName = activeParticipants.find(
+          (item) => normalizeParticipantText(item?.professional_name) === targetName
+        );
+        if (byName) return byName;
+      }
+
+      return null;
+    };
     rows.sort(
       (a, b) =>
         new Date(b?.created_at || 0).getTime() -
         new Date(a?.created_at || 0).getTime()
     );
     rows.forEach((result) => {
-      const participant = resolveTrainingParticipantMatch(activeParticipants, {
+      const participant = resolveParticipantForSummary({
         name: result?.participant_name,
         email: result?.participant_email,
         rg: result?.participant_cpf,
@@ -170,17 +244,38 @@ export default function TrainingDetails({ training, participants = [] }) {
       if (!participant?.id) return;
       if (map.has(participant.id)) return;
 
-      const kappaValue = Number(result?.kappa);
+      let kappaValue = Number(result?.kappa);
+      if (!Number.isFinite(kappaValue)) kappaValue = null;
+      const keyCode = normalizeAnswerKeyCode(result?.answer_key_code || "E2");
+      const answerKey = answerKeyByCode.get(keyCode);
+      const traineeAnswers = parseStoredAnswers(result?.answers);
+      let statusText = String(result?.aptitude_status || "")
+        .trim()
+        .toLowerCase();
+      if (answerKey && traineeAnswers) {
+        try {
+          const computed = computeTracomaKappaMetrics({
+            answerKey,
+            traineeAnswers,
+          });
+          kappaValue = Number(computed?.kappa);
+          statusText = String(computed?.aptitudeStatus || statusText)
+            .trim()
+            .toLowerCase();
+        } catch {
+          // Mantém o valor salvo quando não for possível recalcular.
+        }
+      }
       const approvedByKappa =
         Number.isFinite(kappaValue) && Math.max(0, Math.min(1, kappaValue)) >= 0.7;
-      const approved = approvedByKappa;
+      const approved = statusText === "apto" || approvedByKappa;
       map.set(participant.id, {
         hasResult: true,
         approved,
       });
     });
     return map;
-  }, [activeParticipants, isRepadTraining, tracomaResults]);
+  }, [activeParticipants, answerKeyByCode, isRepadTraining, tracomaResults]);
 
   const approvedCount = isRepadTraining
     ? activeParticipants.filter(
@@ -308,7 +403,7 @@ export default function TrainingDetails({ training, participants = [] }) {
               <span className="text-slate-500">Participantes:</span>
               <span className="flex items-center gap-1">
                 <Users className="h-4 w-4" />
-                {training.participants_count || 0}
+                {totalParticipants}
                 {training.max_participants && <span className="text-slate-400">/{training.max_participants}</span>}
               </span>
             </div>

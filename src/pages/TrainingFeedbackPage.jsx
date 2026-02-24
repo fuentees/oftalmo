@@ -150,12 +150,40 @@ const resolveQuestionMutationError = (error, fallbackMessage) => {
   return message;
 };
 
-export default function TrainingFeedbackPage() {
+const FEEDBACK_TABS = ["mask", "analytics", "preview"];
+
+export default function TrainingFeedbackPage({
+  allowedTabs = null,
+  initialTab = null,
+  showBackButton = true,
+} = {}) {
   const navigate = useNavigate();
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
   const trainingId = urlParams.get("training");
+  const requestedTabRaw = String(urlParams.get("tab") || "")
+    .trim()
+    .toLowerCase();
+  const requestedTab = FEEDBACK_TABS.includes(requestedTabRaw)
+    ? requestedTabRaw
+    : "mask";
+  const normalizedAllowedTabs = React.useMemo(() => {
+    if (!Array.isArray(allowedTabs) || allowedTabs.length === 0) {
+      return FEEDBACK_TABS;
+    }
+    const filtered = allowedTabs
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter((value) => FEEDBACK_TABS.includes(value));
+    if (!filtered.length) return FEEDBACK_TABS;
+    return Array.from(new Set(filtered));
+  }, [allowedTabs]);
+  const initialTabValue = String(initialTab || requestedTab)
+    .trim()
+    .toLowerCase();
+  const resolvedInitialTab = normalizedAllowedTabs.includes(initialTabValue)
+    ? initialTabValue
+    : normalizedAllowedTabs[0];
   const feedbackLink = trainingId
     ? `${window.location.origin}/TrainingFeedback?training=${encodeURIComponent(trainingId)}`
     : "";
@@ -170,14 +198,15 @@ export default function TrainingFeedbackPage() {
     navigate("/Trainings");
   };
 
-  const renderBackButton = () => (
-    <div>
-      <Button variant="ghost" size="sm" onClick={handleGoBack} className="-ml-2">
-        <ArrowLeft className="h-4 w-4 mr-1" />
-        Voltar
-      </Button>
-    </div>
-  );
+  const renderBackButton = () =>
+    showBackButton ? (
+      <div>
+        <Button variant="ghost" size="sm" onClick={handleGoBack} className="-ml-2">
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Voltar
+        </Button>
+      </div>
+    ) : null;
 
   const [questionFormOpen, setQuestionFormOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
@@ -185,7 +214,7 @@ export default function TrainingFeedbackPage() {
   const [questionSearch, setQuestionSearch] = useState("");
   const [showInactiveQuestions, setShowInactiveQuestions] = useState(false);
   const [questionActionStatus, setQuestionActionStatus] = useState(null);
-  const [activeTab, setActiveTab] = useState("mask");
+  const [activeTab, setActiveTab] = useState(resolvedInitialTab);
   const [previewVersion, setPreviewVersion] = useState(0);
   const [questionFormData, setQuestionFormData] = useState(
     createDefaultQuestion(trainingId)
@@ -194,9 +223,9 @@ export default function TrainingFeedbackPage() {
   React.useEffect(() => {
     setQuestionFormData(createDefaultQuestion(trainingId));
     setEditingQuestion(null);
-    setActiveTab("mask");
+    setActiveTab(resolvedInitialTab);
     setPreviewVersion(0);
-  }, [trainingId]);
+  }, [trainingId, resolvedInitialTab]);
 
   const refreshPreview = React.useCallback(() => {
     setPreviewVersion((value) => value + 1);
@@ -923,13 +952,27 @@ export default function TrainingFeedbackPage() {
             }}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="mask">Mascara</TabsTrigger>
-              <TabsTrigger value="analytics">Analises</TabsTrigger>
-              <TabsTrigger value="preview">Visualizacao</TabsTrigger>
-            </TabsList>
+            {normalizedAllowedTabs.length > 1 && (
+              <TabsList
+                className="grid w-full"
+                style={{
+                  gridTemplateColumns: `repeat(${normalizedAllowedTabs.length}, minmax(0, 1fr))`,
+                }}
+              >
+                {normalizedAllowedTabs.includes("mask") && (
+                  <TabsTrigger value="mask">Mascara</TabsTrigger>
+                )}
+                {normalizedAllowedTabs.includes("analytics") && (
+                  <TabsTrigger value="analytics">Analises</TabsTrigger>
+                )}
+                {normalizedAllowedTabs.includes("preview") && (
+                  <TabsTrigger value="preview">Visualizacao</TabsTrigger>
+                )}
+              </TabsList>
+            )}
 
-            <TabsContent value="mask" className="mt-6 space-y-6">
+            {normalizedAllowedTabs.includes("mask") && (
+              <TabsContent value="mask" className="mt-6 space-y-6">
               <div className="flex flex-wrap gap-3">
                 <Button type="button" variant="outline" onClick={handleCopyFeedbackLink}>
                   <Copy className="h-4 w-4 mr-2" />
@@ -1025,9 +1068,11 @@ export default function TrainingFeedbackPage() {
                   />
                 </CardContent>
               </Card>
-            </TabsContent>
+              </TabsContent>
+            )}
 
-            <TabsContent value="analytics" className="mt-6 space-y-6">
+            {normalizedAllowedTabs.includes("analytics") && (
+              <TabsContent value="analytics" className="mt-6 space-y-6">
               <div className="flex flex-wrap gap-3">
                 <Button
                   type="button"
@@ -1313,9 +1358,11 @@ export default function TrainingFeedbackPage() {
                     )}
                   </div>
                 )}
-            </TabsContent>
+              </TabsContent>
+            )}
 
-            <TabsContent value="preview" className="mt-6 space-y-4">
+            {normalizedAllowedTabs.includes("preview") && (
+              <TabsContent value="preview" className="mt-6 space-y-4">
               <div className="flex flex-wrap gap-3">
                 <Button type="button" variant="outline" onClick={handleCopyFeedbackLink}>
                   <Copy className="h-4 w-4 mr-2" />
@@ -1352,7 +1399,8 @@ export default function TrainingFeedbackPage() {
                   className="w-full h-[760px]"
                 />
               </div>
-            </TabsContent>
+              </TabsContent>
+            )}
           </Tabs>
         </CardContent>
       </Card>

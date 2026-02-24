@@ -53,7 +53,13 @@ import {
   orderEnrollmentFields,
 } from "@/lib/enrollmentSchema";
 
-export default function EnrollmentPage() {
+const ENROLLMENT_MAIN_TABS = ["mask", "form", "list"];
+
+export default function EnrollmentPage({
+  allowedTabs = null,
+  initialTab = null,
+  showBackButton = true,
+} = {}) {
   const navigate = useNavigate();
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
@@ -62,9 +68,25 @@ export default function EnrollmentPage() {
   const requestedTabRaw = String(urlParams.get("tab") || "")
     .trim()
     .toLowerCase();
-  const requestedMainTab = ["mask", "form", "list"].includes(requestedTabRaw)
+  const requestedMainTab = ENROLLMENT_MAIN_TABS.includes(requestedTabRaw)
     ? requestedTabRaw
     : "form";
+  const normalizedAllowedTabs = React.useMemo(() => {
+    if (!Array.isArray(allowedTabs) || allowedTabs.length === 0) {
+      return ENROLLMENT_MAIN_TABS;
+    }
+    const filtered = allowedTabs
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter((value) => ENROLLMENT_MAIN_TABS.includes(value));
+    if (!filtered.length) return ENROLLMENT_MAIN_TABS;
+    return Array.from(new Set(filtered));
+  }, [allowedTabs]);
+  const initialTabValue = String(initialTab || requestedMainTab)
+    .trim()
+    .toLowerCase();
+  const resolvedInitialTab = normalizedAllowedTabs.includes(initialTabValue)
+    ? initialTabValue
+    : normalizedAllowedTabs[0];
   const sectionStorageKey = trainingId
     ? `enrollment_sections_${trainingId}`
     : "enrollment_sections_global";
@@ -92,7 +114,7 @@ export default function EnrollmentPage() {
   const [showEditParticipant, setShowEditParticipant] = useState(false);
   const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
   const [deleteAllStatus, setDeleteAllStatus] = useState(null);
-  const [activeMainTab, setActiveMainTab] = useState(requestedMainTab);
+  const [activeMainTab, setActiveMainTab] = useState(resolvedInitialTab);
 
   const handleGoBack = () => {
     if (window.history.length > 1) {
@@ -106,8 +128,8 @@ export default function EnrollmentPage() {
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
 
   React.useEffect(() => {
-    setActiveMainTab(requestedMainTab);
-  }, [requestedMainTab, trainingId]);
+    setActiveMainTab(resolvedInitialTab);
+  }, [resolvedInitialTab, trainingId]);
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
@@ -1537,12 +1559,14 @@ export default function EnrollmentPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <Button variant="ghost" size="sm" onClick={handleGoBack} className="-ml-2">
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Voltar
-        </Button>
-      </div>
+      {showBackButton && (
+        <div>
+          <Button variant="ghost" size="sm" onClick={handleGoBack} className="-ml-2">
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Voltar
+          </Button>
+        </div>
+      )}
       <PageHeader
         title={`Inscrições - ${training.title}`}
         subtitle="Gerencie as inscrições do treinamento"
@@ -1570,22 +1594,36 @@ export default function EnrollmentPage() {
             onValueChange={setActiveMainTab}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="mask">
-                <SlidersHorizontal className="h-4 w-4 mr-2" />
-                Máscara
-              </TabsTrigger>
-              <TabsTrigger value="form">
-                <GraduationCap className="h-4 w-4 mr-2" />
-                Formulário de Inscrição
-              </TabsTrigger>
-              <TabsTrigger value="list">
-                <Users className="h-4 w-4 mr-2" />
-                Inscritos ({allParticipants.length})
-              </TabsTrigger>
-            </TabsList>
+            {normalizedAllowedTabs.length > 1 && (
+              <TabsList
+                className="grid w-full"
+                style={{
+                  gridTemplateColumns: `repeat(${normalizedAllowedTabs.length}, minmax(0, 1fr))`,
+                }}
+              >
+                {normalizedAllowedTabs.includes("mask") && (
+                  <TabsTrigger value="mask">
+                    <SlidersHorizontal className="h-4 w-4 mr-2" />
+                    Máscara
+                  </TabsTrigger>
+                )}
+                {normalizedAllowedTabs.includes("form") && (
+                  <TabsTrigger value="form">
+                    <GraduationCap className="h-4 w-4 mr-2" />
+                    Formulário de Inscrição
+                  </TabsTrigger>
+                )}
+                {normalizedAllowedTabs.includes("list") && (
+                  <TabsTrigger value="list">
+                    <Users className="h-4 w-4 mr-2" />
+                    Inscritos ({allParticipants.length})
+                  </TabsTrigger>
+                )}
+              </TabsList>
+            )}
 
-            <TabsContent value="mask" className="mt-6 space-y-6">
+            {normalizedAllowedTabs.includes("mask") && (
+              <TabsContent value="mask" className="mt-6 space-y-6">
               <Tabs defaultValue="fields" className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="fields">Campos</TabsTrigger>
@@ -1701,9 +1739,11 @@ export default function EnrollmentPage() {
                   </Card>
                 </TabsContent>
               </Tabs>
-            </TabsContent>
+              </TabsContent>
+            )}
 
-            <TabsContent value="form" className="mt-6 space-y-6">
+            {normalizedAllowedTabs.includes("form") && (
+              <TabsContent value="form" className="mt-6 space-y-6">
               {(isFullyBooked || isCancelled) && (
                 <Alert className="border-red-200 bg-red-50 mb-6">
                   <AlertCircle className="h-4 w-4 text-red-600" />
@@ -1840,9 +1880,11 @@ export default function EnrollmentPage() {
                   </div>
                 </form>
               )}
-            </TabsContent>
+              </TabsContent>
+            )}
 
-            <TabsContent value="list" className="mt-6 space-y-4">
+            {normalizedAllowedTabs.includes("list") && (
+              <TabsContent value="list" className="mt-6 space-y-4">
               <div className="flex flex-col lg:flex-row lg:items-start gap-3 justify-between">
                 <div className="flex-1 min-w-0">
                   <SearchFilter
@@ -1915,7 +1957,8 @@ export default function EnrollmentPage() {
                 isLoading={participantsLoading}
                 emptyMessage="Nenhuma inscrição registrada"
               />
-            </TabsContent>
+              </TabsContent>
+            )}
           </Tabs>
         </CardContent>
       </Card>

@@ -265,15 +265,43 @@ const parseVerticalAnswerFromRow = (normalizedRow) =>
     ])
   );
 
-export default function TracomaExaminerEvaluationPage() {
+const TRACOMA_PAGE_TABS = ["mask", "history", "monitor"];
+
+export default function TracomaExaminerEvaluationPage({
+  allowedTabs = null,
+  initialTab = null,
+  showBackButton = true,
+} = {}) {
   const navigate = useNavigate();
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
   const trainingId = String(urlParams.get("training") || "").trim();
+  const requestedTabRaw = String(urlParams.get("tab") || "")
+    .trim()
+    .toLowerCase();
+  const requestedTab = TRACOMA_PAGE_TABS.includes(requestedTabRaw)
+    ? requestedTabRaw
+    : "mask";
+  const normalizedAllowedTabs = useMemo(() => {
+    if (!Array.isArray(allowedTabs) || allowedTabs.length === 0) {
+      return TRACOMA_PAGE_TABS;
+    }
+    const filtered = allowedTabs
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter((value) => TRACOMA_PAGE_TABS.includes(value));
+    if (!filtered.length) return TRACOMA_PAGE_TABS;
+    return Array.from(new Set(filtered));
+  }, [allowedTabs]);
+  const initialTabValue = String(initialTab || requestedTab)
+    .trim()
+    .toLowerCase();
+  const resolvedInitialTab = normalizedAllowedTabs.includes(initialTabValue)
+    ? initialTabValue
+    : normalizedAllowedTabs[0];
   const initialKeyCode = normalizeAnswerKeyCode(urlParams.get("key"));
 
-  const [activeTab, setActiveTab] = useState("mask");
+  const [activeTab, setActiveTab] = useState(resolvedInitialTab);
   const [search, setSearch] = useState("");
   const [historyKeyFilter, setHistoryKeyFilter] = useState("all");
   const [monitorKeyFilter, setMonitorKeyFilter] = useState("all");
@@ -306,14 +334,19 @@ export default function TracomaExaminerEvaluationPage() {
     navigate("/Trainings");
   };
 
-  const renderBackButton = () => (
-    <div>
-      <Button variant="ghost" size="sm" onClick={handleGoBack} className="-ml-2">
-        <ArrowLeft className="h-4 w-4 mr-1" />
-        Voltar
-      </Button>
-    </div>
-  );
+  const renderBackButton = () =>
+    showBackButton ? (
+      <div>
+        <Button variant="ghost" size="sm" onClick={handleGoBack} className="-ml-2">
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Voltar
+        </Button>
+      </div>
+    ) : null;
+
+  useEffect(() => {
+    setActiveTab(resolvedInitialTab);
+  }, [resolvedInitialTab, trainingId]);
 
   const trainingQuery = useQuery({
     queryKey: ["tracoma-exam-training-management", trainingId],
@@ -1882,13 +1915,27 @@ export default function TracomaExaminerEvaluationPage() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="mask">Gabarito padrao ouro</TabsTrigger>
-          <TabsTrigger value="history">Historico</TabsTrigger>
-          <TabsTrigger value="monitor">Monitoria</TabsTrigger>
-        </TabsList>
+        {normalizedAllowedTabs.length > 1 && (
+          <TabsList
+            className="grid w-full"
+            style={{
+              gridTemplateColumns: `repeat(${normalizedAllowedTabs.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {normalizedAllowedTabs.includes("mask") && (
+              <TabsTrigger value="mask">Gabarito padrao ouro</TabsTrigger>
+            )}
+            {normalizedAllowedTabs.includes("history") && (
+              <TabsTrigger value="history">Historico</TabsTrigger>
+            )}
+            {normalizedAllowedTabs.includes("monitor") && (
+              <TabsTrigger value="monitor">Monitoria</TabsTrigger>
+            )}
+          </TabsList>
+        )}
 
-        <TabsContent value="mask" className="space-y-4 mt-6">
+        {normalizedAllowedTabs.includes("mask") && (
+          <TabsContent value="mask" className="space-y-4 mt-6">
           <div className="flex flex-wrap gap-3">
             <Button type="button" onClick={openNewMaskDialog}>
               <Plus className="h-4 w-4 mr-2" />
@@ -2017,9 +2064,11 @@ export default function TracomaExaminerEvaluationPage() {
               </Card>
             </>
           )}
-        </TabsContent>
+          </TabsContent>
+        )}
 
-        <TabsContent value="history" className="space-y-4 mt-6">
+        {normalizedAllowedTabs.includes("history") && (
+          <TabsContent value="history" className="space-y-4 mt-6">
           {resultsLoadError && (
             <Alert className="border-red-200 bg-red-50">
               <AlertCircle className="h-4 w-4 text-red-600" />
@@ -2221,9 +2270,11 @@ export default function TracomaExaminerEvaluationPage() {
               </Card>
             </>
           )}
-        </TabsContent>
+          </TabsContent>
+        )}
 
-        <TabsContent value="monitor" className="space-y-4 mt-6">
+        {normalizedAllowedTabs.includes("monitor") && (
+          <TabsContent value="monitor" className="space-y-4 mt-6">
           {resultsLoadError && (
             <Alert className="border-red-200 bg-red-50">
               <AlertCircle className="h-4 w-4 text-red-600" />
@@ -2317,7 +2368,8 @@ export default function TracomaExaminerEvaluationPage() {
               </Card>
             </>
           )}
-        </TabsContent>
+          </TabsContent>
+        )}
       </Tabs>
 
       <Dialog open={newMaskDialogOpen} onOpenChange={setNewMaskDialogOpen}>
