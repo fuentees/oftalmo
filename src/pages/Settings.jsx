@@ -53,6 +53,7 @@ import {
   saveCertificateTemplateForTraining,
   resetCertificateTemplateForTraining,
   resolveCertificateTemplate,
+  isCertificateTemplateCloudSyncDisabled,
 } from "@/lib/certificateTemplate";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
@@ -787,7 +788,7 @@ export default function Settings() {
   };
 
   const buildCertificateSyncWarningMessage = (baseMessage) =>
-    `${baseMessage} A sincronização na nuvem foi bloqueada por permissão (RLS).`;
+    `${baseMessage} A sincronização online está indisponível para este perfil neste navegador.`;
 
   const handleSaveCertificate = async () => {
     const payload = {
@@ -811,9 +812,14 @@ export default function Settings() {
     if (scopedTrainingId) {
       try {
         await saveCertificateTemplateForTraining(scopedTrainingScope, payload);
+        const cloudSyncDisabled = isCertificateTemplateCloudSyncDisabled();
         setCertificateStatus({
-          type: "success",
-          message: `Modelo de certificado salvo para "${scopeLabel}"${groupedScopeSuffix}.`,
+          type: cloudSyncDisabled ? "warning" : "success",
+          message: cloudSyncDisabled
+            ? buildCertificateSyncWarningMessage(
+                `Modelo de certificado salvo para "${scopeLabel}"${groupedScopeSuffix}.`
+              )
+            : `Modelo de certificado salvo para "${scopeLabel}"${groupedScopeSuffix}.`,
         });
       } catch (error) {
         const syncErrorText = getCertificateSyncErrorText(error);
@@ -838,10 +844,14 @@ export default function Settings() {
 
     saveCertificateTemplate(payload);
     try {
-      await saveCertificateTemplateToStorage(payload);
+      const synced = await saveCertificateTemplateToStorage(payload);
       setCertificateStatus({
-        type: "success",
-        message: "Modelo padrão de certificado salvo com sucesso.",
+        type: synced ? "success" : "warning",
+        message: synced
+          ? "Modelo padrão de certificado salvo com sucesso."
+          : buildCertificateSyncWarningMessage(
+              "Modelo padrão de certificado salvo neste navegador."
+            ),
       });
     } catch (error) {
       const syncErrorText = getCertificateSyncErrorText(error);
@@ -883,9 +893,14 @@ export default function Settings() {
           scopedTrainingScope
         );
         setCertificateTemplate(fallback);
+        const cloudSyncDisabled = isCertificateTemplateCloudSyncDisabled();
         setCertificateStatus({
-          type: "success",
-          message: `Modelo específico removido para "${scopeLabel}"${groupedScopeSuffix}. Agora será usado o modelo padrão.`,
+          type: cloudSyncDisabled ? "warning" : "success",
+          message: cloudSyncDisabled
+            ? buildCertificateSyncWarningMessage(
+                `Modelo específico removido para "${scopeLabel}"${groupedScopeSuffix}. Agora será usado o modelo padrão.`
+              )
+            : `Modelo específico removido para "${scopeLabel}"${groupedScopeSuffix}. Agora será usado o modelo padrão.`,
         });
       } catch (error) {
         const syncErrorText = getCertificateSyncErrorText(error);
@@ -914,10 +929,14 @@ export default function Settings() {
     };
     setCertificateTemplate(reset);
     try {
-      await saveCertificateTemplateToStorage(reset);
+      const synced = await saveCertificateTemplateToStorage(reset);
       setCertificateStatus({
-        type: "success",
-        message: "Modelo padrão restaurado.",
+        type: synced ? "success" : "warning",
+        message: synced
+          ? "Modelo padrão restaurado."
+          : buildCertificateSyncWarningMessage(
+              "Modelo padrão restaurado neste navegador."
+            ),
       });
     } catch (error) {
       const syncErrorText = getCertificateSyncErrorText(error);

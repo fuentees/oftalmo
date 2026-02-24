@@ -3,6 +3,8 @@ import { supabase } from "@/api/supabaseClient";
 export const CERTIFICATE_TEMPLATE_KEY = "certificateTemplate";
 export const CERTIFICATE_TEMPLATE_BY_TRAINING_KEY =
   "certificateTemplateByTraining";
+const CERTIFICATE_TEMPLATE_SYNC_DISABLED_KEY =
+  "certificateTemplateStorageSyncDisabled";
 const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
 const CERTIFICATE_TEMPLATE_STORAGE_PATH = "certificates/certificate-template.json";
@@ -130,6 +132,46 @@ const mergeTemplate = (template) => {
   }
   return cleanLegacyLogos(merged);
 };
+
+const extractStorageErrorText = (error) =>
+  String(
+    error?.message || error?.error_description || error?.details || error?.hint || ""
+  )
+    .trim()
+    .toLowerCase();
+
+const isStoragePermissionError = (error) => {
+  const message = extractStorageErrorText(error);
+  const status = Number(error?.status || 0);
+  const code = String(error?.code || "").toLowerCase();
+  return (
+    status === 401 ||
+    status === 403 ||
+    code === "42501" ||
+    message.includes("row-level security") ||
+    message.includes("violates row-level security policy") ||
+    message.includes("permission denied") ||
+    message.includes("not authorized") ||
+    message.includes("unauthorized")
+  );
+};
+
+const getCertificateTemplateSyncDisabled = () => {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(CERTIFICATE_TEMPLATE_SYNC_DISABLED_KEY) === "1";
+};
+
+const setCertificateTemplateSyncDisabled = (disabled) => {
+  if (typeof window === "undefined") return;
+  if (disabled) {
+    window.localStorage.setItem(CERTIFICATE_TEMPLATE_SYNC_DISABLED_KEY, "1");
+    return;
+  }
+  window.localStorage.removeItem(CERTIFICATE_TEMPLATE_SYNC_DISABLED_KEY);
+};
+
+export const isCertificateTemplateCloudSyncDisabled = () =>
+  getCertificateTemplateSyncDisabled();
 
 const toNormalizedTrainingTemplateId = (value) => String(value || "").trim();
 
@@ -268,36 +310,55 @@ const saveCertificateTemplateMap = (templateMap) => {
 };
 
 export const loadCertificateTemplateFromStorage = async () => {
+  if (getCertificateTemplateSyncDisabled()) return null;
   try {
     const { data, error } = await supabase.storage
       .from(STORAGE_BUCKET)
       .download(CERTIFICATE_TEMPLATE_STORAGE_PATH);
-    if (error || !data) return null;
+    if (error || !data) {
+      if (isStoragePermissionError(error)) {
+        setCertificateTemplateSyncDisabled(true);
+      }
+      return null;
+    }
     const text = await data.text();
     if (!text) return null;
     const parsed = JSON.parse(text);
     return mergeTemplate(parsed);
   } catch (error) {
+    if (isStoragePermissionError(error)) {
+      setCertificateTemplateSyncDisabled(true);
+    }
     return null;
   }
 };
 
 const loadCertificateTemplateMapFromStorage = async () => {
+  if (getCertificateTemplateSyncDisabled()) return null;
   try {
     const { data, error } = await supabase.storage
       .from(STORAGE_BUCKET)
       .download(CERTIFICATE_TEMPLATE_BY_TRAINING_STORAGE_PATH);
-    if (error || !data) return null;
+    if (error || !data) {
+      if (isStoragePermissionError(error)) {
+        setCertificateTemplateSyncDisabled(true);
+      }
+      return null;
+    }
     const text = await data.text();
     if (!text) return null;
     const parsed = JSON.parse(text);
     return mergeTemplateMap(parsed);
   } catch (error) {
+    if (isStoragePermissionError(error)) {
+      setCertificateTemplateSyncDisabled(true);
+    }
     return null;
   }
 };
 
 export const saveCertificateTemplateToStorage = async (template) => {
+  if (getCertificateTemplateSyncDisabled()) return false;
   const payload = mergeTemplate(template);
   const content = JSON.stringify(payload);
   const blob = new Blob([content], { type: "application/json" });
@@ -307,11 +368,19 @@ export const saveCertificateTemplateToStorage = async (template) => {
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
     .upload(CERTIFICATE_TEMPLATE_STORAGE_PATH, file, { upsert: true });
-  if (error) throw error;
+  if (error) {
+    if (isStoragePermissionError(error)) {
+      setCertificateTemplateSyncDisabled(true);
+      return false;
+    }
+    throw error;
+  }
+  setCertificateTemplateSyncDisabled(false);
   return true;
 };
 
 const saveCertificateTemplateMapToStorage = async (templateMap) => {
+  if (getCertificateTemplateSyncDisabled()) return false;
   const payload = mergeTemplateMap(templateMap);
   const content = JSON.stringify(payload);
   const blob = new Blob([content], { type: "application/json" });
@@ -323,7 +392,14 @@ const saveCertificateTemplateMapToStorage = async (templateMap) => {
     .upload(CERTIFICATE_TEMPLATE_BY_TRAINING_STORAGE_PATH, file, {
       upsert: true,
     });
-  if (error) throw error;
+  if (error) {
+    if (isStoragePermissionError(error)) {
+      setCertificateTemplateSyncDisabled(true);
+      return false;
+    }
+    throw error;
+  }
+  setCertificateTemplateSyncDisabled(false);
   return true;
 };
 
