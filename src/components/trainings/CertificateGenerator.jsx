@@ -148,52 +148,84 @@ const parseFormattedText = (value) => {
   return tokens;
 };
 
-const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth, firstLineIndent = 0) => {
-  const lines = [];
-  let current = [];
-  let lineWidth = 0;
-  let pendingSpace = false;
-  let lineIndex = 0;
-  const getMaxWidth = () =>
-    maxWidth - (lineIndex === 0 ? firstLineIndent : 0);
-
-  const pushLine = (forceEmpty = false) => {
-    if (current.length > 0 || forceEmpty) {
-      lines.push(current);
-    }
-    current = [];
-    lineWidth = 0;
-    pendingSpace = false;
-    lineIndex = lines.length;
-  };
-
+const splitTokensByExplicitLines = (tokens) => {
+  const lines = [[]];
   tokens.forEach((token) => {
     if (token.type === "newline") {
-      // Preserve consecutive newlines so multiple paragraphs remain visible.
-      pushLine(true);
+      lines.push([]);
       return;
     }
-    const parts = String(token.text || "").split(/(\s+)/);
-    parts.forEach((part) => {
-      if (!part) return;
-      if (/^\s+$/.test(part)) {
-        pendingSpace = true;
-        return;
-      }
-      const wordWidth = measureWord(part, token.bold);
-      const spaceWidth = pendingSpace && current.length > 0 ? baseSpaceWidth : 0;
-      if (current.length > 0 && lineWidth + spaceWidth + wordWidth > getMaxWidth()) {
-        pushLine();
-      }
-      if (pendingSpace && current.length > 0) {
-        lineWidth += baseSpaceWidth;
-      }
-      current.push({ text: part, bold: token.bold });
-      lineWidth += wordWidth;
-      pendingSpace = false;
-    });
+    lines[lines.length - 1].push(token);
   });
-  if (current.length > 0) lines.push(current);
+  return lines;
+};
+
+const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth, firstLineIndent = 0) => {
+  const lines = [];
+  const explicitLines = splitTokensByExplicitLines(tokens);
+  let paragraphStartsNextLine = true;
+
+  explicitLines.forEach((explicitLineTokens) => {
+    if (!explicitLineTokens.length) {
+      lines.push({ words: [], indent: 0 });
+      paragraphStartsNextLine = true;
+      return;
+    }
+
+    let currentWords = [];
+    let lineWidth = 0;
+    let pendingSpace = false;
+    let currentIndent = paragraphStartsNextLine ? firstLineIndent : 0;
+    let maxWidthForLine = maxWidth - currentIndent;
+
+    const pushCurrentLine = () => {
+      if (!currentWords.length) return;
+      lines.push({
+        words: currentWords,
+        indent: currentIndent,
+      });
+      currentWords = [];
+      lineWidth = 0;
+      pendingSpace = false;
+      currentIndent = 0;
+      maxWidthForLine = maxWidth;
+      paragraphStartsNextLine = false;
+    };
+
+    explicitLineTokens.forEach((token) => {
+      const parts = String(token.text || "").split(/(\s+)/);
+      parts.forEach((part) => {
+        if (!part) return;
+        if (/^\s+$/.test(part)) {
+          pendingSpace = true;
+          return;
+        }
+        const wordWidth = measureWord(part, token.bold);
+        const spaceWidth = pendingSpace && currentWords.length > 0 ? baseSpaceWidth : 0;
+        if (
+          currentWords.length > 0 &&
+          lineWidth + spaceWidth + wordWidth > maxWidthForLine
+        ) {
+          pushCurrentLine();
+        }
+        if (pendingSpace && currentWords.length > 0) {
+          lineWidth += baseSpaceWidth;
+        }
+        currentWords.push({ text: part, bold: token.bold });
+        lineWidth += wordWidth;
+        pendingSpace = false;
+      });
+    });
+
+    if (currentWords.length > 0) {
+      lines.push({
+        words: currentWords,
+        indent: currentIndent,
+      });
+      paragraphStartsNextLine = false;
+    }
+  });
+
   return lines;
 };
 
@@ -224,21 +256,23 @@ const drawFormattedText = (
     return pdf.getTextWidth(word);
   };
   const lines = buildLines(tokens, maxWidth, measureWord, baseSpaceWidth, indent);
-  lines.forEach((words, index) => {
+  lines.forEach((line, index) => {
+    const words = line.words;
     if (words.length === 0) return;
     const isLast = index === lines.length - 1;
     const wordWidths = words.map((word) => measureWord(word.text, word.bold));
     const wordsWidth = wordWidths.reduce((sum, width) => sum + width, 0);
     const gaps = words.length - 1;
     let spaceWidth = baseSpaceWidth;
-    const availableWidth = maxWidth - (index === 0 ? indent : 0);
+    const lineIndent = Number(line.indent) || 0;
+    const availableWidth = maxWidth - lineIndent;
     if (justify && !isLast && gaps > 0) {
       const proposed = (availableWidth - wordsWidth) / gaps;
       if (Number.isFinite(proposed) && proposed >= baseSpaceWidth && proposed <= maxSpaceWidth) {
         spaceWidth = proposed;
       }
     }
-    let cursorX = x + (index === 0 ? indent : 0);
+    let cursorX = x + lineIndent;
     words.forEach((word, idx) => {
       pdf.setFont(fontFamily, word.bold ? "bold" : "normal");
       pdf.text(word.text, cursorX, y + index * lineHeight);

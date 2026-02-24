@@ -91,6 +91,9 @@ export default function Settings() {
   const [lockLogoRatio, setLockLogoRatio] = useState(false);
   const [showLogoGrid, setShowLogoGrid] = useState(false);
   const [editLayer, setEditLayer] = useState("logos");
+  const [isCertificateEditorOpen, setIsCertificateEditorOpen] = useState(true);
+  const [isCertificatePreviewOpen, setIsCertificatePreviewOpen] = useState(true);
+  const [isEmailSettingsOpen, setIsEmailSettingsOpen] = useState(false);
   const bodyTextRef = useRef(null);
   const queryClient = useQueryClient();
   const { gveMapping, isLoading: isGveMappingLoading } = useGveMapping();
@@ -104,26 +107,6 @@ export default function Settings() {
     setSelectedColor(savedColor);
     applyColor(savedColor);
   }, []);
-
-  useEffect(() => {
-    let active = true;
-    const loadTemplateByScope = async () => {
-      const trainingScope =
-        certificateScope === CERTIFICATE_SCOPE_GLOBAL ? null : certificateScope;
-      try {
-        const template = await resolveCertificateTemplate(trainingScope);
-        if (!active) return;
-        setCertificateTemplate(template || loadCertificateTemplate());
-      } catch (error) {
-        if (!active) return;
-        setCertificateTemplate(loadCertificateTemplate());
-      }
-    };
-    loadTemplateByScope();
-    return () => {
-      active = false;
-    };
-  }, [certificateScope]);
 
   useEffect(() => {
     try {
@@ -155,20 +138,40 @@ export default function Settings() {
     { name: "Ciano", value: "cyan", classes: "bg-cyan-900 border-cyan-800 bg-cyan-500 text-cyan-100 hover:bg-cyan-800 bg-cyan-600 hover:bg-cyan-700" },
   ];
 
-  const certificateTrainingOptions = useMemo(
-    () =>
-      (trainings || [])
-        .map((training) => ({
-          id: String(training?.id || "").trim(),
-          title: String(training?.title || "").trim() || "Treinamento sem título",
-          date: training?.date || "",
-        }))
-        .filter((training) => training.id)
-        .sort((a, b) =>
-          a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" })
-        ),
-    [trainings]
-  );
+  const normalizeTemplateTitleKey = (value) =>
+    String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, " ");
+
+  const certificateTrainingOptions = useMemo(() => {
+    const groupedByTitle = new Map();
+    (trainings || []).forEach((training) => {
+      const id = String(training?.id || "").trim();
+      if (!id) return;
+      const title = String(training?.title || "").trim() || "Treinamento sem título";
+      const titleKey = normalizeTemplateTitleKey(title) || id;
+      const existing = groupedByTitle.get(titleKey);
+      if (existing) {
+        if (!existing.trainingIds.includes(id)) {
+          existing.trainingIds.push(id);
+        }
+        return;
+      }
+      groupedByTitle.set(titleKey, {
+        id,
+        title,
+        date: training?.date || "",
+        trainingIds: [id],
+      });
+    });
+
+    return Array.from(groupedByTitle.values()).sort((a, b) =>
+      a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" })
+    );
+  }, [trainings]);
 
   const selectedCertificateTraining = useMemo(
     () =>
@@ -178,6 +181,33 @@ export default function Settings() {
           null,
     [certificateScope, certificateTrainingOptions]
   );
+
+  useEffect(() => {
+    let active = true;
+    const loadTemplateByScope = async () => {
+      const trainingScope =
+        certificateScope === CERTIFICATE_SCOPE_GLOBAL
+          ? null
+          : selectedCertificateTraining
+          ? {
+              id: selectedCertificateTraining.id,
+              trainingIds: selectedCertificateTraining.trainingIds,
+            }
+          : certificateScope;
+      try {
+        const template = await resolveCertificateTemplate(trainingScope);
+        if (!active) return;
+        setCertificateTemplate(template || loadCertificateTemplate());
+      } catch (error) {
+        if (!active) return;
+        setCertificateTemplate(loadCertificateTemplate());
+      }
+    };
+    loadTemplateByScope();
+    return () => {
+      active = false;
+    };
+  }, [certificateScope, selectedCertificateTraining]);
 
   const applyColor = (colorValue) => {
     // Just save to localStorage, reload will apply it via layout
@@ -768,13 +798,22 @@ export default function Settings() {
     const scopedTrainingId =
       certificateScope === CERTIFICATE_SCOPE_GLOBAL ? "" : certificateScope;
     const scopeLabel = selectedCertificateTraining?.title || "treinamento selecionado";
+    const scopedTrainingIds =
+      selectedCertificateTraining?.trainingIds?.filter(Boolean) || [];
+    const scopedTrainingScope = scopedTrainingIds.length
+      ? { id: scopedTrainingId, trainingIds: scopedTrainingIds }
+      : scopedTrainingId;
+    const groupedScopeSuffix =
+      scopedTrainingIds.length > 1
+        ? ` (aplicado a ${scopedTrainingIds.length} turmas com o mesmo nome)`
+        : "";
 
     if (scopedTrainingId) {
       try {
-        await saveCertificateTemplateForTraining(scopedTrainingId, payload);
+        await saveCertificateTemplateForTraining(scopedTrainingScope, payload);
         setCertificateStatus({
           type: "success",
-          message: `Modelo de certificado salvo para "${scopeLabel}".`,
+          message: `Modelo de certificado salvo para "${scopeLabel}"${groupedScopeSuffix}.`,
         });
       } catch (error) {
         const syncErrorText = getCertificateSyncErrorText(error);
@@ -782,7 +821,7 @@ export default function Settings() {
           setCertificateStatus({
             type: "warning",
             message: buildCertificateSyncWarningMessage(
-              `Modelo de certificado salvo para "${scopeLabel}" neste navegador.`
+              `Modelo de certificado salvo para "${scopeLabel}"${groupedScopeSuffix} neste navegador.`
             ),
           });
           return;
@@ -791,7 +830,7 @@ export default function Settings() {
           type: "error",
           message:
             syncErrorText ||
-            `Modelo salvo localmente para "${scopeLabel}", mas falhou ao sincronizar no Supabase.`,
+            `Modelo salvo localmente para "${scopeLabel}"${groupedScopeSuffix}, mas falhou ao sincronizar no Supabase.`,
         });
       }
       return;
@@ -828,14 +867,25 @@ export default function Settings() {
     const scopedTrainingId =
       certificateScope === CERTIFICATE_SCOPE_GLOBAL ? "" : certificateScope;
     const scopeLabel = selectedCertificateTraining?.title || "treinamento selecionado";
+    const scopedTrainingIds =
+      selectedCertificateTraining?.trainingIds?.filter(Boolean) || [];
+    const scopedTrainingScope = scopedTrainingIds.length
+      ? { id: scopedTrainingId, trainingIds: scopedTrainingIds }
+      : scopedTrainingId;
+    const groupedScopeSuffix =
+      scopedTrainingIds.length > 1
+        ? ` (${scopedTrainingIds.length} turmas com o mesmo nome)`
+        : "";
 
     if (scopedTrainingId) {
       try {
-        const fallback = await resetCertificateTemplateForTraining(scopedTrainingId);
+        const fallback = await resetCertificateTemplateForTraining(
+          scopedTrainingScope
+        );
         setCertificateTemplate(fallback);
         setCertificateStatus({
           type: "success",
-          message: `Modelo específico removido para "${scopeLabel}". Agora será usado o modelo padrão.`,
+          message: `Modelo específico removido para "${scopeLabel}"${groupedScopeSuffix}. Agora será usado o modelo padrão.`,
         });
       } catch (error) {
         const syncErrorText = getCertificateSyncErrorText(error);
@@ -843,7 +893,7 @@ export default function Settings() {
           setCertificateStatus({
             type: "warning",
             message: buildCertificateSyncWarningMessage(
-              `Modelo local removido para "${scopeLabel}".`
+              `Modelo local removido para "${scopeLabel}"${groupedScopeSuffix}.`
             ),
           });
           return;
@@ -852,7 +902,7 @@ export default function Settings() {
           type: "error",
           message:
             syncErrorText ||
-            `Modelo local removido para "${scopeLabel}", mas falhou ao sincronizar no Supabase.`,
+            `Modelo local removido para "${scopeLabel}"${groupedScopeSuffix}, mas falhou ao sincronizar no Supabase.`,
         });
       }
       return;
@@ -1104,7 +1154,22 @@ export default function Settings() {
   };
 
   const previewPage = { width: 297, height: 210 };
+  const bodyIndentPercent = (bodyIndentValue / previewPage.width) * 100;
   const toPercent = (value, total) => `${(value / total) * 100}%`;
+
+  const renderFormattedParagraphs = (value) => {
+    const normalized = String(value || "").replace(/\r\n/g, "\n");
+    const paragraphs = normalized.split("\n\n");
+    return paragraphs.map((paragraph, index) => (
+      <p
+        key={`paragraph-${index}`}
+        className={index > 0 ? "mt-2" : ""}
+        style={{ textIndent: `${bodyIndentPercent}%` }}
+      >
+        {paragraph ? renderFormattedText(paragraph) : <span>&nbsp;</span>}
+      </p>
+    ));
+  };
 
   const logoPreviewItems = useMemo(
     () =>
@@ -1625,18 +1690,34 @@ export default function Settings() {
             </TabsList>
 
             <TabsContent value="criar" className="mt-6">
-              <Card>
+              <Card className="border-blue-200 bg-blue-50/30">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-blue-600" />
-                    Modelo de Certificado
-                  </CardTitle>
-                  <CardDescription>
-                    Configure textos, assinaturas e logos. Você pode salvar um
-                    modelo padrão geral ou um modelo específico para cada
-                    treinamento.
-                  </CardDescription>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-blue-900">
+                        <FileText className="h-5 w-5 text-blue-700" />
+                        Modelo de Certificado
+                      </CardTitle>
+                      <CardDescription className="mt-1 text-blue-900/80">
+                        Configure textos, assinaturas e logos. Você pode salvar um
+                        modelo padrão geral ou um modelo específico para cada
+                        treinamento.
+                      </CardDescription>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-blue-300 text-blue-800 hover:bg-blue-100"
+                      onClick={() =>
+                        setIsCertificateEditorOpen((prev) => !prev)
+                      }
+                    >
+                      {isCertificateEditorOpen ? "Ocultar seção" : "Mostrar seção"}
+                    </Button>
+                  </div>
                 </CardHeader>
+                {isCertificateEditorOpen && (
                 <CardContent className="space-y-4">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -1658,20 +1739,27 @@ export default function Settings() {
                       {certificateTrainingOptions.map((option) => (
                         <SelectItem key={option.id} value={option.id}>
                           {option.title}
+                          {option.trainingIds?.length > 1
+                            ? ` (${option.trainingIds.length} turmas)`
+                            : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-slate-500">
-                    Selecione um treinamento para criar um modelo exclusivo
-                    dele. Sem modelo específico, o sistema usa o padrão geral.
+                    Treinamentos com o mesmo nome usam o mesmo modelo.
+                    Selecione o nome para editar o modelo compartilhado.
                   </p>
                 </div>
                 <div className="rounded-lg border bg-slate-50 p-3 text-sm">
                   <p className="font-medium text-slate-700">Modelo em edição</p>
                   <p className="text-slate-600 mt-1">
                     {selectedCertificateTraining
-                      ? `Treinamento: ${selectedCertificateTraining.title}`
+                      ? `Treinamento: ${selectedCertificateTraining.title}${
+                          selectedCertificateTraining.trainingIds?.length > 1
+                            ? ` (${selectedCertificateTraining.trainingIds.length} turmas)`
+                            : ""
+                        }`
                       : "Padrão geral (aplicado a todos os treinamentos)."}
                   </p>
                 </div>
@@ -1690,7 +1778,7 @@ export default function Settings() {
 
               <Accordion
                 type="multiple"
-                defaultValue={["textos", "fontes", "assinaturas", "logos"]}
+                defaultValue={["textos"]}
                 className="w-full"
               >
                 <AccordionItem value="textos">
@@ -2037,8 +2125,13 @@ export default function Settings() {
                   </AccordionContent>
                 </AccordionItem>
 
-                <AccordionItem value="logos">
-                  <AccordionTrigger>Logos</AccordionTrigger>
+                <AccordionItem
+                  value="logos"
+                  className="rounded-md border border-indigo-200 bg-indigo-50/40 px-3"
+                >
+                  <AccordionTrigger className="text-indigo-900">
+                    Logos
+                  </AccordionTrigger>
                   <AccordionContent className="space-y-4">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
@@ -2185,20 +2278,35 @@ export default function Settings() {
                 </Alert>
               )}
             </CardContent>
+                )}
           </Card>
         </TabsContent>
 
         <TabsContent value="visualizar" className="mt-6">
-          <Card>
+          <Card className="border-violet-200 bg-violet-50/30">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Eye className="h-5 w-5 text-slate-700" />
-                Visualização do Certificado
-              </CardTitle>
-              <CardDescription>
-                Pré-visualize o modelo com dados de exemplo.
-              </CardDescription>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-violet-900">
+                    <Eye className="h-5 w-5 text-violet-700" />
+                    Visualização do Certificado
+                  </CardTitle>
+                  <CardDescription className="mt-1 text-violet-900/80">
+                    Pré-visualize o modelo com dados de exemplo.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-violet-300 text-violet-800 hover:bg-violet-100"
+                  onClick={() => setIsCertificatePreviewOpen((prev) => !prev)}
+                >
+                  {isCertificatePreviewOpen ? "Ocultar seção" : "Mostrar seção"}
+                </Button>
+              </div>
             </CardHeader>
+            {isCertificatePreviewOpen && (
             <CardContent>
               <div className="flex flex-wrap items-center gap-4 mb-4">
                 <div className="flex items-center gap-2">
@@ -2410,12 +2518,9 @@ export default function Settings() {
                                   fontSize: bodyFontSizeValue,
                                   textAlign: isBodyJustified ? "justify" : "left",
                                   lineHeight: bodyLineHeightValue,
-                                  textIndent: `${
-                                    (bodyIndentValue / previewPage.width) * 100
-                                  }%`,
                                 }}
                               >
-                                {renderFormattedText(previewBody)}
+                                {renderFormattedParagraphs(previewBody)}
                               </div>
                             </div>
 
@@ -2503,20 +2608,35 @@ export default function Settings() {
                 </div>
               </div>
             </CardContent>
+            )}
           </Card>
         </TabsContent>
       </Tabs>
 
-      <Card className="mt-6">
+      <Card className="mt-6 border-emerald-200 bg-emerald-50/30">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-slate-700" />
-            Envio de e-mails
-          </CardTitle>
-          <CardDescription>
-            Configure o remetente e o webhook para envio dos certificados.
-          </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-emerald-900">
+                <Mail className="h-5 w-5 text-emerald-700" />
+                Envio de e-mails
+              </CardTitle>
+              <CardDescription className="mt-1 text-emerald-900/80">
+                Configure o remetente e o webhook para envio dos certificados.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+              onClick={() => setIsEmailSettingsOpen((prev) => !prev)}
+            >
+              {isEmailSettingsOpen ? "Ocultar seção" : "Mostrar seção"}
+            </Button>
+          </div>
         </CardHeader>
+        {isEmailSettingsOpen && (
         <CardContent className="space-y-4">
           <Alert>
             <AlertDescription>
@@ -2678,6 +2798,7 @@ export default function Settings() {
             </Alert>
           )}
         </CardContent>
+        )}
       </Card>
     </TabsContent>
 

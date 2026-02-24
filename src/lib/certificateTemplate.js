@@ -131,12 +131,35 @@ const mergeTemplate = (template) => {
   return cleanLegacyLogos(merged);
 };
 
+const toNormalizedTrainingTemplateId = (value) => String(value || "").trim();
+
+const normalizeTrainingTemplateIds = (value) => {
+  const ids = [];
+  const pushId = (candidate) => {
+    const normalized = toNormalizedTrainingTemplateId(candidate);
+    if (normalized) ids.push(normalized);
+  };
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => pushId(item));
+  } else if (typeof value === "object" && value) {
+    pushId(value.id);
+    pushId(value.training_id);
+    if (Array.isArray(value.trainingIds)) {
+      value.trainingIds.forEach((item) => pushId(item));
+    }
+    if (Array.isArray(value.aliasTrainingIds)) {
+      value.aliasTrainingIds.forEach((item) => pushId(item));
+    }
+  } else {
+    pushId(value);
+  }
+
+  return Array.from(new Set(ids));
+};
+
 const normalizeTrainingTemplateId = (value) =>
-  String(
-    typeof value === "object" && value
-      ? value.id || value.training_id || ""
-      : value || ""
-  ).trim();
+  normalizeTrainingTemplateIds(value)[0] || "";
 
 const mergeTemplateMap = (templateMap) => {
   const rows = Object.entries(templateMap || {});
@@ -368,23 +391,25 @@ export const saveCertificateTemplateForTraining = async (
   trainingId,
   template
 ) => {
-  const normalizedId = normalizeTrainingTemplateId(trainingId);
-  if (!normalizedId) {
+  const normalizedIds = normalizeTrainingTemplateIds(trainingId);
+  if (!normalizedIds.length) {
     throw new Error("Treinamento inválido para salvar modelo.");
   }
 
   const payload = mergeTemplate(template);
   const localMap = loadCertificateTemplateMap();
-  const nextMap = {
-    ...localMap,
-    [normalizedId]: payload,
-  };
+  const nextMap = { ...localMap };
+  normalizedIds.forEach((id) => {
+    nextMap[id] = payload;
+  });
   saveCertificateTemplateMap(nextMap);
 
   try {
     const remoteMap = await loadCertificateTemplateMapFromStorage();
     const mergedMap = mergeTemplateMapsByFreshness(nextMap, remoteMap || {});
-    mergedMap[normalizedId] = payload;
+    normalizedIds.forEach((id) => {
+      mergedMap[id] = payload;
+    });
     saveCertificateTemplateMap(mergedMap);
     await saveCertificateTemplateMapToStorage(mergedMap);
   } catch (error) {
@@ -395,20 +420,24 @@ export const saveCertificateTemplateForTraining = async (
 };
 
 export const resetCertificateTemplateForTraining = async (trainingId) => {
-  const normalizedId = normalizeTrainingTemplateId(trainingId);
-  if (!normalizedId) {
+  const normalizedIds = normalizeTrainingTemplateIds(trainingId);
+  if (!normalizedIds.length) {
     return loadCertificateTemplate();
   }
 
   const localMap = loadCertificateTemplateMap();
   const nextMap = { ...localMap };
-  delete nextMap[normalizedId];
+  normalizedIds.forEach((id) => {
+    delete nextMap[id];
+  });
   saveCertificateTemplateMap(nextMap);
 
   try {
     const remoteMap = await loadCertificateTemplateMapFromStorage();
     const mergedMap = mergeTemplateMapsByFreshness(nextMap, remoteMap || {});
-    delete mergedMap[normalizedId];
+    normalizedIds.forEach((id) => {
+      delete mergedMap[id];
+    });
     saveCertificateTemplateMap(mergedMap);
     await saveCertificateTemplateMapToStorage(mergedMap);
   } catch (error) {
@@ -420,13 +449,15 @@ export const resetCertificateTemplateForTraining = async (trainingId) => {
 
 export const resolveCertificateTemplate = async (trainingScope = null) => {
   const globalTemplate = await resolveGlobalCertificateTemplate();
-  const normalizedId = normalizeTrainingTemplateId(trainingScope);
-  if (!normalizedId) {
+  const normalizedIds = normalizeTrainingTemplateIds(trainingScope);
+  if (!normalizedIds.length) {
     return globalTemplate;
   }
 
   const templateMap = await resolveCertificateTemplateMap();
-  const scopedTemplate = templateMap[normalizedId];
+  const scopedTemplate = normalizedIds
+    .map((id) => templateMap[id])
+    .find(Boolean);
   if (!scopedTemplate) {
     return globalTemplate;
   }
