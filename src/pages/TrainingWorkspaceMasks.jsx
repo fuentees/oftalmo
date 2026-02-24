@@ -1,22 +1,23 @@
-import React from "react";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { dataClient } from "@/api/dataClient";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
 import PageHeader from "@/components/common/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertCircle,
   ArrowLeft,
   ClipboardCheck,
-  FileText,
   Loader2,
   MessageSquare,
   SlidersHorizontal,
 } from "lucide-react";
+import EnrollmentPage from "./EnrollmentPage";
+import TrainingFeedbackPage from "./TrainingFeedbackPage";
+import TracomaExaminerEvaluationPage from "./TracomaExaminerEvaluationPage";
 
 export default function TrainingWorkspaceMasks() {
   const navigate = useNavigate();
@@ -24,6 +25,7 @@ export default function TrainingWorkspaceMasks() {
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
   const trainingId = String(urlParams.get("training") || "").trim();
+  const [activeTab, setActiveTab] = useState("enrollment_mask");
 
   const { data: trainings = [], isLoading } = useQuery({
     queryKey: ["trainings"],
@@ -33,6 +35,12 @@ export default function TrainingWorkspaceMasks() {
   const training =
     trainings.find((item) => String(item?.id || "").trim() === trainingId) || null;
   const isRepadTraining = isRepadronizacaoTraining(training);
+
+  React.useEffect(() => {
+    if (!isRepadTraining && activeTab === "exam_mask") {
+      setActiveTab("enrollment_mask");
+    }
+  }, [activeTab, isRepadTraining]);
 
   const goBackToWorkspace = () => {
     if (!trainingId) {
@@ -104,98 +112,57 @@ export default function TrainingWorkspaceMasks() {
         subtitle={training.title || "Treinamento sem título"}
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">Configuração separada de máscaras</Badge>
-      </div>
-
       <Alert className="border-blue-200 bg-blue-50">
         <AlertDescription className="text-blue-800">
-          Esta página centraliza somente as máscaras de criação. As abas do painel do
-          treinamento exibem apenas inscritos e resultados.
+          Esta área contém somente máscaras de criação. Resultados e históricos ficam no
+          painel principal do treinamento.
         </AlertDescription>
       </Alert>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <SlidersHorizontal className="h-4 w-4 text-blue-600" />
-              Máscara de Inscrição
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-slate-600">
-              Configure campos, seções e link da inscrição pública.
-            </p>
-            <Button
-              type="button"
-              onClick={() =>
-                navigate(
-                  `/EnrollmentPage?training=${encodeURIComponent(trainingId)}&tab=mask`
-                )
-              }
-              className="w-full"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Abrir máscara de inscrição
-            </Button>
-          </CardContent>
-        </Card>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-lg bg-muted p-1">
+          <TabsTrigger value="enrollment_mask" className="gap-1.5">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Máscara de Inscrição
+          </TabsTrigger>
+          <TabsTrigger value="feedback_mask" className="gap-1.5">
+            <MessageSquare className="h-3.5 w-3.5" />
+            Máscara de Avaliação
+          </TabsTrigger>
+          {isRepadTraining && (
+            <TabsTrigger value="exam_mask" className="gap-1.5">
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              Máscara da Prova
+            </TabsTrigger>
+          )}
+        </TabsList>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-indigo-600" />
-              Máscara de Avaliação
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-slate-600">
-              Crie e organize perguntas da avaliação do treinamento.
-            </p>
-            <Button
-              type="button"
-              onClick={() =>
-                navigate(`/TrainingFeedbackPage?training=${encodeURIComponent(trainingId)}`)
-              }
-              className="w-full"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Abrir máscara de avaliação
-            </Button>
-          </CardContent>
-        </Card>
+        <TabsContent value="enrollment_mask" className="mt-6">
+          <EnrollmentPage
+            showBackButton={false}
+            allowedTabs={["mask"]}
+            initialTab="mask"
+          />
+        </TabsContent>
+
+        <TabsContent value="feedback_mask" className="mt-6">
+          <TrainingFeedbackPage
+            showBackButton={false}
+            allowedTabs={["mask"]}
+            initialTab="mask"
+          />
+        </TabsContent>
 
         {isRepadTraining && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <ClipboardCheck className="h-4 w-4 text-emerald-600" />
-                Máscara da Prova (Tracoma)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-slate-600">
-                Gerencie gabaritos padrão-ouro e modelos de prova.
-              </p>
-              <Button
-                type="button"
-                onClick={() =>
-                  navigate(
-                    `/TracomaExaminerEvaluationPage?training=${encodeURIComponent(
-                      trainingId
-                    )}`
-                  )
-                }
-                className="w-full"
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                Abrir máscara da prova
-              </Button>
-            </CardContent>
-          </Card>
+          <TabsContent value="exam_mask" className="mt-6">
+            <TracomaExaminerEvaluationPage
+              showBackButton={false}
+              allowedTabs={["mask"]}
+              initialTab="mask"
+            />
+          </TabsContent>
         )}
-      </div>
+      </Tabs>
     </div>
   );
 }
