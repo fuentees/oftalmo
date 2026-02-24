@@ -5,9 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Calendar, MapPin, User, Users, GraduationCap, FileText, Video } from "lucide-react";
+import {
+  Calendar,
+  MapPin,
+  User,
+  Users,
+  GraduationCap,
+  FileText,
+  Video,
+  Copy,
+  Link2,
+} from "lucide-react";
 import { Download, Trash2, Upload } from "lucide-react";
-import { formatDateSafe } from "@/lib/date";
+import { formatDateSafe, parseDateSafe } from "@/lib/date";
 import { getEffectiveTrainingStatus } from "@/lib/statusRules";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
 import {
@@ -40,6 +50,8 @@ export default function TrainingDetails({ training, participants = [] }) {
   const queryClient = useQueryClient();
   const [reportFile, setReportFile] = useState(null);
   const [reportStatus, setReportStatus] = useState(null);
+  const [linkActionStatus, setLinkActionStatus] = useState(null);
+  const [generatedAttendanceLinks, setGeneratedAttendanceLinks] = useState({});
   const [, forceClockTick] = useState(0);
   const REPORT_NAME = "Relatório do Evento";
 
@@ -129,9 +141,35 @@ export default function TrainingDetails({ training, participants = [] }) {
     return formatted || "-";
   };
 
+  const appOrigin =
+    typeof window !== "undefined" ? window.location.origin : "";
+
   const trainingDates = Array.isArray(training?.dates)
     ? training.dates.filter((dateItem) => dateItem?.date)
     : [];
+  const sortedTrainingDates = useMemo(
+    () =>
+      [...trainingDates].sort(
+        (a, b) =>
+          parseDateSafe(a?.date).getTime() - parseDateSafe(b?.date).getTime()
+      ),
+    [trainingDates]
+  );
+  const attendanceDateValues = useMemo(() => {
+    if (sortedTrainingDates.length > 0) {
+      return sortedTrainingDates
+        .map((item) => String(item?.date || "").trim())
+        .filter(Boolean);
+    }
+    const fallbackDate = String(training?.date || "").trim();
+    return fallbackDate ? [fallbackDate] : [];
+  }, [sortedTrainingDates, training?.date]);
+  const enrollmentLink = trainingId
+    ? `${appOrigin}/PublicEnrollment?training=${encodeURIComponent(trainingId)}`
+    : "";
+  const feedbackLink = trainingId
+    ? `${appOrigin}/TrainingFeedback?training=${encodeURIComponent(trainingId)}`
+    : "";
 
   const statusColors = {
     agendado: "bg-blue-100 text-blue-700",
@@ -193,6 +231,117 @@ export default function TrainingDetails({ training, participants = [] }) {
     });
     return map;
   }, [tracomaAnswerKeys]);
+  const availableExamKeyCodes = useMemo(
+    () => Array.from(answerKeyByCode.keys()).sort((a, b) => a.localeCompare(b)),
+    [answerKeyByCode]
+  );
+  const defaultExamKeyCode = useMemo(() => {
+    if (!isRepadTraining) return "";
+    if (availableExamKeyCodes.includes("E2")) return "E2";
+    return availableExamKeyCodes[0] || "";
+  }, [availableExamKeyCodes, isRepadTraining]);
+  const examLink =
+    isRepadTraining && trainingId
+      ? `${appOrigin}/TracomaExaminerTest?training=${encodeURIComponent(
+          trainingId
+        )}${
+          defaultExamKeyCode
+            ? `&key=${encodeURIComponent(defaultExamKeyCode)}`
+            : ""
+        }`
+      : "";
+
+  const copyLinkToClipboard = async (label, link) => {
+    if (!link) {
+      setLinkActionStatus({
+        type: "error",
+        message: `Não foi possível gerar o link de ${label}.`,
+      });
+      return;
+    }
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.clipboard?.writeText
+    ) {
+      setLinkActionStatus({
+        type: "error",
+        message:
+          "Seu navegador não permite cópia automática. Copie o link manualmente.",
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      setLinkActionStatus({
+        type: "success",
+        message: `Link de ${label} copiado com sucesso.`,
+      });
+    } catch {
+      setLinkActionStatus({
+        type: "error",
+        message: `Não foi possível copiar o link de ${label}.`,
+      });
+    }
+  };
+
+  const generateAttendanceLink = useMutation({
+    mutationFn: async (dateValue) => {
+      const normalizedDate = String(dateValue || "").trim();
+      if (!normalizedDate) throw new Error("Data inválida para gerar o link.");
+      if (!trainingId) throw new Error("Treinamento inválido.");
+      const token =
+        Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 6);
+
+      await dataClient.entities.AttendanceLink.create({
+        training_id: training.id,
+        training_title: training.title,
+        date: normalizedDate,
+        token,
+        expires_at: expiresAt.toISOString(),
+        is_active: true,
+        check_ins_count: 0,
+      });
+
+      return {
+        date: normalizedDate,
+        link: `${appOrigin}/CheckIn?token=${token}`,
+      };
+    },
+    onSuccess: async ({ date, link }) => {
+      setGeneratedAttendanceLinks((prev) => ({
+        ...prev,
+        [date]: link,
+      }));
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard?.writeText
+      ) {
+        try {
+          await navigator.clipboard.writeText(link);
+          setLinkActionStatus({
+            type: "success",
+            message: `Link de presença (${formatDate(date)}) gerado e copiado.`,
+          });
+          return;
+        } catch {
+          // Se falhar a cópia automática, mantém sucesso de geração.
+        }
+      }
+      setLinkActionStatus({
+        type: "success",
+        message: `Link de presença (${formatDate(date)}) gerado com sucesso.`,
+      });
+    },
+    onError: (error) => {
+      setLinkActionStatus({
+        type: "error",
+        message:
+          error?.message || "Não foi possível gerar o link de presença.",
+      });
+    },
+  });
 
   const repadStatusByParticipant = useMemo(() => {
     if (!isRepadTraining) return new Map();
@@ -456,6 +605,120 @@ export default function TrainingDetails({ training, participants = [] }) {
               <p className="text-slate-500">Cancelados</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+            <Link2 className="h-4 w-4" />
+            Links rápidos do treinamento
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => copyLinkToClipboard("inscrição", enrollmentLink)}
+            >
+              <Copy className="h-3.5 w-3.5 mr-1" />
+              Gerar link de inscrição
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => copyLinkToClipboard("avaliação", feedbackLink)}
+            >
+              <Copy className="h-3.5 w-3.5 mr-1" />
+              Gerar link de avaliação
+            </Button>
+            {isRepadTraining && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => copyLinkToClipboard("prova", examLink)}
+              >
+                <Copy className="h-3.5 w-3.5 mr-1" />
+                Gerar link da prova
+              </Button>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-slate-700">
+              Presença por dia (check-in)
+            </p>
+            {attendanceDateValues.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Cadastre datas no treinamento para gerar links de presença.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {attendanceDateValues.map((dateValue) => {
+                  const lastGeneratedLink = generatedAttendanceLinks[dateValue];
+                  const isGeneratingThisDate =
+                    generateAttendanceLink.isPending &&
+                    generateAttendanceLink.variables === dateValue;
+                  return (
+                    <div
+                      key={`attendance-link-${dateValue}`}
+                      className="flex flex-col gap-2 rounded-md border bg-slate-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <span className="text-sm text-slate-700">
+                        {formatDate(dateValue)}
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={generateAttendanceLink.isPending}
+                          onClick={() => {
+                            setLinkActionStatus(null);
+                            generateAttendanceLink.mutate(dateValue);
+                          }}
+                        >
+                          {isGeneratingThisDate ? "Gerando..." : "Gerar link de presença"}
+                        </Button>
+                        {lastGeneratedLink && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyLinkToClipboard(
+                                `presença de ${formatDate(dateValue)}`,
+                                lastGeneratedLink
+                              )
+                            }
+                          >
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                            Copiar último link
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {linkActionStatus && (
+            <p
+              className={
+                linkActionStatus.type === "error"
+                  ? "text-sm text-red-700"
+                  : "text-sm text-green-700"
+              }
+            >
+              {linkActionStatus.message}
+            </p>
+          )}
         </CardContent>
       </Card>
 

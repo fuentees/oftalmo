@@ -140,7 +140,7 @@ export default function TrainingWorkspaceMasks() {
         <TabsContent value="enrollment_mask" className="mt-6">
           <EnrollmentPage
             showBackButton={false}
-            allowedTabs={["mask"]}
+            allowedTabs={["mask", "form"]}
             initialTab="mask"
           />
         </TabsContent>
@@ -148,7 +148,7 @@ export default function TrainingWorkspaceMasks() {
         <TabsContent value="feedback_mask" className="mt-6">
           <TrainingFeedbackPage
             showBackButton={false}
-            allowedTabs={["mask"]}
+            allowedTabs={["mask", "preview"]}
             initialTab="mask"
           />
         </TabsContent>
