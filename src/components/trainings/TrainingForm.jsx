@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { useGveMapping } from "@/hooks/useGveMapping";
 import { parseDateSafe } from "@/lib/date";
@@ -168,6 +168,72 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     return Math.round((totalMinutes / 60) * 100) / 100;
   };
 
+  const toNormalizedDate = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (match) return match[1];
+    }
+    const parsed = parseDateSafe(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return format(parsed, "yyyy-MM-dd");
+  };
+
+  const normalizeTrainingDates = (dates, fallbackTimes = {}) => {
+    const items = Array.isArray(dates) ? dates : [];
+    return items
+      .map((item) => {
+        const rawDate = typeof item === "object" ? item?.date : item;
+        const date = toNormalizedDate(rawDate);
+        if (!date) return null;
+        const start_time =
+          String(
+            (typeof item === "object" ? item?.start_time : "") ||
+              fallbackTimes?.start_time ||
+              "08:00"
+          ).trim() || "08:00";
+        const end_time =
+          String(
+            (typeof item === "object" ? item?.end_time : "") ||
+              fallbackTimes?.end_time ||
+              "12:00"
+          ).trim() || "12:00";
+        return { date, start_time, end_time };
+      })
+      .filter(Boolean);
+  };
+
+  const buildLegacyDatesFromTraining = (trainingItem) => {
+    if (!trainingItem) return [];
+    const startDate = toNormalizedDate(trainingItem?.start_date || trainingItem?.date);
+    const endDate = toNormalizedDate(trainingItem?.end_date || trainingItem?.date);
+    const start_time = String(trainingItem?.start_time || "08:00").trim() || "08:00";
+    const end_time = String(trainingItem?.end_time || "12:00").trim() || "12:00";
+    if (!startDate && !endDate) return [];
+    return buildRangeDates({
+      start_date: startDate || endDate,
+      end_date: endDate || startDate,
+      start_time,
+      end_time,
+    });
+  };
+
+  const toArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
   const [formData, setFormData] = useState({
     title: "",
     code: "",
@@ -201,46 +267,83 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
 
   const queryClient = useQueryClient();
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
+  const trainingId = String(training?.id || "").trim();
+
+  const { data: completeTraining } = useQuery({
+    queryKey: ["training-form-complete", trainingId],
+    queryFn: async () => {
+      const rows = await dataClient.entities.Training.filter({ id: trainingId });
+      if (Array.isArray(rows) && rows.length > 0) return rows[0];
+      return training || null;
+    },
+    enabled: Boolean(trainingId),
+  });
 
   useEffect(() => {
     const defaultDates = [
       { date: format(new Date(), "yyyy-MM-dd"), start_time: "08:00", end_time: "12:00" }
     ];
 
-    if (training) {
-      const normalizedDates = Array.isArray(training.dates)
-        ? training.dates.filter((dateItem) => dateItem?.date)
-        : [];
-      const parsedLocation = parseLocation(training.location);
+    const sourceTraining = completeTraining || training;
+
+    if (sourceTraining) {
+      const normalizedDates = normalizeTrainingDates(sourceTraining?.dates, {
+        start_time: sourceTraining?.start_time,
+        end_time: sourceTraining?.end_time,
+      });
+      const legacyDates =
+        normalizedDates.length > 0
+          ? []
+          : buildLegacyDatesFromTraining(sourceTraining);
+      const resolvedDates =
+        normalizedDates.length > 0
+          ? normalizedDates
+          : legacyDates.length > 0
+          ? legacyDates
+          : defaultDates;
+      const parsedLocation = parseLocation(sourceTraining.location);
+      const resolvedMunicipality =
+        String(sourceTraining?.municipality || "").trim() || parsedLocation.municipality;
+      const resolvedGve =
+        String(sourceTraining?.gve || "").trim() || parsedLocation.gve;
+      const resolvedOnlineLink = String(sourceTraining?.online_link || "").trim();
       const scheduleFromTraining = inferScheduleFromDates(
-        normalizedDates.length > 0 ? normalizedDates : defaultDates
+        resolvedDates
       );
 
       setFormData({
-        title: training.title || "",
-        code: training.code || "",
-        type: training.type || "teorico",
-        description: training.description || "",
-        dates: normalizedDates.length > 0 ? normalizedDates : defaultDates,
+        title: sourceTraining.title || "",
+        code: sourceTraining.code || "",
+        type: sourceTraining.type || "teorico",
+        description: sourceTraining.description || "",
+        dates: resolvedDates,
         duration_hours:
-          Number.isFinite(Number(training.duration_hours))
-            ? Number(training.duration_hours)
-            : 0,
-        location: training.location || "",
-        municipality: parsedLocation.municipality,
-        gve: parsedLocation.gve,
-        online_link: training.online_link || "",
-        coordinator: training.coordinator || "",
-        coordinator_email: training.coordinator_email || "",
-        instructor: training.instructor || "",
-        monitors: training.monitors || [],
-        speakers: training.speakers || [],
-        max_participants: training.max_participants || "",
-        status: training.status || "agendado",
-        validity_months: training.validity_months || "",
-        notes: training.notes || "",
+          Number.isFinite(Number(sourceTraining.duration_hours))
+            ? Number(sourceTraining.duration_hours)
+            : calculateDurationHours(resolvedDates),
+        location: sourceTraining.location || "",
+        municipality: resolvedMunicipality,
+        gve: resolvedGve,
+        online_link: resolvedOnlineLink,
+        coordinator: sourceTraining.coordinator || "",
+        coordinator_email: sourceTraining.coordinator_email || "",
+        instructor: sourceTraining.instructor || "",
+        monitors: toArray(sourceTraining.monitors),
+        speakers: toArray(sourceTraining.speakers),
+        max_participants:
+          sourceTraining.max_participants === null ||
+          sourceTraining.max_participants === undefined
+            ? ""
+            : String(sourceTraining.max_participants),
+        status: sourceTraining.status || "agendado",
+        validity_months:
+          sourceTraining.validity_months === null ||
+          sourceTraining.validity_months === undefined
+            ? ""
+            : String(sourceTraining.validity_months),
+        notes: sourceTraining.notes || "",
       });
-      setIsOnlineTraining(Boolean(String(training.online_link || "").trim()));
+      setIsOnlineTraining(Boolean(resolvedOnlineLink));
       setDateMode(scheduleFromTraining.mode);
       setRangeConfig(scheduleFromTraining.range);
     } else {
@@ -255,7 +358,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         duration_hours: 4,
       }));
     }
-  }, [training]);
+  }, [training, completeTraining]);
 
   useEffect(() => {
     if (dateMode !== "range") return;
