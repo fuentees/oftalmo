@@ -12,6 +12,7 @@ import {
   Edit,
   Trash2,
   Eye,
+  ExternalLink,
   Users,
   Calendar,
   MapPin,
@@ -939,8 +940,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
             className="font-medium text-left text-slate-900 hover:text-blue-700 hover:underline"
             onClick={(event) => {
               event.stopPropagation();
-              setSelectedTraining(row);
-              setShowDetails(true);
+              navigate(`/TrainingWorkspace?training=${encodeURIComponent(row.id)}`);
             }}
           >
             {row.title}
@@ -1048,6 +1048,15 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/TrainingWorkspace?training=${encodeURIComponent(row.id)}`);
+                }}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Abrir Painel
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();

@@ -62,7 +62,7 @@ export default function GlobalSearch({ open, onClose }) {
     
     switch(type) {
       case 'training':
-        navigate(createPageUrl('Trainings'));
+        navigate(`/TrainingWorkspace?training=${encodeURIComponent(item.id)}`);
         break;
       case 'professional':
         navigate(createPageUrl('Professionals'));
