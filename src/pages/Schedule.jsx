@@ -107,6 +107,48 @@ export default function Schedule() {
     );
   };
 
+  const mapEventStatusToTrainingStatus = (status) => {
+    const normalized = String(status || "").trim().toLowerCase();
+    if (normalized === "confirmado") return "confirmado";
+    if (normalized === "em_andamento") return "em_andamento";
+    if (normalized === "concluido") return "concluido";
+    if (normalized === "cancelado") return "cancelado";
+    return "agendado";
+  };
+
+  const resolveLinkedTrainingId = async (eventData) => {
+    const directTrainingId = String(
+      extractTrainingIdFromEventNotes(eventData?.notes) || ""
+    ).trim();
+    if (directTrainingId) return directTrainingId;
+    if (eventData?.type !== "treinamento") return "";
+    const trainings = await dataClient.entities.Training.list("-date");
+    const legacyTraining = findLegacyTrainingFromEvent(eventData, trainings);
+    return String(legacyTraining?.id || "").trim();
+  };
+
+  const syncLinkedTrainingStatus = async (eventData, nextEventStatus) => {
+    if (eventData?.type !== "treinamento") return;
+    const linkedTrainingId = await resolveLinkedTrainingId(eventData);
+    if (!linkedTrainingId) return;
+    const nextTrainingStatus = mapEventStatusToTrainingStatus(nextEventStatus);
+    try {
+      await dataClient.entities.Training.update(linkedTrainingId, {
+        status: nextTrainingStatus,
+      });
+    } catch (error) {
+      const message = String(error?.message || "").toLowerCase();
+      if (
+        message.includes("not found") ||
+        message.includes("no rows") ||
+        message.includes("0 rows")
+      ) {
+        return;
+      }
+      throw error;
+    }
+  };
+
   const deleteMutation = useMutation({
     mutationFn: async (eventToDelete) => {
       const eventId = String(eventToDelete?.id || "").trim();
@@ -184,10 +226,13 @@ export default function Schedule() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: (payload) =>
-      dataClient.entities.Event.update(payload.id, { status: payload.status }),
+    mutationFn: async (payload) => {
+      await dataClient.entities.Event.update(payload.id, { status: payload.status });
+      await syncLinkedTrainingStatus(payload.event, payload.status);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
     },
   });
 
@@ -579,6 +624,7 @@ export default function Schedule() {
                               updateStatusMutation.mutate({
                                 id: event.id,
                                 status: "confirmado",
+                                event,
                               })
                             }
                             className="h-7 px-2 text-xs"
@@ -593,6 +639,7 @@ export default function Schedule() {
                               updateStatusMutation.mutate({
                                 id: event.id,
                                 status: "cancelado",
+                                event,
                               })
                             }
                             className="h-7 px-2 text-xs text-red-600 border-red-200"

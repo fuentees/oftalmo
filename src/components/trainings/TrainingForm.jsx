@@ -431,6 +431,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
   const mapTrainingStatusToEvent = (status) => {
     if (status === "concluido") return "concluido";
     if (status === "em_andamento") return "em_andamento";
+    if (status === "confirmado") return "confirmado";
     if (status === "cancelado") return "cancelado";
     return "planejado";
   };

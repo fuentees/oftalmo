@@ -50,6 +50,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: '/index.html',
         runtimeCaching: [
@@ -57,22 +60,24 @@ export default defineConfig({
             urlPattern: ({ request }) => request.destination === 'document',
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'pages',
+              cacheName: 'pages-v2',
+              networkTimeoutSeconds: 5,
             },
           },
           {
             urlPattern: ({ request }) =>
               ['script', 'style', 'worker'].includes(request.destination),
-            handler: 'StaleWhileRevalidate',
+            handler: 'NetworkFirst',
             options: {
-              cacheName: 'assets',
+              cacheName: 'assets-v2',
+              networkTimeoutSeconds: 5,
             },
           },
           {
             urlPattern: ({ request }) => request.destination === 'image',
             handler: 'CacheFirst',
             options: {
-              cacheName: 'images',
+              cacheName: 'images-v2',
               expiration: {
                 maxEntries: 60,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
