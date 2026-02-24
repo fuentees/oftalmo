@@ -20,13 +20,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertCircle,
+  Award,
   ArrowLeft,
   ClipboardCheck,
   Copy,
+  Download,
+  Eye,
   ExternalLink,
   Loader2,
   MessageSquare,
+  Package,
+  Pencil,
   Trash2,
+  Upload,
   UserPlus,
   Video,
 } from "lucide-react";
@@ -192,6 +198,16 @@ export default function TrainingWorkspace() {
       setActionStatus({
         type: "error",
         message: "Não foi possível copiar o link.",
+      });
+    }
+  };
+
+  const openTabWithHint = (tab, message) => {
+    setActiveTab(tab);
+    if (message) {
+      setActionStatus({
+        type: "info",
+        message,
       });
     }
   };
@@ -425,12 +441,18 @@ export default function TrainingWorkspace() {
           className={
             actionStatus.type === "error"
               ? "border-red-200 bg-red-50"
+              : actionStatus.type === "info"
+              ? "border-blue-200 bg-blue-50"
               : "border-green-200 bg-green-50"
           }
         >
           <AlertDescription
             className={
-              actionStatus.type === "error" ? "text-red-800" : "text-green-800"
+              actionStatus.type === "error"
+                ? "text-red-800"
+                : actionStatus.type === "info"
+                ? "text-blue-800"
+                : "text-green-800"
             }
           >
             {actionStatus.message}
@@ -438,89 +460,223 @@ export default function TrainingWorkspace() {
         </Alert>
       )}
 
-      <Card>
+      <Card className="border-slate-200 bg-slate-50/70">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Atalhos do Treinamento</CardTitle>
+          <CardTitle className="text-base">Ações rápidas do Treinamento</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => openInternalRoute(enrollmentPath)}
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Página de Inscrição
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => copyInternalRoute(enrollmentPath)}
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Copiar link da inscrição
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => openInternalRoute(feedbackPath)}
-            >
-              <MessageSquare className="h-4 w-4 mr-2" />
-              Página de Avaliação
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => copyInternalRoute(feedbackPath)}
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Copiar link da avaliação
-            </Button>
-            {isRepadTraining && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => openInternalRoute(tracomaPath)}
-                >
-                  <ClipboardCheck className="h-4 w-4 mr-2" />
-                  Avaliação de Tracoma
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => copyInternalRoute(tracomaPath)}
-                >
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copiar link da Tracoma
-                </Button>
-              </>
-            )}
-            {training.online_link && (
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Módulos internos
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                className="bg-indigo-600 hover:bg-indigo-700"
+                onClick={() => openTabWithHint("overview")}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Resumo
+              </Button>
+              <Button
+                type="button"
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => openTabWithHint("enrollments")}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Inscrições
+              </Button>
+              <Button
+                type="button"
+                className="bg-cyan-600 hover:bg-cyan-700"
+                onClick={() => openTabWithHint("attendance")}
+              >
+                <ClipboardCheck className="h-4 w-4 mr-2" />
+                Presença
+              </Button>
+              <Button
+                type="button"
+                className="bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => openTabWithHint("certificates")}
+              >
+                <Award className="h-4 w-4 mr-2" />
+                Certificados
+              </Button>
+              <Button
+                type="button"
+                className="bg-violet-600 hover:bg-violet-700"
+                onClick={() => openTabWithHint("materials")}
+              >
+                <Package className="h-4 w-4 mr-2" />
+                Materiais
+              </Button>
+              <Button
+                type="button"
+                className="bg-amber-600 hover:bg-amber-700"
+                onClick={() => openTabWithHint("edit")}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Editar
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Páginas externas e links públicos
+            </p>
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                onClick={() => openInternalRoute(enrollmentPath)}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Página de Inscrição
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                onClick={() => copyInternalRoute(enrollmentPath)}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copiar link da inscrição
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-violet-200 text-violet-700 hover:bg-violet-50"
+                onClick={() => openInternalRoute(feedbackPath)}
+              >
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Página de Avaliação
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-violet-200 text-violet-700 hover:bg-violet-50"
+                onClick={() => copyInternalRoute(feedbackPath)}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copiar link da avaliação
+              </Button>
+              {isRepadTraining && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-amber-200 text-amber-700 hover:bg-amber-50"
+                    onClick={() => openInternalRoute(tracomaPath)}
+                  >
+                    <ClipboardCheck className="h-4 w-4 mr-2" />
+                    Avaliação de Tracoma
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-amber-200 text-amber-700 hover:bg-amber-50"
+                    onClick={() => copyInternalRoute(tracomaPath)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar link da Tracoma
+                  </Button>
+                </>
+              )}
+              {training.online_link && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-sky-200 text-sky-700 hover:bg-sky-50"
+                  onClick={() =>
+                    window.open(training.online_link, "_blank", "noopener,noreferrer")
+                  }
+                >
+                  <Video className="h-4 w-4 mr-2" />
+                  Abrir sala online
+                  <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Importar e exportar
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                className="bg-cyan-700 hover:bg-cyan-800"
                 onClick={() =>
-                  window.open(training.online_link, "_blank", "noopener,noreferrer")
+                  openTabWithHint(
+                    "attendance",
+                    "Aba Presença aberta. Use os botões de exportação disponíveis nela."
+                  )
                 }
               >
-                <Video className="h-4 w-4 mr-2" />
-                Abrir sala online
-                <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                <Download className="h-4 w-4 mr-2" />
+                Exportar frequência
               </Button>
-            )}
+              <Button
+                type="button"
+                className="bg-violet-700 hover:bg-violet-800"
+                onClick={() =>
+                  openTabWithHint(
+                    "materials",
+                    "Aba Materiais aberta. Você pode subir e baixar arquivos nela."
+                  )
+                }
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Importar materiais
+              </Button>
+              {isRepadTraining && (
+                <Button
+                  type="button"
+                  className="bg-amber-700 hover:bg-amber-800"
+                  onClick={() => openInternalRoute(tracomaPath)}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Tracoma: importar/exportar
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="text-xs text-slate-500">
+            Todas as ações do treinamento estão centralizadas aqui, incluindo os
+            atalhos de importação/exportação para as páginas específicas.
           </div>
         </CardContent>
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
-          <TabsTrigger value="overview">Resumo</TabsTrigger>
-          <TabsTrigger value="enrollments">Inscrições</TabsTrigger>
-          <TabsTrigger value="attendance">Presença</TabsTrigger>
-          <TabsTrigger value="certificates">Certificados</TabsTrigger>
-          <TabsTrigger value="materials">Materiais</TabsTrigger>
-          <TabsTrigger value="edit">Editar</TabsTrigger>
+          <TabsTrigger value="overview" className="gap-1.5">
+            <Eye className="h-3.5 w-3.5" />
+            Resumo
+          </TabsTrigger>
+          <TabsTrigger value="enrollments" className="gap-1.5">
+            <UserPlus className="h-3.5 w-3.5" />
+            Inscrições
+          </TabsTrigger>
+          <TabsTrigger value="attendance" className="gap-1.5">
+            <ClipboardCheck className="h-3.5 w-3.5" />
+            Presença
+          </TabsTrigger>
+          <TabsTrigger value="certificates" className="gap-1.5">
+            <Award className="h-3.5 w-3.5" />
+            Certificados
+          </TabsTrigger>
+          <TabsTrigger value="materials" className="gap-1.5">
+            <Package className="h-3.5 w-3.5" />
+            Materiais
+          </TabsTrigger>
+          <TabsTrigger value="edit" className="gap-1.5">
+            <Pencil className="h-3.5 w-3.5" />
+            Editar
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
