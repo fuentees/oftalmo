@@ -24,7 +24,19 @@ import {
 } from "@/lib/certificateEmailTemplate";
 import { resolveCertificateTemplate } from "@/lib/certificateTemplate";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
-import { resolveTrainingParticipantMatch } from "@/lib/trainingParticipantMatch";
+import {
+  normalizeParticipantEmail,
+  normalizeParticipantRg,
+  normalizeParticipantText,
+  resolveTrainingParticipantMatch,
+} from "@/lib/trainingParticipantMatch";
+import {
+  TRACOMA_TOTAL_QUESTIONS,
+  buildAnswerKeyCollections,
+  computeTracomaKappaMetrics,
+  normalizeAnswerKeyCode,
+  normalizeBinaryAnswer,
+} from "@/lib/tracomaExamKappa";
 
 const REPAD_APPROVAL_KAPPA = 0.7;
 const toNumeric = (value) => {
@@ -35,6 +47,13 @@ const toNumeric = (value) => {
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 const formatScore = (value, digits = 1) =>
   Number.isFinite(value) ? Number(value).toFixed(digits).replace(".", ",") : "-";
+const parseStoredAnswers = (value) => {
+  const asArray = Array.isArray(value) ? value : null;
+  if (!asArray || asArray.length !== TRACOMA_TOTAL_QUESTIONS) return null;
+  const parsed = asArray.map((item) => normalizeBinaryAnswer(item));
+  if (parsed.some((item) => item === null)) return null;
+  return parsed;
+};
 
 export default function CertificateManager({ training, participants = [], onClose }) {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
@@ -55,11 +74,65 @@ export default function CertificateManager({ training, participants = [], onClos
       ),
     enabled: Boolean(training?.id),
   });
+  const answerKeyRowsQuery = useQuery({
+    queryKey: ["certificateManagerTracomaAnswerKeys"],
+    queryFn: () => dataClient.entities.TracomaExamAnswerKey.list("question_number"),
+    enabled: Boolean(training?.id),
+  });
 
   const tracomaRows = Array.isArray(tracomaResultsQuery.data)
     ? tracomaResultsQuery.data
     : [];
   const useRepadScoreCriteria = isRepadTraining || tracomaRows.length > 0;
+  const answerKeyByCode = useMemo(() => {
+    const map = new Map();
+    const collections = buildAnswerKeyCollections(
+      Array.isArray(answerKeyRowsQuery.data) ? answerKeyRowsQuery.data : [],
+      TRACOMA_TOTAL_QUESTIONS
+    );
+    collections.forEach((item) => {
+      if (item?.answers && !item?.error) {
+        map.set(item.code, item.answers);
+      }
+    });
+    return map;
+  }, [answerKeyRowsQuery.data]);
+
+  const resolveParticipantForCertificate = (identity) => {
+    const matched = resolveTrainingParticipantMatch(safeParticipants, identity);
+    if (matched) return matched;
+
+    const targetRg = normalizeParticipantRg(identity?.rg || identity?.cpf);
+    if (targetRg) {
+      const byRg = safeParticipants.find(
+        (item) =>
+          normalizeParticipantRg(
+            item?.professional_rg || item?.professional_cpf
+          ) === targetRg
+      );
+      if (byRg) return byRg;
+    }
+
+    const targetEmail = normalizeParticipantEmail(identity?.email);
+    if (targetEmail) {
+      const byEmail = safeParticipants.find(
+        (item) =>
+          normalizeParticipantEmail(item?.professional_email) === targetEmail
+      );
+      if (byEmail) return byEmail;
+    }
+
+    const targetName = normalizeParticipantText(identity?.name);
+    if (targetName) {
+      const byName = safeParticipants.find(
+        (item) =>
+          normalizeParticipantText(item?.professional_name) === targetName
+      );
+      if (byName) return byName;
+    }
+
+    return null;
+  };
 
   const repadPerformanceByParticipantId = useMemo(() => {
     if (!useRepadScoreCriteria) return new Map();
@@ -74,7 +147,7 @@ export default function CertificateManager({ training, participants = [], onClos
     );
 
     rows.forEach((row) => {
-      const participant = resolveTrainingParticipantMatch(safeParticipants, {
+      const participant = resolveParticipantForCertificate({
         name: row?.participant_name,
         email: row?.participant_email,
         rg: row?.participant_cpf,
@@ -82,11 +155,32 @@ export default function CertificateManager({ training, participants = [], onClos
       if (!participant?.id) return;
       if (map.has(participant.id)) return;
 
-      const rawKappa = toNumeric(row?.kappa);
-      const kappa = rawKappa === null ? null : clamp(rawKappa, 0, 1);
+      const keyCode = normalizeAnswerKeyCode(row?.answer_key_code || "E2");
+      const answerKey = answerKeyByCode.get(keyCode);
+      const traineeAnswers = parseStoredAnswers(row?.answers);
+      let computed = null;
+      if (answerKey && traineeAnswers) {
+        try {
+          computed = computeTracomaKappaMetrics({
+            answerKey,
+            traineeAnswers,
+          });
+        } catch {
+          computed = null;
+        }
+      }
+
+      const sourceKappa = computed?.kappa ?? toNumeric(row?.kappa);
+      const kappa = sourceKappa === null ? null : clamp(sourceKappa, 0, 1);
       const score = kappa === null ? null : kappa * 100;
+      const statusText = String(
+        computed?.aptitudeStatus || row?.aptitude_status || ""
+      )
+        .trim()
+        .toLowerCase();
       const approved =
-        Number.isFinite(kappa) && kappa >= REPAD_APPROVAL_KAPPA;
+        statusText === "apto" ||
+        (Number.isFinite(kappa) && kappa >= REPAD_APPROVAL_KAPPA);
 
       map.set(participant.id, {
         hasResult: true,
@@ -97,7 +191,12 @@ export default function CertificateManager({ training, participants = [], onClos
     });
 
     return map;
-  }, [safeParticipants, tracomaResultsQuery.data, useRepadScoreCriteria]);
+  }, [
+    answerKeyByCode,
+    safeParticipants,
+    tracomaResultsQuery.data,
+    useRepadScoreCriteria,
+  ]);
 
   const resolveEmailContent = (emailData) => {
     const subject = interpolateEmailTemplate(emailTemplate.subject, emailData).trim();
