@@ -153,6 +153,69 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     };
   };
 
+  const toNormalizedDate = (value) => {
+    if (!value) return "";
+    const parsed = parseDateSafe(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return format(parsed, "yyyy-MM-dd");
+  };
+
+  const normalizeTrainingDates = (dates, fallbackTimes = {}) =>
+    (Array.isArray(dates) ? dates : [])
+      .map((item) => {
+        if (!item) return null;
+        const rawDate = typeof item === "object" ? item?.date : item;
+        const normalizedDate = toNormalizedDate(rawDate);
+        if (!normalizedDate) return null;
+        return {
+          date: normalizedDate,
+          start_time:
+            String(
+              (typeof item === "object" ? item?.start_time : "") ||
+                fallbackTimes.start_time ||
+                ""
+            ) || "",
+          end_time:
+            String(
+              (typeof item === "object" ? item?.end_time : "") ||
+                fallbackTimes.end_time ||
+                ""
+            ) || "",
+        };
+      })
+      .filter(Boolean);
+
+  const buildLegacyDatesFromTraining = (trainingItem) => {
+    const normalizedStart = toNormalizedDate(
+      trainingItem?.start_date || trainingItem?.date
+    );
+    const normalizedEnd = toNormalizedDate(
+      trainingItem?.end_date || trainingItem?.date || trainingItem?.start_date
+    );
+    const start_time = String(trainingItem?.start_time || "").trim() || "08:00";
+    const end_time = String(trainingItem?.end_time || "").trim() || "12:00";
+
+    if (normalizedStart && normalizedEnd) {
+      const generated = buildRangeDates({
+        start_date: normalizedStart,
+        end_date: normalizedEnd,
+        start_time,
+        end_time,
+      });
+      if (generated.length > 0) return generated;
+    }
+
+    const normalizedDate = toNormalizedDate(trainingItem?.date);
+    if (!normalizedDate) return [];
+    return [
+      {
+        date: normalizedDate,
+        start_time,
+        end_time,
+      },
+    ];
+  };
+
   const calculateDurationHours = (dates) => {
     const totalMinutes = (Array.isArray(dates) ? dates : []).reduce(
       (acc, item) => {
@@ -208,12 +271,20 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     ];
 
     if (training) {
-      const normalizedDates = Array.isArray(training.dates)
-        ? training.dates.filter((dateItem) => dateItem?.date)
-        : [];
+      const normalizedDates = normalizeTrainingDates(training.dates, {
+        start_time: training?.start_time,
+        end_time: training?.end_time,
+      });
+      const legacyDates = buildLegacyDatesFromTraining(training);
+      const resolvedDates =
+        normalizedDates.length > 0
+          ? normalizedDates
+          : legacyDates.length > 0
+          ? legacyDates
+          : defaultDates;
       const parsedLocation = parseLocation(training.location);
       const scheduleFromTraining = inferScheduleFromDates(
-        normalizedDates.length > 0 ? normalizedDates : defaultDates
+        resolvedDates
       );
 
       setFormData({
@@ -221,7 +292,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         code: training.code || "",
         type: training.type || "teorico",
         description: training.description || "",
-        dates: normalizedDates.length > 0 ? normalizedDates : defaultDates,
+        dates: resolvedDates,
         duration_hours:
           Number.isFinite(Number(training.duration_hours))
             ? Number(training.duration_hours)
