@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { extractTrainingIdFromEventNotes } from "@/lib/eventMetadata";
-import { isRepadronizacaoTraining } from "@/lib/trainingType";
+import { isRepadronizacaoTraining, isRepadronizacaoType } from "@/lib/trainingType";
 import {
   getEffectiveTrainingStatus,
   getTrainingDateItems,
@@ -67,6 +67,20 @@ import AttendanceControl from "@/components/trainings/AttendanceControl";
 import CertificateManager from "@/components/trainings/CertificateManager";
 import SendLinkButton from "@/components/trainings/SendLinkButton";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
+
+const KNOWN_TRAINING_TYPE_LABELS = {
+  teorico: "Teórico",
+  pratico: "Prático",
+  teorico_pratico: "Teórico/Prático",
+  repadronizacao: "Repadronização",
+};
+
+const KNOWN_TRAINING_TYPE_ORDER = [
+  "teorico",
+  "pratico",
+  "teorico_pratico",
+  "repadronizacao",
+];
 
 export default function Trainings() {
   const currentYearValue = String(new Date().getFullYear());
@@ -416,12 +430,6 @@ export default function Trainings() {
     { value: "cancelado", label: "Cancelado" },
   ];
 
-  const typeOptions = [
-    { value: "teorico", label: "Teórico" },
-    { value: "pratico", label: "Prático" },
-    { value: "teorico_pratico", label: "Teórico/Prático" },
-  ];
-
   const normalizeHeader = (value) => {
     if (value === null || value === undefined) return "";
     return String(value)
@@ -431,6 +439,31 @@ export default function Trainings() {
       .trim()
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "");
+  };
+
+  const normalizeTrainingTypeValue = (value) => {
+    const normalized = normalizeHeader(value);
+    if (!normalized) return "";
+    if (isRepadronizacaoType(value) || normalized.includes("repadronizacao")) {
+      return "repadronizacao";
+    }
+    if (normalized.includes("teorico") && normalized.includes("pratico")) {
+      return "teorico_pratico";
+    }
+    if (normalized.includes("teorico")) return "teorico";
+    if (normalized.includes("pratico")) return "pratico";
+    return normalized;
+  };
+
+  const formatTrainingTypeLabel = (value) => {
+    const normalized = normalizeTrainingTypeValue(value);
+    if (!normalized) return "Não informado";
+    if (KNOWN_TRAINING_TYPE_LABELS[normalized]) {
+      return KNOWN_TRAINING_TYPE_LABELS[normalized];
+    }
+    return normalized
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
   const normalizeRow = (row) => {
@@ -519,14 +552,8 @@ export default function Trainings() {
   };
 
   const normalizeType = (value) => {
-    const normalized = normalizeHeader(value);
-    if (!normalized) return null;
-    if (normalized.includes("teorico") && normalized.includes("pratico")) {
-      return "teorico_pratico";
-    }
-    if (normalized.includes("teorico")) return "teorico";
-    if (normalized.includes("pratico")) return "pratico";
-    return normalized;
+    const normalized = normalizeTrainingTypeValue(value);
+    return normalized || null;
   };
 
   const normalizeStatus = (value) => {
@@ -796,6 +823,29 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       .map((year) => ({ value: String(year), label: String(year) }));
   }, [trainings, currentYearValue]);
 
+  const typeOptions = React.useMemo(() => {
+    const knownOptions = KNOWN_TRAINING_TYPE_ORDER.map((value) => ({
+      value,
+      label: KNOWN_TRAINING_TYPE_LABELS[value],
+    }));
+
+    const dynamicTypes = new Set();
+    (trainings || []).forEach((training) => {
+      const normalized = normalizeTrainingTypeValue(training?.type);
+      if (!normalized || KNOWN_TRAINING_TYPE_LABELS[normalized]) return;
+      dynamicTypes.add(normalized);
+    });
+
+    const dynamicOptions = Array.from(dynamicTypes)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
+      .map((value) => ({
+        value,
+        label: formatTrainingTypeLabel(value),
+      }));
+
+    return [...knownOptions, ...dynamicOptions];
+  }, [trainings]);
+
   const filteredTrainings = trainings
     .filter((t) => {
       const effectiveStatus = getTrainingStatus(t);
@@ -803,7 +853,9 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
         t.title?.toLowerCase().includes(search.toLowerCase()) ||
         t.coordinator?.toLowerCase().includes(search.toLowerCase());
       const matchesStatus = statusFilter === "all" || effectiveStatus === statusFilter;
-      const matchesType = typeFilter === "all" || t.type === typeFilter;
+      const matchesType =
+        typeFilter === "all" ||
+        normalizeTrainingTypeValue(t.type) === typeFilter;
       const trainingYear = getTrainingYear(t);
       const matchesYear = yearFilter === "all" || String(trainingYear || "") === yearFilter;
       return matchesSearch && matchesStatus && matchesType && matchesYear;
@@ -853,12 +905,6 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     }
     return new Date(value);
   }
-
-  const typeLabels = {
-    teorico: "Teórico",
-    pratico: "Prático",
-    teorico_pratico: "Teórico/Prático",
-  };
 
   const columns = [
     {
@@ -924,7 +970,9 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     },
     {
       header: "Tipo",
-      render: (row) => <Badge variant="outline">{typeLabels[row.type]}</Badge>,
+      render: (row) => (
+        <Badge variant="outline">{formatTrainingTypeLabel(row.type)}</Badge>
+      ),
     },
     {
       header: "Coordenador",
