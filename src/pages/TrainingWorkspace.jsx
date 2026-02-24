@@ -23,6 +23,7 @@ import {
   AlertCircle,
   ArrowLeft,
   Award,
+  CheckCircle2,
   ClipboardCheck,
   Eye,
   FileText,
@@ -181,6 +182,79 @@ export default function TrainingWorkspace() {
     cancelado: "bg-red-100 text-red-700",
   };
 
+  const findLinkedTrainingEvents = async (trainingToMatch) => {
+    const expectedTrainingId = String(trainingToMatch?.id || "").trim();
+    if (!expectedTrainingId) return [];
+    const expectedDateKeys = new Set(getTrainingDateKeys(trainingToMatch));
+    const expectedTitle = normalizeComparisonText(trainingToMatch?.title);
+    const trainingEvents = await dataClient.entities.Event.filter(
+      { type: "treinamento" },
+      "-start_date"
+    );
+
+    let relatedEvents = trainingEvents.filter(
+      (item) => extractTrainingIdFromEventNotes(item?.notes) === expectedTrainingId
+    );
+
+    if (relatedEvents.length > 0) return relatedEvents;
+
+    relatedEvents = trainingEvents.filter((item) => {
+      if (extractTrainingIdFromEventNotes(item?.notes)) return false;
+      const sameTitle = normalizeComparisonText(item?.title) === expectedTitle;
+      if (!sameTitle) return false;
+      if (expectedDateKeys.size === 0) return true;
+      const eventDateKey = normalizeDateKey(item?.start_date);
+      return !eventDateKey || expectedDateKeys.has(eventDateKey);
+    });
+
+    return relatedEvents;
+  };
+
+  const confirmTraining = useMutation({
+    mutationFn: async (trainingToConfirm) => {
+      const currentTrainingId = String(trainingToConfirm?.id || "").trim();
+      if (!currentTrainingId) {
+        throw new Error("Treinamento inválido para confirmação.");
+      }
+
+      await dataClient.entities.Training.update(currentTrainingId, {
+        status: "confirmado",
+      });
+
+      const relatedEvents = await findLinkedTrainingEvents(trainingToConfirm);
+      if (relatedEvents.length > 0) {
+        await Promise.all(
+          relatedEvents.map((eventItem) =>
+            dataClient.entities.Event.update(eventItem.id, {
+              status: "confirmado",
+            })
+          )
+        );
+      }
+
+      return { syncedEvents: relatedEvents.length };
+    },
+    onSuccess: async ({ syncedEvents }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["trainings"] }),
+        queryClient.invalidateQueries({ queryKey: ["events"] }),
+      ]);
+      setActionStatus({
+        type: "success",
+        message:
+          syncedEvents > 0
+            ? `Treinamento confirmado e ${syncedEvents} evento(s) da agenda atualizado(s).`
+            : "Treinamento confirmado. Nenhum evento vinculado foi encontrado na agenda.",
+      });
+    },
+    onError: (error) => {
+      setActionStatus({
+        type: "error",
+        message: error?.message || "Não foi possível confirmar o treinamento.",
+      });
+    },
+  });
+
   const deleteTraining = useMutation({
     mutationFn: async (trainingToDelete) => {
       const currentTrainingId = String(trainingToDelete?.id || "").trim();
@@ -312,6 +386,15 @@ export default function TrainingWorkspace() {
     if (!trainingId) return;
     navigate(`/TrainingWorkspaceMasks?training=${encodeURIComponent(trainingId)}`);
   };
+  const handleConfirmTraining = () => {
+    if (!training) return;
+    const confirmed = window.confirm(
+      `Confirmar o treinamento "${training.title}"? Isso também atualiza o evento correspondente na agenda.`
+    );
+    if (!confirmed) return;
+    setActionStatus(null);
+    confirmTraining.mutate(training);
+  };
 
   if (!trainingId) {
     return (
@@ -383,10 +466,30 @@ export default function TrainingWorkspace() {
           </Badge>
           <Badge variant="outline">{activeParticipantsCount} inscritos ativos</Badge>
         </div>
-        <Button type="button" variant="outline" onClick={handleOpenMaskPage}>
-          <FileText className="h-4 w-4 mr-2" />
-          Abrir página de máscaras
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            onClick={handleConfirmTraining}
+            disabled={
+              confirmTraining.isPending ||
+              statusValue === "confirmado" ||
+              statusValue === "cancelado" ||
+              statusValue === "concluido"
+            }
+            className="bg-emerald-600 hover:bg-emerald-700"
+          >
+            {confirmTraining.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+            )}
+            Confirmar treinamento
+          </Button>
+          <Button type="button" variant="outline" onClick={handleOpenMaskPage}>
+            <FileText className="h-4 w-4 mr-2" />
+            Abrir página de máscaras
+          </Button>
+        </div>
       </div>
 
       <Alert className="border-blue-200 bg-blue-50">
@@ -397,8 +500,18 @@ export default function TrainingWorkspace() {
       </Alert>
 
       {actionStatus && (
-        <Alert className="border-red-200 bg-red-50">
-          <AlertDescription className="text-red-800">
+        <Alert
+          className={
+            actionStatus.type === "error"
+              ? "border-red-200 bg-red-50"
+              : "border-green-200 bg-green-50"
+          }
+        >
+          <AlertDescription
+            className={
+              actionStatus.type === "error" ? "text-red-800" : "text-green-800"
+            }
+          >
             {actionStatus.message}
           </AlertDescription>
         </Alert>
