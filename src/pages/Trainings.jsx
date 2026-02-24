@@ -7,6 +7,14 @@ import {
   getEffectiveTrainingStatus,
   getTrainingDateItems,
 } from "@/lib/statusRules";
+import { resolveTrainingParticipantMatch } from "@/lib/trainingParticipantMatch";
+import {
+  TRACOMA_TOTAL_QUESTIONS,
+  buildAnswerKeyCollections,
+  computeTracomaKappaMetrics,
+  normalizeAnswerKeyCode,
+  normalizeBinaryAnswer,
+} from "@/lib/tracomaExamKappa";
 import { format } from "date-fns";
 import {
   Edit,
@@ -83,6 +91,16 @@ const KNOWN_TRAINING_TYPE_ORDER = [
   "repadronizacao",
 ];
 
+const parseStoredAnswers = (
+  value,
+  totalQuestions = TRACOMA_TOTAL_QUESTIONS
+) => {
+  if (!Array.isArray(value) || value.length !== totalQuestions) return null;
+  const parsed = value.map((item) => normalizeBinaryAnswer(item));
+  if (parsed.some((item) => item === null)) return null;
+  return parsed;
+};
+
 export default function Trainings() {
   const currentYearValue = String(new Date().getFullYear());
   const [search, setSearch] = useState("");
@@ -131,6 +149,16 @@ export default function Trainings() {
   const { data: participants = [] } = useQuery({
     queryKey: ["participants"],
     queryFn: () => dataClient.entities.TrainingParticipant.list(),
+  });
+
+  const { data: tracomaResults = [] } = useQuery({
+    queryKey: ["trainings-tracoma-results"],
+    queryFn: () => dataClient.entities.TracomaExamResult.list("-created_at"),
+  });
+
+  const { data: tracomaAnswerKeys = [] } = useQuery({
+    queryKey: ["trainings-tracoma-answer-keys"],
+    queryFn: () => dataClient.entities.TracomaExamAnswerKey.list("question_number"),
   });
 
   const normalizeComparisonText = (value) =>
@@ -226,6 +254,80 @@ export default function Trainings() {
     if (!trainingId) return [];
     return participantsByTrainingMap.get(trainingId) || [];
   };
+
+  const answerKeyByCode = React.useMemo(() => {
+    const map = new Map();
+    const collections = buildAnswerKeyCollections(
+      Array.isArray(tracomaAnswerKeys) ? tracomaAnswerKeys : [],
+      TRACOMA_TOTAL_QUESTIONS
+    );
+    collections.forEach((item) => {
+      if (item?.answers && !item?.error) {
+        map.set(item.code, item.answers);
+      }
+    });
+    return map;
+  }, [tracomaAnswerKeys]);
+
+  const repadApprovalByTrainingId = React.useMemo(() => {
+    const map = new Map();
+    const rows = Array.isArray(tracomaResults) ? [...tracomaResults] : [];
+    rows.sort(
+      (a, b) =>
+        new Date(b?.created_at || 0).getTime() -
+        new Date(a?.created_at || 0).getTime()
+    );
+
+    rows.forEach((row) => {
+      const trainingId = String(row?.training_id || "").trim();
+      if (!trainingId) return;
+
+      const trainingParticipants = participantsByTrainingMap.get(trainingId) || [];
+      if (!trainingParticipants.length) return;
+
+      const participant = resolveTrainingParticipantMatch(trainingParticipants, {
+        name: row?.participant_name,
+        email: row?.participant_email,
+        rg: row?.participant_cpf,
+      });
+      if (!participant?.id) return;
+
+      const participantId = String(participant.id).trim();
+      if (!participantId) return;
+      if (!map.has(trainingId)) map.set(trainingId, new Map());
+      const trainingMap = map.get(trainingId);
+      if (trainingMap.has(participantId)) return;
+
+      const keyCode = normalizeAnswerKeyCode(row?.answer_key_code || "E2");
+      const answerKey = answerKeyByCode.get(keyCode);
+      const traineeAnswers = parseStoredAnswers(row?.answers);
+      let latestKappa = Number(row?.kappa);
+      if (!Number.isFinite(latestKappa)) latestKappa = null;
+
+      if (answerKey && traineeAnswers) {
+        try {
+          const computed = computeTracomaKappaMetrics({
+            answerKey,
+            traineeAnswers,
+          });
+          latestKappa = Number(computed?.kappa);
+        } catch {
+          // Mantém o valor persistido quando não for possível recomputar.
+        }
+      }
+
+      const statusText = String(row?.aptitude_status || "")
+        .trim()
+        .toLowerCase();
+      const approved =
+        statusText === "apto" ||
+        (Number.isFinite(latestKappa) && latestKappa >= 0.7);
+
+      trainingMap.set(participantId, { approved, latestKappa });
+    });
+
+    return map;
+  }, [answerKeyByCode, participantsByTrainingMap, tracomaResults]);
 
   React.useEffect(() => {
     if (orphanCleanupDoneRef.current) return;
@@ -821,12 +923,21 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
   const isApprovedParticipant = (participant, training) => {
     if (!participant || isCancelledEnrollment(participant)) return false;
     if (participant?.certificate_issued) return true;
-    if (participant?.approved === true) return true;
-    const gradePercent = toGradePercent(participant);
+
     if (isRepadronizacaoTraining(training)) {
-      return gradePercent !== null && gradePercent >= 70;
+      const trainingId = String(training?.id || "").trim();
+      const participantId = String(participant?.id || "").trim();
+      const repadStatus = repadApprovalByTrainingId
+        .get(trainingId)
+        ?.get(participantId);
+      if (repadStatus) return Boolean(repadStatus.approved);
+
+      const gradePercent = toGradePercent(participant);
+      if (gradePercent !== null) return gradePercent >= 70;
+      return participant?.approved === true;
     }
-    return false;
+
+    return participant?.approved === true;
   };
 
   const getTrainingYear = (training) => {
@@ -992,7 +1103,6 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
             {row.title}
           </button>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            {row.code && <p className="text-xs text-slate-500">{row.code}</p>}
             {row.online_link && (
               <button
                 type="button"

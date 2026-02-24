@@ -5,19 +5,26 @@ import { dataClient } from "@/api/dataClient";
 import { extractTrainingIdFromEventNotes } from "@/lib/eventMetadata";
 import { getEffectiveTrainingStatus } from "@/lib/statusRules";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
+import {
+  TRACOMA_TOTAL_QUESTIONS,
+  buildAnswerKeyCollections,
+  computeTracomaKappaMetrics,
+  normalizeAnswerKeyCode,
+  normalizeBinaryAnswer,
+} from "@/lib/tracomaExamKappa";
+import { formatDateSafe } from "@/lib/date";
 import PageHeader from "@/components/common/PageHeader";
+import DataTable from "@/components/common/DataTable";
 import TrainingDetails from "@/components/trainings/TrainingDetails";
 import AttendanceControl from "@/components/trainings/AttendanceControl";
 import CertificateManager from "@/components/trainings/CertificateManager";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
 import TrainingForm from "@/components/trainings/TrainingForm";
-import EnrollmentPage from "./EnrollmentPage";
-import TrainingFeedbackPage from "./TrainingFeedbackPage";
-import TracomaExaminerEvaluationPage from "./TracomaExaminerEvaluationPage";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertCircle,
@@ -25,6 +32,8 @@ import {
   Award,
   ClipboardCheck,
   Eye,
+  FileText,
+  Loader2,
   MessageSquare,
   Package,
   Pencil,
@@ -69,6 +78,54 @@ const getTrainingDateKeys = (training) => {
   return Array.from(keys);
 };
 
+const toValidRating = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  if (rounded < 1 || rounded > 5) return null;
+  return rounded;
+};
+
+const resolveFeedbackRating = (feedbackItem) => {
+  const directRating = toValidRating(feedbackItem?.rating);
+  if (directRating) return directRating;
+
+  const answers = Array.isArray(feedbackItem?.answers) ? feedbackItem.answers : [];
+  const ratingValues = answers
+    .filter((item) => String(item?.type || "").trim().toLowerCase() === "rating")
+    .map((item) => toValidRating(item?.value))
+    .filter(Boolean);
+
+  if (!ratingValues.length) return null;
+  const average =
+    ratingValues.reduce((sum, current) => sum + current, 0) / ratingValues.length;
+  return toValidRating(average);
+};
+
+const parseStoredAnswers = (value, totalQuestions = TRACOMA_TOTAL_QUESTIONS) => {
+  if (!Array.isArray(value) || value.length !== totalQuestions) return null;
+  const parsed = value.map((item) => normalizeBinaryAnswer(item));
+  if (parsed.some((item) => item === null)) return null;
+  return parsed;
+};
+
+const formatDecimal = (value, digits = 3) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "-";
+  return numeric.toFixed(digits);
+};
+
+const normalizeSearchText = (value) => String(value || "").trim().toLowerCase();
+
+const isApprovedExamResult = (resultRow) => {
+  const statusText = String(resultRow?.aptitude_status || "")
+    .trim()
+    .toLowerCase();
+  if (statusText === "apto") return true;
+  const kappa = Number(resultRow?.kappa);
+  return Number.isFinite(kappa) && kappa >= 0.7;
+};
+
 export default function TrainingWorkspace() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -79,6 +136,9 @@ export default function TrainingWorkspace() {
 
   const [activeTab, setActiveTab] = useState("overview");
   const [actionStatus, setActionStatus] = useState(null);
+  const [enrollmentSearch, setEnrollmentSearch] = useState("");
+  const [feedbackSearch, setFeedbackSearch] = useState("");
+  const [examSearch, setExamSearch] = useState("");
 
   const { data: trainings = [], isLoading: loadingTrainings } = useQuery({
     queryKey: ["trainings"],
@@ -160,8 +220,189 @@ export default function TrainingWorkspace() {
     return participantsByTrainingMap.get(id) || [];
   }, [participantsByTrainingMap, training]);
 
+  const activeParticipants = useMemo(
+    () =>
+      trainingParticipants.filter(
+        (item) =>
+          String(item?.enrollment_status || "").trim().toLowerCase() !== "cancelado"
+      ),
+    [trainingParticipants]
+  );
+
   const loading = loadingTrainings || loadingParticipants || loadingProfessionals;
   const isRepadTraining = isRepadronizacaoTraining(training);
+
+  const feedbackResponsesQuery = useQuery({
+    queryKey: ["training-workspace-feedback-results", training?.id],
+    queryFn: () =>
+      dataClient.entities.TrainingFeedback.filter(
+        { training_id: training?.id },
+        "-created_at"
+      ),
+    enabled: Boolean(training?.id),
+  });
+
+  const tracomaResultsQuery = useQuery({
+    queryKey: ["training-workspace-tracoma-results", training?.id],
+    queryFn: () =>
+      dataClient.entities.TracomaExamResult.filter(
+        { training_id: training?.id },
+        "-created_at"
+      ),
+    enabled: Boolean(training?.id) && isRepadTraining,
+  });
+
+  const tracomaAnswerKeysQuery = useQuery({
+    queryKey: ["training-workspace-tracoma-answer-keys"],
+    queryFn: () => dataClient.entities.TracomaExamAnswerKey.list("question_number"),
+    enabled: Boolean(training?.id) && isRepadTraining,
+  });
+
+  const answerKeyByCode = useMemo(() => {
+    const map = new Map();
+    const collections = buildAnswerKeyCollections(
+      Array.isArray(tracomaAnswerKeysQuery.data) ? tracomaAnswerKeysQuery.data : [],
+      TRACOMA_TOTAL_QUESTIONS
+    );
+    collections.forEach((item) => {
+      if (item?.answers && !item?.error) {
+        map.set(item.code, item.answers);
+      }
+    });
+    return map;
+  }, [tracomaAnswerKeysQuery.data]);
+
+  const examResults = useMemo(() => {
+    const rows = Array.isArray(tracomaResultsQuery.data) ? tracomaResultsQuery.data : [];
+    return rows.map((row) => {
+      const keyCode = normalizeAnswerKeyCode(row?.answer_key_code || "E2");
+      const answerKey = answerKeyByCode.get(keyCode);
+      const traineeAnswers = parseStoredAnswers(row?.answers);
+      if (!answerKey || !traineeAnswers) return row;
+      try {
+        const computed = computeTracomaKappaMetrics({
+          answerKey,
+          traineeAnswers,
+        });
+        return {
+          ...row,
+          answer_key_code: keyCode,
+          total_questions: computed.totalQuestions,
+          total_matches: computed.totalMatches,
+          matrix_a: computed.matrix.a,
+          matrix_b: computed.matrix.b,
+          matrix_c: computed.matrix.c,
+          matrix_d: computed.matrix.d,
+          observed_agreement: computed.po,
+          expected_agreement: computed.pe,
+          kappa: computed.kappa,
+          interpretation: computed.interpretation,
+          aptitude_status: computed.aptitudeStatus,
+        };
+      } catch {
+        return {
+          ...row,
+          answer_key_code: keyCode,
+        };
+      }
+    });
+  }, [answerKeyByCode, tracomaResultsQuery.data]);
+
+  const filteredEnrolledParticipants = useMemo(() => {
+    const searchTerm = normalizeSearchText(enrollmentSearch);
+    if (!searchTerm) return activeParticipants;
+    return activeParticipants.filter((participant) => {
+      const haystack = [
+        participant?.professional_name,
+        participant?.professional_cpf,
+        participant?.professional_email,
+        participant?.municipality,
+      ]
+        .map((item) => String(item || "").toLowerCase())
+        .join(" ");
+      return haystack.includes(searchTerm);
+    });
+  }, [activeParticipants, enrollmentSearch]);
+
+  const feedbackRows = useMemo(() => {
+    const rows = Array.isArray(feedbackResponsesQuery.data)
+      ? feedbackResponsesQuery.data
+      : [];
+    const searchTerm = normalizeSearchText(feedbackSearch);
+    if (!searchTerm) return rows;
+    return rows.filter((row) => {
+      const haystack = [
+        row?.participant_name,
+        row?.comments,
+        JSON.stringify(row?.answers || []),
+      ]
+        .map((item) => String(item || "").toLowerCase())
+        .join(" ");
+      return haystack.includes(searchTerm);
+    });
+  }, [feedbackResponsesQuery.data, feedbackSearch]);
+
+  const feedbackSummary = useMemo(() => {
+    const total = feedbackRows.length;
+    const ratingValues = feedbackRows
+      .map((row) => resolveFeedbackRating(row))
+      .filter((value) => Number.isFinite(value));
+    const averageRating =
+      ratingValues.length > 0
+        ? (
+            ratingValues.reduce((sum, current) => sum + current, 0) /
+            ratingValues.length
+          ).toFixed(1)
+        : "-";
+
+    const recommendationResponses = feedbackRows.filter(
+      (row) => row?.would_recommend === true || row?.would_recommend === false
+    );
+    const recommendationYes = recommendationResponses.filter(
+      (row) => row?.would_recommend === true
+    ).length;
+    const recommendationRate =
+      recommendationResponses.length > 0
+        ? `${Math.round((recommendationYes / recommendationResponses.length) * 100)}%`
+        : "-";
+
+    return {
+      total,
+      averageRating,
+      recommendationRate,
+    };
+  }, [feedbackRows]);
+
+  const filteredExamRows = useMemo(() => {
+    const searchTerm = normalizeSearchText(examSearch);
+    if (!searchTerm) return examResults;
+    return examResults.filter((row) => {
+      const haystack = [
+        row?.participant_name,
+        row?.answer_key_code,
+        row?.aptitude_status,
+      ]
+        .map((item) => String(item || "").toLowerCase())
+        .join(" ");
+      return haystack.includes(searchTerm);
+    });
+  }, [examResults, examSearch]);
+
+  const examSummary = useMemo(() => {
+    const total = filteredExamRows.length;
+    const aptCount = filteredExamRows.filter((row) => isApprovedExamResult(row)).length;
+    const kappaValues = filteredExamRows
+      .map((row) => Number(row?.kappa))
+      .filter((value) => Number.isFinite(value));
+    const avgKappa =
+      kappaValues.length > 0
+        ? (
+            kappaValues.reduce((sum, current) => sum + current, 0) /
+            kappaValues.length
+          ).toFixed(3)
+        : "-";
+    return { total, aptCount, avgKappa };
+  }, [filteredExamRows]);
 
   const statusValue = training ? getEffectiveTrainingStatus(training) : "";
   const statusLabels = {
@@ -207,8 +448,7 @@ export default function TrainingWorkspace() {
         const expectedTitle = normalizeComparisonText(trainingToDelete?.title);
         relatedEvents = trainingEvents.filter((item) => {
           if (extractTrainingIdFromEventNotes(item.notes)) return false;
-          const sameTitle =
-            normalizeComparisonText(item.title) === expectedTitle;
+          const sameTitle = normalizeComparisonText(item.title) === expectedTitle;
           if (!sameTitle) return false;
           if (expectedDateKeys.size === 0) return true;
           const eventDateKey = normalizeDateKey(item.start_date);
@@ -305,6 +545,11 @@ export default function TrainingWorkspace() {
 
   const handleGoBack = () => navigate("/Trainings");
 
+  const handleOpenMaskPage = () => {
+    if (!trainingId) return;
+    navigate(`/TrainingWorkspaceMasks?training=${encodeURIComponent(trainingId)}`);
+  };
+
   if (!trainingId) {
     return (
       <div className="space-y-6">
@@ -352,9 +597,119 @@ export default function TrainingWorkspace() {
     );
   }
 
-  const activeParticipantsCount = trainingParticipants.filter(
-    (item) => String(item?.enrollment_status || "").trim().toLowerCase() !== "cancelado"
-  ).length;
+  const enrollmentColumns = [
+    {
+      header: "Nome",
+      accessor: "professional_name",
+      cellClassName: "font-medium",
+    },
+    {
+      header: "Documento",
+      render: (row) => row.professional_rg || row.professional_cpf || "-",
+    },
+    {
+      header: "Contato",
+      render: (row) => row.professional_email || "-",
+    },
+    {
+      header: "Município",
+      accessor: "municipality",
+    },
+    {
+      header: "Data da inscrição",
+      accessor: "enrollment_date",
+      sortType: "date",
+      render: (row) => formatDateSafe(row?.enrollment_date, "dd/MM/yyyy HH:mm") || "-",
+    },
+  ];
+
+  const feedbackColumns = [
+    {
+      header: "Participante",
+      accessor: "participant_name",
+      cellClassName: "font-medium",
+      render: (row) => row?.participant_name || "Participante",
+    },
+    {
+      header: "Nota",
+      render: (row) => {
+        const rating = resolveFeedbackRating(row);
+        return rating ? `${rating}/5` : "-";
+      },
+      sortType: "number",
+    },
+    {
+      header: "Recomendaria",
+      render: (row) => {
+        if (row?.would_recommend === true) return "Sim";
+        if (row?.would_recommend === false) return "Não";
+        return "-";
+      },
+    },
+    {
+      header: "Comentário",
+      render: (row) => {
+        const text = String(row?.comments || "").trim();
+        if (!text) return "-";
+        return text.length > 140 ? `${text.slice(0, 140)}...` : text;
+      },
+    },
+    {
+      header: "Data",
+      accessor: "created_at",
+      sortType: "date",
+      render: (row) => formatDateSafe(row?.created_at, "dd/MM/yyyy HH:mm") || "-",
+    },
+  ];
+
+  const examColumns = [
+    {
+      header: "Formando",
+      accessor: "participant_name",
+      cellClassName: "font-medium",
+      render: (row) => row?.participant_name || "-",
+    },
+    {
+      header: "Teste",
+      accessor: "answer_key_code",
+      render: (row) => row?.answer_key_code || "-",
+    },
+    {
+      header: "Acertos",
+      render: (row) =>
+        `${Number(row?.total_matches || 0)}/${Number(
+          row?.total_questions || TRACOMA_TOTAL_QUESTIONS
+        )}`,
+      sortType: "number",
+    },
+    {
+      header: "Kappa",
+      accessor: "kappa",
+      sortType: "number",
+      render: (row) => formatDecimal(row?.kappa, 3),
+    },
+    {
+      header: "Status",
+      render: (row) => {
+        const isApproved = isApprovedExamResult(row);
+        return (
+          <Badge
+            className={
+              isApproved ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+            }
+          >
+            {isApproved ? "Apto" : "Necessita retreinamento"}
+          </Badge>
+        );
+      },
+    },
+    {
+      header: "Data",
+      accessor: "created_at",
+      sortType: "date",
+      render: (row) => formatDateSafe(row?.created_at, "dd/MM/yyyy HH:mm") || "-",
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -368,17 +723,23 @@ export default function TrainingWorkspace() {
         subtitle={training.title || "Treinamento sem título"}
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge className={statusColors[statusValue] || "bg-slate-100 text-slate-700"}>
-          {statusLabels[statusValue] || "Status indefinido"}
-        </Badge>
-        {training.code && <Badge variant="outline">Código: {training.code}</Badge>}
-        <Badge variant="outline">{activeParticipantsCount} inscritos ativos</Badge>
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className={statusColors[statusValue] || "bg-slate-100 text-slate-700"}>
+            {statusLabels[statusValue] || "Status indefinido"}
+          </Badge>
+          <Badge variant="outline">{activeParticipants.length} inscritos ativos</Badge>
+        </div>
+        <Button type="button" variant="outline" onClick={handleOpenMaskPage}>
+          <FileText className="h-4 w-4 mr-2" />
+          Página de máscaras de criação
+        </Button>
       </div>
 
       <Alert className="border-blue-200 bg-blue-50">
         <AlertDescription className="text-blue-800">
-          Importar e exportar ficam dentro de cada subpágina/aba correspondente.
+          As abas de Inscrições, Avaliação e Provas exibem somente listas/resultados.
+          Para configurar máscaras de criação, use a página separada.
         </AlertDescription>
       </Alert>
 
@@ -396,11 +757,11 @@ export default function TrainingWorkspace() {
             <Eye className="h-3.5 w-3.5" />
             Resumo
           </TabsTrigger>
-          <TabsTrigger value="enrollment_page" className="gap-1.5">
+          <TabsTrigger value="enrollment_results" className="gap-1.5">
             <UserPlus className="h-3.5 w-3.5" />
             Inscrições
           </TabsTrigger>
-          <TabsTrigger value="feedback_page" className="gap-1.5">
+          <TabsTrigger value="feedback_results" className="gap-1.5">
             <MessageSquare className="h-3.5 w-3.5" />
             Avaliação
           </TabsTrigger>
@@ -409,7 +770,7 @@ export default function TrainingWorkspace() {
             Presença
           </TabsTrigger>
           {isRepadTraining && (
-            <TabsTrigger value="exams_page" className="gap-1.5">
+            <TabsTrigger value="exam_results" className="gap-1.5">
               <ClipboardCheck className="h-3.5 w-3.5" />
               Provas
             </TabsTrigger>
@@ -432,12 +793,78 @@ export default function TrainingWorkspace() {
           <TrainingDetails training={training} participants={trainingParticipants} />
         </TabsContent>
 
-        <TabsContent value="enrollment_page" className="mt-6">
-          <EnrollmentPage />
+        <TabsContent value="enrollment_results" className="mt-6 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Inscritos do treinamento</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Input
+                placeholder="Buscar inscrito por nome, documento, e-mail ou município..."
+                value={enrollmentSearch}
+                onChange={(event) => setEnrollmentSearch(event.target.value)}
+              />
+              <DataTable
+                columns={enrollmentColumns}
+                data={filteredEnrolledParticipants}
+                isLoading={loadingParticipants}
+                emptyMessage="Nenhum inscrito encontrado para este treinamento."
+              />
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="feedback_page" className="mt-6">
-          <TrainingFeedbackPage />
+        <TabsContent value="feedback_results" className="mt-6 space-y-4">
+          {feedbackResponsesQuery.isError && (
+            <Alert className="border-red-200 bg-red-50">
+              <AlertDescription className="text-red-800">
+                {feedbackResponsesQuery.error?.message ||
+                  "Não foi possível carregar os resultados de avaliação."}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-slate-500">Total de respostas</p>
+                <p className="text-3xl font-semibold">{feedbackSummary.total}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-slate-500">Nota média</p>
+                <p className="text-3xl font-semibold">{feedbackSummary.averageRating}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-slate-500">Recomendação</p>
+                <p className="text-3xl font-semibold">
+                  {feedbackSummary.recommendationRate}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Resultados das avaliações</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Input
+                placeholder="Buscar por participante, comentário ou respostas..."
+                value={feedbackSearch}
+                onChange={(event) => setFeedbackSearch(event.target.value)}
+              />
+              <DataTable
+                columns={feedbackColumns}
+                data={feedbackRows}
+                isLoading={feedbackResponsesQuery.isLoading}
+                emptyMessage="Nenhum resultado de avaliação encontrado."
+              />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="attendance" className="mt-6">
@@ -449,8 +876,57 @@ export default function TrainingWorkspace() {
         </TabsContent>
 
         {isRepadTraining && (
-          <TabsContent value="exams_page" className="mt-6">
-            <TracomaExaminerEvaluationPage />
+          <TabsContent value="exam_results" className="mt-6 space-y-4">
+            {tracomaResultsQuery.isError && (
+              <Alert className="border-red-200 bg-red-50">
+                <AlertDescription className="text-red-800">
+                  {tracomaResultsQuery.error?.message ||
+                    "Não foi possível carregar os resultados da prova."}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-sm text-slate-500">Total de provas</p>
+                  <p className="text-3xl font-semibold">{examSummary.total}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-sm text-slate-500">Aptos</p>
+                  <p className="text-3xl font-semibold text-green-700">
+                    {examSummary.aptCount}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-sm text-slate-500">Kappa médio</p>
+                  <p className="text-3xl font-semibold">{examSummary.avgKappa}</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Resultados das provas</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Buscar por formando, teste ou status..."
+                  value={examSearch}
+                  onChange={(event) => setExamSearch(event.target.value)}
+                />
+                <DataTable
+                  columns={examColumns}
+                  data={filteredExamRows}
+                  isLoading={tracomaResultsQuery.isLoading}
+                  emptyMessage="Nenhum resultado de prova encontrado."
+                />
+              </CardContent>
+            </Card>
           </TabsContent>
         )}
 
