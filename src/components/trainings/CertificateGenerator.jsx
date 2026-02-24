@@ -157,8 +157,8 @@ const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth, firstLineInde
   const getMaxWidth = () =>
     maxWidth - (lineIndex === 0 ? firstLineIndent : 0);
 
-  const pushLine = () => {
-    if (current.length > 0) {
+  const pushLine = (forceEmpty = false) => {
+    if (current.length > 0 || forceEmpty) {
       lines.push(current);
     }
     current = [];
@@ -169,7 +169,8 @@ const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth, firstLineInde
 
   tokens.forEach((token) => {
     if (token.type === "newline") {
-      pushLine();
+      // Preserve consecutive newlines so multiple paragraphs remain visible.
+      pushLine(true);
       return;
     }
     const parts = String(token.text || "").split(/(\s+)/);
@@ -437,7 +438,10 @@ export const generateParticipantCertificate = (participant, training, templateOv
     align: "center",
   });
 
-  const bodyText = interpolateText(template.body || "", textData).trim();
+  const bodyText = interpolateText(template.body || "", textData).replace(
+    /\r\n/g,
+    "\n"
+  );
   const bodyWidth = bodyPosition.width || pageWidth - 40;
   const bodyLeft = Number.isFinite(bodyPosition.x)
     ? bodyPosition.x - bodyWidth / 2
@@ -611,7 +615,10 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
     align: "center",
   });
 
-  const bodyText = interpolateText(template.body || "", textData).trim();
+  const bodyText = interpolateText(template.body || "", textData).replace(
+    /\r\n/g,
+    "\n"
+  );
   const bodyWidth = bodyPosition.width || pageWidth - 40;
   const bodyLeft = Number.isFinite(bodyPosition.x)
     ? bodyPosition.x - bodyWidth / 2
@@ -785,7 +792,10 @@ export const generateSpeakerCertificate = (speaker, training, templateOverride) 
     align: "center",
   });
 
-  const bodyText = interpolateText(template.body || "", textData).trim();
+  const bodyText = interpolateText(template.body || "", textData).replace(
+    /\r\n/g,
+    "\n"
+  );
   const bodyWidth = bodyPosition.width || pageWidth - 40;
   const bodyLeft = Number.isFinite(bodyPosition.x)
     ? bodyPosition.x - bodyWidth / 2

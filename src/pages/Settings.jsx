@@ -525,6 +525,21 @@ export default function Settings() {
     });
   };
 
+  const handleBodyEditorShortcut = (event) => {
+    const isModifierPressed = event.ctrlKey || event.metaKey;
+    if (!isModifierPressed) return;
+    const key = String(event.key || "").toLowerCase();
+    if (key === "b") {
+      event.preventDefault();
+      handleBodyFormatting("**", "**");
+      return;
+    }
+    if (key === "enter") {
+      event.preventDefault();
+      insertBodyText("\n\n");
+    }
+  };
+
   const getRelativeMm = (event) => {
     if (!previewRef.current) return null;
     const rect = previewRef.current.getBoundingClientRect();
@@ -973,15 +988,31 @@ export default function Settings() {
   const signature2 = resolveSignature(certificateTemplate.signature2);
   const fontFamilyValue = certificateTemplate.fonts?.family || "helvetica";
   const previewFont = previewFontFamily[fontFamilyValue] || previewFontFamily.helvetica;
+  const isBodyJustified = certificateTemplate.textOptions?.bodyJustify !== false;
+  const bodyLineHeightValue = Number(certificateTemplate.textOptions?.bodyLineHeight) || 1.2;
+  const bodyMaxWordSpacingValue =
+    Number(certificateTemplate.textOptions?.bodyMaxWordSpacing) || 3;
+  const bodyIndentValue = Number(certificateTemplate.textOptions?.bodyIndent) || 0;
+  const bodyFontSizeValue = Number(certificateTemplate.fonts?.bodySize) || 14;
 
   const renderFormattedText = (value) => {
     const content = String(value || "");
     const parts = [];
     let bold = false;
     let buffer = "";
+    let keyIndex = 0;
     const flush = () => {
       if (!buffer) return;
-      parts.push({ text: buffer, bold });
+      parts.push({
+        type: "text",
+        bold,
+        element: bold ? (
+          <strong key={`bold-${keyIndex}`}>{buffer}</strong>
+        ) : (
+          <span key={`text-${keyIndex}`}>{buffer}</span>
+        ),
+      });
+      keyIndex += 1;
       buffer = "";
     };
     for (let i = 0; i < content.length; i += 1) {
@@ -993,16 +1024,19 @@ export default function Settings() {
         i += 1;
         continue;
       }
+      if (char === "\n") {
+        flush();
+        parts.push({
+          type: "break",
+          element: <br key={`br-${keyIndex}`} />,
+        });
+        keyIndex += 1;
+        continue;
+      }
       buffer += char;
     }
     flush();
-    return parts.map((part, index) =>
-      part.bold ? (
-        <strong key={`bold-${index}`}>{part.text}</strong>
-      ) : (
-        <span key={`text-${index}`}>{part.text}</span>
-      )
-    );
+    return parts.map((part) => part.element);
   };
 
   const previewPage = { width: 297, height: 210 };
@@ -1623,39 +1657,127 @@ export default function Settings() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>Texto do certificado</Label>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleBodyFormatting("**", "**")}
-                        >
-                          <strong>Negrito</strong>
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => insertBodyText("\n")}
-                        >
-                          Quebra de linha
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => insertBodyText("\n\n")}
-                        >
-                          Novo parágrafo
-                        </Button>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Label>Texto do certificado</Label>
+                        <p className="text-xs text-slate-500">
+                          Atalhos: Ctrl/Cmd + B (negrito) e Ctrl/Cmd + Enter (novo parágrafo)
+                        </p>
                       </div>
-                      <Textarea
-                        ref={bodyTextRef}
-                        value={certificateTemplate.body}
-                        onChange={(e) => handleCertificateChange("body", e.target.value)}
-                        rows={4}
-                      />
+                      <div className="rounded-md border bg-slate-50">
+                        <div className="flex flex-wrap items-center gap-2 border-b bg-white p-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleBodyFormatting("**", "**")}
+                          >
+                            <strong>Negrito</strong>
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => insertBodyText("\n")}
+                          >
+                            Quebra de linha
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => insertBodyText("\n\n")}
+                          >
+                            Novo parágrafo
+                          </Button>
+                          <div className="h-6 w-px bg-slate-200" />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isBodyJustified ? "default" : "outline"}
+                            onClick={() => handleTextOptionChange("bodyJustify", true)}
+                          >
+                            Justificar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={!isBodyJustified ? "default" : "outline"}
+                            onClick={() => handleTextOptionChange("bodyJustify", false)}
+                          >
+                            Alinhar esquerda
+                          </Button>
+                        </div>
+                        <Textarea
+                          ref={bodyTextRef}
+                          value={certificateTemplate.body}
+                          onChange={(e) => handleCertificateChange("body", e.target.value)}
+                          onKeyDown={handleBodyEditorShortcut}
+                          rows={10}
+                          className="min-h-[220px] resize-y border-0 bg-transparent focus-visible:ring-0"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Tamanho do texto</Label>
+                          <Input
+                            type="number"
+                            min="8"
+                            max="32"
+                            value={bodyFontSizeValue}
+                            onChange={(e) =>
+                              handleFontNumberChange("bodySize", e.target.value)
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Espaçamento entre linhas</Label>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="1"
+                            max="3"
+                            value={bodyLineHeightValue}
+                            onChange={(e) =>
+                              handleTextOptionChange(
+                                "bodyLineHeight",
+                                Number(e.target.value) || 1.2
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Máx. espaço entre palavras</Label>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="1"
+                            max="6"
+                            value={bodyMaxWordSpacingValue}
+                            onChange={(e) =>
+                              handleTextOptionChange(
+                                "bodyMaxWordSpacing",
+                                Number(e.target.value) || 3
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Recuo do parágrafo (mm)</Label>
+                          <Input
+                            type="number"
+                            step="1"
+                            min="0"
+                            max="30"
+                            value={bodyIndentValue}
+                            onChange={(e) =>
+                              handleTextOptionChange(
+                                "bodyIndent",
+                                Number(e.target.value) || 0
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Rodapé (cidade/data)</Label>
@@ -1762,68 +1884,10 @@ export default function Settings() {
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Espaçamento entre linhas</Label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          min="1"
-                          max="3"
-                          value={certificateTemplate.textOptions?.bodyLineHeight || 1.2}
-                          onChange={(e) =>
-                            handleTextOptionChange(
-                              "bodyLineHeight",
-                              Number(e.target.value) || 1.2
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Máx. espaço entre palavras</Label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          min="1"
-                          max="6"
-                          value={certificateTemplate.textOptions?.bodyMaxWordSpacing || 3}
-                          onChange={(e) =>
-                            handleTextOptionChange(
-                              "bodyMaxWordSpacing",
-                              Number(e.target.value) || 3
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Recuo do parágrafo (mm)</Label>
-                        <Input
-                          type="number"
-                          step="1"
-                          min="0"
-                          max="30"
-                          value={certificateTemplate.textOptions?.bodyIndent || 0}
-                          onChange={(e) =>
-                            handleTextOptionChange(
-                              "bodyIndent",
-                              Number(e.target.value) || 0
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="flex items-center gap-2 mt-6">
-                        <Checkbox
-                          id="justify-body"
-                          checked={certificateTemplate.textOptions?.bodyJustify !== false}
-                          onCheckedChange={(checked) =>
-                            handleTextOptionChange("bodyJustify", Boolean(checked))
-                          }
-                        />
-                        <Label htmlFor="justify-body" className="text-xs">
-                          Justificar texto
-                        </Label>
-                      </div>
-                    </div>
+                    <p className="text-xs text-slate-500">
+                      Os ajustes do texto corrido (justificar/parágrafo/espaçamento) ficam
+                      na barra exclusiva do campo &quot;Texto do certificado&quot;.
+                    </p>
                   </AccordionContent>
                 </AccordionItem>
 
@@ -2275,13 +2339,11 @@ export default function Settings() {
                                 className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-slate-700 whitespace-pre-line"
                                 style={{
                                   fontFamily: previewFont,
-                                  fontSize: certificateTemplate.fonts?.bodySize || 14,
-                                  textAlign: "justify",
-                                  lineHeight: certificateTemplate.textOptions?.bodyLineHeight || 1.2,
+                                  fontSize: bodyFontSizeValue,
+                                  textAlign: isBodyJustified ? "justify" : "left",
+                                  lineHeight: bodyLineHeightValue,
                                   textIndent: `${
-                                    ((certificateTemplate.textOptions?.bodyIndent || 0) /
-                                      previewPage.width) *
-                                    100
+                                    (bodyIndentValue / previewPage.width) * 100
                                   }%`,
                                 }}
                               >
