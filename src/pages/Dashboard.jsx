@@ -48,7 +48,7 @@ export default function Dashboard() {
 
   const { data: trainings = [], isLoading: loadingTrainings } = useQuery({
     queryKey: ["trainings"],
-    queryFn: () => dataClient.entities.Training.list("-date", 10),
+    queryFn: () => dataClient.entities.Training.list("-date"),
   });
 
   const { data: participants = [], isLoading: loadingParticipants } = useQuery({
@@ -139,6 +139,22 @@ export default function Dashboard() {
     return matches >= 2;
   };
 
+  const isApprovedParticipantRecord = (participant) => {
+    if (!participant) return false;
+    const enrollmentStatus = String(participant.enrollment_status || "")
+      .trim()
+      .toLowerCase();
+    if (enrollmentStatus === "cancelado") return false;
+    if (participant.certificate_issued === true) return true;
+    if (participant.approved === true) return true;
+    const numericGrade = Number(participant.grade);
+    if (!Number.isFinite(numericGrade)) return false;
+    if (numericGrade >= 0 && numericGrade <= 1) {
+      return numericGrade * 100 >= 70;
+    }
+    return numericGrade >= 70;
+  };
+
   const totalTrained = useMemo(() => {
     const trainingsInCurrentYear = trainings.filter(isTrainingInCurrentYear);
     const currentYearTrainingIds = new Set(
@@ -156,6 +172,7 @@ export default function Dashboard() {
         (trainingId && currentYearTrainingIds.has(trainingId)) ||
         participantTrainingYear === currentYear;
       if (!isParticipantFromCurrentYear) return;
+      if (!isApprovedParticipantRecord(participant)) return;
       if (unique.some((existing) => isSameParticipant(existing, participant))) return;
       unique.push(participant);
     });
@@ -490,7 +507,7 @@ export default function Dashboard() {
           color="purple"
         />
         <StatsCard
-          title="Pessoas Treinadas (Ano Atual)"
+          title="Pessoas Aprovadas (Ano Atual)"
           value={loadingParticipants || loadingTrainings ? "..." : totalTrained}
           icon={Users}
           color="green"

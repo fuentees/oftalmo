@@ -82,28 +82,57 @@ export default function Schedule() {
       .toLowerCase()
       .trim();
 
-  const getTrainingPrimaryDate = (training) => {
-    if (Array.isArray(training?.dates) && training.dates.length > 0) {
-      const firstDate = training.dates.find((item) => item?.date)?.date;
-      if (firstDate) return String(firstDate);
+  const normalizeDateKey = (value) => {
+    if (!value) return "";
+    const text = String(value).trim();
+    if (!text) return "";
+    const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return "";
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTrainingDateKeys = (training) => {
+    const keys = new Set();
+    if (Array.isArray(training?.dates)) {
+      training.dates.forEach((item) => {
+        const dateValue = typeof item === "object" ? item?.date : item;
+        const normalized = normalizeDateKey(dateValue);
+        if (normalized) keys.add(normalized);
+      });
     }
-    if (training?.date) return String(training.date);
-    return "";
+    const mainDate = normalizeDateKey(training?.date);
+    if (mainDate) keys.add(mainDate);
+    const startDate = normalizeDateKey(training?.start_date);
+    if (startDate) keys.add(startDate);
+    return Array.from(keys);
   };
 
   const findLegacyTrainingFromEvent = (eventData, trainings) => {
     if (!eventData || !Array.isArray(trainings)) return null;
     const expectedTitle = normalizeComparisonText(eventData.title);
-    const expectedStartDate = String(eventData.start_date || "");
+    const eventDateKeys = [
+      normalizeDateKey(eventData.start_date),
+      normalizeDateKey(eventData.end_date),
+    ].filter(Boolean);
+
+    const candidates = trainings.filter((item) => {
+      if (!item?.id) return false;
+      return normalizeComparisonText(item.title) === expectedTitle;
+    });
+    if (!candidates.length) return null;
+    if (candidates.length === 1) return candidates[0];
+    if (!eventDateKeys.length) return candidates[0];
+
     return (
-      trainings.find((item) => {
-        if (!item?.id) return false;
-        const sameTitle =
-          normalizeComparisonText(item.title) === expectedTitle;
-        if (!sameTitle) return false;
-        if (!expectedStartDate) return true;
-        return getTrainingPrimaryDate(item) === expectedStartDate;
-      }) || null
+      candidates.find((item) => {
+        const trainingDateKeys = getTrainingDateKeys(item);
+        return eventDateKeys.some((key) => trainingDateKeys.includes(key));
+      }) || candidates[0]
     );
   };
 
@@ -383,16 +412,20 @@ export default function Schedule() {
         const lastStatus = statusUpdateRef.current.get(event.id);
         if (lastStatus === effective) return;
         if (event.status === "cancelado") return;
-        updates.push({ id: event.id, status: effective });
+        updates.push({ id: event.id, status: effective, event });
         statusUpdateRef.current.set(event.id, effective);
       });
       if (updates.length === 0) return;
       await Promise.all(
-        updates.map((payload) =>
-          dataClient.entities.Event.update(payload.id, { status: payload.status })
-        )
+        updates.map(async (payload) => {
+          await dataClient.entities.Event.update(payload.id, {
+            status: payload.status,
+          });
+          await syncLinkedTrainingStatus(payload.event, payload.status);
+        })
       );
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
     };
 
     syncStatuses();
