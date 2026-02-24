@@ -40,10 +40,26 @@ export default function PublicEnrollment() {
     /** @type {Record<string, any>} */ ({})
   );
   const [submitted, setSubmitted] = useState(false);
+  const [submissionFeedback, setSubmissionFeedback] = useState(
+    /** @type {null | { type: "success" | "warning" | "info"; message: string }} */ (null)
+  );
   const [formErrors, setFormErrors] = useState(
     /** @type {Record<string, string | null>} */ ({})
   );
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
+
+  const normalizeCpf = (value) => String(value ?? "").replace(/\D/g, "");
+
+  const isDuplicateEnrollmentError = (error) => {
+    const message = String(error?.message || "").toLowerCase();
+    return (
+      message.includes("cpf já inscrito") ||
+      message.includes("cpf ja inscrito") ||
+      message.includes("duplicate key") ||
+      message.includes("already exists") ||
+      message.includes("duplicate")
+    );
+  };
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],
@@ -154,14 +170,22 @@ export default function PublicEnrollment() {
 
   const enrollMutation = useMutation({
     mutationFn: async (/** @type {Record<string, any>} */ data) => {
-      const normalizedCpf = String(data.cpf || "").trim();
+      const normalizedCpf = normalizeCpf(data.cpf);
       if (normalizedCpf) {
-        const existing = await dataClient.entities.TrainingParticipant.filter({
-          training_id: trainingId,
-          professional_cpf: normalizedCpf,
-        });
-        if (existing && existing.length > 0) {
-          throw new Error("CPF já inscrito neste treinamento");
+        const participants = await dataClient.entities.TrainingParticipant.filter(
+          {
+            training_id: trainingId,
+          },
+          "-enrollment_date"
+        );
+        const existing = (participants || []).filter(
+          (participant) => normalizeCpf(participant?.professional_cpf) === normalizedCpf
+        );
+        if (existing.length > 0) {
+          return {
+            alreadyEnrolled: true,
+            warningMessage: null,
+          };
         }
       }
 
@@ -199,7 +223,7 @@ export default function PublicEnrollment() {
         mapped[participantKey] = fieldValue;
       });
 
-      await dataClient.entities.TrainingParticipant.create({
+      const participantPayload = {
         training_id: trainingId,
         training_title: training.title,
         training_date: firstDate || null,
@@ -227,19 +251,62 @@ export default function PublicEnrollment() {
         approved: false,
         certificate_issued: false,
         validity_date: validityDate,
-      });
+      };
 
-      await dataClient.entities.Training.update(trainingId, {
-        participants_count: (training.participants_count || 0) + 1,
-      });
+      try {
+        await dataClient.entities.TrainingParticipant.create(participantPayload);
+      } catch (error) {
+        if (isDuplicateEnrollmentError(error)) {
+          return {
+            alreadyEnrolled: true,
+            warningMessage: null,
+          };
+        }
+        throw error;
+      }
+
+      let warningMessage = null;
+      try {
+        await dataClient.entities.Training.update(trainingId, {
+          participants_count: (training.participants_count || 0) + 1,
+        });
+      } catch (error) {
+        warningMessage =
+          "Seu cadastro foi registrado, mas a atualização do contador não concluiu agora.";
+      }
+
+      return {
+        alreadyEnrolled: false,
+        warningMessage,
+      };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       setSubmitted(true);
+      if (result?.alreadyEnrolled) {
+        setSubmissionFeedback({
+          type: "info",
+          message:
+            "Este CPF já constava inscrito. Sua inscrição já está confirmada neste treinamento.",
+        });
+        return;
+      }
+      if (result?.warningMessage) {
+        setSubmissionFeedback({
+          type: "warning",
+          message: result.warningMessage,
+        });
+        return;
+      }
+      setSubmissionFeedback({
+        type: "success",
+        message: "Sua inscrição foi confirmada com sucesso.",
+      });
     },
   });
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    setSubmissionFeedback(null);
     const errors = /** @type {Record<string, string | null>} */ ({});
 
     orderedTemplateFields.forEach((field) => {
@@ -362,7 +429,7 @@ export default function PublicEnrollment() {
             <div>
               <h2 className="text-2xl font-bold text-slate-900">Inscrição Realizada!</h2>
               <p className="text-slate-600 mt-2">
-                Sua inscrição foi confirmada com sucesso.
+                {submissionFeedback?.message || "Sua inscrição foi confirmada com sucesso."}
               </p>
             </div>
             <div className="bg-slate-50 rounded-lg p-4 text-left space-y-2">
