@@ -913,10 +913,17 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {row.code && <p className="text-xs text-slate-500">{row.code}</p>}
             {row.online_link && (
-              <Badge className="bg-blue-100 text-blue-700 border border-blue-200">
-                <Video className="h-3 w-3 mr-1" />
-                Online
-              </Badge>
+              <button
+                type="button"
+                title="Abrir sala online"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 transition-colors hover:bg-blue-100"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  window.open(row.online_link, "_blank", "noopener,noreferrer");
+                }}
+              >
+                <Video className="h-3.5 w-3.5" />
+              </button>
             )}
           </div>
         </div>
@@ -932,12 +939,27 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     },
     {
       header: "Local",
-      render: (row) => row.location && (
-        <div className="flex items-center gap-1 text-sm text-slate-600">
-          <MapPin className="h-3 w-3" />
-          {row.location}
-        </div>
-      ),
+      render: (row) => {
+        const hasLocation = Boolean(String(row.location || "").trim());
+        const hasOnlineRoom = Boolean(String(row.online_link || "").trim());
+        if (!hasLocation && !hasOnlineRoom) return "-";
+        return (
+          <div className="space-y-1 text-sm">
+            {hasLocation && (
+              <div className="flex items-center gap-1 text-slate-600">
+                <MapPin className="h-3 w-3" />
+                {row.location}
+              </div>
+            )}
+            {hasOnlineRoom && (
+              <div className="flex items-center gap-1 text-blue-600">
+                <Video className="h-3 w-3" />
+                Online
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       header: "Participantes",

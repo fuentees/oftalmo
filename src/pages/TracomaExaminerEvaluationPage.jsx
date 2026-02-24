@@ -1848,13 +1848,13 @@ export default function TracomaExaminerEvaluationPage() {
       </Dialog>
 
       <Dialog open={Boolean(selectedResult)} onOpenChange={() => setSelectedResult(null)}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle>Reanalise detalhada da tentativa</DialogTitle>
           </DialogHeader>
 
           {selectedResult && (
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-2">
               <div className="flex justify-end">
                 <Button
                   type="button"
@@ -1983,12 +1983,14 @@ export default function TracomaExaminerEvaluationPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <DataTable
-                        columns={detailColumns}
-                        data={selectedResultDetails?.rows || []}
-                        isLoading={false}
-                        emptyMessage="Nenhum detalhe encontrado."
-                      />
+                      <div className="max-h-[360px] overflow-y-auto">
+                        <DataTable
+                          columns={detailColumns}
+                          data={selectedResultDetails?.rows || []}
+                          isLoading={false}
+                          emptyMessage="Nenhum detalhe encontrado."
+                        />
+                      </div>
                     </CardContent>
                   </Card>
                 </>
