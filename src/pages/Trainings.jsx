@@ -12,6 +12,7 @@ import {
   Edit,
   Trash2,
   Eye,
+  ExternalLink,
   Users,
   Calendar,
   MapPin,
@@ -802,6 +803,32 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
 
   const getTrainingStatus = (training) => getEffectiveTrainingStatus(training);
 
+  const toNumeric = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+
+  const toGradePercent = (participant) => {
+    const numeric = toNumeric(participant?.grade);
+    if (numeric === null) return null;
+    if (numeric >= 0 && numeric <= 1) return numeric * 100;
+    return numeric;
+  };
+
+  const isCancelledEnrollment = (participant) =>
+    String(participant?.enrollment_status || "").trim().toLowerCase() === "cancelado";
+
+  const isApprovedParticipant = (participant, training) => {
+    if (!participant || isCancelledEnrollment(participant)) return false;
+    if (participant?.certificate_issued) return true;
+    if (participant?.approved === true) return true;
+    const gradePercent = toGradePercent(participant);
+    if (isRepadronizacaoTraining(training)) {
+      return gradePercent !== null && gradePercent >= 70;
+    }
+    return false;
+  };
+
   const getTrainingYear = (training) => {
     if (!training) return null;
     const firstDateItem = getTrainingDateItems(training)[0] || null;
@@ -861,10 +888,19 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       return matchesSearch && matchesStatus && matchesType && matchesYear;
     })
     .map((training) => {
-      const liveCount = getTrainingParticipants(training).length;
+      const rows = getTrainingParticipants(training);
+      const enrolledCount = rows.filter((participant) => !isCancelledEnrollment(participant)).length;
+      const approvedCount = rows.filter((participant) =>
+        isApprovedParticipant(participant, training)
+      ).length;
+      const effectiveStatus = getTrainingStatus(training);
+      const displayCount =
+        effectiveStatus === "concluido" ? approvedCount : enrolledCount;
       return {
         ...training,
-        participants_count: liveCount,
+        participants_count: displayCount,
+        enrolled_count: enrolledCount,
+        approved_count: approvedCount,
       };
     });
 
@@ -950,8 +986,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
             className="font-medium text-left text-slate-900 hover:text-blue-700 hover:underline"
             onClick={(event) => {
               event.stopPropagation();
-              setSelectedTraining(row);
-              setShowDetails(true);
+              navigate(`/TrainingWorkspace?training=${encodeURIComponent(row.id)}`);
             }}
           >
             {row.title}
@@ -959,10 +994,17 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {row.code && <p className="text-xs text-slate-500">{row.code}</p>}
             {row.online_link && (
-              <Badge className="bg-blue-100 text-blue-700 border border-blue-200">
-                <Video className="h-3 w-3 mr-1" />
-                Online
-              </Badge>
+              <button
+                type="button"
+                title="Abrir sala online"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 transition-colors hover:bg-blue-100"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  window.open(row.online_link, "_blank", "noopener,noreferrer");
+                }}
+              >
+                <Video className="h-3.5 w-3.5" />
+              </button>
             )}
           </div>
         </div>
@@ -980,22 +1022,51 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     },
     {
       header: "Local",
-      render: (row) => row.location && (
-        <div className="flex items-center gap-1 text-sm text-slate-600">
-          <MapPin className="h-3 w-3" />
-          {row.location}
-        </div>
-      ),
+      render: (row) => {
+        const hasLocation = Boolean(String(row.location || "").trim());
+        const hasOnlineRoom = Boolean(String(row.online_link || "").trim());
+        if (!hasLocation && !hasOnlineRoom) return "-";
+        return (
+          <div className="space-y-1 text-sm">
+            {hasLocation && (
+              <div className="flex items-center gap-1 text-slate-600">
+                <MapPin className="h-3 w-3" />
+                {row.location}
+              </div>
+            )}
+            {hasOnlineRoom && (
+              <div className="flex items-center gap-1 text-blue-600">
+                <Video className="h-3 w-3" />
+                Online
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       header: "Participantes",
-      render: (row) => (
-        <div className="flex items-center gap-1">
-          <Users className="h-4 w-4 text-slate-400" />
-          {row.participants_count || 0}
-          {row.max_participants && <span className="text-slate-400">/{row.max_participants}</span>}
-        </div>
-      ),
+      render: (row) => {
+        const effectiveStatus = getTrainingStatus(row);
+        const isConcluded = effectiveStatus === "concluido";
+        const count = isConcluded
+          ? row.approved_count ?? row.participants_count ?? 0
+          : row.enrolled_count ?? row.participants_count ?? 0;
+        return (
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1">
+              <Users className="h-4 w-4 text-slate-400" />
+              {count}
+              {!isConcluded && row.max_participants && (
+                <span className="text-slate-400">/{row.max_participants}</span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500">
+              {isConcluded ? "aprovados" : "inscritos"}
+            </p>
+          </div>
+        );
+      },
     },
     {
       header: "Status",
@@ -1025,6 +1096,15 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/TrainingWorkspace?training=${encodeURIComponent(row.id)}`);
+                }}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Abrir Painel
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();

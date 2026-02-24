@@ -58,6 +58,7 @@ import Schedule from './pages/Schedule';
 import Settings from './pages/Settings';
 import Stock from './pages/Stock';
 import Trainings from './pages/Trainings';
+import TrainingWorkspace from './pages/TrainingWorkspace';
 import AuditLogs from './pages/AuditLogs';
 import Enrolled from './pages/Enrolled';
 import EnrollmentFieldsManager from './pages/EnrollmentFieldsManager';
@@ -80,6 +81,7 @@ export const PAGES = {
     "Settings": Settings,
     "Stock": Stock,
     "Trainings": Trainings,
+    "TrainingWorkspace": TrainingWorkspace,
     "AuditLogs": AuditLogs,
     "Enrolled": Enrolled,
     "EnrollmentFieldsManager": EnrollmentFieldsManager,
