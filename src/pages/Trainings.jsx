@@ -775,6 +775,32 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
 
   const getTrainingStatus = (training) => getEffectiveTrainingStatus(training);
 
+  const toNumeric = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+
+  const toGradePercent = (participant) => {
+    const numeric = toNumeric(participant?.grade);
+    if (numeric === null) return null;
+    if (numeric >= 0 && numeric <= 1) return numeric * 100;
+    return numeric;
+  };
+
+  const isCancelledEnrollment = (participant) =>
+    String(participant?.enrollment_status || "").trim().toLowerCase() === "cancelado";
+
+  const isApprovedParticipant = (participant, training) => {
+    if (!participant || isCancelledEnrollment(participant)) return false;
+    if (participant?.certificate_issued) return true;
+    if (participant?.approved === true) return true;
+    const gradePercent = toGradePercent(participant);
+    if (isRepadronizacaoTraining(training)) {
+      return gradePercent !== null && gradePercent >= 70;
+    }
+    return false;
+  };
+
   const getTrainingYear = (training) => {
     if (!training) return null;
     const firstDateItem = getTrainingDateItems(training)[0] || null;
@@ -809,10 +835,19 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       return matchesSearch && matchesStatus && matchesType && matchesYear;
     })
     .map((training) => {
-      const liveCount = getTrainingParticipants(training).length;
+      const rows = getTrainingParticipants(training);
+      const enrolledCount = rows.filter((participant) => !isCancelledEnrollment(participant)).length;
+      const approvedCount = rows.filter((participant) =>
+        isApprovedParticipant(participant, training)
+      ).length;
+      const effectiveStatus = getTrainingStatus(training);
+      const displayCount =
+        effectiveStatus === "concluido" ? approvedCount : enrolledCount;
       return {
         ...training,
-        participants_count: liveCount,
+        participants_count: displayCount,
+        enrolled_count: enrolledCount,
+        approved_count: approvedCount,
       };
     });
 
@@ -963,13 +998,27 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     },
     {
       header: "Participantes",
-      render: (row) => (
-        <div className="flex items-center gap-1">
-          <Users className="h-4 w-4 text-slate-400" />
-          {row.participants_count || 0}
-          {row.max_participants && <span className="text-slate-400">/{row.max_participants}</span>}
-        </div>
-      ),
+      render: (row) => {
+        const effectiveStatus = getTrainingStatus(row);
+        const isConcluded = effectiveStatus === "concluido";
+        const count = isConcluded
+          ? row.approved_count ?? row.participants_count ?? 0
+          : row.enrolled_count ?? row.participants_count ?? 0;
+        return (
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1">
+              <Users className="h-4 w-4 text-slate-400" />
+              {count}
+              {!isConcluded && row.max_participants && (
+                <span className="text-slate-400">/{row.max_participants}</span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500">
+              {isConcluded ? "aprovados" : "inscritos"}
+            </p>
+          </div>
+        );
+      },
     },
     {
       header: "Status",
