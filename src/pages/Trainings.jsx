@@ -528,6 +528,7 @@ export default function Trainings() {
 
   const statusOptions = [
     { value: "agendado", label: "Agendado" },
+    { value: "confirmado", label: "Confirmado" },
     { value: "em_andamento", label: "Em andamento" },
     { value: "concluido", label: "Concluído" },
     { value: "cancelado", label: "Cancelado" },
@@ -663,6 +664,7 @@ export default function Trainings() {
     const normalized = normalizeHeader(value);
     if (!normalized) return null;
     if (normalized.includes("agendado")) return "agendado";
+    if (normalized.includes("confirmad")) return "confirmado";
     if (normalized.includes("andamento")) return "em_andamento";
     if (normalized.includes("concluido")) return "concluido";
     if (normalized.includes("cancelado")) return "cancelado";
@@ -1017,6 +1019,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
 
   const statusColors = {
     agendado: "bg-blue-100 text-blue-700",
+    confirmado: "bg-emerald-100 text-emerald-700",
     em_andamento: "bg-amber-100 text-amber-700",
     concluido: "bg-green-100 text-green-700",
     cancelado: "bg-red-100 text-red-700",
@@ -1024,6 +1027,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
 
   const statusLabels = {
     agendado: "Agendado",
+    confirmado: "Confirmado",
     em_andamento: "Em andamento",
     concluido: "Concluído",
     cancelado: "Cancelado",

@@ -102,7 +102,9 @@ export const getEffectiveTrainingStatus = (training, now = new Date()) => {
   const bounds = getTrainingDateBounds(training);
   if (!bounds) return normalizedStatus || "agendado";
 
-  if (now < bounds.start) return "agendado";
+  if (now < bounds.start) {
+    return normalizedStatus === "confirmado" ? "confirmado" : "agendado";
+  }
   if (now > bounds.end) return "concluido";
   return "em_andamento";
 };

@@ -168,12 +168,14 @@ export default function TrainingWorkspace() {
   const statusValue = training ? getEffectiveTrainingStatus(training) : "";
   const statusLabels = {
     agendado: "Agendado",
+    confirmado: "Confirmado",
     em_andamento: "Em andamento",
     concluido: "Concluído",
     cancelado: "Cancelado",
   };
   const statusColors = {
     agendado: "bg-blue-100 text-blue-700",
+    confirmado: "bg-emerald-100 text-emerald-700",
     em_andamento: "bg-amber-100 text-amber-700",
     concluido: "bg-green-100 text-green-700",
     cancelado: "bg-red-100 text-red-700",
