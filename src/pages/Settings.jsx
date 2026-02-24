@@ -734,6 +734,31 @@ export default function Settings() {
     window.addEventListener("pointerup", handleUp);
   };
 
+  const getCertificateSyncErrorText = (error) =>
+    String(
+      error?.message ||
+        error?.error_description ||
+        error?.details ||
+        error?.hint ||
+        ""
+    ).trim();
+
+  const isCertificateSyncPermissionError = (error) => {
+    const message = getCertificateSyncErrorText(error).toLowerCase();
+    const code = String(error?.code || "").toLowerCase();
+    return (
+      message.includes("row-level security") ||
+      message.includes("violates row-level security policy") ||
+      message.includes("permission denied") ||
+      message.includes("not authorized") ||
+      message.includes("unauthorized") ||
+      code === "42501"
+    );
+  };
+
+  const buildCertificateSyncWarningMessage = (baseMessage) =>
+    `${baseMessage} A sincronização na nuvem foi bloqueada por permissão (RLS).`;
+
   const handleSaveCertificate = async () => {
     const payload = {
       ...certificateTemplate,
@@ -752,11 +777,20 @@ export default function Settings() {
           message: `Modelo de certificado salvo para "${scopeLabel}".`,
         });
       } catch (error) {
-        setCertificateTemplate(loadCertificateTemplate());
+        const syncErrorText = getCertificateSyncErrorText(error);
+        if (isCertificateSyncPermissionError(error)) {
+          setCertificateStatus({
+            type: "warning",
+            message: buildCertificateSyncWarningMessage(
+              `Modelo de certificado salvo para "${scopeLabel}" neste navegador.`
+            ),
+          });
+          return;
+        }
         setCertificateStatus({
           type: "error",
           message:
-            error?.message ||
+            syncErrorText ||
             `Modelo salvo localmente para "${scopeLabel}", mas falhou ao sincronizar no Supabase.`,
         });
       }
@@ -771,10 +805,20 @@ export default function Settings() {
         message: "Modelo padrão de certificado salvo com sucesso.",
       });
     } catch (error) {
+      const syncErrorText = getCertificateSyncErrorText(error);
+      if (isCertificateSyncPermissionError(error)) {
+        setCertificateStatus({
+          type: "warning",
+          message: buildCertificateSyncWarningMessage(
+            "Modelo padrão salvo neste navegador."
+          ),
+        });
+        return;
+      }
       setCertificateStatus({
         type: "error",
         message:
-          error?.message ||
+          syncErrorText ||
           "Modelo padrão salvo localmente, mas falhou ao sincronizar no Supabase.",
       });
     }
@@ -794,10 +838,20 @@ export default function Settings() {
           message: `Modelo específico removido para "${scopeLabel}". Agora será usado o modelo padrão.`,
         });
       } catch (error) {
+        const syncErrorText = getCertificateSyncErrorText(error);
+        if (isCertificateSyncPermissionError(error)) {
+          setCertificateStatus({
+            type: "warning",
+            message: buildCertificateSyncWarningMessage(
+              `Modelo local removido para "${scopeLabel}".`
+            ),
+          });
+          return;
+        }
         setCertificateStatus({
           type: "error",
           message:
-            error?.message ||
+            syncErrorText ||
             `Modelo local removido para "${scopeLabel}", mas falhou ao sincronizar no Supabase.`,
         });
       }
@@ -816,10 +870,20 @@ export default function Settings() {
         message: "Modelo padrão restaurado.",
       });
     } catch (error) {
+      const syncErrorText = getCertificateSyncErrorText(error);
+      if (isCertificateSyncPermissionError(error)) {
+        setCertificateStatus({
+          type: "warning",
+          message: buildCertificateSyncWarningMessage(
+            "Modelo padrão restaurado neste navegador."
+          ),
+        });
+        return;
+      }
       setCertificateStatus({
         type: "error",
         message:
-          error?.message ||
+          syncErrorText ||
           "Modelo padrão restaurado localmente, mas falhou ao sincronizar no Supabase.",
       });
     }
@@ -2102,6 +2166,8 @@ export default function Settings() {
                   className={
                     certificateStatus.type === "error"
                       ? "border-red-200 bg-red-50"
+                      : certificateStatus.type === "warning"
+                      ? "border-amber-200 bg-amber-50"
                       : "border-green-200 bg-green-50"
                   }
                 >
@@ -2109,6 +2175,8 @@ export default function Settings() {
                     className={
                       certificateStatus.type === "error"
                         ? "text-red-800"
+                        : certificateStatus.type === "warning"
+                        ? "text-amber-800"
                         : "text-green-800"
                     }
                   >
