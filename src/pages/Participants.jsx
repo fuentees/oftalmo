@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
@@ -40,10 +40,8 @@ export default function Participants() {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
-  const [cleanupStatus, setCleanupStatus] = useState(null);
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
-  const cleanedInvalidParticipantIdsRef = useRef(new Set());
 
   const queryClient = useQueryClient();
 
@@ -274,84 +272,28 @@ export default function Participants() {
     return false;
   };
 
-  const { validParticipants, invalidParticipants } = useMemo(() => {
+  const validParticipants = useMemo(() => {
     const valid = [];
-    const invalid = [];
     participants.forEach((participant) => {
       const trainingId = String(participant?.training_id || "").trim();
       if (trainingId) {
         if (trainingMaps.byId.has(trainingId)) {
           valid.push(participant);
-        } else {
-          invalid.push(participant);
         }
         return;
       }
 
       if (resolveTrainingFromParticipant(participant)) {
         valid.push(participant);
-      } else {
-        invalid.push(participant);
       }
     });
-    return { validParticipants: valid, invalidParticipants: invalid };
+    return valid;
   }, [participants, trainingMaps]);
 
   const approvedParticipants = useMemo(
     () => validParticipants.filter((participant) => isApprovedParticipation(participant)),
     [validParticipants]
   );
-
-  const invalidParticipantIds = useMemo(
-    () =>
-      invalidParticipants
-        .map((participant) => String(participant?.id || "").trim())
-        .filter(Boolean),
-    [invalidParticipants]
-  );
-
-  useEffect(() => {
-    if (isLoading || loadingTrainings) return;
-    if (!invalidParticipantIds.length) return;
-
-    const pendingIds = invalidParticipantIds.filter(
-      (id) => !cleanedInvalidParticipantIdsRef.current.has(id)
-    );
-    if (!pendingIds.length) return;
-
-    pendingIds.forEach((id) => cleanedInvalidParticipantIdsRef.current.add(id));
-    let isCancelled = false;
-
-    (async () => {
-      const results = await Promise.allSettled(
-        pendingIds.map((id) => dataClient.entities.TrainingParticipant.delete(id))
-      );
-      if (isCancelled) return;
-
-      const deletedCount = results.filter(
-        (result) => result.status === "fulfilled"
-      ).length;
-      const failedCount = results.length - deletedCount;
-
-      if (deletedCount > 0) {
-        await queryClient.invalidateQueries({ queryKey: ["participants"] });
-      }
-
-      if (deletedCount > 0 || failedCount > 0) {
-        setCleanupStatus({
-          type: failedCount > 0 ? "error" : "success",
-          message:
-            failedCount > 0
-              ? `Limpeza removeu ${deletedCount} registro(s) órfão(s), mas ${failedCount} não puderam ser excluídos.`
-              : `Limpeza removeu ${deletedCount} registro(s) órfão(s) da listagem de participantes.`,
-        });
-      }
-    })();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [invalidParticipantIds, isLoading, loadingTrainings, queryClient]);
 
   const normalizeDateValue = (value) => {
     if (value === undefined || value === null) return null;
@@ -809,31 +751,6 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
           </Button>
         </div>
       </div>
-
-      {cleanupStatus && (
-        <Alert
-          className={
-            cleanupStatus.type === "error"
-              ? "border-amber-200 bg-amber-50"
-              : "border-blue-200 bg-blue-50"
-          }
-        >
-          {cleanupStatus.type === "error" ? (
-            <AlertCircle className="h-4 w-4 text-amber-700" />
-          ) : (
-            <CheckCircle className="h-4 w-4 text-blue-700" />
-          )}
-          <AlertDescription
-            className={
-              cleanupStatus.type === "error"
-                ? "text-amber-800"
-                : "text-blue-800"
-            }
-          >
-            {cleanupStatus.message}
-          </AlertDescription>
-        </Alert>
-      )}
 
       <DataTable
         columns={columns}
