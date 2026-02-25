@@ -492,13 +492,6 @@ export default function TrainingWorkspace() {
         </div>
       </div>
 
-      <Alert className="border-blue-200 bg-blue-50">
-        <AlertDescription className="text-blue-800">
-          Máscaras de criação ficam separadas em uma página dedicada. Aqui no painel
-          ficam os resultados e operações do treinamento.
-        </AlertDescription>
-      </Alert>
-
       {actionStatus && (
         <Alert
           className={

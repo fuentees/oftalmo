@@ -320,8 +320,6 @@ export default function TracomaExaminerEvaluationPage({
   const [newMaskDialogOpen, setNewMaskDialogOpen] = useState(false);
   const [newMaskCode, setNewMaskCode] = useState("");
   const [newMaskAnswers, setNewMaskAnswers] = useState({});
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [importSourceTrainingId, setImportSourceTrainingId] = useState("all");
   const [importSpreadsheetDialogOpen, setImportSpreadsheetDialogOpen] =
     useState(false);
   const [importSpreadsheetFile, setImportSpreadsheetFile] = useState(null);
@@ -378,12 +376,6 @@ export default function TracomaExaminerEvaluationPage({
     enabled: Boolean(trainingId),
   });
   const enrolledParticipants = enrolledParticipantsQuery.data || [];
-
-  const allTrainingsQuery = useQuery({
-    queryKey: ["tracoma-exam-training-list"],
-    queryFn: () => dataClient.entities.Training.list("-date"),
-  });
-  const allTrainings = allTrainingsQuery.data || [];
 
   const answerKeyQuery = useQuery({
     queryKey: ["tracoma-exam-answer-key-management"],
@@ -531,30 +523,6 @@ export default function TracomaExaminerEvaluationPage({
       String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base" })
     );
   }, [answerKeyCollections, availableKeyCodes]);
-
-  const importSourceTrainings = useMemo(() => {
-    const currentId = String(trainingId || "").trim();
-    return allTrainings
-      .filter((item) => {
-        const id = String(item?.id || "").trim();
-        if (!id || id === currentId) return false;
-        return isRepadronizacaoTraining(item);
-      })
-      .map((item) => ({
-        id: String(item.id),
-        title: String(item.title || "Treinamento sem título"),
-      }));
-  }, [allTrainings, trainingId]);
-
-  useEffect(() => {
-    if (importSourceTrainingId === "all") return;
-    const exists = importSourceTrainings.some(
-      (item) => item.id === importSourceTrainingId
-    );
-    if (!exists) {
-      setImportSourceTrainingId("all");
-    }
-  }, [importSourceTrainingId, importSourceTrainings]);
 
   useEffect(() => {
     const fallbackOptions = [
@@ -834,147 +802,6 @@ export default function TracomaExaminerEvaluationPage({
       JSON.stringify(answersArray),
     ].join("|");
   };
-
-  const importPastResults = useMutation({
-    mutationFn: async () => {
-      const sourceId = String(importSourceTrainingId || "all").trim() || "all";
-      const currentId = String(trainingId || "").trim();
-      if (!currentId) {
-        throw new Error("Treinamento atual invalido para importacao.");
-      }
-      if (enrolledParticipantsQuery.isLoading) {
-        throw new Error("Carregando inscritos do treinamento atual. Tente novamente.");
-      }
-      if (enrolledParticipantsQuery.isError) {
-        throw new Error(
-          "Nao foi possivel carregar os inscritos para vincular as respostas."
-        );
-      }
-      if (!enrolledParticipants.length) {
-        throw new Error(
-          "Nao ha inscritos neste treinamento para vincular as respostas importadas."
-        );
-      }
-
-      let query = supabase.from("tracoma_exam_results").select("*");
-      if (sourceId === "all") {
-        query = query.neq("training_id", currentId);
-      } else {
-        query = query.eq("training_id", sourceId);
-      }
-      const { data: sourceRows, error: sourceError } = await query;
-      if (sourceError) throw sourceError;
-
-      const validSourceRows = (sourceRows || []).filter(
-        (row) => String(row?.training_id || "").trim() !== currentId
-      );
-      if (validSourceRows.length === 0) {
-        throw new Error("Nenhuma resposta encontrada para importar.");
-      }
-
-      const existingRows = await dataClient.entities.TracomaExamResult.filter({
-        training_id: currentId,
-      });
-      const existingFingerprints = new Set(
-        (existingRows || []).map((row) => buildResultFingerprint(row))
-      );
-
-      let invalidCount = 0;
-      let duplicateCount = 0;
-      const payload = [];
-
-      validSourceRows.forEach((row) => {
-        const answersArray = parseStoredAnswers(row?.answers);
-        if (!answersArray) {
-          invalidCount += 1;
-          return;
-        }
-        const linkedParticipant = resolveTrainingParticipantMatch(enrolledParticipants, {
-          name: row?.participant_name,
-          email: row?.participant_email,
-          rg: row?.participant_cpf,
-        });
-        if (!linkedParticipant) {
-          invalidCount += 1;
-          return;
-        }
-        const linkedIdentity = buildParticipantIdentity(linkedParticipant, {
-          name: row?.participant_name,
-          email: row?.participant_email,
-          rg: row?.participant_cpf,
-        });
-        const cloned = {
-          training_id: currentId,
-          training_title: training?.title || row?.training_title || null,
-          participant_name: linkedIdentity.name,
-          participant_email: linkedIdentity.email,
-          participant_cpf: linkedIdentity.rg,
-          total_questions: Number(row?.total_questions || TRACOMA_TOTAL_QUESTIONS),
-          total_matches: Number(row?.total_matches || 0),
-          matrix_a: Number(row?.matrix_a || 0),
-          matrix_b: Number(row?.matrix_b || 0),
-          matrix_c: Number(row?.matrix_c || 0),
-          matrix_d: Number(row?.matrix_d || 0),
-          observed_agreement: row?.observed_agreement ?? null,
-          expected_agreement: row?.expected_agreement ?? null,
-          kappa: row?.kappa ?? null,
-          kappa_ci_low: row?.kappa_ci_low ?? null,
-          kappa_ci_high: row?.kappa_ci_high ?? null,
-          sensitivity: row?.sensitivity ?? null,
-          specificity: row?.specificity ?? null,
-          interpretation: row?.interpretation || null,
-          aptitude_status: row?.aptitude_status || null,
-          answer_key_code: normalizeAnswerKeyCode(row?.answer_key_code || "E2"),
-          answers: answersArray,
-        };
-
-        const fingerprint = buildResultFingerprint(cloned);
-        if (existingFingerprints.has(fingerprint)) {
-          duplicateCount += 1;
-          return;
-        }
-        existingFingerprints.add(fingerprint);
-        payload.push(cloned);
-      });
-
-      if (payload.length === 0) {
-        throw new Error(
-          "Nenhuma resposta nova para importar (todas ja existem ou estao invalidas)."
-        );
-      }
-
-      await dataClient.entities.TracomaExamResult.bulkCreate(payload);
-      return {
-        importedCount: payload.length,
-        duplicateCount,
-        invalidCount,
-      };
-    },
-    onSuccess: async ({ importedCount, duplicateCount, invalidCount }) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["tracoma-exam-results", trainingId],
-      });
-      setImportDialogOpen(false);
-      setImportSourceTrainingId("all");
-      const details = [
-        `${importedCount} resposta(s) importada(s)`,
-        duplicateCount > 0 ? `${duplicateCount} duplicada(s) ignorada(s)` : null,
-        invalidCount > 0 ? `${invalidCount} invalida(s) ignorada(s)` : null,
-      ]
-        .filter(Boolean)
-        .join(" | ");
-      setResultActionStatus({
-        type: "success",
-        message: `Importacao concluida: ${details}.`,
-      });
-    },
-    onError: (error) => {
-      setResultActionStatus({
-        type: "error",
-        message: error?.message || "Nao foi possivel importar respostas passadas.",
-      });
-    },
-  });
 
   const importSpreadsheetResults = useMutation({
     mutationFn: async () => {
@@ -2413,22 +2240,6 @@ export default function TracomaExaminerEvaluationPage({
                 </Button>
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={() => setImportDialogOpen(true)}
-                  disabled={
-                    importSourceTrainings.length === 0 ||
-                    importPastResults.isPending ||
-                    enrolledParticipantsQuery.isLoading ||
-                    enrolledParticipantsQuery.isError ||
-                    enrolledParticipants.length === 0
-                  }
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Importar respostas de treinamentos passados
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
                   onClick={handleOpenImportSpreadsheetDialog}
                   disabled={
                     answerKeyCollections.length === 0 ||
@@ -2436,17 +2247,10 @@ export default function TracomaExaminerEvaluationPage({
                     enrolledParticipantsQuery.isError ||
                     enrolledParticipants.length === 0
                   }
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700"
                 >
                   <Upload className="h-4 w-4 mr-2" />
-                  Importar formulario preenchido (Excel)
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleDownloadSpreadsheetTemplate}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Baixar planilha modelo
+                  Importar planilha (com modelo)
                 </Button>
               </div>
 
@@ -2757,62 +2561,6 @@ export default function TracomaExaminerEvaluationPage({
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 )}
                 Salvar novo modelo
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Importar respostas de treinamentos passados</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Origem das respostas</Label>
-              <Select
-                value={importSourceTrainingId}
-                onValueChange={setImportSourceTrainingId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a origem" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os treinamentos passados</SelectItem>
-                  {importSourceTrainings.map((item) => (
-                    <SelectItem key={`import-training-${item.id}`} value={item.id}>
-                      {item.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Alert>
-              <AlertDescription>
-                As respostas importadas serao copiadas para este treinamento.
-                Itens duplicados ou invalidos sao ignorados automaticamente.
-              </AlertDescription>
-            </Alert>
-
-            <div className="flex justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setImportDialogOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                onClick={() => importPastResults.mutate()}
-                disabled={importPastResults.isPending}
-              >
-                {importPastResults.isPending && (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                )}
-                Importar respostas
               </Button>
             </div>
           </div>
