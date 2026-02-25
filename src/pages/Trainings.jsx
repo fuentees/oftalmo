@@ -200,50 +200,59 @@ export default function Trainings() {
 
   const participantsByTrainingMap = React.useMemo(() => {
     const map = new Map();
-    const trainingsById = new Map();
-    const trainingsByTitle = new Map();
-
-    (trainings || []).forEach((training) => {
-      const trainingId = String(training?.id || "").trim();
-      if (trainingId) {
-        trainingsById.set(trainingId, training);
+    const trainingMeta = (trainings || [])
+      .map((training) => {
+        const trainingId = String(training?.id || "").trim();
+        if (!trainingId) return null;
+        const titleKey = normalizeComparisonText(training?.title);
+        const dateKeys = new Set(getTrainingDateKeys(training));
         map.set(trainingId, []);
-      }
-      const titleKey = normalizeComparisonText(training?.title);
-      if (!titleKey) return;
-      if (!trainingsByTitle.has(titleKey)) {
-        trainingsByTitle.set(titleKey, []);
-      }
-      trainingsByTitle.get(titleKey).push(training);
-    });
+        return { trainingId, titleKey, dateKeys };
+      })
+      .filter(Boolean);
 
-    const resolveParticipantTraining = (participant) => {
-      const participantTrainingId = String(participant?.training_id || "").trim();
-      if (participantTrainingId && trainingsById.has(participantTrainingId)) {
-        return trainingsById.get(participantTrainingId);
-      }
+    const seenByTraining = new Map(
+      trainingMeta.map((meta) => [meta.trainingId, new Set()])
+    );
 
-      const titleKey = normalizeComparisonText(participant?.training_title);
-      if (!titleKey) return null;
-      const candidates = trainingsByTitle.get(titleKey) || [];
-      if (!candidates.length) return null;
-      if (candidates.length === 1) return candidates[0];
-
-      const participantDate = normalizeDateKey(participant?.training_date);
-      if (!participantDate) return candidates[0];
-      return (
-        candidates.find((training) =>
-          getTrainingDateKeys(training).includes(participantDate)
-        ) || candidates[0]
+    const getParticipantKey = (participant) => {
+      const participantId = String(participant?.id || "").trim();
+      if (participantId) return `id:${participantId}`;
+      const name = normalizeComparisonText(participant?.professional_name);
+      const email = normalizeComparisonText(participant?.professional_email);
+      const rg = normalizeComparisonText(
+        participant?.professional_rg || participant?.professional_cpf
       );
+      const date = normalizeDateKey(participant?.enrollment_date);
+      return `legacy:${name}|${email}|${rg}|${date}`;
     };
 
     (participants || []).forEach((participant) => {
-      const matchedTraining = resolveParticipantTraining(participant);
-      const trainingId = String(matchedTraining?.id || "").trim();
-      if (!trainingId) return;
-      if (!map.has(trainingId)) map.set(trainingId, []);
-      map.get(trainingId).push(participant);
+      const participantTrainingId = String(participant?.training_id || "").trim();
+      const participantTitleKey = normalizeComparisonText(participant?.training_title);
+      const participantDateKey = normalizeDateKey(participant?.training_date);
+      const participantKey = getParticipantKey(participant);
+
+      trainingMeta.forEach((meta) => {
+        const linkedById = Boolean(
+          participantTrainingId && participantTrainingId === meta.trainingId
+        );
+
+        let linkedByLegacyTitleDate = false;
+        if (!participantTrainingId && participantTitleKey && participantTitleKey === meta.titleKey) {
+          linkedByLegacyTitleDate =
+            meta.dateKeys.size === 0 ||
+            !participantDateKey ||
+            meta.dateKeys.has(participantDateKey);
+        }
+
+        if (!linkedById && !linkedByLegacyTitleDate) return;
+
+        const seenSet = seenByTraining.get(meta.trainingId);
+        if (seenSet?.has(participantKey)) return;
+        seenSet?.add(participantKey);
+        map.get(meta.trainingId)?.push(participant);
+      });
     });
 
     return map;
