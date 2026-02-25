@@ -130,6 +130,31 @@ const toFontStyle = (token) => {
   return "normal";
 };
 
+const normalizeAlignValue = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (["left", "right", "center", "justify"].includes(normalized)) {
+    return normalized;
+  }
+  return null;
+};
+
+const resolveNodeAlignment = (node, inherited = "left") => {
+  if (!node || typeof node !== "object") return inherited || "left";
+  const attrAlign = normalizeAlignValue(node.getAttribute?.("align"));
+  if (attrAlign) return attrAlign;
+
+  const styleAlign = normalizeAlignValue(node.style?.textAlign);
+  if (styleAlign) return styleAlign;
+
+  const classList = Array.from(node.classList || []);
+  if (classList.includes("ql-align-right")) return "right";
+  if (classList.includes("ql-align-center")) return "center";
+  if (classList.includes("ql-align-justify")) return "justify";
+
+  return inherited || "left";
+};
+
 const tokenizeLegacyFormattedText = (value) => {
   const tokens = [];
   let bold = false;
@@ -142,6 +167,7 @@ const tokenizeLegacyFormattedText = (value) => {
       bold,
       italic: false,
       underline: false,
+      align: "left",
     });
     buffer = "";
   };
@@ -189,6 +215,7 @@ const parseHtmlFormattedText = (value) => {
       bold: Boolean(style?.bold),
       italic: Boolean(style?.italic),
       underline: Boolean(style?.underline),
+      align: normalizeAlignValue(style?.align) || "left",
     });
   };
 
@@ -209,11 +236,16 @@ const parseHtmlFormattedText = (value) => {
       return;
     }
 
+    const resolvedAlign = resolveNodeAlignment(
+      node,
+      normalizeAlignValue(style?.align) || "left"
+    );
     const nextStyle = {
       ...style,
       bold: style.bold || tag === "strong" || tag === "b",
       italic: style.italic || tag === "em" || tag === "i",
       underline: style.underline || tag === "u",
+      align: resolvedAlign,
     };
 
     if (tag === "ol" || tag === "ul") {
@@ -231,6 +263,7 @@ const parseHtmlFormattedText = (value) => {
         walkNode(child, nextStyle, {
           type: tag,
           index: index + 1,
+          align: resolvedAlign,
         });
       });
       ensureTrailingNewline();
@@ -239,7 +272,7 @@ const parseHtmlFormattedText = (value) => {
 
     if (tag === "li") {
       const marker = listContext?.type === "ol" ? `${listContext.index}. ` : "• ";
-      pushTextToken(marker, {});
+      pushTextToken(marker, { align: listContext?.align || nextStyle.align });
       Array.from(node.childNodes || []).forEach((child) =>
         walkNode(child, nextStyle, null)
       );
@@ -306,36 +339,53 @@ const splitTokensByExplicitLines = (tokens) => {
   return lines;
 };
 
-const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth, firstLineIndent = 0) => {
+const buildLines = (
+  tokens,
+  maxWidth,
+  measureWord,
+  baseSpaceWidth,
+  firstLineIndent = 0,
+  defaultAlign = "left"
+) => {
   const lines = [];
   const explicitLines = splitTokensByExplicitLines(tokens);
-  let paragraphStartsNextLine = true;
 
   explicitLines.forEach((explicitLineTokens) => {
     if (!explicitLineTokens.length) {
-      lines.push({ words: [], indent: 0 });
-      paragraphStartsNextLine = true;
+      lines.push({
+        words: [],
+        indent: 0,
+        align: normalizeAlignValue(defaultAlign) || "left",
+        isParagraphLast: true,
+      });
       return;
     }
 
+    const paragraphAlign =
+      normalizeAlignValue(
+        explicitLineTokens.find((token) => token?.type === "text" && token?.align)?.align
+      ) ||
+      normalizeAlignValue(defaultAlign) ||
+      "left";
     let currentWords = [];
     let lineWidth = 0;
     let pendingSpace = false;
-    let currentIndent = paragraphStartsNextLine ? firstLineIndent : 0;
+    let currentIndent = firstLineIndent;
     let maxWidthForLine = maxWidth - currentIndent;
 
-    const pushCurrentLine = () => {
+    const pushCurrentLine = (isParagraphLast = false) => {
       if (!currentWords.length) return;
       lines.push({
         words: currentWords,
         indent: currentIndent,
+        align: paragraphAlign,
+        isParagraphLast,
       });
       currentWords = [];
       lineWidth = 0;
       pendingSpace = false;
       currentIndent = 0;
       maxWidthForLine = maxWidth;
-      paragraphStartsNextLine = false;
     };
 
     explicitLineTokens.forEach((token) => {
@@ -352,7 +402,7 @@ const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth, firstLineInde
           currentWords.length > 0 &&
           lineWidth + spaceWidth + wordWidth > maxWidthForLine
         ) {
-          pushCurrentLine();
+          pushCurrentLine(false);
         }
         if (pendingSpace && currentWords.length > 0) {
           lineWidth += baseSpaceWidth;
@@ -369,11 +419,9 @@ const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth, firstLineInde
     });
 
     if (currentWords.length > 0) {
-      lines.push({
-        words: currentWords,
-        indent: currentIndent,
-      });
-      paragraphStartsNextLine = false;
+      pushCurrentLine(true);
+    } else if (lines.length > 0) {
+      lines[lines.length - 1].isParagraphLast = true;
     }
   });
 
@@ -394,47 +442,77 @@ const drawFormattedText = (
     fontFamily,
     fontSize,
     justify = true,
+    align = "left",
     maxWordSpacing = 3,
     indent = 0,
+    paragraphSpacing = 0,
   } = options || {};
   pdf.setFontSize(fontSize);
   pdf.setFont(fontFamily, "normal");
   const baseSpaceWidth = pdf.getTextWidth(" ");
   const maxSpaceWidth = baseSpaceWidth * maxWordSpacing;
+  const normalizedAlign = normalizeAlignValue(align) || (justify ? "justify" : "left");
   const tokens = parseFormattedText(text);
   const measureWord = (word, tokenStyle) => {
     pdf.setFont(fontFamily, toFontStyle(tokenStyle));
     return pdf.getTextWidth(word);
   };
-  const lines = buildLines(tokens, maxWidth, measureWord, baseSpaceWidth, indent);
-  lines.forEach((line, index) => {
+  const lines = buildLines(
+    tokens,
+    maxWidth,
+    measureWord,
+    baseSpaceWidth,
+    indent,
+    normalizedAlign
+  );
+  let cursorY = y;
+  lines.forEach((line) => {
     const words = line.words;
-    if (words.length === 0) return;
-    const isLast = index === lines.length - 1;
+    if (words.length === 0) {
+      cursorY += lineHeight;
+      if (line.isParagraphLast && paragraphSpacing > 0) {
+        cursorY += paragraphSpacing;
+      }
+      return;
+    }
     const wordWidths = words.map((word) => measureWord(word.text, word));
     const wordsWidth = wordWidths.reduce((sum, width) => sum + width, 0);
     const gaps = words.length - 1;
     let spaceWidth = baseSpaceWidth;
     const lineIndent = Number(line.indent) || 0;
-    const availableWidth = maxWidth - lineIndent;
-    if (justify && !isLast && gaps > 0) {
+    const availableWidth = Math.max(0, maxWidth - lineIndent);
+    const lineAlign = normalizeAlignValue(line.align) || normalizedAlign;
+    const shouldJustify =
+      lineAlign === "justify" && !line.isParagraphLast && gaps > 0;
+    const simpleLineWidth = wordsWidth + Math.max(0, gaps) * baseSpaceWidth;
+    let cursorX = x + lineIndent;
+
+    if (shouldJustify) {
       const proposed = (availableWidth - wordsWidth) / gaps;
       if (Number.isFinite(proposed) && proposed >= baseSpaceWidth && proposed <= maxSpaceWidth) {
         spaceWidth = proposed;
       }
+    } else if (lineAlign === "center") {
+      cursorX += Math.max(0, (availableWidth - simpleLineWidth) / 2);
+    } else if (lineAlign === "right") {
+      cursorX += Math.max(0, availableWidth - simpleLineWidth);
     }
-    let cursorX = x + lineIndent;
+
     words.forEach((word, idx) => {
       pdf.setFont(fontFamily, toFontStyle(word));
-      const lineY = y + index * lineHeight;
-      pdf.text(word.text, cursorX, lineY);
+      pdf.text(word.text, cursorX, cursorY);
       if (word.underline) {
-        const underlineY = lineY + fontSize * 0.12;
+        const underlineY = cursorY + fontSize * 0.12;
         pdf.setLineWidth(0.25);
         pdf.line(cursorX, underlineY, cursorX + wordWidths[idx], underlineY);
       }
       cursorX += wordWidths[idx] + (idx < gaps ? spaceWidth : 0);
     });
+
+    cursorY += lineHeight;
+    if (line.isParagraphLast && paragraphSpacing > 0) {
+      cursorY += paragraphSpacing;
+    }
   });
 };
 
@@ -639,8 +717,12 @@ export const generateParticipantCertificate = (participant, training, templateOv
     : 20;
   const textOptions = template.textOptions || {};
   const justifyBody = textOptions.bodyJustify !== false;
+  const bodyAlign =
+    normalizeAlignValue(textOptions.bodyAlign) ||
+    (justifyBody ? "justify" : "left");
   const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
   const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const paragraphSpacing = Number(textOptions.bodyParagraphSpacing) || 0;
   const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
   pdf.setFontSize(sizes.body);
@@ -648,8 +730,10 @@ export const generateParticipantCertificate = (participant, training, templateOv
   drawFormattedText(pdf, bodyText, bodyLeft, bodyPosition.y, bodyWidth, lineHeight, {
     fontFamily,
     fontSize: sizes.body,
+    align: bodyAlign,
     justify: justifyBody,
     maxWordSpacing,
+    paragraphSpacing,
     indent: bodyIndent,
   });
 
@@ -816,8 +900,12 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
     : 20;
   const textOptions = template.textOptions || {};
   const justifyBody = textOptions.bodyJustify !== false;
+  const bodyAlign =
+    normalizeAlignValue(textOptions.bodyAlign) ||
+    (justifyBody ? "justify" : "left");
   const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
   const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const paragraphSpacing = Number(textOptions.bodyParagraphSpacing) || 0;
   const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
   pdf.setFontSize(sizes.body);
@@ -825,8 +913,10 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
   drawFormattedText(pdf, bodyText, bodyLeft, bodyPosition.y, bodyWidth, lineHeight, {
     fontFamily,
     fontSize: sizes.body,
+    align: bodyAlign,
     justify: justifyBody,
     maxWordSpacing,
+    paragraphSpacing,
     indent: bodyIndent,
   });
 
@@ -993,8 +1083,12 @@ export const generateSpeakerCertificate = (speaker, training, templateOverride) 
     : 20;
   const textOptions = template.textOptions || {};
   const justifyBody = textOptions.bodyJustify !== false;
+  const bodyAlign =
+    normalizeAlignValue(textOptions.bodyAlign) ||
+    (justifyBody ? "justify" : "left");
   const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
   const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const paragraphSpacing = Number(textOptions.bodyParagraphSpacing) || 0;
   const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
   pdf.setFontSize(sizes.body);
@@ -1002,8 +1096,10 @@ export const generateSpeakerCertificate = (speaker, training, templateOverride) 
   drawFormattedText(pdf, bodyText, bodyLeft, bodyPosition.y, bodyWidth, lineHeight, {
     fontFamily,
     fontSize: sizes.body,
+    align: bodyAlign,
     justify: justifyBody,
     maxWordSpacing,
+    paragraphSpacing,
     indent: bodyIndent,
   });
 

@@ -70,11 +70,7 @@ import "react-quill/dist/quill.snow.css";
 const CERTIFICATE_SCOPE_GLOBAL = "__global__";
 const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i;
 const CERTIFICATE_BODY_EDITOR_MODULES = {
-  toolbar: [
-    ["bold", "italic", "underline"],
-    [{ list: "ordered" }, { list: "bullet" }],
-    ["clean"],
-  ],
+  toolbar: "#certificate-body-toolbar",
   clipboard: {
     matchVisual: false,
   },
@@ -85,6 +81,9 @@ const CERTIFICATE_BODY_EDITOR_FORMATS = [
   "underline",
   "list",
   "bullet",
+  "indent",
+  "align",
+  "link",
 ];
 
 const escapeHtml = (value) =>
@@ -119,6 +118,22 @@ const normalizeBodyToEditorHtml = (value) => {
   if (!text.trim()) return "<p><br></p>";
   if (HTML_TAG_REGEX.test(text)) return text;
   return convertLegacyBodyToHtml(text);
+};
+
+const buildPreviewBodyHtml = (value, paragraphSpacingMm = 0) => {
+  const html = normalizeBodyToEditorHtml(value);
+  if (typeof DOMParser === "undefined") return html;
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const root = doc.body.firstElementChild || doc.body;
+  const paragraphs = Array.from(root.querySelectorAll("p"));
+  paragraphs.forEach((paragraph, index) => {
+    paragraph.style.margin = "0";
+    if (index > 0 && paragraphSpacingMm > 0) {
+      paragraph.style.marginTop = `${paragraphSpacingMm}mm`;
+    }
+  });
+  return root.innerHTML;
 };
 
 export default function Settings() {
@@ -1111,9 +1126,12 @@ export default function Settings() {
     certificateTemplate.title || "CERTIFICADO",
     previewData
   );
+  const bodyParagraphSpacingValue =
+    Number(certificateTemplate.textOptions?.bodyParagraphSpacing) || 0;
   const editorBodyValue = normalizeBodyToEditorHtml(certificateTemplate.body || "");
-  const previewBodyHtml = normalizeBodyToEditorHtml(
-    interpolateText(certificateTemplate.body || "", previewData)
+  const previewBodyHtml = buildPreviewBodyHtml(
+    interpolateText(certificateTemplate.body || "", previewData),
+    bodyParagraphSpacingValue
   );
   const previewFooter = certificateTemplate.footer
     ? interpolateText(certificateTemplate.footer, previewData)
@@ -1778,27 +1796,70 @@ export default function Settings() {
                         </p>
                       </div>
                       <div className="rounded-md border bg-slate-50">
-                        <div className="flex flex-wrap items-center gap-2 border-b bg-white p-2">
-                          <span className="text-xs text-slate-500">
-                            Use a barra abaixo para editar como no Word.
+                        <div
+                          id="certificate-body-toolbar"
+                          className="flex flex-wrap items-center gap-1 border-b bg-white p-2"
+                        >
+                          <span className="ql-formats">
+                            <button type="button" className="ql-bold" title="Negrito" />
+                            <button type="button" className="ql-italic" title="Itálico" />
+                            <button type="button" className="ql-underline" title="Sublinhado" />
                           </span>
-                          <div className="h-6 w-px bg-slate-200 hidden sm:block" />
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={isBodyJustified ? "default" : "outline"}
-                            onClick={() => handleTextOptionChange("bodyJustify", true)}
-                          >
-                            Justificar
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={!isBodyJustified ? "default" : "outline"}
-                            onClick={() => handleTextOptionChange("bodyJustify", false)}
-                          >
-                            Alinhar esquerda
-                          </Button>
+                          <span className="ql-formats">
+                            <button
+                              type="button"
+                              className="ql-list"
+                              value="ordered"
+                              title="Lista numerada"
+                            />
+                            <button
+                              type="button"
+                              className="ql-list"
+                              value="bullet"
+                              title="Lista com marcadores"
+                            />
+                            <button
+                              type="button"
+                              className="ql-indent"
+                              value="-1"
+                              title="Diminuir recuo"
+                            />
+                            <button
+                              type="button"
+                              className="ql-indent"
+                              value="+1"
+                              title="Aumentar recuo"
+                            />
+                          </span>
+                          <span className="ql-formats">
+                            <button
+                              type="button"
+                              className="ql-align"
+                              value=""
+                              title="Alinhar à esquerda"
+                            />
+                            <button
+                              type="button"
+                              className="ql-align"
+                              value="center"
+                              title="Centralizar"
+                            />
+                            <button
+                              type="button"
+                              className="ql-align"
+                              value="right"
+                              title="Alinhar à direita"
+                            />
+                            <button
+                              type="button"
+                              className="ql-align"
+                              value="justify"
+                              title="Justificar"
+                            />
+                          </span>
+                          <span className="ql-formats">
+                            <button type="button" className="ql-clean" title="Limpar formatação" />
+                          </span>
                         </div>
                         <ReactQuill
                           theme="snow"
@@ -1809,67 +1870,103 @@ export default function Settings() {
                           className="[&_.ql-toolbar]:border-x-0 [&_.ql-toolbar]:border-t-0 [&_.ql-container]:min-h-[220px] [&_.ql-container]:border-x-0 [&_.ql-container]:border-b-0 [&_.ql-editor]:min-h-[220px] [&_.ql-editor]:text-sm"
                           placeholder="Digite o texto do certificado..."
                         />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Tamanho do texto</Label>
-                          <Input
-                            type="number"
-                            min="8"
-                            max="32"
-                            value={bodyFontSizeValue}
-                            onChange={(e) =>
-                              handleFontNumberChange("bodySize", e.target.value)
-                            }
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Espaçamento entre linhas</Label>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            min="1"
-                            max="3"
-                            value={bodyLineHeightValue}
-                            onChange={(e) =>
-                              handleTextOptionChange(
-                                "bodyLineHeight",
-                                Number(e.target.value) || 1.2
-                              )
-                            }
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Máx. espaço entre palavras</Label>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            min="1"
-                            max="6"
-                            value={bodyMaxWordSpacingValue}
-                            onChange={(e) =>
-                              handleTextOptionChange(
-                                "bodyMaxWordSpacing",
-                                Number(e.target.value) || 3
-                              )
-                            }
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Recuo do parágrafo (mm)</Label>
-                          <Input
-                            type="number"
-                            step="1"
-                            min="0"
-                            max="30"
-                            value={bodyIndentValue}
-                            onChange={(e) =>
-                              handleTextOptionChange(
-                                "bodyIndent",
-                                Number(e.target.value) || 0
-                              )
-                            }
-                          />
+                        <div className="flex flex-wrap items-end gap-3 border-t bg-white/80 p-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs" title="Tamanho geral do texto no PDF">
+                              Tamanho do texto
+                            </Label>
+                            <Input
+                              type="number"
+                              min="8"
+                              max="32"
+                              title="Define o tamanho do texto do corpo no PDF"
+                              value={bodyFontSizeValue}
+                              onChange={(e) =>
+                                handleFontNumberChange("bodySize", e.target.value)
+                              }
+                              className="h-8 w-24"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs" title="Espaçamento entre linhas do texto">
+                              Espaço entre linhas
+                            </Label>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              min="1"
+                              max="3"
+                              title="Ajusta a distância entre linhas no certificado"
+                              value={bodyLineHeightValue}
+                              onChange={(e) =>
+                                handleTextOptionChange(
+                                  "bodyLineHeight",
+                                  Number(e.target.value) || 1.2
+                                )
+                              }
+                              className="h-8 w-24"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs" title="Espaço extra entre parágrafos (mm)">
+                              Espaço entre parágrafos
+                            </Label>
+                            <Input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              max="10"
+                              title="Controla o espaço vertical entre parágrafos no PDF"
+                              value={bodyParagraphSpacingValue}
+                              onChange={(e) =>
+                                handleTextOptionChange(
+                                  "bodyParagraphSpacing",
+                                  Math.max(0, Number(e.target.value) || 0)
+                                )
+                              }
+                              className="h-8 w-28"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs" title="Multiplicador máximo para justificar palavras">
+                              Espaço entre palavras
+                            </Label>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              min="1"
+                              max="6"
+                              title="Define o limite de expansão entre palavras ao justificar"
+                              value={bodyMaxWordSpacingValue}
+                              onChange={(e) =>
+                                handleTextOptionChange(
+                                  "bodyMaxWordSpacing",
+                                  Number(e.target.value) || 3
+                                )
+                              }
+                              className="h-8 w-24"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs" title="Recuo da primeira linha do parágrafo (mm)">
+                              Recuo do parágrafo
+                            </Label>
+                            <Input
+                              type="number"
+                              step="1"
+                              min="0"
+                              max="30"
+                              title="Define o recuo da primeira linha de cada parágrafo"
+                              value={bodyIndentValue}
+                              onChange={(e) =>
+                                handleTextOptionChange(
+                                  "bodyIndent",
+                                  Number(e.target.value) || 0
+                                )
+                              }
+                              className="h-8 w-24"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2463,7 +2560,7 @@ export default function Settings() {
                                 }}
                               >
                                 <div
-                                  className="[&_ol]:list-decimal [&_ol]:pl-6 [&_p]:m-0 [&_p+p]:mt-2 [&_ul]:list-disc [&_ul]:pl-6"
+                                  className="[&_ol]:list-decimal [&_ol]:pl-6 [&_p.ql-align-center]:text-center [&_p.ql-align-justify]:text-justify [&_p.ql-align-right]:text-right [&_p]:m-0 [&_ul]:list-disc [&_ul]:pl-6 [&_.ql-indent-1]:pl-6 [&_.ql-indent-2]:pl-10 [&_.ql-indent-3]:pl-14"
                                   style={{
                                     textIndent: `${bodyIndentPercent}%`,
                                     wordSpacing: isBodyJustified
