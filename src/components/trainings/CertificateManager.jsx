@@ -6,6 +6,14 @@ import { generateParticipantCertificate, generateMonitorCertificate, generateSpe
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -61,9 +69,22 @@ const escapeHtml = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+const CERT_TEMPLATE_SCOPE_CURRENT = "__current_training__";
+const CERT_TEMPLATE_SCOPE_GLOBAL = "__global_template__";
+const normalizeTemplateTitleKey = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
 
 export default function CertificateManager({ training, participants = [], onClose }) {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
+  const [previewParticipantId, setPreviewParticipantId] = useState("");
+  const [selectedTemplateScope, setSelectedTemplateScope] = useState(
+    CERT_TEMPLATE_SCOPE_CURRENT
+  );
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
   
@@ -85,6 +106,11 @@ export default function CertificateManager({ training, participants = [], onClos
     queryKey: ["certificateManagerTracomaAnswerKeys"],
     queryFn: () => dataClient.entities.TracomaExamAnswerKey.list("question_number"),
     enabled: Boolean(training?.id),
+  });
+  const trainingsQuery = useQuery({
+    queryKey: ["trainings"],
+    queryFn: () => dataClient.entities.Training.list("-date"),
+    enabled: true,
   });
 
   const tracomaRows = Array.isArray(tracomaResultsQuery.data)
@@ -214,6 +240,70 @@ export default function CertificateManager({ training, participants = [], onClos
     };
   };
 
+  const allTrainings = Array.isArray(trainingsQuery.data)
+    ? trainingsQuery.data
+    : [];
+  const templateTrainingOptions = useMemo(() => {
+    const groupedByTitle = new Map();
+    allTrainings.forEach((item) => {
+      const id = String(item?.id || "").trim();
+      if (!id) return;
+      const title = String(item?.title || "").trim() || "Treinamento sem título";
+      const titleKey = normalizeTemplateTitleKey(title) || id;
+      const existing = groupedByTitle.get(titleKey);
+      if (existing) {
+        if (!existing.trainingIds.includes(id)) {
+          existing.trainingIds.push(id);
+        }
+        return;
+      }
+      groupedByTitle.set(titleKey, {
+        id,
+        title,
+        trainingIds: [id],
+      });
+    });
+
+    return Array.from(groupedByTitle.values()).sort((a, b) =>
+      a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" })
+    );
+  }, [allTrainings]);
+
+  const selectedTemplateTraining = useMemo(
+    () =>
+      selectedTemplateScope === CERT_TEMPLATE_SCOPE_GLOBAL ||
+      selectedTemplateScope === CERT_TEMPLATE_SCOPE_CURRENT
+        ? null
+        : templateTrainingOptions.find((item) => item.id === selectedTemplateScope) ||
+          null,
+    [selectedTemplateScope, templateTrainingOptions]
+  );
+
+  const resolveTemplateScope = () => {
+    if (selectedTemplateScope === CERT_TEMPLATE_SCOPE_GLOBAL) {
+      return null;
+    }
+    if (selectedTemplateScope === CERT_TEMPLATE_SCOPE_CURRENT) {
+      return training;
+    }
+    const scopedIds = selectedTemplateTraining?.trainingIds?.filter(Boolean) || [];
+    if (scopedIds.length > 0) {
+      return {
+        id: selectedTemplateTraining?.id || scopedIds[0],
+        trainingIds: scopedIds,
+      };
+    }
+    return selectedTemplateTraining?.id || training;
+  };
+
+  const resolveSelectedTemplateOverride = async () =>
+    resolveCertificateTemplate(resolveTemplateScope());
+
+  React.useEffect(() => {
+    setSelectedTemplateScope(CERT_TEMPLATE_SCOPE_CURRENT);
+    setPreviewParticipantId("");
+  }, [training?.id]);
+
   const blobToBase64 = (blob) =>
     new Promise((resolve, reject) => {
       if (!blob) {
@@ -245,7 +335,7 @@ export default function CertificateManager({ training, participants = [], onClos
 
       setProcessing(true);
       const results = [];
-      const templateOverride = await resolveCertificateTemplate(training);
+      const templateOverride = await resolveSelectedTemplateOverride();
 
       for (const monitor of training.monitors) {
         if (!monitor.name || !monitor.email) continue;
@@ -326,7 +416,7 @@ export default function CertificateManager({ training, participants = [], onClos
 
       setProcessing(true);
       const results = [];
-      const templateOverride = await resolveCertificateTemplate(training);
+      const templateOverride = await resolveSelectedTemplateOverride();
 
       for (const speaker of training.speakers) {
         if (!speaker.name || !speaker.email) continue;
@@ -426,17 +516,24 @@ export default function CertificateManager({ training, participants = [], onClos
       if (!training) {
         throw new Error("Treinamento inválido para pré-visualização.");
       }
-      if (selectedParticipants.length !== 1) {
-        throw new Error("Selecione apenas 1 participante para visualizar.");
+      const selectedParticipantIdFromTable =
+        selectedParticipants.length === 1 ? selectedParticipants[0] : "";
+      const targetParticipantId = String(
+        previewParticipantId || selectedParticipantIdFromTable
+      ).trim();
+      if (!targetParticipantId) {
+        throw new Error(
+          "Selecione um participante para visualização na lista de pré-visualização."
+        );
       }
       const participant = safeParticipants.find(
-        (item) => item.id === selectedParticipants[0]
+        (item) => String(item?.id || "").trim() === targetParticipantId
       );
       if (!participant) {
         throw new Error("Participante selecionado não encontrado.");
       }
 
-      const templateOverride = await resolveCertificateTemplate(training);
+      const templateOverride = await resolveSelectedTemplateOverride();
       const participantWithMetrics =
         buildParticipantWithCertificateMetrics(participant);
       const pdf = generateParticipantCertificate(
@@ -485,7 +582,7 @@ export default function CertificateManager({ training, participants = [], onClos
       );
 
       const results = [];
-      const templateOverride = await resolveCertificateTemplate(training);
+      const templateOverride = await resolveSelectedTemplateOverride();
 
       for (const participant of participantsToIssue) {
         try {
@@ -654,6 +751,40 @@ export default function CertificateManager({ training, participants = [], onClos
       ),
     [eligibleParticipants]
   );
+  const previewParticipantOptions = useMemo(
+    () =>
+      printableEligibleParticipants.map((participant) => ({
+        id: String(participant?.id || "").trim(),
+        label: String(participant?.professional_name || "Participante sem nome"),
+      })),
+    [printableEligibleParticipants]
+  );
+
+  const selectedTemplateDescription = useMemo(() => {
+    if (selectedTemplateScope === CERT_TEMPLATE_SCOPE_GLOBAL) {
+      return "Modelo padrão global (todos os treinamentos).";
+    }
+    if (selectedTemplateScope === CERT_TEMPLATE_SCOPE_CURRENT) {
+      return "Modelo deste treinamento.";
+    }
+    if (!selectedTemplateTraining) {
+      return "Modelo de outro treinamento.";
+    }
+    const groupsCount = selectedTemplateTraining.trainingIds?.length || 0;
+    return groupsCount > 1
+      ? `Modelo compartilhado: ${selectedTemplateTraining.title} (${groupsCount} turmas).`
+      : `Modelo: ${selectedTemplateTraining.title}.`;
+  }, [selectedTemplateScope, selectedTemplateTraining]);
+
+  React.useEffect(() => {
+    if (!previewParticipantId) return;
+    const exists = previewParticipantOptions.some(
+      (item) => item.id === String(previewParticipantId).trim()
+    );
+    if (!exists) {
+      setPreviewParticipantId("");
+    }
+  }, [previewParticipantId, previewParticipantOptions]);
 
   const handlePrintApprovedParticipants = () => {
     if (!training) return;
@@ -892,6 +1023,146 @@ export default function CertificateManager({ training, participants = [], onClos
         </Alert>
       )}
 
+      <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="certificate-template-scope">Modelo do certificado</Label>
+            <Select
+              value={selectedTemplateScope}
+              onValueChange={setSelectedTemplateScope}
+            >
+              <SelectTrigger id="certificate-template-scope">
+                <SelectValue placeholder="Selecione o modelo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={CERT_TEMPLATE_SCOPE_CURRENT}>
+                  Modelo deste treinamento
+                </SelectItem>
+                <SelectItem value={CERT_TEMPLATE_SCOPE_GLOBAL}>
+                  Modelo padrão global
+                </SelectItem>
+                {templateTrainingOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.title}
+                    {option.trainingIds?.length > 1
+                      ? ` (${option.trainingIds.length} turmas)`
+                      : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-600">{selectedTemplateDescription}</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="certificate-preview-participant">
+              Participante para visualização
+            </Label>
+            <Select
+              value={previewParticipantId || "__none__"}
+              onValueChange={(value) =>
+                setPreviewParticipantId(value === "__none__" ? "" : value)
+              }
+            >
+              <SelectTrigger id="certificate-preview-participant">
+                <SelectValue placeholder="Selecione o participante" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Selecione um participante</SelectItem>
+                {previewParticipantOptions.map((participant) => (
+                  <SelectItem key={participant.id} value={participant.id}>
+                    {participant.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-600">
+              Dica: a visualização usa exatamente o mesmo modelo aplicado no envio.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            onClick={() => previewCertificate.mutate()}
+            disabled={
+              processing ||
+              previewCertificate.isPending ||
+              previewParticipantOptions.length === 0
+            }
+            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            {previewCertificate.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Eye className="h-4 w-4 mr-2" />
+            )}
+            {previewCertificate.isPending
+              ? "Abrindo visualização..."
+              : "Visualizar certificado"}
+          </Button>
+          <span className="text-xs text-slate-600">
+            Fluxo recomendado: selecione o modelo, visualize e depois emita.
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            onClick={handlePrintApprovedParticipants}
+            disabled={printableEligibleParticipants.length === 0 || processing}
+            className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:from-blue-700 hover:to-cyan-700"
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Imprimir aprovados ({printableEligibleParticipants.length})
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={toggleAll}
+            disabled={eligibleParticipants.length === 0 || processing}
+          >
+            {selectedParticipants.length === eligibleParticipants.length && eligibleParticipants.length > 0
+              ? "Limpar seleção"
+              : "Selecionar todos"}
+          </Button>
+          <Button
+            onClick={handleIssueSelected}
+            disabled={selectedParticipants.length === 0 || processing}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            <Award className="h-4 w-4 mr-2" />
+            {processing ? "Emitindo..." : `Emitir ${selectedParticipants.length} Certificado(s)`}
+          </Button>
+          {training.monitors && training.monitors.length > 0 && (
+            <Button
+              onClick={() => issueMonitorCertificates.mutate()}
+              disabled={processing}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <Award className="h-4 w-4 mr-2" />
+              Emitir Certificados Monitores
+            </Button>
+          )}
+          {training.speakers && training.speakers.length > 0 && (
+            <Button
+              onClick={() => issueSpeakerCertificates.mutate()}
+              disabled={processing}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              <Award className="h-4 w-4 mr-2" />
+              Emitir Certificados Palestrantes
+            </Button>
+          )}
+        </div>
+        <Button variant="outline" onClick={onClose}>
+          Fechar
+        </Button>
+      </div>
+
       <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
@@ -987,80 +1258,6 @@ export default function CertificateManager({ training, participants = [], onClos
         </Table>
       </div>
 
-      <div className="flex justify-between items-center pt-4">
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            onClick={handlePrintApprovedParticipants}
-            disabled={printableEligibleParticipants.length === 0 || processing}
-            className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:from-blue-700 hover:to-cyan-700"
-          >
-            <Printer className="h-4 w-4 mr-2" />
-            Imprimir aprovados ({printableEligibleParticipants.length})
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={toggleAll}
-            disabled={eligibleParticipants.length === 0 || processing}
-          >
-            {selectedParticipants.length === eligibleParticipants.length && eligibleParticipants.length > 0
-              ? "Limpar seleção"
-              : "Selecionar todos"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => previewCertificate.mutate()}
-            disabled={
-              selectedParticipants.length !== 1 ||
-              processing ||
-              previewCertificate.isPending
-            }
-            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-          >
-            {previewCertificate.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Eye className="h-4 w-4 mr-2" />
-            )}
-            {previewCertificate.isPending
-              ? "Abrindo visualização..."
-              : "Visualizar certificado"}
-          </Button>
-          <Button
-            onClick={handleIssueSelected}
-            disabled={selectedParticipants.length === 0 || processing}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Award className="h-4 w-4 mr-2" />
-            {processing ? "Emitindo..." : `Emitir ${selectedParticipants.length} Certificado(s)`}
-          </Button>
-          {training.monitors && training.monitors.length > 0 && (
-            <Button
-              onClick={() => issueMonitorCertificates.mutate()}
-              disabled={processing}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              <Award className="h-4 w-4 mr-2" />
-              Emitir Certificados Monitores
-            </Button>
-          )}
-          {training.speakers && training.speakers.length > 0 && (
-            <Button
-              onClick={() => issueSpeakerCertificates.mutate()}
-              disabled={processing}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              <Award className="h-4 w-4 mr-2" />
-              Emitir Certificados Palestrantes
-            </Button>
-          )}
-        </div>
-        <Button variant="outline" onClick={onClose}>
-          Fechar
-        </Button>
-      </div>
     </div>
   );
 }
