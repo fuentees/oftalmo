@@ -44,7 +44,7 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
   textOptions: {
     bodyJustify: true,
     bodyLineHeight: 1.2,
-    bodyMaxWordSpacing: 3,
+    bodyMaxWordSpacing: 2,
     bodyIndent: 12,
     bodyParagraphSpacing: 0,
   },

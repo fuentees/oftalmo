@@ -68,6 +68,7 @@ import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 
 const CERTIFICATE_SCOPE_GLOBAL = "__global__";
+const DEFAULT_BODY_MAX_WORD_SPACING = 2;
 const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i;
 const CERTIFICATE_BODY_EDITOR_MODULES = {
   toolbar: "#certificate-body-toolbar",
@@ -1143,7 +1144,12 @@ export default function Settings() {
   const isBodyJustified = certificateTemplate.textOptions?.bodyJustify !== false;
   const bodyLineHeightValue = Number(certificateTemplate.textOptions?.bodyLineHeight) || 1.2;
   const bodyMaxWordSpacingValue =
-    Number(certificateTemplate.textOptions?.bodyMaxWordSpacing) || 3;
+    Number(certificateTemplate.textOptions?.bodyMaxWordSpacing) ||
+    DEFAULT_BODY_MAX_WORD_SPACING;
+  const effectiveBodyMaxWordSpacingValue = Math.max(
+    1,
+    Math.min(bodyMaxWordSpacingValue, 2.2)
+  );
   const bodyIndentValue = Number(certificateTemplate.textOptions?.bodyIndent) || 0;
   const bodyFontSizeValue = Number(certificateTemplate.fonts?.bodySize) || 14;
 
@@ -1935,13 +1941,20 @@ export default function Settings() {
                               type="number"
                               step="0.1"
                               min="1"
-                              max="6"
+                              max="3"
                               title="Define o limite de expansão entre palavras ao justificar"
                               value={bodyMaxWordSpacingValue}
                               onChange={(e) =>
                                 handleTextOptionChange(
                                   "bodyMaxWordSpacing",
-                                  Number(e.target.value) || 3
+                                  Math.max(
+                                    1,
+                                    Math.min(
+                                      3,
+                                      Number(e.target.value) ||
+                                        DEFAULT_BODY_MAX_WORD_SPACING
+                                    )
+                                  )
                                 )
                               }
                               className="h-8 w-24"
@@ -2564,7 +2577,7 @@ export default function Settings() {
                                   style={{
                                     textIndent: `${bodyIndentPercent}%`,
                                     wordSpacing: isBodyJustified
-                                      ? `${Math.max(0, bodyMaxWordSpacingValue - 1) * 0.06}em`
+                                      ? `${Math.max(0, effectiveBodyMaxWordSpacingValue - 1) * 0.06}em`
                                       : undefined,
                                   }}
                                   dangerouslySetInnerHTML={{ __html: previewBodyHtml }}

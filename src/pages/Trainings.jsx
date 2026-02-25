@@ -917,7 +917,16 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
   const getTrainingStatus = (training) => getEffectiveTrainingStatus(training);
 
   const toNumeric = (value) => {
-    const number = Number(value);
+    if (value === null || value === undefined) return null;
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const normalized = trimmed
+      .replace(/\s+/g, "")
+      .replace("%", "")
+      .replace(",", ".");
+    const number = Number(normalized);
     return Number.isFinite(number) ? number : null;
   };
 
@@ -925,6 +934,12 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     if (typeof value === "boolean") return value;
     const normalized = String(value ?? "").trim().toLowerCase();
     if (!normalized) return null;
+    if (normalized.startsWith("aprov") || normalized.startsWith("apt")) {
+      return true;
+    }
+    if (normalized.startsWith("reprov") || normalized.startsWith("inapt")) {
+      return false;
+    }
     if (["true", "1", "sim", "yes", "aprovado", "apto"].includes(normalized)) {
       return true;
     }
@@ -934,26 +949,97 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     return null;
   };
 
+  const normalizeAttendanceStatus = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+
+  const isPresentAttendanceRecord = (record) => {
+    if (!record || typeof record !== "object") return false;
+    if (record.present === true || record.is_present === true) return true;
+    const status = normalizeAttendanceStatus(
+      record.status ?? record.presence_status ?? record.value
+    );
+    if (!status) return false;
+    if (
+      ["presente", "presenca", "present", "checked_in", "checkin", "ok"].includes(
+        status
+      )
+    ) {
+      return true;
+    }
+    return status.startsWith("present");
+  };
+
+  const normalizeAttendanceRecords = (value) => {
+    if (Array.isArray(value)) return value;
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) return parsed;
+          if (parsed && typeof parsed === "object") {
+            return Object.entries(parsed).map(([date, rawValue]) => {
+              if (rawValue && typeof rawValue === "object") {
+                return { date, ...rawValue };
+              }
+              return { date, status: rawValue };
+            });
+          }
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    }
+
+    if (value && typeof value === "object") {
+      return Object.entries(value).map(([date, rawValue]) => {
+        if (rawValue && typeof rawValue === "object") {
+          return { date, ...rawValue };
+        }
+        return { date, status: rawValue };
+      });
+    }
+
+    return [];
+  };
+
   const isApprovedByAttendance = (participant, training) => {
     const storedPercentage = toNumeric(participant?.attendance_percentage);
     if (storedPercentage !== null) {
-      return storedPercentage >= 75;
+      const normalizedPercentage =
+        storedPercentage >= 0 && storedPercentage <= 1
+          ? storedPercentage * 100
+          : storedPercentage;
+      return normalizedPercentage >= 75;
     }
 
-    const records = Array.isArray(participant?.attendance_records)
-      ? participant.attendance_records
-      : [];
+    const rawRecords = normalizeAttendanceRecords(participant?.attendance_records);
+    const recordsByDate = new Map();
+    rawRecords.forEach((record, index) => {
+      const dateKey = normalizeDateKey(record?.date) || `idx-${index}`;
+      recordsByDate.set(dateKey, record);
+    });
+    const records = Array.from(recordsByDate.values());
     if (!records.length) return false;
 
     const trainingDatesCount = Array.isArray(training?.dates)
       ? training.dates.filter((item) => item?.date).length
       : 0;
-    const totalDates = trainingDatesCount || 1;
+    const uniqueRecordDatesCount = new Set(
+      records.map((record, index) => normalizeDateKey(record?.date) || `idx-${index}`)
+    ).size;
+    const totalDates = trainingDatesCount || uniqueRecordDatesCount || 1;
     const presentCount = records.filter(
-      (record) =>
-        String(record?.status || "").trim().toLowerCase() === "presente"
+      (record) => isPresentAttendanceRecord(record)
     ).length;
-    const computedPercentage = Math.round((presentCount / totalDates) * 100);
+    const computedPercentage = (presentCount / totalDates) * 100;
     return computedPercentage >= 75;
   };
 
@@ -965,7 +1051,10 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
   };
 
   const isCancelledEnrollment = (participant) =>
-    String(participant?.enrollment_status || "").trim().toLowerCase() === "cancelado";
+    String(participant?.enrollment_status || "")
+      .trim()
+      .toLowerCase()
+      .startsWith("cancel");
 
   const isApprovedParticipant = (participant, training) => {
     if (!participant || isCancelledEnrollment(participant)) return false;
