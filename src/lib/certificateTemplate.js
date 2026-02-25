@@ -46,6 +46,7 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
     bodyLineHeight: 1.2,
     bodyMaxWordSpacing: 3,
     bodyIndent: 12,
+    bodyParagraphSpacing: 0,
   },
   logos: {},
   logoPositions: {},
