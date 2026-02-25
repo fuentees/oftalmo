@@ -132,7 +132,6 @@ const toFontStyle = (token) => {
 
 const DEFAULT_BODY_MAX_WORD_SPACING = 2;
 const ABSOLUTE_MAX_WORD_SPACING_FACTOR = 2.2;
-const MIN_FILL_RATIO_FOR_JUSTIFY = 0.72;
 
 const normalizeAlignValue = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
@@ -141,6 +140,30 @@ const normalizeAlignValue = (value) => {
     return normalized;
   }
   return null;
+};
+
+const getTextCharacterSlots = (value) =>
+  Math.max(0, Array.from(String(value || "")).length - 1);
+
+const drawWordWithCharSpacing = (pdf, value, x, y, charSpacing = 0) => {
+  const text = String(value || "");
+  if (!text) return 0;
+  if (!charSpacing) {
+    pdf.text(text, x, y);
+    return pdf.getTextWidth(text);
+  }
+
+  const chars = Array.from(text);
+  let cursorX = x;
+  chars.forEach((char, index) => {
+    pdf.text(char, cursorX, y);
+    cursorX += pdf.getTextWidth(char);
+    if (index < chars.length - 1) {
+      cursorX += charSpacing;
+    }
+  });
+
+  return cursorX - x;
 };
 
 const resolveNodeAlignment = (node, inherited = "left") => {
@@ -487,23 +510,39 @@ const drawFormattedText = (
     const wordsWidth = wordWidths.reduce((sum, width) => sum + width, 0);
     const gaps = words.length - 1;
     let spaceWidth = baseSpaceWidth;
+    let charSpacing = 0;
     const lineIndent = Number(line.indent) || 0;
     const availableWidth = Math.max(0, maxWidth - lineIndent);
     const lineAlign = normalizeAlignValue(line.align) || normalizedAlign;
     const simpleLineWidth = wordsWidth + Math.max(0, gaps) * baseSpaceWidth;
-    const fillRatio =
-      availableWidth > 0 ? Math.min(1, simpleLineWidth / availableWidth) : 1;
     const shouldJustify =
       lineAlign === "justify" &&
       !line.isParagraphLast &&
-      gaps > 0 &&
-      fillRatio >= MIN_FILL_RATIO_FOR_JUSTIFY;
+      gaps > 0;
     let cursorX = x + lineIndent;
 
     if (shouldJustify) {
       const proposed = (availableWidth - wordsWidth) / gaps;
-      if (Number.isFinite(proposed) && proposed >= baseSpaceWidth && proposed <= maxSpaceWidth) {
-        spaceWidth = proposed;
+      if (Number.isFinite(proposed) && proposed > 0) {
+        if (proposed <= maxSpaceWidth) {
+          spaceWidth = proposed;
+        } else {
+          // Mantém o espaço entre palavras em limite visual e completa no tracking.
+          spaceWidth = maxSpaceWidth;
+          const widthWithCappedSpaces = wordsWidth + gaps * spaceWidth;
+          const remainingWidth = availableWidth - widthWithCappedSpaces;
+          if (remainingWidth > 0) {
+            const totalCharSlots = words.reduce(
+              (total, word) => total + getTextCharacterSlots(word.text),
+              0
+            );
+            if (totalCharSlots > 0) {
+              charSpacing = remainingWidth / totalCharSlots;
+            } else {
+              spaceWidth += remainingWidth / gaps;
+            }
+          }
+        }
       }
     } else if (lineAlign === "center") {
       cursorX += Math.max(0, (availableWidth - simpleLineWidth) / 2);
@@ -513,13 +552,19 @@ const drawFormattedText = (
 
     words.forEach((word, idx) => {
       pdf.setFont(fontFamily, toFontStyle(word));
-      pdf.text(word.text, cursorX, cursorY);
+      const renderedWordWidth = drawWordWithCharSpacing(
+        pdf,
+        word.text,
+        cursorX,
+        cursorY,
+        charSpacing
+      );
       if (word.underline) {
         const underlineY = cursorY + fontSize * 0.12;
         pdf.setLineWidth(0.25);
-        pdf.line(cursorX, underlineY, cursorX + wordWidths[idx], underlineY);
+        pdf.line(cursorX, underlineY, cursorX + renderedWordWidth, underlineY);
       }
-      cursorX += wordWidths[idx] + (idx < gaps ? spaceWidth : 0);
+      cursorX += renderedWordWidth + (idx < gaps ? spaceWidth : 0);
     });
 
     cursorY += lineHeight;
