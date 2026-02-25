@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Mail, CheckCircle, Award, Printer } from "lucide-react";
+import { Mail, CheckCircle, Award, Printer, Eye, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
@@ -394,6 +394,84 @@ export default function CertificateManager({ training, participants = [], onClos
     },
   });
 
+  const buildParticipantWithCertificateMetrics = (participant) => {
+    const repadPerformance = repadPerformanceByParticipantId.get(participant?.id);
+    const fallbackScore = toNumeric(participant?.grade);
+    const fallbackKappa =
+      Number.isFinite(fallbackScore) && fallbackScore >= 0
+        ? clamp(fallbackScore / 100, 0, 1)
+        : null;
+    const resolvedScore =
+      repadPerformance?.latestScore ??
+      (Number.isFinite(fallbackScore) ? clamp(fallbackScore, 0, 100) : null);
+    const resolvedKappa = repadPerformance?.latestKappa ?? fallbackKappa;
+    const shouldAttachMetrics =
+      useRepadScoreCriteria && (repadPerformance || Number.isFinite(resolvedScore));
+
+    if (!shouldAttachMetrics) return participant;
+    return {
+      ...participant,
+      certificate_kappa: resolvedKappa,
+      certificate_score: resolvedScore,
+      grade:
+        participant.grade ??
+        (Number.isFinite(resolvedScore)
+          ? formatScore(resolvedScore, 1)
+          : participant.grade),
+    };
+  };
+
+  const previewCertificate = useMutation({
+    mutationFn: async () => {
+      if (!training) {
+        throw new Error("Treinamento inválido para pré-visualização.");
+      }
+      if (selectedParticipants.length !== 1) {
+        throw new Error("Selecione apenas 1 participante para visualizar.");
+      }
+      const participant = safeParticipants.find(
+        (item) => item.id === selectedParticipants[0]
+      );
+      if (!participant) {
+        throw new Error("Participante selecionado não encontrado.");
+      }
+
+      const templateOverride = await resolveCertificateTemplate(training);
+      const participantWithMetrics =
+        buildParticipantWithCertificateMetrics(participant);
+      const pdf = generateParticipantCertificate(
+        participantWithMetrics,
+        training,
+        templateOverride
+      );
+      const blob = pdf.output("blob");
+      const url = window.URL.createObjectURL(blob);
+      const previewWindow = window.open(url, "_blank", "noopener,noreferrer");
+      if (!previewWindow) {
+        window.URL.revokeObjectURL(url);
+        throw new Error(
+          "Não foi possível abrir a visualização. Verifique o bloqueador de pop-up."
+        );
+      }
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 60000);
+      return participant.professional_name || "participante";
+    },
+    onSuccess: (participantName) => {
+      setResult({
+        success: true,
+        message: `Pré-visualização aberta para ${participantName}.`,
+      });
+    },
+    onError: (error) => {
+      setResult({
+        success: false,
+        message: error?.message || "Não foi possível abrir a pré-visualização.",
+      });
+    },
+  });
+
   const issueCertificates = useMutation({
     mutationFn: async (/** @type {any[]} */ participantIds) => {
       if (!training) {
@@ -411,29 +489,8 @@ export default function CertificateManager({ training, participants = [], onClos
 
       for (const participant of participantsToIssue) {
         try {
-          const repadPerformance = repadPerformanceByParticipantId.get(participant.id);
-          const fallbackScore = toNumeric(participant?.grade);
-          const fallbackKappa =
-            Number.isFinite(fallbackScore) && fallbackScore >= 0
-              ? clamp(fallbackScore / 100, 0, 1)
-              : null;
-          const resolvedScore =
-            repadPerformance?.latestScore ??
-            (Number.isFinite(fallbackScore) ? clamp(fallbackScore, 0, 100) : null);
-          const resolvedKappa = repadPerformance?.latestKappa ?? fallbackKappa;
           const participantWithMetrics =
-            useRepadScoreCriteria && (repadPerformance || Number.isFinite(resolvedScore))
-              ? {
-                  ...participant,
-                  certificate_kappa: resolvedKappa,
-                  certificate_score: resolvedScore,
-                  grade:
-                    participant.grade ??
-                    (Number.isFinite(resolvedScore)
-                      ? formatScore(resolvedScore, 1)
-                      : participant.grade),
-                }
-              : participant;
+            buildParticipantWithCertificateMetrics(participant);
           // Generate PDF
           const pdf = generateParticipantCertificate(
             participantWithMetrics,
@@ -950,6 +1007,26 @@ export default function CertificateManager({ training, participants = [], onClos
             {selectedParticipants.length === eligibleParticipants.length && eligibleParticipants.length > 0
               ? "Limpar seleção"
               : "Selecionar todos"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => previewCertificate.mutate()}
+            disabled={
+              selectedParticipants.length !== 1 ||
+              processing ||
+              previewCertificate.isPending
+            }
+            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+          >
+            {previewCertificate.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Eye className="h-4 w-4 mr-2" />
+            )}
+            {previewCertificate.isPending
+              ? "Abrindo visualização..."
+              : "Visualizar certificado"}
           </Button>
           <Button
             onClick={handleIssueSelected}
