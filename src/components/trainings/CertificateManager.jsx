@@ -2,7 +2,12 @@ import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { format, addMonths } from "date-fns";
-import { generateParticipantCertificate, generateMonitorCertificate, generateSpeakerCertificate } from "./CertificateGenerator";
+import {
+  generateParticipantCertificate,
+  generateCoordinatorCertificate,
+  generateMonitorCertificate,
+  generateSpeakerCertificate,
+} from "./CertificateGenerator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -71,6 +77,11 @@ const escapeHtml = (value) =>
     .replace(/'/g, "&#39;");
 const CERT_TEMPLATE_SCOPE_CURRENT = "__current_training__";
 const CERT_TEMPLATE_SCOPE_GLOBAL = "__global_template__";
+const STAFF_ROLE_LABELS = {
+  coordenador: "Coordenador",
+  monitor: "Monitor",
+  palestrante: "Palestrante",
+};
 const normalizeTemplateTitleKey = (value) =>
   String(value || "")
     .normalize("NFD")
@@ -78,6 +89,28 @@ const normalizeTemplateTitleKey = (value) =>
     .toLowerCase()
     .trim()
     .replace(/\s+/g, " ");
+
+const normalizeStaffEntries = (value) => {
+  const rows = Array.isArray(value) ? value : [];
+  return rows
+    .map((item) => {
+      if (typeof item === "string") {
+        const name = item.trim();
+        if (!name) return null;
+        return { name, email: "", rg: "", lecture: "" };
+      }
+      if (!item || typeof item !== "object") return null;
+      const name = String(item?.name || "").trim();
+      if (!name) return null;
+      return {
+        name,
+        email: String(item?.email || "").trim(),
+        rg: String(item?.rg || "").trim(),
+        lecture: String(item?.lecture || "").trim(),
+      };
+    })
+    .filter(Boolean);
+};
 
 export default function CertificateManager({ training, participants = [], onClose }) {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
@@ -117,6 +150,59 @@ export default function CertificateManager({ training, participants = [], onClos
     ? tracomaResultsQuery.data
     : [];
   const useRepadScoreCriteria = isRepadTraining || tracomaRows.length > 0;
+
+  const coordinatorRecipient = useMemo(() => {
+    const name = String(training?.coordinator || "").trim();
+    const email = String(training?.coordinator_email || "").trim();
+    const rg = String(training?.coordinator_rg || "").trim();
+    if (!name) return null;
+    return {
+      id: "coordenador",
+      role: "coordenador",
+      name,
+      email,
+      rg,
+      lecture: "",
+    };
+  }, [training?.coordinator, training?.coordinator_email, training?.coordinator_rg]);
+
+  const monitorRecipients = useMemo(
+    () =>
+      normalizeStaffEntries(training?.monitors).map((item, index) => ({
+        id: `monitor-${index}`,
+        role: "monitor",
+        ...item,
+      })),
+    [training?.monitors]
+  );
+
+  const speakerRecipients = useMemo(
+    () =>
+      normalizeStaffEntries(training?.speakers).map((item, index) => ({
+        id: `palestrante-${index}`,
+        role: "palestrante",
+        ...item,
+      })),
+    [training?.speakers]
+  );
+
+  const teamRecipients = useMemo(
+    () =>
+      [
+        ...(coordinatorRecipient ? [coordinatorRecipient] : []),
+        ...monitorRecipients,
+        ...speakerRecipients,
+      ].sort((a, b) => {
+        const roleCompare = String(a.role).localeCompare(String(b.role), "pt-BR", {
+          sensitivity: "base",
+        });
+        if (roleCompare !== 0) return roleCompare;
+        return String(a.name || "").localeCompare(String(b.name || ""), "pt-BR", {
+          sensitivity: "base",
+        });
+      }),
+    [coordinatorRecipient, monitorRecipients, speakerRecipients]
+  );
   const answerKeyByCode = useMemo(() => {
     const map = new Map();
     const collections = buildAnswerKeyCollections(
@@ -324,80 +410,145 @@ export default function CertificateManager({ training, participants = [], onClos
       reader.readAsDataURL(blob);
     });
 
-  const issueMonitorCertificates = useMutation({
-    mutationFn: async () => {
-      if (!training) {
-        throw new Error("Treinamento inválido para emissão de certificados.");
-      }
-      if (!training.monitors || training.monitors.length === 0) {
-        throw new Error("Nenhum monitor cadastrado");
-      }
+  const buildTeamResultMessage = (results, roleLabel) => {
+    const successCount = results.filter((item) => item.status === "success").length;
+    const warningCount = results.filter((item) => item.status === "warning").length;
+    const failCount = results.filter((item) => item.status === "error").length;
+    const warningMessage = warningCount > 0 ? `, ${warningCount} aviso(s)` : "";
+    const failMessage = failCount > 0 ? `, ${failCount} falha(s)` : "!";
+    return {
+      success: failCount === 0,
+      message: `${successCount} certificado(s) de ${roleLabel} emitido(s)${warningMessage}${failMessage}`,
+    };
+  };
 
-      setProcessing(true);
-      const results = [];
-      const templateOverride = await resolveSelectedTemplateOverride();
+  const issueRoleCertificates = async ({
+    recipients,
+    roleLabel,
+    emailRole,
+    filePrefix,
+    generator,
+  }) => {
+    if (!training) {
+      throw new Error("Treinamento inválido para emissão de certificados.");
+    }
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      throw new Error(`Nenhum ${roleLabel} cadastrado para emissão.`);
+    }
 
-      for (const monitor of training.monitors) {
-        if (!monitor.name || !monitor.email) continue;
+    setProcessing(true);
+    setResult(null);
+    const templateOverride = await resolveSelectedTemplateOverride();
+    const results = [];
 
-        try {
-          // Generate PDF
-          const pdf = generateMonitorCertificate(monitor, training, templateOverride);
-          const pdfBlob = pdf.output('blob');
-          const pdfFileName = `certificado-monitor-${monitor.name}.pdf`;
-          const pdfFile = new File([pdfBlob], pdfFileName, { type: 'application/pdf' });
-          const attachmentBase64 = await blobToBase64(pdfBlob);
-          if (!attachmentBase64) {
-            throw new Error("Falha ao gerar anexo do certificado.");
-          }
-          const attachment = {
-            filename: pdfFileName,
-            contentType: "application/pdf",
-            content: attachmentBase64,
-          };
+    for (const recipient of recipients) {
+      const recipientName = String(recipient?.name || "").trim();
+      if (!recipientName) continue;
+      const recipientEmail = String(recipient?.email || "").trim();
+      const recipientRg = String(recipient?.rg || "").trim();
+      const recipientLecture = String(recipient?.lecture || "").trim();
 
-          // Upload PDF
-          await dataClient.integrations.Core.UploadFile({ file: pdfFile });
+      try {
+        const pdf = generator(
+          {
+            name: recipientName,
+            email: recipientEmail,
+            rg: recipientRg,
+            lecture: recipientLecture,
+          },
+          training,
+          templateOverride
+        );
+        const pdfBlob = pdf.output("blob");
+        const safeName = recipientName.replace(/\s+/g, "_");
+        const pdfFileName = `${filePrefix}-${safeName}.pdf`;
+        const pdfFile = new File([pdfBlob], pdfFileName, {
+          type: "application/pdf",
+        });
+        const attachmentBase64 = await blobToBase64(pdfBlob);
+        if (!attachmentBase64) {
+          throw new Error("Falha ao gerar anexo do certificado.");
+        }
+        const attachment = {
+          filename: pdfFileName,
+          contentType: "application/pdf",
+          content: attachmentBase64,
+        };
 
-          let warning = null;
+        await dataClient.integrations.Core.UploadFile({ file: pdfFile });
+
+        const warnings = [];
+        if (recipientEmail) {
           try {
             const emailData = buildCertificateEmailData({
               training,
-              nome: monitor.name,
-              rg: monitor.rg,
-              role: "monitor",
-              aula: monitor.lecture || "",
+              nome: recipientName,
+              rg: recipientRg,
+              role: emailRole,
+              aula: recipientLecture,
             });
             const emailContent = resolveEmailContent(emailData);
             await dataClient.integrations.Core.SendEmail({
-              to: monitor.email,
+              to: recipientEmail,
               subject: emailContent.subject,
               body: emailContent.body,
               attachments: [attachment],
             });
           } catch (error) {
-            warning = error.message || "Falha ao enviar e-mail.";
+            warnings.push(error.message || "Falha ao enviar e-mail.");
           }
-
-          results.push({ name: monitor.name, status: warning ? 'warning' : 'success', warning });
-        } catch (error) {
-          results.push({ name: monitor.name, status: 'error', error: error.message });
+        } else {
+          warnings.push("Sem e-mail cadastrado para envio automático.");
         }
-      }
 
-      return results;
-    },
+        results.push({
+          name: recipientName,
+          status: warnings.length > 0 ? "warning" : "success",
+          warning: warnings.join(" "),
+        });
+      } catch (error) {
+        results.push({
+          name: recipientName,
+          status: "error",
+          error: error.message,
+        });
+      }
+    }
+
+    return results;
+  };
+
+  const issueCoordinatorCertificates = useMutation({
+    mutationFn: async () =>
+      issueRoleCertificates({
+        recipients: coordinatorRecipient ? [coordinatorRecipient] : [],
+        roleLabel: "coordenador",
+        emailRole: "coordinator",
+        filePrefix: "certificado-coordenador",
+        generator: generateCoordinatorCertificate,
+      }),
     onSuccess: (results) => {
       setProcessing(false);
-      const successCount = results.filter(r => r.status === "success").length;
-      const warningCount = results.filter(r => r.status === "warning").length;
-      const failCount = results.filter(r => r.status === "error").length;
-      const warningMessage = warningCount > 0 ? `, ${warningCount} aviso(s) de e-mail` : "";
-      const failMessage = failCount > 0 ? `, ${failCount} falha(s)` : "!";
-      setResult({
-        success: failCount === 0,
-        message: `${successCount} certificado(s) emitido(s)${warningMessage}${failMessage}`,
-      });
+      setResult(buildTeamResultMessage(results, "coordenador"));
+    },
+    onError: (error) => {
+      setProcessing(false);
+      setResult({ success: false, message: error.message });
+    },
+  });
+
+  const issueMonitorCertificates = useMutation({
+    mutationFn: async () =>
+      issueRoleCertificates({
+        recipients: monitorRecipients,
+        roleLabel: "monitor",
+        emailRole: "monitor",
+        filePrefix: "certificado-monitor",
+        generator: generateMonitorCertificate,
+      }),
+    onSuccess: (results) => {
+      setProcessing(false);
+      setResult(buildTeamResultMessage(results, "monitor"));
     },
     onError: (error) => {
       setProcessing(false);
@@ -406,77 +557,17 @@ export default function CertificateManager({ training, participants = [], onClos
   });
 
   const issueSpeakerCertificates = useMutation({
-    mutationFn: async () => {
-      if (!training) {
-        throw new Error("Treinamento inválido para emissão de certificados.");
-      }
-      if (!training.speakers || training.speakers.length === 0) {
-        throw new Error("Nenhum palestrante cadastrado");
-      }
-
-      setProcessing(true);
-      const results = [];
-      const templateOverride = await resolveSelectedTemplateOverride();
-
-      for (const speaker of training.speakers) {
-        if (!speaker.name || !speaker.email) continue;
-
-        try {
-          const pdf = generateSpeakerCertificate(speaker, training, templateOverride);
-          const pdfBlob = pdf.output("blob");
-          const pdfFileName = `certificado-palestrante-${speaker.name}.pdf`;
-          const pdfFile = new File([pdfBlob], pdfFileName, { type: "application/pdf" });
-          const attachmentBase64 = await blobToBase64(pdfBlob);
-          if (!attachmentBase64) {
-            throw new Error("Falha ao gerar anexo do certificado.");
-          }
-          const attachment = {
-            filename: pdfFileName,
-            contentType: "application/pdf",
-            content: attachmentBase64,
-          };
-
-          await dataClient.integrations.Core.UploadFile({ file: pdfFile });
-
-          let warning = null;
-          try {
-            const emailData = buildCertificateEmailData({
-              training,
-              nome: speaker.name,
-              rg: speaker.rg,
-              role: "speaker",
-              aula: speaker.lecture || "",
-            });
-            const emailContent = resolveEmailContent(emailData);
-            await dataClient.integrations.Core.SendEmail({
-              to: speaker.email,
-              subject: emailContent.subject,
-              body: emailContent.body,
-              attachments: [attachment],
-            });
-          } catch (error) {
-            warning = error.message || "Falha ao enviar e-mail.";
-          }
-
-          results.push({ name: speaker.name, status: warning ? "warning" : "success", warning });
-        } catch (error) {
-          results.push({ name: speaker.name, status: "error", error: error.message });
-        }
-      }
-
-      return results;
-    },
+    mutationFn: async () =>
+      issueRoleCertificates({
+        recipients: speakerRecipients,
+        roleLabel: "palestrante",
+        emailRole: "speaker",
+        filePrefix: "certificado-palestrante",
+        generator: generateSpeakerCertificate,
+      }),
     onSuccess: (results) => {
       setProcessing(false);
-      const successCount = results.filter(r => r.status === "success").length;
-      const warningCount = results.filter(r => r.status === "warning").length;
-      const failCount = results.filter(r => r.status === "error").length;
-      const warningMessage = warningCount > 0 ? `, ${warningCount} aviso(s) de e-mail` : "";
-      const failMessage = failCount > 0 ? `, ${failCount} falha(s)` : "!";
-      setResult({
-        success: failCount === 0,
-        message: `${successCount} certificado(s) de palestrante emitido(s)${warningMessage}${failMessage}`,
-      });
+      setResult(buildTeamResultMessage(results, "palestrante"));
     },
     onError: (error) => {
       setProcessing(false);
@@ -759,6 +850,10 @@ export default function CertificateManager({ training, participants = [], onClos
       })),
     [printableEligibleParticipants]
   );
+  const coordinatorCount = coordinatorRecipient ? 1 : 0;
+  const monitorCount = monitorRecipients.length;
+  const speakerCount = speakerRecipients.length;
+  const totalTeamCount = teamRecipients.length;
 
   const selectedTemplateDescription = useMemo(() => {
     if (selectedTemplateScope === CERT_TEMPLATE_SCOPE_GLOBAL) {
@@ -986,7 +1081,12 @@ export default function CertificateManager({ training, participants = [], onClos
           Emissão de Certificados
         </h3>
         <p className="text-sm text-slate-500 mt-1">
-          {eligibleParticipants.length} participante(s) elegível(eis) • {alreadySentCount} certificado(s) já enviado(s)
+          {eligibleParticipants.length} participante(s) elegível(eis) •{" "}
+          {alreadySentCount} certificado(s) de participantes já enviado(s)
+        </p>
+        <p className="text-sm text-slate-500 mt-1">
+          Equipe cadastrada: {coordinatorCount} coordenador(es), {monitorCount} monitor(es),{" "}
+          {speakerCount} palestrante(s)
         </p>
         <p className="text-xs text-slate-500 mt-1">
           Ao emitir, o certificado é enviado por e-mail automaticamente para quem tem e-mail cadastrado.
@@ -1108,154 +1208,262 @@ export default function CertificateManager({ training, participants = [], onClos
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            onClick={handlePrintApprovedParticipants}
-            disabled={printableEligibleParticipants.length === 0 || processing}
-            className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:from-blue-700 hover:to-cyan-700"
-          >
-            <Printer className="h-4 w-4 mr-2" />
-            Imprimir aprovados ({printableEligibleParticipants.length})
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={toggleAll}
-            disabled={eligibleParticipants.length === 0 || processing}
-          >
-            {selectedParticipants.length === eligibleParticipants.length && eligibleParticipants.length > 0
-              ? "Limpar seleção"
-              : "Selecionar todos"}
-          </Button>
-          <Button
-            onClick={handleIssueSelected}
-            disabled={selectedParticipants.length === 0 || processing}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Award className="h-4 w-4 mr-2" />
-            {processing ? "Emitindo..." : `Emitir ${selectedParticipants.length} Certificado(s)`}
-          </Button>
-          {training.monitors && training.monitors.length > 0 && (
+      <Tabs defaultValue="participants" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="participants">
+            Participantes ({eligibleParticipants.length})
+          </TabsTrigger>
+          <TabsTrigger value="team">
+            Equipe ({totalTeamCount})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="participants" className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={handlePrintApprovedParticipants}
+              disabled={printableEligibleParticipants.length === 0 || processing}
+              className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:from-blue-700 hover:to-cyan-700"
+            >
+              <Printer className="h-4 w-4 mr-2" />
+              Imprimir aprovados ({printableEligibleParticipants.length})
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={toggleAll}
+              disabled={eligibleParticipants.length === 0 || processing}
+            >
+              {selectedParticipants.length === eligibleParticipants.length &&
+              eligibleParticipants.length > 0
+                ? "Limpar seleção"
+                : "Selecionar todos"}
+            </Button>
+            <Button
+              onClick={handleIssueSelected}
+              disabled={selectedParticipants.length === 0 || processing}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Award className="h-4 w-4 mr-2" />
+              {processing
+                ? "Emitindo..."
+                : `Emitir ${selectedParticipants.length} Certificado(s)`}
+            </Button>
+          </div>
+
+          <div className="border rounded-lg overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50">
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={
+                        selectedParticipants.length === eligibleParticipants.length &&
+                        eligibleParticipants.length > 0
+                      }
+                      onCheckedChange={toggleAll}
+                    />
+                  </TableHead>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>RG</TableHead>
+                  <TableHead>Município</TableHead>
+                  <TableHead>GVE</TableHead>
+                  <TableHead>Email</TableHead>
+                  {useRepadScoreCriteria && <TableHead>Nota (Kappa x100)</TableHead>}
+                  <TableHead>Status</TableHead>
+                  <TableHead>Certificado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {eligibleParticipants.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={useRepadScoreCriteria ? 9 : 8}
+                      className="text-center py-8 text-slate-500"
+                    >
+                      Nenhum participante elegível para certificado
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  eligibleParticipants.map((participant) => (
+                    <TableRow key={participant.id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedParticipants.includes(participant.id)}
+                          onCheckedChange={() => toggleParticipant(participant.id)}
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {participant.professional_name}
+                      </TableCell>
+                      <TableCell>
+                        {participant.professional_rg || participant.professional_cpf || "-"}
+                      </TableCell>
+                      <TableCell>{participant.municipality || "-"}</TableCell>
+                      <TableCell>{participant.health_region || "-"}</TableCell>
+                      <TableCell>
+                        {participant.professional_email ? (
+                          <div className="flex items-center gap-1 text-sm">
+                            <Mail className="h-3 w-3 text-slate-400" />
+                            {participant.professional_email}
+                          </div>
+                        ) : (
+                          <span className="text-red-600 text-sm">Sem email</span>
+                        )}
+                      </TableCell>
+                      {useRepadScoreCriteria && (
+                        <TableCell>
+                          {(() => {
+                            const metrics = repadPerformanceByParticipantId.get(participant.id);
+                            if (Number.isFinite(metrics?.latestScore)) {
+                              return `${formatScore(metrics.latestScore, 1)}%`;
+                            }
+                            const gradeValue = toNumeric(participant?.grade);
+                            if (!Number.isFinite(gradeValue)) return "-";
+                            return `${formatScore(gradeValue, 1)}%`;
+                          })()}
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <Badge className="bg-green-100 text-green-700">
+                          {useRepadScoreCriteria ? "Aprovado por nota" : "Aprovado"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {participant.certificate_issued ? (
+                          <div className="flex items-center gap-1 text-sm text-green-600">
+                            <CheckCircle className="h-4 w-4" />
+                            Enviado
+                            {participant.certificate_sent_date && (
+                              <span className="text-xs text-slate-500">
+                                ({format(new Date(participant.certificate_sent_date), "dd/MM/yyyy")})
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <Badge variant="outline" className="text-slate-600">
+                            Pendente
+                          </Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="team" className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border bg-slate-50 p-3 text-center">
+              <p className="text-xs text-slate-500">Coordenador</p>
+              <p className="text-xl font-semibold text-indigo-700">{coordinatorCount}</p>
+            </div>
+            <div className="rounded-md border bg-slate-50 p-3 text-center">
+              <p className="text-xs text-slate-500">Monitores</p>
+              <p className="text-xl font-semibold text-purple-700">{monitorCount}</p>
+            </div>
+            <div className="rounded-md border bg-slate-50 p-3 text-center">
+              <p className="text-xs text-slate-500">Palestrantes</p>
+              <p className="text-xl font-semibold text-emerald-700">{speakerCount}</p>
+            </div>
+            <div className="rounded-md border bg-slate-50 p-3 text-center">
+              <p className="text-xs text-slate-500">Total equipe</p>
+              <p className="text-xl font-semibold text-slate-800">{totalTeamCount}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => issueCoordinatorCertificates.mutate()}
+              disabled={!coordinatorRecipient || processing}
+              className="bg-indigo-600 hover:bg-indigo-700"
+            >
+              <Award className="h-4 w-4 mr-2" />
+              Emitir certificado do coordenador
+            </Button>
             <Button
               onClick={() => issueMonitorCertificates.mutate()}
-              disabled={processing}
+              disabled={monitorRecipients.length === 0 || processing}
               className="bg-purple-600 hover:bg-purple-700"
             >
               <Award className="h-4 w-4 mr-2" />
-              Emitir Certificados Monitores
+              Emitir certificados de monitores
             </Button>
-          )}
-          {training.speakers && training.speakers.length > 0 && (
             <Button
               onClick={() => issueSpeakerCertificates.mutate()}
-              disabled={processing}
+              disabled={speakerRecipients.length === 0 || processing}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Award className="h-4 w-4 mr-2" />
-              Emitir Certificados Palestrantes
+              Emitir certificados de palestrantes
             </Button>
-          )}
-        </div>
+          </div>
+
+          <div className="border rounded-lg overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50">
+                  <TableHead>Função</TableHead>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>RG</TableHead>
+                  <TableHead>E-mail</TableHead>
+                  <TableHead>Aula/Tema</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {teamRecipients.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
+                      Nenhum membro de equipe cadastrado para emissão.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  teamRecipients.map((member) => (
+                    <TableRow key={member.id}>
+                      <TableCell>
+                        <Badge variant="outline">{STAFF_ROLE_LABELS[member.role]}</Badge>
+                      </TableCell>
+                      <TableCell className="font-medium">{member.name}</TableCell>
+                      <TableCell>{member.rg || "-"}</TableCell>
+                      <TableCell>
+                        {member.email ? (
+                          <div className="flex items-center gap-1 text-sm">
+                            <Mail className="h-3 w-3 text-slate-400" />
+                            {member.email}
+                          </div>
+                        ) : (
+                          <span className="text-amber-700 text-sm">Sem e-mail</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{member.lecture || "-"}</TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            member.email
+                              ? "bg-green-100 text-green-700"
+                              : "bg-amber-100 text-amber-700"
+                          }
+                        >
+                          {member.email ? "Pronto para envio" : "Gerar sem envio"}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <div className="flex justify-end">
         <Button variant="outline" onClick={onClose}>
           Fechar
         </Button>
-      </div>
-
-      <div className="border rounded-lg overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-slate-50">
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={selectedParticipants.length === eligibleParticipants.length && eligibleParticipants.length > 0}
-                  onCheckedChange={toggleAll}
-                />
-              </TableHead>
-              <TableHead>Nome</TableHead>
-              <TableHead>RG</TableHead>
-              <TableHead>Município</TableHead>
-              <TableHead>GVE</TableHead>
-              <TableHead>Email</TableHead>
-              {useRepadScoreCriteria && <TableHead>Nota (Kappa x100)</TableHead>}
-              <TableHead>Status</TableHead>
-              <TableHead>Certificado</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {eligibleParticipants.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={useRepadScoreCriteria ? 9 : 8}
-                  className="text-center py-8 text-slate-500"
-                >
-                  Nenhum participante elegível para certificado
-                </TableCell>
-              </TableRow>
-            ) : (
-              eligibleParticipants.map((participant) => (
-                <TableRow key={participant.id}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedParticipants.includes(participant.id)}
-                      onCheckedChange={() => toggleParticipant(participant.id)}
-                    />
-                  </TableCell>
-                  <TableCell className="font-medium">{participant.professional_name}</TableCell>
-                  <TableCell>
-                    {participant.professional_rg || participant.professional_cpf || "-"}
-                  </TableCell>
-                  <TableCell>{participant.municipality || "-"}</TableCell>
-                  <TableCell>{participant.health_region || "-"}</TableCell>
-                  <TableCell>
-                    {participant.professional_email ? (
-                      <div className="flex items-center gap-1 text-sm">
-                        <Mail className="h-3 w-3 text-slate-400" />
-                        {participant.professional_email}
-                      </div>
-                    ) : (
-                      <span className="text-red-600 text-sm">Sem email</span>
-                    )}
-                  </TableCell>
-                  {useRepadScoreCriteria && (
-                    <TableCell>
-                      {(() => {
-                        const metrics = repadPerformanceByParticipantId.get(participant.id);
-                        if (Number.isFinite(metrics?.latestScore)) {
-                          return `${formatScore(metrics.latestScore, 1)}%`;
-                        }
-                        const gradeValue = toNumeric(participant?.grade);
-                        if (!Number.isFinite(gradeValue)) return "-";
-                        return `${formatScore(gradeValue, 1)}%`;
-                      })()}
-                    </TableCell>
-                  )}
-                  <TableCell>
-                    <Badge className="bg-green-100 text-green-700">
-                      {useRepadScoreCriteria ? "Aprovado por nota" : "Aprovado"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {participant.certificate_issued ? (
-                      <div className="flex items-center gap-1 text-sm text-green-600">
-                        <CheckCircle className="h-4 w-4" />
-                        Enviado
-                        {participant.certificate_sent_date && (
-                          <span className="text-xs text-slate-500">
-                            ({format(new Date(participant.certificate_sent_date), "dd/MM/yyyy")})
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <Badge variant="outline" className="text-slate-600">Pendente</Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
       </div>
 
     </div>
