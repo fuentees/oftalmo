@@ -88,11 +88,6 @@ export default function TrainingWorkspace() {
     queryFn: () => dataClient.entities.Training.list("-date"),
   });
 
-  const { data: participants = [], isLoading: loadingParticipants } = useQuery({
-    queryKey: ["participants"],
-    queryFn: () => dataClient.entities.TrainingParticipant.list(),
-  });
-
   const { data: professionals = [], isLoading: loadingProfessionals } = useQuery({
     queryKey: ["professionals"],
     queryFn: () => dataClient.entities.Professional.list(),
@@ -106,62 +101,71 @@ export default function TrainingWorkspace() {
     [trainings, trainingId]
   );
 
-  const participantsByTrainingMap = useMemo(() => {
-    const map = new Map();
-    const trainingsById = new Map();
-    const trainingsByTitle = new Map();
+  const trainingDateKeys = useMemo(
+    () => getTrainingDateKeys(training),
+    [training]
+  );
+  const trainingDateKeyString = trainingDateKeys.join("|");
+  const trainingTitleKey = normalizeComparisonText(training?.title);
 
-    (trainings || []).forEach((item) => {
-      const id = String(item?.id || "").trim();
-      if (id) {
-        trainingsById.set(id, item);
-        map.set(id, []);
-      }
-      const titleKey = normalizeComparisonText(item?.title);
-      if (!titleKey) return;
-      if (!trainingsByTitle.has(titleKey)) {
-        trainingsByTitle.set(titleKey, []);
-      }
-      trainingsByTitle.get(titleKey).push(item);
+  const { data: trainingParticipants = [], isLoading: loadingParticipants } =
+    useQuery({
+      queryKey: [
+        "participants",
+        "training-workspace",
+        trainingId,
+        trainingTitleKey,
+        trainingDateKeyString,
+      ],
+      queryFn: async () => {
+        const expectedTrainingId = String(trainingId || "").trim();
+        if (!expectedTrainingId) return [];
+
+        const byTrainingId = await dataClient.entities.TrainingParticipant.filter(
+          { training_id: expectedTrainingId },
+          "-enrollment_date"
+        );
+
+        if (!training?.title) {
+          return byTrainingId;
+        }
+
+        const byTitle = await dataClient.entities.TrainingParticipant.filter(
+          { training_title: training.title },
+          "-enrollment_date"
+        );
+
+        const expectedDateKeys = new Set(getTrainingDateKeys(training));
+        const expectedTitle = normalizeComparisonText(training.title);
+        const existingIds = new Set(
+          byTrainingId
+            .map((item) => String(item?.id || "").trim())
+            .filter(Boolean)
+        );
+
+        const legacyRows = byTitle.filter((participant) => {
+          const participantId = String(participant?.id || "").trim();
+          if (participantId && existingIds.has(participantId)) {
+            return false;
+          }
+
+          const participantTrainingId = String(participant?.training_id || "").trim();
+          if (participantTrainingId) {
+            return participantTrainingId === expectedTrainingId;
+          }
+
+          if (normalizeComparisonText(participant?.training_title) !== expectedTitle) {
+            return false;
+          }
+          if (expectedDateKeys.size === 0) return true;
+          const participantDateKey = normalizeDateKey(participant?.training_date);
+          return !participantDateKey || expectedDateKeys.has(participantDateKey);
+        });
+
+        return [...byTrainingId, ...legacyRows];
+      },
+      enabled: Boolean(trainingId) && !loadingTrainings,
     });
-
-    const resolveParticipantTraining = (participant) => {
-      const participantTrainingId = String(participant?.training_id || "").trim();
-      if (participantTrainingId && trainingsById.has(participantTrainingId)) {
-        return trainingsById.get(participantTrainingId);
-      }
-
-      const titleKey = normalizeComparisonText(participant?.training_title);
-      if (!titleKey) return null;
-      const candidates = trainingsByTitle.get(titleKey) || [];
-      if (!candidates.length) return null;
-      if (candidates.length === 1) return candidates[0];
-
-      const participantDate = normalizeDateKey(participant?.training_date);
-      if (!participantDate) return candidates[0];
-      return (
-        candidates.find((item) =>
-          getTrainingDateKeys(item).includes(participantDate)
-        ) || candidates[0]
-      );
-    };
-
-    (participants || []).forEach((participant) => {
-      const matchedTraining = resolveParticipantTraining(participant);
-      const id = String(matchedTraining?.id || "").trim();
-      if (!id) return;
-      if (!map.has(id)) map.set(id, []);
-      map.get(id).push(participant);
-    });
-
-    return map;
-  }, [participants, trainings]);
-
-  const trainingParticipants = useMemo(() => {
-    const id = String(training?.id || "").trim();
-    if (!id) return [];
-    return participantsByTrainingMap.get(id) || [];
-  }, [participantsByTrainingMap, training]);
 
   const loading = loadingTrainings || loadingParticipants || loadingProfessionals;
   const isRepadTraining = isRepadronizacaoTraining(training);
