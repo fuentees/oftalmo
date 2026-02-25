@@ -892,6 +892,81 @@ export default function CertificateManager({ training, participants = [], onClos
         </Alert>
       )}
 
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            onClick={handlePrintApprovedParticipants}
+            disabled={printableEligibleParticipants.length === 0 || processing}
+            className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:from-blue-700 hover:to-cyan-700"
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Imprimir aprovados ({printableEligibleParticipants.length})
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={toggleAll}
+            disabled={eligibleParticipants.length === 0 || processing}
+          >
+            {selectedParticipants.length === eligibleParticipants.length && eligibleParticipants.length > 0
+              ? "Limpar seleção"
+              : "Selecionar todos"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => previewCertificate.mutate()}
+            disabled={
+              selectedParticipants.length !== 1 ||
+              processing ||
+              previewCertificate.isPending
+            }
+            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+          >
+            {previewCertificate.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Eye className="h-4 w-4 mr-2" />
+            )}
+            {previewCertificate.isPending
+              ? "Abrindo visualização..."
+              : "Visualizar certificado"}
+          </Button>
+          <Button
+            onClick={handleIssueSelected}
+            disabled={selectedParticipants.length === 0 || processing}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            <Award className="h-4 w-4 mr-2" />
+            {processing ? "Emitindo..." : `Emitir ${selectedParticipants.length} Certificado(s)`}
+          </Button>
+          {training.monitors && training.monitors.length > 0 && (
+            <Button
+              onClick={() => issueMonitorCertificates.mutate()}
+              disabled={processing}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <Award className="h-4 w-4 mr-2" />
+              Emitir Certificados Monitores
+            </Button>
+          )}
+          {training.speakers && training.speakers.length > 0 && (
+            <Button
+              onClick={() => issueSpeakerCertificates.mutate()}
+              disabled={processing}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              <Award className="h-4 w-4 mr-2" />
+              Emitir Certificados Palestrantes
+            </Button>
+          )}
+        </div>
+        <Button variant="outline" onClick={onClose}>
+          Fechar
+        </Button>
+      </div>
+
       <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
@@ -987,80 +1062,6 @@ export default function CertificateManager({ training, participants = [], onClos
         </Table>
       </div>
 
-      <div className="flex justify-between items-center pt-4">
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            onClick={handlePrintApprovedParticipants}
-            disabled={printableEligibleParticipants.length === 0 || processing}
-            className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:from-blue-700 hover:to-cyan-700"
-          >
-            <Printer className="h-4 w-4 mr-2" />
-            Imprimir aprovados ({printableEligibleParticipants.length})
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={toggleAll}
-            disabled={eligibleParticipants.length === 0 || processing}
-          >
-            {selectedParticipants.length === eligibleParticipants.length && eligibleParticipants.length > 0
-              ? "Limpar seleção"
-              : "Selecionar todos"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => previewCertificate.mutate()}
-            disabled={
-              selectedParticipants.length !== 1 ||
-              processing ||
-              previewCertificate.isPending
-            }
-            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-          >
-            {previewCertificate.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Eye className="h-4 w-4 mr-2" />
-            )}
-            {previewCertificate.isPending
-              ? "Abrindo visualização..."
-              : "Visualizar certificado"}
-          </Button>
-          <Button
-            onClick={handleIssueSelected}
-            disabled={selectedParticipants.length === 0 || processing}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Award className="h-4 w-4 mr-2" />
-            {processing ? "Emitindo..." : `Emitir ${selectedParticipants.length} Certificado(s)`}
-          </Button>
-          {training.monitors && training.monitors.length > 0 && (
-            <Button
-              onClick={() => issueMonitorCertificates.mutate()}
-              disabled={processing}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              <Award className="h-4 w-4 mr-2" />
-              Emitir Certificados Monitores
-            </Button>
-          )}
-          {training.speakers && training.speakers.length > 0 && (
-            <Button
-              onClick={() => issueSpeakerCertificates.mutate()}
-              disabled={processing}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              <Award className="h-4 w-4 mr-2" />
-              Emitir Certificados Palestrantes
-            </Button>
-          )}
-        </div>
-        <Button variant="outline" onClick={onClose}>
-          Fechar
-        </Button>
-      </div>
     </div>
   );
 }
