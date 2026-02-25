@@ -119,18 +119,37 @@ const interpolateText = (text, data) =>
     data[key] !== undefined && data[key] !== null ? String(data[key]) : ""
   );
 
-const parseFormattedText = (value) => {
+const BODY_HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i;
+
+const toFontStyle = (token) => {
+  const isBold = Boolean(token?.bold);
+  const isItalic = Boolean(token?.italic);
+  if (isBold && isItalic) return "bolditalic";
+  if (isBold) return "bold";
+  if (isItalic) return "italic";
+  return "normal";
+};
+
+const tokenizeLegacyFormattedText = (value) => {
   const tokens = [];
   let bold = false;
   let buffer = "";
   const flush = () => {
     if (!buffer) return;
-    tokens.push({ type: "text", text: buffer, bold });
+    tokens.push({
+      type: "text",
+      text: buffer,
+      bold,
+      italic: false,
+      underline: false,
+    });
     buffer = "";
   };
-  for (let i = 0; i < String(value || "").length; i += 1) {
-    const char = value[i];
-    const next = value[i + 1];
+
+  const content = String(value || "");
+  for (let i = 0; i < content.length; i += 1) {
+    const char = content[i];
+    const next = content[i + 1];
     if (char === "*" && next === "*") {
       flush();
       bold = !bold;
@@ -146,6 +165,133 @@ const parseFormattedText = (value) => {
   }
   flush();
   return tokens;
+};
+
+const parseHtmlFormattedText = (value) => {
+  if (typeof DOMParser === "undefined") return [];
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(String(value || ""), "text/html");
+  const tokens = [];
+
+  const ensureTrailingNewline = () => {
+    if (!tokens.length) return;
+    if (tokens[tokens.length - 1].type !== "newline") {
+      tokens.push({ type: "newline" });
+    }
+  };
+
+  const pushTextToken = (text, style) => {
+    const normalized = String(text || "").replace(/\u00a0/g, " ");
+    if (!normalized) return;
+    tokens.push({
+      type: "text",
+      text: normalized,
+      bold: Boolean(style?.bold),
+      italic: Boolean(style?.italic),
+      underline: Boolean(style?.underline),
+    });
+  };
+
+  const walkNode = (node, style = {}, listContext = null) => {
+    if (!node) return;
+
+    if (node.nodeType === 3) {
+      pushTextToken(node.textContent, style);
+      return;
+    }
+
+    if (node.nodeType !== 1) return;
+    const tag = String(node.tagName || "").toLowerCase();
+    if (!tag) return;
+
+    if (tag === "br") {
+      tokens.push({ type: "newline" });
+      return;
+    }
+
+    const nextStyle = {
+      ...style,
+      bold: style.bold || tag === "strong" || tag === "b",
+      italic: style.italic || tag === "em" || tag === "i",
+      underline: style.underline || tag === "u",
+    };
+
+    if (tag === "ol" || tag === "ul") {
+      const listItems = Array.from(node.children || []).filter(
+        (child) => String(child?.tagName || "").toLowerCase() === "li"
+      );
+      if (!listItems.length) {
+        Array.from(node.childNodes || []).forEach((child) =>
+          walkNode(child, nextStyle, listContext)
+        );
+        return;
+      }
+
+      listItems.forEach((child, index) => {
+        walkNode(child, nextStyle, {
+          type: tag,
+          index: index + 1,
+        });
+      });
+      ensureTrailingNewline();
+      return;
+    }
+
+    if (tag === "li") {
+      const marker = listContext?.type === "ol" ? `${listContext.index}. ` : "• ";
+      pushTextToken(marker, {});
+      Array.from(node.childNodes || []).forEach((child) =>
+        walkNode(child, nextStyle, null)
+      );
+      ensureTrailingNewline();
+      return;
+    }
+
+    const isBlock = [
+      "p",
+      "div",
+      "section",
+      "article",
+      "blockquote",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "pre",
+    ].includes(tag);
+
+    if (isBlock && tokens.length && tokens[tokens.length - 1].type !== "newline") {
+      tokens.push({ type: "newline" });
+    }
+
+    Array.from(node.childNodes || []).forEach((child) =>
+      walkNode(child, nextStyle, listContext)
+    );
+
+    if (isBlock) {
+      ensureTrailingNewline();
+    }
+  };
+
+  Array.from(doc.body?.childNodes || []).forEach((node) => walkNode(node, {}));
+
+  while (tokens.length && tokens[tokens.length - 1].type === "newline") {
+    tokens.pop();
+  }
+
+  return tokens;
+};
+
+const parseFormattedText = (value) => {
+  const content = String(value || "");
+  if (!content) return [];
+  if (BODY_HTML_TAG_REGEX.test(content)) {
+    const parsedHtmlTokens = parseHtmlFormattedText(content);
+    if (parsedHtmlTokens.length > 0) return parsedHtmlTokens;
+  }
+  return tokenizeLegacyFormattedText(content);
 };
 
 const splitTokensByExplicitLines = (tokens) => {
@@ -200,7 +346,7 @@ const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth, firstLineInde
           pendingSpace = true;
           return;
         }
-        const wordWidth = measureWord(part, token.bold);
+        const wordWidth = measureWord(part, token);
         const spaceWidth = pendingSpace && currentWords.length > 0 ? baseSpaceWidth : 0;
         if (
           currentWords.length > 0 &&
@@ -211,7 +357,12 @@ const buildLines = (tokens, maxWidth, measureWord, baseSpaceWidth, firstLineInde
         if (pendingSpace && currentWords.length > 0) {
           lineWidth += baseSpaceWidth;
         }
-        currentWords.push({ text: part, bold: token.bold });
+        currentWords.push({
+          text: part,
+          bold: token.bold,
+          italic: token.italic,
+          underline: token.underline,
+        });
         lineWidth += wordWidth;
         pendingSpace = false;
       });
@@ -251,8 +402,8 @@ const drawFormattedText = (
   const baseSpaceWidth = pdf.getTextWidth(" ");
   const maxSpaceWidth = baseSpaceWidth * maxWordSpacing;
   const tokens = parseFormattedText(text);
-  const measureWord = (word, isBold) => {
-    pdf.setFont(fontFamily, isBold ? "bold" : "normal");
+  const measureWord = (word, tokenStyle) => {
+    pdf.setFont(fontFamily, toFontStyle(tokenStyle));
     return pdf.getTextWidth(word);
   };
   const lines = buildLines(tokens, maxWidth, measureWord, baseSpaceWidth, indent);
@@ -260,7 +411,7 @@ const drawFormattedText = (
     const words = line.words;
     if (words.length === 0) return;
     const isLast = index === lines.length - 1;
-    const wordWidths = words.map((word) => measureWord(word.text, word.bold));
+    const wordWidths = words.map((word) => measureWord(word.text, word));
     const wordsWidth = wordWidths.reduce((sum, width) => sum + width, 0);
     const gaps = words.length - 1;
     let spaceWidth = baseSpaceWidth;
@@ -274,8 +425,14 @@ const drawFormattedText = (
     }
     let cursorX = x + lineIndent;
     words.forEach((word, idx) => {
-      pdf.setFont(fontFamily, word.bold ? "bold" : "normal");
-      pdf.text(word.text, cursorX, y + index * lineHeight);
+      pdf.setFont(fontFamily, toFontStyle(word));
+      const lineY = y + index * lineHeight;
+      pdf.text(word.text, cursorX, lineY);
+      if (word.underline) {
+        const underlineY = lineY + fontSize * 0.12;
+        pdf.setLineWidth(0.25);
+        pdf.line(cursorX, underlineY, cursorX + wordWidths[idx], underlineY);
+      }
       cursorX += wordWidths[idx] + (idx < gaps ? spaceWidth : 0);
     });
   });

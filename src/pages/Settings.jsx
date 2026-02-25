@@ -64,8 +64,68 @@ import {
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
 import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
 
 const CERTIFICATE_SCOPE_GLOBAL = "__global__";
+const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i;
+const CERTIFICATE_BODY_EDITOR_MODULES = {
+  toolbar: [
+    [{ header: [1, 2, 3, false] }],
+    [{ size: ["small", false, "large", "huge"] }],
+    ["bold", "italic", "underline"],
+    [{ list: "ordered" }, { list: "bullet" }],
+    [{ align: [] }],
+    ["clean"],
+  ],
+  clipboard: {
+    matchVisual: false,
+  },
+};
+const CERTIFICATE_BODY_EDITOR_FORMATS = [
+  "header",
+  "size",
+  "bold",
+  "italic",
+  "underline",
+  "list",
+  "bullet",
+  "align",
+];
+
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const applyLegacyBoldToHtml = (value) =>
+  String(value || "").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+const convertLegacyBodyToHtml = (value) => {
+  const normalized = String(value ?? "").replace(/\r\n/g, "\n");
+  if (!normalized.trim()) return "<p><br></p>";
+  const paragraphs = normalized.split("\n\n");
+  return paragraphs
+    .map((paragraph) => {
+      const encoded = paragraph
+        .split("\n")
+        .map((line) => escapeHtml(line))
+        .join("<br/>");
+      const withBold = applyLegacyBoldToHtml(encoded);
+      return `<p>${withBold || "<br/>"}</p>`;
+    })
+    .join("");
+};
+
+const normalizeBodyToEditorHtml = (value) => {
+  const text = String(value ?? "");
+  if (!text.trim()) return "<p><br></p>";
+  if (HTML_TAG_REGEX.test(text)) return text;
+  return convertLegacyBodyToHtml(text);
+};
 
 export default function Settings() {
   const [selectedColor, setSelectedColor] = useState("blue");
@@ -95,7 +155,6 @@ export default function Settings() {
   const [isCertificateEditorOpen, setIsCertificateEditorOpen] = useState(true);
   const [isCertificatePreviewOpen, setIsCertificatePreviewOpen] = useState(true);
   const [isEmailSettingsOpen, setIsEmailSettingsOpen] = useState(false);
-  const bodyTextRef = useRef(null);
   const queryClient = useQueryClient();
   const { gveMapping, isLoading: isGveMappingLoading } = useGveMapping();
   const { data: trainings = [] } = useQuery({
@@ -514,61 +573,6 @@ export default function Settings() {
         [field]: Number.isFinite(numeric) ? numeric : 0,
       },
     }));
-  };
-
-  const handleBodyFormatting = (prefix, suffix = prefix) => {
-    const textarea = bodyTextRef.current;
-    if (!textarea) return;
-    const currentValue = certificateTemplate.body || "";
-    const start = textarea.selectionStart ?? 0;
-    const end = textarea.selectionEnd ?? start;
-    const selected = currentValue.slice(start, end);
-    const nextValue =
-      currentValue.slice(0, start) + prefix + selected + suffix + currentValue.slice(end);
-    setCertificateTemplate((prev) => ({
-      ...prev,
-      body: nextValue,
-    }));
-    requestAnimationFrame(() => {
-      textarea.focus();
-      const cursorStart = start + prefix.length;
-      const cursorEnd = end + prefix.length;
-      textarea.setSelectionRange(cursorStart, cursorEnd);
-    });
-  };
-
-  const insertBodyText = (value) => {
-    const textarea = bodyTextRef.current;
-    if (!textarea) return;
-    const currentValue = certificateTemplate.body || "";
-    const start = textarea.selectionStart ?? 0;
-    const end = textarea.selectionEnd ?? start;
-    const nextValue =
-      currentValue.slice(0, start) + value + currentValue.slice(end);
-    setCertificateTemplate((prev) => ({
-      ...prev,
-      body: nextValue,
-    }));
-    requestAnimationFrame(() => {
-      textarea.focus();
-      const cursor = start + value.length;
-      textarea.setSelectionRange(cursor, cursor);
-    });
-  };
-
-  const handleBodyEditorShortcut = (event) => {
-    const isModifierPressed = event.ctrlKey || event.metaKey;
-    if (!isModifierPressed) return;
-    const key = String(event.key || "").toLowerCase();
-    if (key === "b") {
-      event.preventDefault();
-      handleBodyFormatting("**", "**");
-      return;
-    }
-    if (key === "enter") {
-      event.preventDefault();
-      insertBodyText("\n\n");
-    }
   };
 
   const getRelativeMm = (event) => {
@@ -1113,7 +1117,10 @@ export default function Settings() {
     certificateTemplate.title || "CERTIFICADO",
     previewData
   );
-  const previewBody = interpolateText(certificateTemplate.body || "", previewData);
+  const editorBodyValue = normalizeBodyToEditorHtml(certificateTemplate.body || "");
+  const previewBodyHtml = normalizeBodyToEditorHtml(
+    interpolateText(certificateTemplate.body || "", previewData)
+  );
   const previewFooter = certificateTemplate.footer
     ? interpolateText(certificateTemplate.footer, previewData)
     : "";
@@ -1128,67 +1135,9 @@ export default function Settings() {
   const bodyIndentValue = Number(certificateTemplate.textOptions?.bodyIndent) || 0;
   const bodyFontSizeValue = Number(certificateTemplate.fonts?.bodySize) || 14;
 
-  const renderFormattedText = (value) => {
-    const content = String(value || "");
-    const parts = [];
-    let bold = false;
-    let buffer = "";
-    let keyIndex = 0;
-    const flush = () => {
-      if (!buffer) return;
-      parts.push({
-        type: "text",
-        bold,
-        element: bold ? (
-          <strong key={`bold-${keyIndex}`}>{buffer}</strong>
-        ) : (
-          <span key={`text-${keyIndex}`}>{buffer}</span>
-        ),
-      });
-      keyIndex += 1;
-      buffer = "";
-    };
-    for (let i = 0; i < content.length; i += 1) {
-      const char = content[i];
-      const next = content[i + 1];
-      if (char === "*" && next === "*") {
-        flush();
-        bold = !bold;
-        i += 1;
-        continue;
-      }
-      if (char === "\n") {
-        flush();
-        parts.push({
-          type: "break",
-          element: <br key={`br-${keyIndex}`} />,
-        });
-        keyIndex += 1;
-        continue;
-      }
-      buffer += char;
-    }
-    flush();
-    return parts.map((part) => part.element);
-  };
-
   const previewPage = { width: 297, height: 210 };
   const bodyIndentPercent = (bodyIndentValue / previewPage.width) * 100;
   const toPercent = (value, total) => `${(value / total) * 100}%`;
-
-  const renderFormattedParagraphs = (value) => {
-    const normalized = String(value || "").replace(/\r\n/g, "\n");
-    const paragraphs = normalized.split("\n\n");
-    return paragraphs.map((paragraph, index) => (
-      <p
-        key={`paragraph-${index}`}
-        className={index > 0 ? "mt-2" : ""}
-        style={{ textIndent: `${bodyIndentPercent}%` }}
-      >
-        {paragraph ? renderFormattedText(paragraph) : <span>&nbsp;</span>}
-      </p>
-    ));
-  };
 
   const logoPreviewItems = useMemo(
     () =>
@@ -1831,36 +1780,15 @@ export default function Settings() {
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <Label>Texto do certificado</Label>
                         <p className="text-xs text-slate-500">
-                          Atalhos: Ctrl/Cmd + B (negrito) e Ctrl/Cmd + Enter (novo parágrafo)
+                          Editor avançado com barra de ferramentas completa.
                         </p>
                       </div>
                       <div className="rounded-md border bg-slate-50">
                         <div className="flex flex-wrap items-center gap-2 border-b bg-white p-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleBodyFormatting("**", "**")}
-                          >
-                            <strong>Negrito</strong>
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => insertBodyText("\n")}
-                          >
-                            Quebra de linha
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => insertBodyText("\n\n")}
-                          >
-                            Novo parágrafo
-                          </Button>
-                          <div className="h-6 w-px bg-slate-200" />
+                          <span className="text-xs text-slate-500">
+                            Use a barra abaixo para editar como no Word.
+                          </span>
+                          <div className="h-6 w-px bg-slate-200 hidden sm:block" />
                           <Button
                             type="button"
                             size="sm"
@@ -1878,13 +1806,14 @@ export default function Settings() {
                             Alinhar esquerda
                           </Button>
                         </div>
-                        <Textarea
-                          ref={bodyTextRef}
-                          value={certificateTemplate.body}
-                          onChange={(e) => handleCertificateChange("body", e.target.value)}
-                          onKeyDown={handleBodyEditorShortcut}
-                          rows={10}
-                          className="min-h-[220px] resize-y border-0 bg-transparent focus-visible:ring-0"
+                        <ReactQuill
+                          theme="snow"
+                          value={editorBodyValue}
+                          onChange={(value) => handleCertificateChange("body", value)}
+                          modules={CERTIFICATE_BODY_EDITOR_MODULES}
+                          formats={CERTIFICATE_BODY_EDITOR_FORMATS}
+                          className="[&_.ql-toolbar]:border-x-0 [&_.ql-toolbar]:border-t-0 [&_.ql-container]:min-h-[220px] [&_.ql-container]:border-x-0 [&_.ql-container]:border-b-0 [&_.ql-editor]:min-h-[220px] [&_.ql-editor]:text-sm"
+                          placeholder="Digite o texto do certificado..."
                         />
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -2531,7 +2460,7 @@ export default function Settings() {
                               }
                             >
                               <div
-                                className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-slate-700 whitespace-pre-line"
+                                className="rounded border border-dashed border-blue-400 bg-white/70 px-2 py-1 text-slate-700"
                                 style={{
                                   fontFamily: previewFont,
                                   fontSize: bodyFontSizeValue,
@@ -2539,7 +2468,16 @@ export default function Settings() {
                                   lineHeight: bodyLineHeightValue,
                                 }}
                               >
-                                {renderFormattedParagraphs(previewBody)}
+                                <div
+                                  className="[&_ol]:list-decimal [&_ol]:pl-6 [&_p]:m-0 [&_p+p]:mt-2 [&_ul]:list-disc [&_ul]:pl-6"
+                                  style={{
+                                    textIndent: `${bodyIndentPercent}%`,
+                                    wordSpacing: isBodyJustified
+                                      ? `${Math.max(0, bodyMaxWordSpacingValue - 1) * 0.06}em`
+                                      : undefined,
+                                  }}
+                                  dangerouslySetInnerHTML={{ __html: previewBodyHtml }}
+                                />
                               </div>
                             </div>
 
