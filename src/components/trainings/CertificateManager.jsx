@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Mail, CheckCircle, Award } from "lucide-react";
+import { Mail, CheckCircle, Award, Printer } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
@@ -54,6 +54,13 @@ const parseStoredAnswers = (value) => {
   if (parsed.some((item) => item === null)) return null;
   return parsed;
 };
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 export default function CertificateManager({ training, participants = [], onClose }) {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
@@ -579,6 +586,192 @@ export default function CertificateManager({ training, participants = [], onClos
   });
 
   const alreadySentCount = eligibleParticipants.filter(p => p.certificate_issued).length;
+  const printableEligibleParticipants = useMemo(
+    () =>
+      [...eligibleParticipants].sort((a, b) =>
+        String(a?.professional_name || "").localeCompare(
+          String(b?.professional_name || ""),
+          "pt-BR",
+          { sensitivity: "base" }
+        )
+      ),
+    [eligibleParticipants]
+  );
+
+  const handlePrintApprovedParticipants = () => {
+    if (!training) return;
+    if (printableEligibleParticipants.length === 0) {
+      setResult({
+        success: false,
+        message: "Não há aprovados para imprimir neste treinamento.",
+      });
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "width=1180,height=820");
+    if (!printWindow) {
+      setResult({
+        success: false,
+        message:
+          "Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-up.",
+      });
+      return;
+    }
+
+    const generatedAt = format(new Date(), "dd/MM/yyyy HH:mm");
+    const rowsHtml = printableEligibleParticipants
+      .map(
+        (participant, index) => `
+          <tr>
+            <td class="idx">${index + 1}</td>
+            <td>${escapeHtml(participant.professional_name || "-")}</td>
+            <td>${escapeHtml(
+              participant.professional_rg || participant.professional_cpf || "-"
+            )}</td>
+            <td>${escapeHtml(participant.municipality || "-")}</td>
+            <td>${escapeHtml(participant.health_region || "-")}</td>
+            <td>${escapeHtml(participant.professional_email || "-")}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const printableHtml = `
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Aprovados para certificado - ${escapeHtml(training.title || "Treinamento")}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 24px;
+              font-family: "Inter", "Segoe UI", Arial, sans-serif;
+              color: #0f172a;
+              background: #f8fafc;
+            }
+            .wrap {
+              border: 1px solid #bfdbfe;
+              border-radius: 14px;
+              overflow: hidden;
+              background: #fff;
+            }
+            .head {
+              background: linear-gradient(120deg, #2563eb, #06b6d4);
+              color: #fff;
+              padding: 20px 24px;
+            }
+            .head h1 {
+              margin: 0;
+              font-size: 22px;
+              line-height: 1.2;
+            }
+            .head p {
+              margin: 8px 0 0 0;
+              font-size: 13px;
+              opacity: .95;
+            }
+            .meta {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 8px;
+              padding: 14px 24px 0 24px;
+            }
+            .chip {
+              font-size: 12px;
+              border-radius: 999px;
+              border: 1px solid #bfdbfe;
+              background: #eff6ff;
+              color: #1d4ed8;
+              padding: 4px 10px;
+            }
+            table {
+              width: calc(100% - 48px);
+              margin: 14px 24px 24px 24px;
+              border-collapse: collapse;
+            }
+            thead th {
+              background: #eff6ff;
+              color: #1e40af;
+              border: 1px solid #bfdbfe;
+              font-size: 12px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: .02em;
+              padding: 10px 8px;
+            }
+            tbody td {
+              border: 1px solid #dbeafe;
+              font-size: 12px;
+              padding: 8px;
+            }
+            tbody tr:nth-child(even) td {
+              background: #f8fbff;
+            }
+            .idx {
+              width: 44px;
+              text-align: center;
+            }
+            .foot {
+              padding: 0 24px 18px 24px;
+              font-size: 11px;
+              color: #475569;
+            }
+            @media print {
+              body { padding: 0; background: #fff; }
+              .wrap { border: none; border-radius: 0; }
+              .meta { padding: 10px 0 0 0; }
+              table { width: 100%; margin: 12px 0 0 0; }
+              .foot { padding: 0; margin-top: 12px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="wrap">
+            <div class="head">
+              <h1>Aprovados para emissão de certificado</h1>
+              <p>Treinamento: ${escapeHtml(training.title || "-")} • Gerado em: ${escapeHtml(generatedAt)}</p>
+            </div>
+            <div class="meta">
+              <span class="chip">Total de aprovados: ${printableEligibleParticipants.length}</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th class="idx">#</th>
+                  <th>Nome</th>
+                  <th>RG</th>
+                  <th>Município</th>
+                  <th>GVE</th>
+                  <th>E-mail</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+            <div class="foot">
+              Relatório gerado automaticamente pela página de certificados.
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.focus();
+              window.print();
+            };
+            window.onafterprint = function() {
+              window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(printableHtml);
+    printWindow.document.close();
+  };
 
   if (!training) {
     return (
@@ -653,6 +846,9 @@ export default function CertificateManager({ training, participants = [], onClos
                 />
               </TableHead>
               <TableHead>Nome</TableHead>
+              <TableHead>RG</TableHead>
+              <TableHead>Município</TableHead>
+              <TableHead>GVE</TableHead>
               <TableHead>Email</TableHead>
               {useRepadScoreCriteria && <TableHead>Nota (Kappa x100)</TableHead>}
               <TableHead>Status</TableHead>
@@ -663,7 +859,7 @@ export default function CertificateManager({ training, participants = [], onClos
             {eligibleParticipants.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={useRepadScoreCriteria ? 6 : 5}
+                  colSpan={useRepadScoreCriteria ? 9 : 8}
                   className="text-center py-8 text-slate-500"
                 >
                   Nenhum participante elegível para certificado
@@ -679,6 +875,11 @@ export default function CertificateManager({ training, participants = [], onClos
                     />
                   </TableCell>
                   <TableCell className="font-medium">{participant.professional_name}</TableCell>
+                  <TableCell>
+                    {participant.professional_rg || participant.professional_cpf || "-"}
+                  </TableCell>
+                  <TableCell>{participant.municipality || "-"}</TableCell>
+                  <TableCell>{participant.health_region || "-"}</TableCell>
                   <TableCell>
                     {participant.professional_email ? (
                       <div className="flex items-center gap-1 text-sm">
@@ -731,6 +932,15 @@ export default function CertificateManager({ training, participants = [], onClos
 
       <div className="flex justify-between items-center pt-4">
         <div className="flex gap-2">
+          <Button
+            type="button"
+            onClick={handlePrintApprovedParticipants}
+            disabled={printableEligibleParticipants.length === 0 || processing}
+            className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:from-blue-700 hover:to-cyan-700"
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Imprimir aprovados ({printableEligibleParticipants.length})
+          </Button>
           <Button
             type="button"
             variant="outline"
