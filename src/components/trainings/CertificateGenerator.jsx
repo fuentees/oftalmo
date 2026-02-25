@@ -130,6 +130,10 @@ const toFontStyle = (token) => {
   return "normal";
 };
 
+const DEFAULT_BODY_MAX_WORD_SPACING = 2;
+const ABSOLUTE_MAX_WORD_SPACING_FACTOR = 2.2;
+const MIN_FILL_RATIO_FOR_JUSTIFY = 0.72;
+
 const normalizeAlignValue = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return null;
@@ -443,14 +447,18 @@ const drawFormattedText = (
     fontSize,
     justify = true,
     align = "left",
-    maxWordSpacing = 3,
+    maxWordSpacing = DEFAULT_BODY_MAX_WORD_SPACING,
     indent = 0,
     paragraphSpacing = 0,
   } = options || {};
   pdf.setFontSize(fontSize);
   pdf.setFont(fontFamily, "normal");
   const baseSpaceWidth = pdf.getTextWidth(" ");
-  const maxSpaceWidth = baseSpaceWidth * maxWordSpacing;
+  const configuredMaxWordSpacing = Number(maxWordSpacing);
+  const effectiveMaxWordSpacing = Number.isFinite(configuredMaxWordSpacing)
+    ? Math.max(1, Math.min(configuredMaxWordSpacing, ABSOLUTE_MAX_WORD_SPACING_FACTOR))
+    : DEFAULT_BODY_MAX_WORD_SPACING;
+  const maxSpaceWidth = baseSpaceWidth * effectiveMaxWordSpacing;
   const normalizedAlign = normalizeAlignValue(align) || (justify ? "justify" : "left");
   const tokens = parseFormattedText(text);
   const measureWord = (word, tokenStyle) => {
@@ -482,9 +490,14 @@ const drawFormattedText = (
     const lineIndent = Number(line.indent) || 0;
     const availableWidth = Math.max(0, maxWidth - lineIndent);
     const lineAlign = normalizeAlignValue(line.align) || normalizedAlign;
-    const shouldJustify =
-      lineAlign === "justify" && !line.isParagraphLast && gaps > 0;
     const simpleLineWidth = wordsWidth + Math.max(0, gaps) * baseSpaceWidth;
+    const fillRatio =
+      availableWidth > 0 ? Math.min(1, simpleLineWidth / availableWidth) : 1;
+    const shouldJustify =
+      lineAlign === "justify" &&
+      !line.isParagraphLast &&
+      gaps > 0 &&
+      fillRatio >= MIN_FILL_RATIO_FOR_JUSTIFY;
     let cursorX = x + lineIndent;
 
     if (shouldJustify) {
@@ -721,7 +734,8 @@ export const generateParticipantCertificate = (participant, training, templateOv
     normalizeAlignValue(textOptions.bodyAlign) ||
     (justifyBody ? "justify" : "left");
   const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
-  const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const maxWordSpacing =
+    Number(textOptions.bodyMaxWordSpacing) || DEFAULT_BODY_MAX_WORD_SPACING;
   const paragraphSpacing = Number(textOptions.bodyParagraphSpacing) || 0;
   const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
@@ -904,7 +918,8 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
     normalizeAlignValue(textOptions.bodyAlign) ||
     (justifyBody ? "justify" : "left");
   const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
-  const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const maxWordSpacing =
+    Number(textOptions.bodyMaxWordSpacing) || DEFAULT_BODY_MAX_WORD_SPACING;
   const paragraphSpacing = Number(textOptions.bodyParagraphSpacing) || 0;
   const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
@@ -1087,7 +1102,8 @@ export const generateSpeakerCertificate = (speaker, training, templateOverride) 
     normalizeAlignValue(textOptions.bodyAlign) ||
     (justifyBody ? "justify" : "left");
   const lineHeightFactor = Number(textOptions.bodyLineHeight) || 1.2;
-  const maxWordSpacing = Number(textOptions.bodyMaxWordSpacing) || 3;
+  const maxWordSpacing =
+    Number(textOptions.bodyMaxWordSpacing) || DEFAULT_BODY_MAX_WORD_SPACING;
   const paragraphSpacing = Number(textOptions.bodyParagraphSpacing) || 0;
   const bodyIndent = Number(textOptions.bodyIndent) || 0;
   const lineHeight = pdf.getTextDimensions("Mg").h * lineHeightFactor;
