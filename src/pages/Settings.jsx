@@ -71,11 +71,8 @@ const CERTIFICATE_SCOPE_GLOBAL = "__global__";
 const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i;
 const CERTIFICATE_BODY_EDITOR_MODULES = {
   toolbar: [
-    [{ header: [1, 2, 3, false] }],
-    [{ size: ["small", false, "large", "huge"] }],
     ["bold", "italic", "underline"],
     [{ list: "ordered" }, { list: "bullet" }],
-    [{ align: [] }],
     ["clean"],
   ],
   clipboard: {
@@ -83,14 +80,11 @@ const CERTIFICATE_BODY_EDITOR_MODULES = {
   },
 };
 const CERTIFICATE_BODY_EDITOR_FORMATS = [
-  "header",
-  "size",
   "bold",
   "italic",
   "underline",
   "list",
   "bullet",
-  "align",
 ];
 
 const escapeHtml = (value) =>
