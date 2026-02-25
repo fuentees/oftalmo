@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { dataClient } from "@/api/dataClient";
 import ProfessionalDetails from "@/components/professionals/ProfessionalDetails";
 import PageHeader from "@/components/common/PageHeader";
+import { getEffectiveEventStatus } from "@/lib/statusRules";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, AlertCircle, Loader2 } from "lucide-react";
@@ -89,10 +90,18 @@ export default function ProfessionalProfile() {
     const normalizedName = normalizeText(professional?.name);
     const normalizedId = String(professional?.id || "").trim();
     return (events || []).filter((event) => {
+      const effectiveStatus = getEffectiveEventStatus(event);
+      if (effectiveStatus === "cancelado") return false;
+
       const hasId = Array.isArray(event?.professional_ids)
         ? event.professional_ids.some((id) => String(id || "").trim() === normalizedId)
         : false;
       if (hasId) return true;
+
+      const hasExplicitIds =
+        Array.isArray(event?.professional_ids) && event.professional_ids.length > 0;
+      if (hasExplicitIds) return false;
+
       if (!normalizedName) return false;
       return Array.isArray(event?.professional_names)
         ? event.professional_names.some((name) => normalizeText(name) === normalizedName)
