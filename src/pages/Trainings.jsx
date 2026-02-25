@@ -912,6 +912,42 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     return Number.isFinite(number) ? number : null;
   };
 
+  const toBoolean = (value) => {
+    if (typeof value === "boolean") return value;
+    const normalized = String(value ?? "").trim().toLowerCase();
+    if (!normalized) return null;
+    if (["true", "1", "sim", "yes", "aprovado", "apto"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "0", "nao", "não", "no", "reprovado", "inapto"].includes(normalized)) {
+      return false;
+    }
+    return null;
+  };
+
+  const isApprovedByAttendance = (participant, training) => {
+    const storedPercentage = toNumeric(participant?.attendance_percentage);
+    if (storedPercentage !== null) {
+      return storedPercentage >= 75;
+    }
+
+    const records = Array.isArray(participant?.attendance_records)
+      ? participant.attendance_records
+      : [];
+    if (!records.length) return false;
+
+    const trainingDatesCount = Array.isArray(training?.dates)
+      ? training.dates.filter((item) => item?.date).length
+      : 0;
+    const totalDates = trainingDatesCount || 1;
+    const presentCount = records.filter(
+      (record) =>
+        String(record?.status || "").trim().toLowerCase() === "presente"
+    ).length;
+    const computedPercentage = Math.round((presentCount / totalDates) * 100);
+    return computedPercentage >= 75;
+  };
+
   const toGradePercent = (participant) => {
     const numeric = toNumeric(participant?.grade);
     if (numeric === null) return null;
@@ -925,6 +961,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
   const isApprovedParticipant = (participant, training) => {
     if (!participant || isCancelledEnrollment(participant)) return false;
     if (participant?.certificate_issued) return true;
+    const approvedFlag = toBoolean(participant?.approved);
 
     if (isRepadronizacaoTraining(training)) {
       const trainingId = String(training?.id || "").trim();
@@ -936,10 +973,10 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
 
       const gradePercent = toGradePercent(participant);
       if (gradePercent !== null) return gradePercent >= 70;
-      return participant?.approved === true;
+      return approvedFlag === true;
     }
 
-    return participant?.approved === true;
+    return approvedFlag === true || isApprovedByAttendance(participant, training);
   };
 
   const getTrainingYear = (training) => {
