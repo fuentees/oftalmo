@@ -264,12 +264,13 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     type: "daily",
     occurrences: 5,
   });
+  const [initializedTrainingKey, setInitializedTrainingKey] = useState(null);
 
   const queryClient = useQueryClient();
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
   const trainingId = String(training?.id || "").trim();
 
-  const { data: completeTraining } = useQuery({
+  const { data: completeTraining, isLoading: loadingCompleteTraining } = useQuery({
     queryKey: ["training-form-complete", trainingId],
     queryFn: async () => {
       const rows = await dataClient.entities.Training.filter({ id: trainingId });
@@ -284,9 +285,13 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       { date: format(new Date(), "yyyy-MM-dd"), start_time: "08:00", end_time: "12:00" }
     ];
 
-    const sourceTraining = completeTraining || training;
+    if (trainingId) {
+      // Aguarda a busca completa no modo edição para evitar abrir com dados parciais.
+      if (loadingCompleteTraining) return;
+      const sourceTraining = completeTraining || training;
+      if (!sourceTraining) return;
+      if (initializedTrainingKey === trainingId) return;
 
-    if (sourceTraining) {
       const normalizedDates = normalizeTrainingDates(sourceTraining?.dates, {
         start_time: sourceTraining?.start_time,
         end_time: sourceTraining?.end_time,
@@ -346,19 +351,47 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       setIsOnlineTraining(Boolean(resolvedOnlineLink));
       setDateMode(scheduleFromTraining.mode);
       setRangeConfig(scheduleFromTraining.range);
-    } else {
-      // Generate code for new training
-      generateTrainingCode();
-      setIsOnlineTraining(false);
-      setDateMode("range");
-      setRangeConfig(buildDefaultRangeConfig());
-      setFormData((prev) => ({
-        ...prev,
-        dates: buildRangeDates(buildDefaultRangeConfig()),
-        duration_hours: 4,
-      }));
+      setInitializedTrainingKey(trainingId);
+      return;
     }
-  }, [training, completeTraining]);
+
+    if (initializedTrainingKey === "__new__") return;
+    // Generate code for new training
+    generateTrainingCode();
+    setIsOnlineTraining(false);
+    setDateMode("range");
+    const defaultRange = buildDefaultRangeConfig();
+    setRangeConfig(defaultRange);
+    setFormData((prev) => ({
+      ...prev,
+      title: "",
+      code: "",
+      type: "teorico",
+      description: "",
+      dates: buildRangeDates(defaultRange),
+      duration_hours: 4,
+      location: "",
+      municipality: "",
+      gve: "",
+      online_link: "",
+      coordinator: "",
+      coordinator_email: "",
+      instructor: "",
+      monitors: [],
+      speakers: [],
+      max_participants: "",
+      status: "agendado",
+      validity_months: "",
+      notes: "",
+    }));
+    setInitializedTrainingKey("__new__");
+  }, [
+    trainingId,
+    training,
+    completeTraining,
+    loadingCompleteTraining,
+    initializedTrainingKey,
+  ]);
 
   useEffect(() => {
     if (dateMode !== "range") return;
@@ -799,6 +832,15 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
   };
 
   const currentDateRange = getTrainingDateRange(formData.dates || []);
+
+  if (trainingId && loadingCompleteTraining && initializedTrainingKey !== trainingId) {
+    return (
+      <div className="py-10 flex flex-col items-center justify-center gap-3 text-slate-500">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+        <p className="text-sm">Carregando dados completos do treinamento...</p>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
