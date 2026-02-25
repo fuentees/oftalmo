@@ -115,6 +115,7 @@ const normalizeStaffEntries = (value) => {
 export default function CertificateManager({ training, participants = [], onClose }) {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [previewParticipantId, setPreviewParticipantId] = useState("");
+  const [previewTeamRecipientId, setPreviewTeamRecipientId] = useState("");
   const [selectedTemplateScope, setSelectedTemplateScope] = useState(
     CERT_TEMPLATE_SCOPE_CURRENT
   );
@@ -388,6 +389,7 @@ export default function CertificateManager({ training, participants = [], onClos
   React.useEffect(() => {
     setSelectedTemplateScope(CERT_TEMPLATE_SCOPE_CURRENT);
     setPreviewParticipantId("");
+    setPreviewTeamRecipientId("");
   }, [training?.id]);
 
   const blobToBase64 = (blob) =>
@@ -660,6 +662,81 @@ export default function CertificateManager({ training, participants = [], onClos
     },
   });
 
+  const previewTeamCertificate = useMutation({
+    mutationFn: async () => {
+      if (!training) {
+        throw new Error("Treinamento inválido para pré-visualização.");
+      }
+      const targetRecipientId = String(previewTeamRecipientId).trim();
+      if (!targetRecipientId) {
+        throw new Error(
+          "Selecione um membro da equipe para visualização na lista de pré-visualização."
+        );
+      }
+      const recipient = teamRecipients.find(
+        (item) => String(item?.id || "").trim() === targetRecipientId
+      );
+      if (!recipient) {
+        throw new Error("Membro da equipe selecionado não encontrado.");
+      }
+
+      const role = String(recipient?.role || "").trim();
+      let generator = null;
+      if (role === "coordenador") {
+        generator = generateCoordinatorCertificate;
+      } else if (role === "monitor") {
+        generator = generateMonitorCertificate;
+      } else if (role === "palestrante") {
+        generator = generateSpeakerCertificate;
+      }
+      if (!generator) {
+        throw new Error("Função de certificado da equipe não suportada.");
+      }
+
+      const templateOverride = await resolveSelectedTemplateOverride();
+      const pdf = generator(
+        {
+          name: String(recipient?.name || "").trim(),
+          email: String(recipient?.email || "").trim(),
+          rg: String(recipient?.rg || "").trim(),
+          lecture: String(recipient?.lecture || "").trim(),
+        },
+        training,
+        templateOverride
+      );
+      const blob = pdf.output("blob");
+      const url = window.URL.createObjectURL(blob);
+      const previewWindow = window.open(url, "_blank", "noopener,noreferrer");
+      if (!previewWindow) {
+        window.URL.revokeObjectURL(url);
+        throw new Error(
+          "Não foi possível abrir a visualização. Verifique o bloqueador de pop-up."
+        );
+      }
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 60000);
+      return {
+        name: String(recipient?.name || "").trim() || "membro da equipe",
+        roleLabel: STAFF_ROLE_LABELS[role] || "Equipe",
+      };
+    },
+    onSuccess: (payload) => {
+      setResult({
+        success: true,
+        message: `Pré-visualização aberta para ${payload?.roleLabel || "Equipe"}: ${
+          payload?.name || "membro"
+        }.`,
+      });
+    },
+    onError: (error) => {
+      setResult({
+        success: false,
+        message: error?.message || "Não foi possível abrir a pré-visualização.",
+      });
+    },
+  });
+
   const issueCertificates = useMutation({
     mutationFn: async (/** @type {any[]} */ participantIds) => {
       if (!training) {
@@ -850,6 +927,16 @@ export default function CertificateManager({ training, participants = [], onClos
       })),
     [printableEligibleParticipants]
   );
+  const previewTeamRecipientOptions = useMemo(
+    () =>
+      teamRecipients.map((member) => ({
+        id: String(member?.id || "").trim(),
+        label: `${STAFF_ROLE_LABELS[member?.role] || "Equipe"} - ${
+          member?.name || "Sem nome"
+        }`,
+      })),
+    [teamRecipients]
+  );
   const coordinatorCount = coordinatorRecipient ? 1 : 0;
   const monitorCount = monitorRecipients.length;
   const speakerCount = speakerRecipients.length;
@@ -880,6 +967,16 @@ export default function CertificateManager({ training, participants = [], onClos
       setPreviewParticipantId("");
     }
   }, [previewParticipantId, previewParticipantOptions]);
+
+  React.useEffect(() => {
+    if (!previewTeamRecipientId) return;
+    const exists = previewTeamRecipientOptions.some(
+      (item) => item.id === String(previewTeamRecipientId).trim()
+    );
+    if (!exists) {
+      setPreviewTeamRecipientId("");
+    }
+  }, [previewTeamRecipientId, previewTeamRecipientOptions]);
 
   const handlePrintApprovedParticipants = () => {
     if (!training) return;
@@ -1123,91 +1220,6 @@ export default function CertificateManager({ training, participants = [], onClos
         </Alert>
       )}
 
-      <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="certificate-template-scope">Modelo do certificado</Label>
-            <Select
-              value={selectedTemplateScope}
-              onValueChange={setSelectedTemplateScope}
-            >
-              <SelectTrigger id="certificate-template-scope">
-                <SelectValue placeholder="Selecione o modelo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={CERT_TEMPLATE_SCOPE_CURRENT}>
-                  Modelo deste treinamento
-                </SelectItem>
-                <SelectItem value={CERT_TEMPLATE_SCOPE_GLOBAL}>
-                  Modelo padrão global
-                </SelectItem>
-                {templateTrainingOptions.map((option) => (
-                  <SelectItem key={option.id} value={option.id}>
-                    {option.title}
-                    {option.trainingIds?.length > 1
-                      ? ` (${option.trainingIds.length} turmas)`
-                      : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-slate-600">{selectedTemplateDescription}</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="certificate-preview-participant">
-              Participante para visualização
-            </Label>
-            <Select
-              value={previewParticipantId || "__none__"}
-              onValueChange={(value) =>
-                setPreviewParticipantId(value === "__none__" ? "" : value)
-              }
-            >
-              <SelectTrigger id="certificate-preview-participant">
-                <SelectValue placeholder="Selecione o participante" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Selecione um participante</SelectItem>
-                {previewParticipantOptions.map((participant) => (
-                  <SelectItem key={participant.id} value={participant.id}>
-                    {participant.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-slate-600">
-              Dica: a visualização usa exatamente o mesmo modelo aplicado no envio.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            onClick={() => previewCertificate.mutate()}
-            disabled={
-              processing ||
-              previewCertificate.isPending ||
-              previewParticipantOptions.length === 0
-            }
-            className="bg-indigo-600 hover:bg-indigo-700 text-white"
-          >
-            {previewCertificate.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Eye className="h-4 w-4 mr-2" />
-            )}
-            {previewCertificate.isPending
-              ? "Abrindo visualização..."
-              : "Visualizar certificado"}
-          </Button>
-          <span className="text-xs text-slate-600">
-            Fluxo recomendado: selecione o modelo, visualize e depois emita.
-          </span>
-        </div>
-      </div>
-
       <Tabs defaultValue="participants" className="space-y-4">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="participants">
@@ -1219,6 +1231,93 @@ export default function CertificateManager({ training, participants = [], onClos
         </TabsList>
 
         <TabsContent value="participants" className="space-y-4">
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="certificate-template-scope-participants">
+                  Modelo do certificado
+                </Label>
+                <Select
+                  value={selectedTemplateScope}
+                  onValueChange={setSelectedTemplateScope}
+                >
+                  <SelectTrigger id="certificate-template-scope-participants">
+                    <SelectValue placeholder="Selecione o modelo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={CERT_TEMPLATE_SCOPE_CURRENT}>
+                      Modelo deste treinamento
+                    </SelectItem>
+                    <SelectItem value={CERT_TEMPLATE_SCOPE_GLOBAL}>
+                      Modelo padrão global
+                    </SelectItem>
+                    {templateTrainingOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.title}
+                        {option.trainingIds?.length > 1
+                          ? ` (${option.trainingIds.length} turmas)`
+                          : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-600">{selectedTemplateDescription}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="certificate-preview-participant">
+                  Participante para visualização
+                </Label>
+                <Select
+                  value={previewParticipantId || "__none__"}
+                  onValueChange={(value) =>
+                    setPreviewParticipantId(value === "__none__" ? "" : value)
+                  }
+                >
+                  <SelectTrigger id="certificate-preview-participant">
+                    <SelectValue placeholder="Selecione o participante" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Selecione um participante</SelectItem>
+                    {previewParticipantOptions.map((participant) => (
+                      <SelectItem key={participant.id} value={participant.id}>
+                        {participant.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-600">
+                  Dica: a visualização usa exatamente o mesmo modelo aplicado no envio.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                onClick={() => previewCertificate.mutate()}
+                disabled={
+                  processing ||
+                  previewCertificate.isPending ||
+                  previewParticipantOptions.length === 0
+                }
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {previewCertificate.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Eye className="h-4 w-4 mr-2" />
+                )}
+                {previewCertificate.isPending
+                  ? "Abrindo visualização..."
+                  : "Visualizar certificado"}
+              </Button>
+              <span className="text-xs text-slate-600">
+                Fluxo recomendado: selecione o modelo, visualize e depois emita.
+              </span>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -1372,6 +1471,91 @@ export default function CertificateManager({ training, participants = [], onClos
             <div className="rounded-md border bg-slate-50 p-3 text-center">
               <p className="text-xs text-slate-500">Total equipe</p>
               <p className="text-xl font-semibold text-slate-800">{totalTeamCount}</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="certificate-template-scope-team">Modelo do certificado</Label>
+                <Select
+                  value={selectedTemplateScope}
+                  onValueChange={setSelectedTemplateScope}
+                >
+                  <SelectTrigger id="certificate-template-scope-team">
+                    <SelectValue placeholder="Selecione o modelo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={CERT_TEMPLATE_SCOPE_CURRENT}>
+                      Modelo deste treinamento
+                    </SelectItem>
+                    <SelectItem value={CERT_TEMPLATE_SCOPE_GLOBAL}>
+                      Modelo padrão global
+                    </SelectItem>
+                    {templateTrainingOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.title}
+                        {option.trainingIds?.length > 1
+                          ? ` (${option.trainingIds.length} turmas)`
+                          : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-600">{selectedTemplateDescription}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="certificate-preview-team-member">
+                  Membro da equipe para visualização
+                </Label>
+                <Select
+                  value={previewTeamRecipientId || "__none__"}
+                  onValueChange={(value) =>
+                    setPreviewTeamRecipientId(value === "__none__" ? "" : value)
+                  }
+                >
+                  <SelectTrigger id="certificate-preview-team-member">
+                    <SelectValue placeholder="Selecione o membro da equipe" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Selecione um membro da equipe</SelectItem>
+                    {previewTeamRecipientOptions.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {member.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-600">
+                  Dica: a visualização usa exatamente o mesmo modelo aplicado no envio.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                onClick={() => previewTeamCertificate.mutate()}
+                disabled={
+                  processing ||
+                  previewTeamCertificate.isPending ||
+                  previewTeamRecipientOptions.length === 0
+                }
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {previewTeamCertificate.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Eye className="h-4 w-4 mr-2" />
+                )}
+                {previewTeamCertificate.isPending
+                  ? "Abrindo visualização..."
+                  : "Visualizar certificado da equipe"}
+              </Button>
+              <span className="text-xs text-slate-600">
+                Fluxo recomendado: selecione o modelo, visualize e depois emita para a equipe.
+              </span>
             </div>
           </div>
 
