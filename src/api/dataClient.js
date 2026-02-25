@@ -116,20 +116,59 @@ const applyOrder = (query, order) => {
   return query.order(column, { ascending: !descending });
 };
 
-const list = async (table, order, limit) => {
+const SUPABASE_PAGE_SIZE = 1000;
+
+const buildBaseSelectQuery = (table, filters, order) => {
   let query = supabase.from(table).select("*");
-  query = applyOrder(query, order);
-  if (limit) query = query.limit(limit);
+  if (filters) query = query.match(filters);
+  if (order) {
+    query = applyOrder(query, order);
+  } else {
+    // Mantém paginação estável quando não há ordenação explícita.
+    query = query.order("id", { ascending: true });
+  }
+  return query;
+};
+
+const fetchAllRows = async (table, filters, order) => {
+  const allRows = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+    const query = buildBaseSelectQuery(table, filters, order).range(from, to);
+    const { data, error } = await query;
+    if (error) throw error;
+    const rows = data || [];
+    allRows.push(...rows);
+    if (rows.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return allRows;
+};
+
+const list = async (table, order, limit) => {
+  if (!limit) {
+    const rows = await fetchAllRows(table, null, order);
+    return normalizeEntityData(table, rows);
+  }
+
+  let query = buildBaseSelectQuery(table, null, order);
+  query = query.limit(limit);
   const { data, error } = await query;
   if (error) throw error;
   return normalizeEntityData(table, data || []);
 };
 
 const filter = async (table, filters, order, limit) => {
-  let query = supabase.from(table).select("*");
-  if (filters) query = query.match(filters);
-  query = applyOrder(query, order);
-  if (limit) query = query.limit(limit);
+  if (!limit) {
+    const rows = await fetchAllRows(table, filters, order);
+    return normalizeEntityData(table, rows);
+  }
+
+  let query = buildBaseSelectQuery(table, filters, order);
+  query = query.limit(limit);
   const { data, error } = await query;
   if (error) throw error;
   return normalizeEntityData(table, data || []);
