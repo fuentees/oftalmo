@@ -38,6 +38,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Printer,
   Search,
   Trash2,
   Upload,
@@ -117,6 +118,14 @@ const toSafeFileName = (value) =>
     .replace(/[^a-zA-Z0-9._-]+/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
+
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 const normalizeImportHeader = (value) =>
   String(value || "")
@@ -624,6 +633,75 @@ export default function TracomaExaminerEvaluationPage({
       ],
     };
   }, [filteredHistory]);
+
+  const approvedParticipantsForPrint = useMemo(() => {
+    const sortedRows = [...filteredHistory].sort(
+      (a, b) =>
+        new Date(b?.created_at || 0).getTime() -
+        new Date(a?.created_at || 0).getTime()
+    );
+    const latestAttemptByIdentity = new Map();
+
+    sortedRows.forEach((row, index) => {
+      const linkedParticipant = resolveTrainingParticipantMatch(enrolledParticipants, {
+        name: row?.participant_name,
+        email: row?.participant_email,
+        rg: row?.participant_cpf,
+      });
+      const fallbackIdentity = [
+        normalizeIdentityText(row?.participant_name),
+        normalizeIdentityText(row?.participant_email),
+        normalizeDocumentText(row?.participant_cpf),
+      ].join("|");
+      const identityKey = linkedParticipant?.id
+        ? `participant:${linkedParticipant.id}`
+        : fallbackIdentity !== "||"
+        ? `result:${fallbackIdentity}`
+        : `row:${String(row?.id || index)}`;
+      if (latestAttemptByIdentity.has(identityKey)) return;
+      latestAttemptByIdentity.set(identityKey, { row, linkedParticipant });
+    });
+
+    return Array.from(latestAttemptByIdentity.values())
+      .map(({ row, linkedParticipant }) => {
+        const statusText = String(row?.aptitude_status || "")
+          .trim()
+          .toLowerCase();
+        const kappaValue = Number(row?.kappa);
+        const isApproved =
+          statusText === "apto" ||
+          (Number.isFinite(kappaValue) && kappaValue >= 0.7);
+        return {
+          isApproved,
+          name:
+            String(linkedParticipant?.professional_name || "").trim() ||
+            String(row?.participant_name || "").trim() ||
+            "-",
+          rg:
+            String(
+              linkedParticipant?.professional_rg ||
+                linkedParticipant?.professional_cpf ||
+                row?.participant_cpf ||
+                ""
+            ).trim() || "-",
+          municipality:
+            String(linkedParticipant?.municipality || "").trim() || "-",
+          gve:
+            String(linkedParticipant?.health_region || "").trim() || "-",
+          email:
+            String(
+              linkedParticipant?.professional_email || row?.participant_email || ""
+            ).trim() || "-",
+        };
+      })
+      .filter((item) => item.isApproved)
+      .map(({ isApproved, ...item }) => item)
+      .sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || ""), "pt-BR", {
+          sensitivity: "base",
+        })
+      );
+  }, [enrolledParticipants, filteredHistory]);
 
   const monitorFilteredResults = useMemo(() => {
     const personTerm = String(monitorPersonFilter || "").trim().toLowerCase();
@@ -1309,6 +1387,200 @@ export default function TracomaExaminerEvaluationPage({
     const safeName = toSafeFileName(resultRow?.participant_name || "formando");
     const dateStamp = new Date().toISOString().split("T")[0];
     pdf.save(`tracoma-resposta-${safeName || "formando"}-${dateStamp}.pdf`);
+  };
+
+  const handlePrintApprovedParticipants = () => {
+    if (approvedParticipantsForPrint.length === 0) {
+      setResultActionStatus({
+        type: "error",
+        message:
+          "Nao ha participantes aptos para imprimir com os filtros atuais.",
+      });
+      return;
+    }
+    const printWindow = window.open("", "_blank", "width=1120,height=800");
+    if (!printWindow) {
+      setResultActionStatus({
+        type: "error",
+        message:
+          "Nao foi possivel abrir a janela de impressao. Verifique o bloqueador de pop-up.",
+      });
+      return;
+    }
+
+    const generatedAt =
+      formatDateSafe(new Date().toISOString(), "dd/MM/yyyy HH:mm") || "-";
+    const selectedTestLabel =
+      historyKeyFilter === "all" ? "Todos os testes" : historyKeyFilter;
+    const searchLabel = String(search || "").trim() || "Sem filtro de nome";
+    const rowsHtml = approvedParticipantsForPrint
+      .map(
+        (item, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(item.name)}</td>
+            <td>${escapeHtml(item.rg)}</td>
+            <td>${escapeHtml(item.municipality)}</td>
+            <td>${escapeHtml(item.gve)}</td>
+            <td>${escapeHtml(item.email)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const printableHtml = `
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Lista de Aptos - ${escapeHtml(training?.title || "Treinamento")}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 24px;
+              font-family: "Inter", "Segoe UI", Arial, sans-serif;
+              background: #f8fafc;
+              color: #0f172a;
+            }
+            .container {
+              border: 1px solid #d1fae5;
+              border-radius: 14px;
+              overflow: hidden;
+              background: #ffffff;
+            }
+            .header {
+              background: linear-gradient(120deg, #059669, #0d9488);
+              color: #ffffff;
+              padding: 20px 24px;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 22px;
+              line-height: 1.25;
+            }
+            .header p {
+              margin: 8px 0 0 0;
+              font-size: 13px;
+              opacity: 0.95;
+            }
+            .meta {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 8px;
+              padding: 16px 24px 0 24px;
+            }
+            .chip {
+              font-size: 12px;
+              border-radius: 999px;
+              border: 1px solid #99f6e4;
+              background: #ecfeff;
+              color: #0f766e;
+              padding: 4px 10px;
+            }
+            table {
+              width: calc(100% - 48px);
+              margin: 16px 24px 24px 24px;
+              border-collapse: collapse;
+            }
+            thead th {
+              background: #ecfdf5;
+              color: #047857;
+              font-weight: 700;
+              border: 1px solid #bbf7d0;
+              padding: 10px 8px;
+              font-size: 12px;
+              text-transform: uppercase;
+              letter-spacing: .02em;
+            }
+            tbody td {
+              border: 1px solid #d1fae5;
+              padding: 8px;
+              font-size: 12px;
+            }
+            tbody tr:nth-child(even) td {
+              background: #f0fdfa;
+            }
+            .col-index { width: 44px; text-align: center; }
+            .footer {
+              margin-top: 4px;
+              padding: 0 24px 18px 24px;
+              color: #475569;
+              font-size: 11px;
+            }
+            @media print {
+              body {
+                background: #ffffff;
+                padding: 0;
+              }
+              .container {
+                border: none;
+                border-radius: 0;
+              }
+              table {
+                width: 100%;
+                margin: 12px 0 0 0;
+              }
+              .meta {
+                padding: 12px 0 0 0;
+              }
+              .footer {
+                padding: 0;
+                margin-top: 12px;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Lista de Participantes Aptos</h1>
+              <p>
+                Treinamento: ${escapeHtml(training?.title || "-")} • Emitido em: ${escapeHtml(
+      generatedAt
+    )}
+              </p>
+            </div>
+            <div class="meta">
+              <span class="chip">Teste: ${escapeHtml(selectedTestLabel)}</span>
+              <span class="chip">Busca: ${escapeHtml(searchLabel)}</span>
+              <span class="chip">Aptos: ${approvedParticipantsForPrint.length}</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th class="col-index">#</th>
+                  <th>Nome</th>
+                  <th>RG</th>
+                  <th>Municipio</th>
+                  <th>GVE</th>
+                  <th>E-mail</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+            <div class="footer">
+              Relatorio gerado automaticamente pelo modulo de provas de repadronizacao.
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.focus();
+              window.print();
+            };
+            window.onafterprint = function() {
+              window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(printableHtml);
+    printWindow.document.close();
   };
 
   const createAnswerPayload = (answerMap, code, contextLabel) => {
@@ -2130,6 +2402,15 @@ export default function TracomaExaminerEvaluationPage({
                 )}
 
               <div className="flex justify-end gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  onClick={handlePrintApprovedParticipants}
+                  disabled={approvedParticipantsForPrint.length === 0}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-700 hover:to-teal-700"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Imprimir aptos ({approvedParticipantsForPrint.length})
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
