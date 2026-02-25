@@ -50,6 +50,7 @@
 import CheckIn from './pages/CheckIn';
 import Dashboard from './pages/Dashboard';
 import ParticipantProfile from './pages/ParticipantProfile';
+import ProfessionalProfile from './pages/ProfessionalProfile';
 import Participants from './pages/Participants';
 import Professionals from './pages/Professionals';
 import PublicEnrollment from './pages/PublicEnrollment';
@@ -74,6 +75,7 @@ export const PAGES = {
     "CheckIn": CheckIn,
     "Dashboard": Dashboard,
     "ParticipantProfile": ParticipantProfile,
+    "ProfessionalProfile": ProfessionalProfile,
     "Participants": Participants,
     "Professionals": Professionals,
     "PublicEnrollment": PublicEnrollment,

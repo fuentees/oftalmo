@@ -9,10 +9,18 @@ import { Award, ExternalLink, Search, FileText, Calendar, AlertCircle } from "lu
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-export default function CertificatesPanel({ professional }) {
-  const [searchTerm, setSearchTerm] = useState("");
+const toTimestamp = (value) => {
+  if (!value) return 0;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 0;
+  return parsed.getTime();
+};
 
-  const { data: certificates = [], isLoading } = useQuery({
+export default function CertificatesPanel({ professional, entries = null }) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const hasEntries = Array.isArray(entries);
+
+  const { data: certificatesFromQuery = [], isLoading } = useQuery({
     queryKey: ["certificates", professional.id],
     queryFn: async () => {
       const participants = await dataClient.entities.TrainingParticipant.filter({ 
@@ -21,10 +29,20 @@ export default function CertificatesPanel({ professional }) {
       }, "-certificate_sent_date");
       return participants;
     },
+    enabled: !hasEntries,
   });
 
-  const filteredCertificates = certificates.filter(cert => 
-    cert.training_title?.toLowerCase().includes(searchTerm.toLowerCase())
+  const certificates = (hasEntries ? entries : certificatesFromQuery)
+    .filter((item) => item?.certificate_issued || item?.certificate_url)
+    .sort(
+      (a, b) =>
+        toTimestamp(b?.certificate_sent_date || b?.updated_at || b?.created_at) -
+        toTimestamp(a?.certificate_sent_date || a?.updated_at || a?.created_at)
+    );
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredCertificates = certificates.filter((cert) =>
+    String(cert?.training_title || "").toLowerCase().includes(normalizedSearch)
   );
 
   const getValidityStatus = (cert) => {
@@ -59,7 +77,7 @@ export default function CertificatesPanel({ professional }) {
     noExpiry: filteredCertificates.filter(c => !c.validity_date)
   };
 
-  if (isLoading) {
+  if (isLoading && !hasEntries) {
     return <div className="text-center py-8">Carregando certificados...</div>;
   }
 

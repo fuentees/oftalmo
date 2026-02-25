@@ -3,22 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Eye, GraduationCap, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
-import ProfessionalDetails from "@/components/professionals/ProfessionalDetails";
+import { useNavigate } from "react-router-dom";
 
 export default function Professionals() {
   const [search, setSearch] = useState("");
-  const [showDetails, setShowDetails] = useState(false);
-  const [selectedProfessional, setSelectedProfessional] = useState(null);
+  const navigate = useNavigate();
 
   const { data: professionals = [], isLoading } = useQuery({
     queryKey: ["professionals"],
@@ -28,16 +21,6 @@ export default function Professionals() {
   const { data: participants = [] } = useQuery({
     queryKey: ["participants"],
     queryFn: () => dataClient.entities.TrainingParticipant.list(),
-  });
-
-  const { data: trainings = [] } = useQuery({
-    queryKey: ["trainings"],
-    queryFn: () => dataClient.entities.Training.list(),
-  });
-
-  const { data: events = [] } = useQuery({
-    queryKey: ["events"],
-    queryFn: () => dataClient.entities.Event.list(),
   });
 
   const normalizeText = (value) =>
@@ -84,7 +67,18 @@ export default function Professionals() {
       cellClassName: "font-medium",
       render: (row) => (
         <div>
-          <p className="font-medium">{row.name}</p>
+          <button
+            type="button"
+            className="font-medium text-slate-900 hover:text-blue-700 hover:underline text-left"
+            onClick={(event) => {
+              event.stopPropagation();
+              navigate(
+                `/ProfessionalProfile?id=${encodeURIComponent(String(row?.id || "").trim())}`
+              );
+            }}
+          >
+            {row.name}
+          </button>
           {row.position && <p className="text-xs text-slate-500">{row.position}</p>}
         </div>
       ),
@@ -111,7 +105,9 @@ export default function Professionals() {
     {
       header: "Treinamentos",
       render: (row) => {
-        const count = participants.filter(p => p.professional_id === row.id).length;
+        const count = participants.filter((participant) =>
+          matchesProfessional(participant, row)
+        ).length;
         return (
           <div className="flex items-center gap-1">
             <GraduationCap className="h-4 w-4 text-slate-400" />
@@ -130,8 +126,9 @@ export default function Professionals() {
             size="icon"
             onClick={(e) => {
               e.stopPropagation();
-              setSelectedProfessional(row);
-              setShowDetails(true);
+              navigate(
+                `/ProfessionalProfile?id=${encodeURIComponent(String(row?.id || "").trim())}`
+              );
             }}
           >
             <Eye className="h-4 w-4" />
@@ -166,32 +163,12 @@ export default function Professionals() {
         data={filteredProfessionals}
         isLoading={isLoading}
         emptyMessage="Nenhum profissional cadastrado"
+        onRowClick={(row) =>
+          navigate(
+            `/ProfessionalProfile?id=${encodeURIComponent(String(row?.id || "").trim())}`
+          )
+        }
       />
-
-      {/* Professional Details Dialog */}
-      <Dialog open={showDetails} onOpenChange={setShowDetails}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Detalhes do Profissional</DialogTitle>
-          </DialogHeader>
-          <ProfessionalDetails
-            professional={selectedProfessional}
-            participations={participants.filter((p) =>
-              matchesProfessional(p, selectedProfessional)
-            )}
-            trainings={trainings}
-            events={events.filter((event) => {
-              const hasId = event.professional_ids?.includes(selectedProfessional?.id);
-              if (hasId) return true;
-              const normalizedName = normalizeText(selectedProfessional?.name);
-              if (!normalizedName) return false;
-              return (event.professional_names || []).some(
-                (name) => normalizeText(name) === normalizedName
-              );
-            })}
-          />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
