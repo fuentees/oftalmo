@@ -1402,6 +1402,13 @@ export default function EnrollmentPage({
 
   const columns = [
     {
+      header: "Data/Hora Inscrição",
+      accessor: "enrollment_date",
+      sortType: "date",
+      render: (row) =>
+        formatDateSafe(row.enrollment_date, "dd/MM/yyyy HH:mm") || "-",
+    },
+    {
       header: "Nome",
       accessor: "professional_name",
       cellClassName: "font-medium",
