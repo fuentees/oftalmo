@@ -82,6 +82,8 @@ const STAFF_ROLE_LABELS = {
   monitor: "Monitor",
   palestrante: "Palestrante",
 };
+const EMAIL_SPLIT_REGEX = /[;,\n]+/;
+const SIMPLE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const normalizeTemplateTitleKey = (value) =>
   String(value || "")
     .normalize("NFD")
@@ -89,6 +91,32 @@ const normalizeTemplateTitleKey = (value) =>
     .toLowerCase()
     .trim()
     .replace(/\s+/g, " ");
+const normalizeEmailToken = (value) => {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  const bracketMatch = raw.match(/<([^>]+)>/);
+  if (bracketMatch?.[1]) {
+    return String(bracketMatch[1]).trim().toLowerCase();
+  }
+  return raw;
+};
+const resolveSingleRecipientEmail = (value) => {
+  const rawList = Array.isArray(value) ? value.join(",") : String(value || "");
+  const candidates = rawList
+    .split(EMAIL_SPLIT_REGEX)
+    .map((item) => normalizeEmailToken(item))
+    .filter(Boolean);
+  const uniqueCandidates = Array.from(new Set(candidates));
+  const validCandidates = uniqueCandidates.filter((item) =>
+    SIMPLE_EMAIL_REGEX.test(item)
+  );
+  return {
+    email: validCandidates[0] || "",
+    provided: uniqueCandidates.length > 0,
+    hasMultiple: validCandidates.length > 1,
+    hasInvalid: uniqueCandidates.some((item) => !SIMPLE_EMAIL_REGEX.test(item)),
+  };
+};
 
 const normalizeStaffEntries = (value) => {
   const rows = Array.isArray(value) ? value : [];
@@ -446,7 +474,8 @@ export default function CertificateManager({ training, participants = [], onClos
     for (const recipient of recipients) {
       const recipientName = String(recipient?.name || "").trim();
       if (!recipientName) continue;
-      const recipientEmail = String(recipient?.email || "").trim();
+      const recipientEmailInfo = resolveSingleRecipientEmail(recipient?.email);
+      const recipientEmail = recipientEmailInfo.email;
       const recipientRg = String(recipient?.rg || "").trim();
       const recipientLecture = String(recipient?.lecture || "").trim();
 
@@ -454,7 +483,7 @@ export default function CertificateManager({ training, participants = [], onClos
         const pdf = generator(
           {
             name: recipientName,
-            email: recipientEmail,
+            email: recipientEmail || String(recipient?.email || "").trim(),
             rg: recipientRg,
             lecture: recipientLecture,
           },
@@ -480,6 +509,14 @@ export default function CertificateManager({ training, participants = [], onClos
         await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
         const warnings = [];
+        if (recipientEmailInfo.hasMultiple && recipientEmail) {
+          warnings.push(
+            `Mais de um e-mail detectado; enviado apenas para ${recipientEmail}.`
+          );
+        }
+        if (recipientEmailInfo.hasInvalid) {
+          warnings.push("E-mail(s) inválido(s) foram ignorados.");
+        }
         if (recipientEmail) {
           try {
             const emailData = buildCertificateEmailData({
@@ -499,6 +536,8 @@ export default function CertificateManager({ training, participants = [], onClos
           } catch (error) {
             warnings.push(error.message || "Falha ao enviar e-mail.");
           }
+        } else if (recipientEmailInfo.provided) {
+          warnings.push("E-mail inválido para envio automático.");
         } else {
           warnings.push("Sem e-mail cadastrado para envio automático.");
         }
@@ -779,9 +818,21 @@ export default function CertificateManager({ training, participants = [], onClos
           const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
           const warnings = [];
+          const participantEmailInfo = resolveSingleRecipientEmail(
+            participant.professional_email
+          );
+          const participantEmail = participantEmailInfo.email;
+          if (participantEmailInfo.hasMultiple && participantEmail) {
+            warnings.push(
+              `Mais de um e-mail detectado; enviado apenas para ${participantEmail}.`
+            );
+          }
+          if (participantEmailInfo.hasInvalid) {
+            warnings.push("E-mail(s) inválido(s) foram ignorados.");
+          }
 
           // Send email to participant (best effort)
-          if (participant.professional_email) {
+          if (participantEmail) {
             try {
               const emailData = buildCertificateEmailData({
                 training,
@@ -791,7 +842,7 @@ export default function CertificateManager({ training, participants = [], onClos
               });
               const emailContent = resolveEmailContent(emailData);
               await dataClient.integrations.Core.SendEmail({
-                to: participant.professional_email,
+                to: participantEmail,
                 subject: emailContent.subject,
                 body: emailContent.body,
                 attachments: [attachment],
@@ -799,24 +850,8 @@ export default function CertificateManager({ training, participants = [], onClos
             } catch (error) {
               warnings.push(error.message || "Falha ao enviar e-mail ao participante.");
             }
-          }
-
-          // Send copy to coordinator if exists (best effort)
-          if (training.coordinator_email) {
-            try {
-              await dataClient.integrations.Core.SendEmail({
-                to: training.coordinator_email,
-                subject: `Cópia: Certificado emitido - ${participant.professional_name}`,
-                body: `
-                  <h2>Certificado Emitido</h2>
-                  <p>O certificado de <strong>${participant.professional_name}</strong> foi emitido para o treinamento ${training.title}.</p>
-                  <p>Segue o PDF do certificado em anexo.</p>
-                `,
-                attachments: [attachment],
-              });
-            } catch (error) {
-              warnings.push(error.message || "Falha ao enviar e-mail ao coordenador.");
-            }
+          } else if (participantEmailInfo.provided) {
+            warnings.push("E-mail do participante inválido para envio.");
           }
 
           // Update participant with validity date
@@ -1186,7 +1221,7 @@ export default function CertificateManager({ training, participants = [], onClos
           {speakerCount} palestrante(s)
         </p>
         <p className="text-xs text-slate-500 mt-1">
-          Ao emitir, o certificado é enviado por e-mail automaticamente para quem tem e-mail cadastrado.
+          Ao emitir, cada certificado é enviado somente para o e-mail do registro correspondente.
         </p>
         <p className="text-xs text-slate-500 mt-1">
           {useRepadScoreCriteria
