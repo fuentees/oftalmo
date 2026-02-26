@@ -1,10 +1,29 @@
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
-import { Eye, GraduationCap, Loader2, Mail, Pencil, Phone, RefreshCw } from "lucide-react";
+import {
+  Eye,
+  GraduationCap,
+  Loader2,
+  Mail,
+  Pencil,
+  Phone,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import PageHeader from "@/components/common/PageHeader";
@@ -16,6 +35,7 @@ export default function Professionals() {
   const [search, setSearch] = useState("");
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingProfessional, setEditingProfessional] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [editStatus, setEditStatus] = useState(null);
   const [pageStatus, setPageStatus] = useState(null);
   const [editForm, setEditForm] = useState({
@@ -156,6 +176,33 @@ export default function Professionals() {
     updateProfessional.mutate();
   };
 
+  const deleteProfessional = useMutation({
+    mutationFn: async () => {
+      const professionalId = String(deleteConfirm?.id || "").trim();
+      if (!professionalId) {
+        throw new Error("Profissional inválido para exclusão.");
+      }
+      return dataClient.entities.Professional.delete(professionalId);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["professionals"] }),
+        queryClient.invalidateQueries({ queryKey: ["participants"] }),
+      ]);
+      setDeleteConfirm(null);
+      setPageStatus({
+        type: "success",
+        message: "Profissional excluído com sucesso.",
+      });
+    },
+    onError: (error) => {
+      setPageStatus({
+        type: "error",
+        message: error?.message || "Não foi possível excluir o profissional.",
+      });
+    },
+  });
+
   const filteredProfessionals = useMemo(
     () =>
       professionals.filter((p) => {
@@ -242,6 +289,18 @@ export default function Professionals() {
           <Button
             variant="ghost"
             size="icon"
+            className="text-red-600 hover:text-red-700"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPageStatus(null);
+              setDeleteConfirm(row);
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={(e) => {
               e.stopPropagation();
               navigate(
@@ -278,8 +337,16 @@ export default function Professionals() {
       </Alert>
 
       {pageStatus && (
-        <Alert className="border-green-200 bg-green-50">
-          <AlertDescription className="text-green-700">
+        <Alert
+          className={
+            pageStatus.type === "error"
+              ? "border-red-200 bg-red-50"
+              : "border-green-200 bg-green-50"
+          }
+        >
+          <AlertDescription
+            className={pageStatus.type === "error" ? "text-red-700" : "text-green-700"}
+          >
             {pageStatus.message}
           </AlertDescription>
         </Alert>
@@ -435,6 +502,28 @@ export default function Professionals() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir profissional</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o profissional "{deleteConfirm?.name}"?
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteProfessional.mutate()}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleteProfessional.isPending}
+            >
+              {deleteProfessional.isPending ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
