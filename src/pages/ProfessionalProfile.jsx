@@ -53,21 +53,29 @@ export default function ProfessionalProfile() {
   const { data: professionals = [], isLoading: loadingProfessionals } = useQuery({
     queryKey: ["professionals"],
     queryFn: () => dataClient.entities.Professional.list(),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const { data: participants = [], isLoading: loadingParticipants } = useQuery({
     queryKey: ["participants"],
     queryFn: () => dataClient.entities.TrainingParticipant.list("-enrollment_date"),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const { data: trainings = [], isLoading: loadingTrainings } = useQuery({
     queryKey: ["trainings"],
     queryFn: () => dataClient.entities.Training.list("-date"),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const { data: events = [], isLoading: loadingEvents } = useQuery({
     queryKey: ["events"],
     queryFn: () => dataClient.entities.Event.list("-start_date"),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const professional = useMemo(

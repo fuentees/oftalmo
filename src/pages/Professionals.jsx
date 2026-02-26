@@ -1,9 +1,12 @@
-import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
-import { Eye, GraduationCap, Mail, Phone } from "lucide-react";
+import { Eye, GraduationCap, Loader2, Mail, Pencil, Phone, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
@@ -11,16 +14,40 @@ import { useNavigate } from "react-router-dom";
 
 export default function Professionals() {
   const [search, setSearch] = useState("");
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingProfessional, setEditingProfessional] = useState(null);
+  const [editStatus, setEditStatus] = useState(null);
+  const [pageStatus, setPageStatus] = useState(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    position: "",
+    rg: "",
+    cpf: "",
+    registration: "",
+    sector: "",
+  });
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const { data: professionals = [], isLoading } = useQuery({
+  const {
+    data: professionals = [],
+    isLoading,
+    isFetching: isFetchingProfessionals,
+    refetch: refetchProfessionals,
+  } = useQuery({
     queryKey: ["professionals"],
     queryFn: () => dataClient.entities.Professional.list(),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
-  const { data: participants = [] } = useQuery({
+  const { data: participants = [], refetch: refetchParticipants } = useQuery({
     queryKey: ["participants"],
     queryFn: () => dataClient.entities.TrainingParticipant.list(),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const normalizeText = (value) =>
@@ -53,13 +80,94 @@ export default function Professionals() {
     return nameMatch && (emailMatch || rgMatch);
   };
 
-  const filteredProfessionals = professionals.filter((p) => {
-    const normalizedSearch = search.toLowerCase();
-    const matchesSearch = p.name?.toLowerCase().includes(normalizedSearch) ||
-                          p.email?.toLowerCase().includes(normalizedSearch) ||
-                          p.phone?.toLowerCase().includes(normalizedSearch);
-    return matchesSearch;
+  const normalizeOptionalField = (value) => {
+    const text = String(value ?? "").trim();
+    return text || null;
+  };
+
+  const handleOpenEdit = (professional) => {
+    setPageStatus(null);
+    setEditStatus(null);
+    setEditingProfessional(professional);
+    setEditForm({
+      name: String(professional?.name || ""),
+      email: String(professional?.email || ""),
+      phone: String(professional?.phone || ""),
+      position: String(professional?.position || ""),
+      rg: String(professional?.rg || ""),
+      cpf: String(professional?.cpf || ""),
+      registration: String(professional?.registration || ""),
+      sector: String(professional?.sector || ""),
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleCloseEdit = () => {
+    setIsEditOpen(false);
+    setEditStatus(null);
+    setEditingProfessional(null);
+  };
+
+  const updateProfessional = useMutation({
+    mutationFn: async () => {
+      const professionalId = String(editingProfessional?.id || "").trim();
+      if (!professionalId) {
+        throw new Error("Profissional inválido para edição.");
+      }
+
+      const name = String(editForm.name || "").trim();
+      if (!name) {
+        throw new Error("Informe o nome do profissional.");
+      }
+
+      return dataClient.entities.Professional.update(professionalId, {
+        name,
+        email: normalizeOptionalField(editForm.email)?.toLowerCase() || null,
+        phone: normalizeOptionalField(editForm.phone),
+        position: normalizeOptionalField(editForm.position),
+        rg: normalizeOptionalField(editForm.rg),
+        cpf: normalizeOptionalField(editForm.cpf),
+        registration: normalizeOptionalField(editForm.registration),
+        sector: normalizeOptionalField(editForm.sector),
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["professionals"] }),
+        queryClient.invalidateQueries({ queryKey: ["participants"] }),
+      ]);
+      setPageStatus({
+        type: "success",
+        message: "Profissional atualizado com sucesso.",
+      });
+      handleCloseEdit();
+    },
+    onError: (error) => {
+      setEditStatus({
+        type: "error",
+        message: error?.message || "Não foi possível atualizar o profissional.",
+      });
+    },
   });
+
+  const handleSubmitEdit = (event) => {
+    event.preventDefault();
+    setEditStatus(null);
+    updateProfessional.mutate();
+  };
+
+  const filteredProfessionals = useMemo(
+    () =>
+      professionals.filter((p) => {
+        const normalizedSearch = search.toLowerCase();
+        const matchesSearch =
+          p.name?.toLowerCase().includes(normalizedSearch) ||
+          p.email?.toLowerCase().includes(normalizedSearch) ||
+          p.phone?.toLowerCase().includes(normalizedSearch);
+        return matchesSearch;
+      }),
+    [professionals, search]
+  );
 
   const columns = [
     { 
@@ -126,6 +234,16 @@ export default function Professionals() {
             size="icon"
             onClick={(e) => {
               e.stopPropagation();
+              handleOpenEdit(row);
+            }}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
               navigate(
                 `/ProfessionalProfile?id=${encodeURIComponent(String(row?.id || "").trim())}`
               );
@@ -143,6 +261,13 @@ export default function Professionals() {
       <PageHeader
         title="Profissionais"
         subtitle="Lista sincronizada com Usuários cadastrados"
+        actionLabel={isFetchingProfessionals ? "Atualizando..." : "Atualizar"}
+        actionIcon={RefreshCw}
+        onActionClick={() => {
+          setPageStatus(null);
+          refetchProfessionals();
+          refetchParticipants();
+        }}
       />
 
       <Alert>
@@ -151,6 +276,14 @@ export default function Professionals() {
           automaticamente pelos Usuários cadastrados.
         </AlertDescription>
       </Alert>
+
+      {pageStatus && (
+        <Alert className="border-green-200 bg-green-50">
+          <AlertDescription className="text-green-700">
+            {pageStatus.message}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <SearchFilter
         searchValue={search}
@@ -169,6 +302,139 @@ export default function Professionals() {
           )
         }
       />
+
+      <Dialog open={isEditOpen} onOpenChange={(open) => (open ? setIsEditOpen(true) : handleCloseEdit())}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar profissional</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmitEdit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="professional-name">Nome *</Label>
+                <Input
+                  id="professional-name"
+                  value={editForm.name}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  placeholder="Nome completo"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="professional-email">E-mail</Label>
+                <Input
+                  id="professional-email"
+                  type="email"
+                  value={editForm.email}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, email: event.target.value }))
+                  }
+                  placeholder="profissional@dominio.com"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="professional-phone">Telefone</Label>
+                <Input
+                  id="professional-phone"
+                  value={editForm.phone}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, phone: event.target.value }))
+                  }
+                  placeholder="(00) 00000-0000"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="professional-position">Cargo</Label>
+                <Input
+                  id="professional-position"
+                  value={editForm.position}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, position: event.target.value }))
+                  }
+                  placeholder="Ex.: Enfermeiro"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="professional-sector">Setor</Label>
+                <Input
+                  id="professional-sector"
+                  value={editForm.sector}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, sector: event.target.value }))
+                  }
+                  placeholder="Ex.: Vigilância Epidemiológica"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="professional-rg">RG</Label>
+                <Input
+                  id="professional-rg"
+                  value={editForm.rg}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, rg: event.target.value }))
+                  }
+                  placeholder="00.000.000-0"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="professional-cpf">CPF</Label>
+                <Input
+                  id="professional-cpf"
+                  value={editForm.cpf}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, cpf: event.target.value }))
+                  }
+                  placeholder="000.000.000-00"
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="professional-registration">Matrícula</Label>
+                <Input
+                  id="professional-registration"
+                  value={editForm.registration}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, registration: event.target.value }))
+                  }
+                  placeholder="Código de matrícula"
+                />
+              </div>
+            </div>
+
+            {editStatus && (
+              <Alert className="border-red-200 bg-red-50">
+                <AlertDescription className="text-red-700">
+                  {editStatus.message}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={handleCloseEdit}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700"
+                disabled={updateProfessional.isPending}
+              >
+                {updateProfessional.isPending && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                Salvar alterações
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
