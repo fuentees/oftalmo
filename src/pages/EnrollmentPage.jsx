@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { 
   ArrowLeft,
+  BarChart3,
+  Building2,
   GraduationCap, 
   CheckCircle,
   AlertCircle,
@@ -36,9 +38,19 @@ import {
   Plus,
   SlidersHorizontal,
   Edit,
+  MapPin,
   Link2
 } from "lucide-react";
 import { format } from "date-fns";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
@@ -55,7 +67,7 @@ import {
   resolveParticipantFieldFromEnrollmentField,
 } from "@/lib/enrollmentSchema";
 
-const ENROLLMENT_MAIN_TABS = ["mask", "form", "list"];
+const ENROLLMENT_MAIN_TABS = ["mask", "form", "list", "summary"];
 
 export default function EnrollmentPage({
   allowedTabs = null,
@@ -117,6 +129,12 @@ export default function EnrollmentPage({
   const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
   const [deleteAllStatus, setDeleteAllStatus] = useState(null);
   const [activeMainTab, setActiveMainTab] = useState(resolvedInitialTab);
+  const [summaryStatusFilter, setSummaryStatusFilter] = useState("all");
+  const [summaryMunicipalityFilter, setSummaryMunicipalityFilter] = useState("all");
+  const [summaryGveFilter, setSummaryGveFilter] = useState("all");
+  const [summaryStartDate, setSummaryStartDate] = useState("");
+  const [summaryEndDate, setSummaryEndDate] = useState("");
+  const [summarySearch, setSummarySearch] = useState("");
 
   const handleGoBack = () => {
     if (window.history.length > 1) {
@@ -1400,6 +1418,133 @@ export default function EnrollmentPage({
     p.professional_email?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const summaryMunicipalityOptions = React.useMemo(() => {
+    const values = Array.from(
+      new Set(
+        (allParticipants || [])
+          .map((item) => String(item?.municipality || "").trim())
+          .filter(Boolean)
+      )
+    );
+    return values.sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+  }, [allParticipants]);
+
+  const summaryGveOptions = React.useMemo(() => {
+    const values = Array.from(
+      new Set(
+        (allParticipants || [])
+          .map((item) => String(item?.health_region || "").trim())
+          .filter(Boolean)
+      )
+    );
+    return values.sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+  }, [allParticipants]);
+
+  const summaryFilteredParticipants = React.useMemo(() => {
+    const startDate = summaryStartDate ? new Date(summaryStartDate) : null;
+    const endDate = summaryEndDate ? new Date(summaryEndDate) : null;
+    if (startDate) startDate.setHours(0, 0, 0, 0);
+    if (endDate) endDate.setHours(23, 59, 59, 999);
+
+    return (allParticipants || []).filter((participant) => {
+      const status = String(participant?.enrollment_status || "").trim().toLowerCase();
+      if (summaryStatusFilter !== "all" && status !== summaryStatusFilter) return false;
+
+      const municipality = String(participant?.municipality || "").trim();
+      if (summaryMunicipalityFilter !== "all" && municipality !== summaryMunicipalityFilter) {
+        return false;
+      }
+
+      const gve = String(participant?.health_region || "").trim();
+      if (summaryGveFilter !== "all" && gve !== summaryGveFilter) return false;
+
+      if (startDate || endDate) {
+        const enrollmentDate = new Date(participant?.enrollment_date || "");
+        if (Number.isNaN(enrollmentDate.getTime())) return false;
+        if (startDate && enrollmentDate < startDate) return false;
+        if (endDate && enrollmentDate > endDate) return false;
+      }
+
+      if (summarySearch.trim()) {
+        const haystack = normalizeText(
+          [
+            participant?.professional_name,
+            participant?.professional_email,
+            participant?.professional_cpf,
+            participant?.municipality,
+            participant?.health_region,
+          ]
+            .filter(Boolean)
+            .join(" ")
+        );
+        if (!haystack.includes(normalizeText(summarySearch))) return false;
+      }
+
+      return true;
+    });
+  }, [
+    allParticipants,
+    summaryStatusFilter,
+    summaryMunicipalityFilter,
+    summaryGveFilter,
+    summaryStartDate,
+    summaryEndDate,
+    summarySearch,
+  ]);
+
+  const groupedSummaryByGve = React.useMemo(() => {
+    const counter = {};
+    summaryFilteredParticipants.forEach((participant) => {
+      const key = String(participant?.health_region || "").trim() || "Não informado";
+      counter[key] = (counter[key] || 0) + 1;
+    });
+    return Object.entries(counter)
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [summaryFilteredParticipants]);
+
+  const groupedSummaryByMunicipality = React.useMemo(() => {
+    const counter = {};
+    summaryFilteredParticipants.forEach((participant) => {
+      const key = String(participant?.municipality || "").trim() || "Não informado";
+      counter[key] = (counter[key] || 0) + 1;
+    });
+    return Object.entries(counter)
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [summaryFilteredParticipants]);
+
+  const summaryStatusTotals = React.useMemo(() => {
+    return summaryFilteredParticipants.reduce(
+      (acc, participant) => {
+        const status = String(participant?.enrollment_status || "").trim().toLowerCase();
+        if (status === "confirmado") acc.confirmed += 1;
+        else if (status === "cancelado") acc.cancelled += 1;
+        else acc.pending += 1;
+        return acc;
+      },
+      { confirmed: 0, pending: 0, cancelled: 0 }
+    );
+  }, [summaryFilteredParticipants]);
+
+  const topGve = groupedSummaryByGve[0] || null;
+  const topMunicipality = groupedSummaryByMunicipality[0] || null;
+  const summaryGveChartData = groupedSummaryByGve.slice(0, 10);
+  const summaryMunicipalityChartData = groupedSummaryByMunicipality.slice(0, 10);
+
+  const summaryGveColumns = [
+    {
+      header: "GVE",
+      accessor: "name",
+      cellClassName: "font-medium",
+    },
+    {
+      header: "Total de inscritos",
+      accessor: "total",
+      sortType: "number",
+    },
+  ];
+
   const columns = [
     {
       header: "Data/Hora Inscrição",
@@ -1719,6 +1864,12 @@ export default function EnrollmentPage({
                   <TabsTrigger value="list">
                     <Users className="h-4 w-4 mr-2" />
                     Inscritos ({allParticipants.length})
+                  </TabsTrigger>
+                )}
+                {normalizedAllowedTabs.includes("summary") && (
+                  <TabsTrigger value="summary">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Resumo
                   </TabsTrigger>
                 )}
               </TabsList>
@@ -2065,12 +2216,240 @@ export default function EnrollmentPage({
               />
               </TabsContent>
             )}
+
+            {normalizedAllowedTabs.includes("summary") && (
+              <TabsContent value="summary" className="mt-6 space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Filtros do resumo</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                      <div className="space-y-2 md:col-span-2 xl:col-span-3">
+                        <Label htmlFor="summary-search">Busca rápida</Label>
+                        <Input
+                          id="summary-search"
+                          value={summarySearch}
+                          onChange={(event) => setSummarySearch(event.target.value)}
+                          placeholder="Nome, e-mail, CPF, município ou GVE..."
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Status</Label>
+                        <Select
+                          value={summaryStatusFilter}
+                          onValueChange={setSummaryStatusFilter}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="inscrito">Inscrito</SelectItem>
+                            <SelectItem value="confirmado">Confirmado</SelectItem>
+                            <SelectItem value="cancelado">Cancelado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Município</Label>
+                        <Select
+                          value={summaryMunicipalityFilter}
+                          onValueChange={setSummaryMunicipalityFilter}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Todos os municípios" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos os municípios</SelectItem>
+                            {summaryMunicipalityOptions.map((municipality) => (
+                              <SelectItem key={municipality} value={municipality}>
+                                {municipality}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>GVE</Label>
+                        <Select value={summaryGveFilter} onValueChange={setSummaryGveFilter}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Todas as GVE" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todas as GVE</SelectItem>
+                            {summaryGveOptions.map((gve) => (
+                              <SelectItem key={gve} value={gve}>
+                                {gve}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="summary-start-date">Inscrição de</Label>
+                        <Input
+                          id="summary-start-date"
+                          type="date"
+                          value={summaryStartDate}
+                          onChange={(event) => setSummaryStartDate(event.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="summary-end-date">Inscrição até</Label>
+                        <Input
+                          id="summary-end-date"
+                          type="date"
+                          value={summaryEndDate}
+                          onChange={(event) => setSummaryEndDate(event.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-xs text-slate-500">Total filtrado</p>
+                      <p className="text-2xl font-semibold text-slate-900">
+                        {summaryFilteredParticipants.length}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-xs text-slate-500">Confirmados</p>
+                      <p className="text-2xl font-semibold text-green-700">
+                        {summaryStatusTotals.confirmed}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-xs text-slate-500">Pendentes</p>
+                      <p className="text-2xl font-semibold text-amber-700">
+                        {summaryStatusTotals.pending}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-xs text-slate-500">Cancelados</p>
+                      <p className="text-2xl font-semibold text-red-700">
+                        {summaryStatusTotals.cancelled}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-xs text-slate-500">GVE com mais inscritos</p>
+                      <p className="text-lg font-semibold text-indigo-700 truncate">
+                        {topGve?.name || "-"}
+                      </p>
+                      <p className="text-xs text-slate-500">{topGve?.total || 0} inscritos</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-xs text-slate-500">Município com mais inscritos</p>
+                      <p className="text-lg font-semibold text-blue-700 truncate">
+                        {topMunicipality?.name || "-"}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {topMunicipality?.total || 0} inscritos
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Building2 className="h-4 w-4" />
+                        Top 10 GVE por inscritos
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {summaryGveChartData.length === 0 ? (
+                        <p className="text-sm text-slate-500">
+                          Sem dados para exibir com os filtros atuais.
+                        </p>
+                      ) : (
+                        <div className="h-[320px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={summaryGveChartData}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                              <YAxis allowDecimals={false} />
+                              <Tooltip />
+                              <Bar dataKey="total" fill="#4f46e5" radius={[6, 6, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        Top 10 municípios por inscritos
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {summaryMunicipalityChartData.length === 0 ? (
+                        <p className="text-sm text-slate-500">
+                          Sem dados para exibir com os filtros atuais.
+                        </p>
+                      ) : (
+                        <div className="h-[320px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={summaryMunicipalityChartData}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                              <YAxis allowDecimals={false} />
+                              <Tooltip />
+                              <Bar dataKey="total" fill="#0ea5e9" radius={[6, 6, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Total de inscritos por GVE</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <DataTable
+                      columns={summaryGveColumns}
+                      data={groupedSummaryByGve}
+                      emptyMessage="Nenhum inscrito encontrado para os filtros selecionados"
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
           </Tabs>
         </CardContent>
       </Card>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+      <AlertDialog
+        open={!!deleteConfirm}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirm(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>

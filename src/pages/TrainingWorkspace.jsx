@@ -559,7 +559,7 @@ export default function TrainingWorkspace() {
         <TabsContent value="enrollment_page" className="mt-6">
           <EnrollmentPage
             showBackButton={false}
-            allowedTabs={["list"]}
+            allowedTabs={["list", "summary"]}
             initialTab="list"
           />
         </TabsContent>
