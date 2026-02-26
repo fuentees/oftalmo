@@ -23,11 +23,13 @@ import { formatDateSafe, parseDateSafe } from "@/lib/date";
 import {
   DEFAULT_ENROLLMENT_FIELDS,
   DEFAULT_ENROLLMENT_SECTIONS,
-  PARTICIPANT_FIELD_MAP,
+  getEnrollmentFieldSemantic,
   formatEnrollmentFieldValue,
   formatSectionLabel,
   isValidCpf,
+  normalizeParticipantRegionFields,
   orderEnrollmentFields,
+  resolveParticipantFieldFromEnrollmentField,
 } from "@/lib/enrollmentSchema";
 
 export default function PublicEnrollment() {
@@ -109,6 +111,51 @@ export default function PublicEnrollment() {
     () => orderEnrollmentFields(templateFields),
     [templateFields]
   );
+
+  const municipalityFieldKey = useMemo(() => {
+    const field = orderedTemplateFields.find(
+      (item) => getEnrollmentFieldSemantic(item) === "municipality"
+    );
+    return String(field?.field_key || "municipality").trim();
+  }, [orderedTemplateFields]);
+
+  const gveFieldKey = useMemo(() => {
+    const field = orderedTemplateFields.find(
+      (item) => getEnrollmentFieldSemantic(item) === "gve"
+    );
+    return String(field?.field_key || "health_region").trim();
+  }, [orderedTemplateFields]);
+
+  const getAutoGveByValues = (values) => {
+    const municipalityValue = values?.[municipalityFieldKey];
+    return getGveByMunicipio(municipalityValue);
+  };
+
+  const mapEnrollmentDataToParticipantFields = (sourceData = {}) => {
+    const mapped = {};
+
+    orderedTemplateFields.forEach((field) => {
+      const participantKey = resolveParticipantFieldFromEnrollmentField(field);
+      const fieldKey = String(field?.field_key || "").trim();
+      if (!participantKey || !fieldKey) return;
+
+      const value = sourceData[fieldKey];
+      if (value === undefined || value === null || value === "") return;
+      mapped[participantKey] = value;
+    });
+
+    const normalizedRegion = normalizeParticipantRegionFields({
+      state: mapped.state,
+      health_region: mapped.health_region,
+      municipality: mapped.municipality,
+      getGveByMunicipio,
+    });
+
+    return {
+      ...mapped,
+      ...normalizedRegion,
+    };
+  };
 
   const sections = useMemo(() => {
     const seen = new Set();
@@ -216,34 +263,32 @@ export default function PublicEnrollment() {
             )
           : null;
 
-      const mapped = {};
-      Object.entries(data).forEach(([fieldKey, fieldValue]) => {
-        const participantKey = PARTICIPANT_FIELD_MAP[fieldKey];
-        if (!participantKey) return;
-        mapped[participantKey] = fieldValue;
-      });
+      const mapped = mapEnrollmentDataToParticipantFields(data);
 
       const participantPayload = {
         training_id: trainingId,
         training_title: training.title,
         training_date: firstDate || null,
-        professional_name: mapped.professional_name || "",
-        professional_cpf: mapped.professional_cpf || "",
-        professional_rg: mapped.professional_rg || "",
-        professional_email: mapped.professional_email || "",
-        professional_sector: mapped.professional_sector || "",
-        professional_registration: mapped.professional_registration || "",
-        professional_formation: mapped.professional_formation || "",
-        institution: mapped.institution || "",
-        state: mapped.state || "",
-        health_region: mapped.health_region || "",
-        municipality: mapped.municipality || "",
-        unit_name: mapped.unit_name || "",
-        position: mapped.position || "",
-        work_address: mapped.work_address || "",
-        residential_address: mapped.residential_address || "",
-        commercial_phone: mapped.commercial_phone || "",
-        mobile_phone: mapped.mobile_phone || "",
+        professional_name: mapped.professional_name || data.name || "",
+        professional_cpf: mapped.professional_cpf || data.cpf || "",
+        professional_rg: mapped.professional_rg || data.rg || "",
+        professional_email: mapped.professional_email || data.email || "",
+        professional_sector: mapped.professional_sector || data.sector || "",
+        professional_registration:
+          mapped.professional_registration || data.registration || "",
+        professional_formation:
+          mapped.professional_formation || data.professional_formation || "",
+        institution: mapped.institution || data.institution || "",
+        state: mapped.state || data.state || "",
+        health_region: mapped.health_region || data.health_region || "",
+        municipality: mapped.municipality || data.municipality || "",
+        unit_name: mapped.unit_name || data.unit_name || "",
+        position: mapped.position || data.position || "",
+        work_address: mapped.work_address || data.work_address || "",
+        residential_address:
+          mapped.residential_address || data.residential_address || "",
+        commercial_phone: mapped.commercial_phone || data.commercial_phone || "",
+        mobile_phone: mapped.mobile_phone || data.mobile_phone || "",
         enrollment_status: "inscrito",
         enrollment_date: new Date().toISOString(),
         attendance_records: [],
@@ -372,6 +417,11 @@ export default function PublicEnrollment() {
         ? formatEnrollmentFieldValue(field, trimmed)
         : "";
     });
+
+    const autoGve = getAutoGveByValues(normalizedFormData);
+    if (autoGve && gveFieldKey && !normalizedFormData[gveFieldKey]) {
+      normalizedFormData[gveFieldKey] = autoGve;
+    }
 
     enrollMutation.mutate(normalizedFormData);
   };
@@ -602,17 +652,10 @@ export default function PublicEnrollment() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           {sectionFields.map((field) => {
                             const fieldKey = String(field.field_key || "");
-                            const lowerKey = fieldKey.toLowerCase();
-                            const isMunicipalityField =
-                              lowerKey.includes("municipio") ||
-                              lowerKey.includes("municipality");
-                            const isGveField =
-                              lowerKey === "health_region" ||
-                              lowerKey.includes("gve") ||
-                              lowerKey.includes("regional");
-                            const resolvedGve = getGveByMunicipio(
-                              formData.municipality
-                            );
+                            const fieldSemantic = getEnrollmentFieldSemantic(field);
+                            const isMunicipalityField = fieldSemantic === "municipality";
+                            const isGveField = fieldSemantic === "gve";
+                            const resolvedGve = getAutoGveByValues(formData);
                             const fieldValue =
                               isGveField && resolvedGve
                                 ? resolvedGve
@@ -643,21 +686,26 @@ export default function PublicEnrollment() {
 
                                     if (isMunicipalityField) {
                                       const gveValue = getGveByMunicipio(nextValue);
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        [fieldKey]: nextValue,
-                                        health_region: gveValue || prev.health_region,
-                                      }));
+                                      setFormData((prev) => {
+                                        const next = {
+                                          ...prev,
+                                          [fieldKey]: nextValue,
+                                        };
+                                        if (gveFieldKey) {
+                                          next[gveFieldKey] = gveValue || prev[gveFieldKey];
+                                        }
+                                        return next;
+                                      });
                                       if (formErrors[fieldKey]) {
                                         setFormErrors((prev) => ({
                                           ...prev,
                                           [fieldKey]: null,
                                         }));
                                       }
-                                      if (gveValue && formErrors.health_region) {
+                                      if (gveValue && gveFieldKey && formErrors[gveFieldKey]) {
                                         setFormErrors((prev) => ({
                                           ...prev,
-                                          health_region: null,
+                                          [gveFieldKey]: null,
                                         }));
                                       }
                                       return;

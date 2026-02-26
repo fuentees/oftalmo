@@ -163,6 +163,184 @@ export const PARTICIPANT_FIELD_MAP = {
   mobile_phone: "mobile_phone",
 };
 
+const normalizeEnrollmentText = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const BRAZIL_STATE_UF = new Set([
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
+]);
+
+const BRAZIL_STATE_NAMES = new Set([
+  "acre",
+  "alagoas",
+  "amapa",
+  "amazonas",
+  "bahia",
+  "ceara",
+  "distrito federal",
+  "espirito santo",
+  "goias",
+  "maranhao",
+  "mato grosso",
+  "mato grosso do sul",
+  "minas gerais",
+  "para",
+  "paraiba",
+  "parana",
+  "pernambuco",
+  "piaui",
+  "rio de janeiro",
+  "rio grande do norte",
+  "rio grande do sul",
+  "rondonia",
+  "roraima",
+  "santa catarina",
+  "sao paulo",
+  "sergipe",
+  "tocantins",
+]);
+
+const getEnrollmentFieldDescriptor = (field) =>
+  [
+    normalizeEnrollmentText(field?.label),
+    normalizeEnrollmentText(field?.placeholder),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+const includesAnyToken = (base, tokens) => {
+  if (!base) return false;
+  return tokens.some((token) => base.includes(token));
+};
+
+const isStateValue = (value) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return false;
+  const upper = raw.toUpperCase();
+  if (BRAZIL_STATE_UF.has(upper)) return true;
+  const normalized = normalizeEnrollmentText(raw);
+  return BRAZIL_STATE_NAMES.has(normalized);
+};
+
+export const getEnrollmentFieldSemantic = (field) => {
+  const key = String(field?.field_key || "").trim().toLowerCase();
+  const descriptor = getEnrollmentFieldDescriptor(field);
+
+  const hasMunicipalityDescriptor = includesAnyToken(descriptor, [
+    "municipio",
+    "cidade",
+  ]);
+  const hasGveDescriptor = includesAnyToken(descriptor, [
+    "gve",
+    "regional de saude",
+    "regiao de saude",
+    "vigilancia epidemiologica",
+    "grupo de vigilancia epidemiologica",
+  ]);
+  const hasStateDescriptor = includesAnyToken(descriptor, [
+    "estado",
+    "uf",
+    "unidade federativa",
+  ]);
+
+  if (hasMunicipalityDescriptor) return "municipality";
+  if (hasGveDescriptor && !hasStateDescriptor) return "gve";
+  if (hasStateDescriptor && !hasGveDescriptor) return "state";
+
+  if (key === "municipality" || key.includes("municip")) return "municipality";
+  if (key === "health_region" || key.includes("gve") || key.includes("regional")) {
+    return hasStateDescriptor && !hasGveDescriptor ? "state" : "gve";
+  }
+  if (key === "state" || key === "uf" || key.includes("estado") || key.includes("state")) {
+    return hasGveDescriptor && !hasStateDescriptor ? "gve" : "state";
+  }
+  return null;
+};
+
+export const resolveParticipantFieldFromEnrollmentField = (field) => {
+  const semantic = getEnrollmentFieldSemantic(field);
+  if (semantic === "gve") return "health_region";
+  if (semantic === "state") return "state";
+  if (semantic === "municipality") return "municipality";
+
+  const key = String(field?.field_key || "").trim().toLowerCase();
+  return PARTICIPANT_FIELD_MAP[key] || null;
+};
+
+export const normalizeParticipantRegionFields = ({
+  state,
+  health_region,
+  municipality,
+  getGveByMunicipio,
+}) => {
+  let nextState = String(state ?? "").trim();
+  let nextHealthRegion = String(health_region ?? "").trim();
+  const nextMunicipality = String(municipality ?? "").trim();
+  const mappedGve = String(
+    typeof getGveByMunicipio === "function"
+      ? getGveByMunicipio(nextMunicipality)
+      : ""
+  ).trim();
+
+  if (mappedGve) {
+    const stateBefore = nextState;
+    const healthBefore = nextHealthRegion;
+    const normalizedState = normalizeEnrollmentText(stateBefore);
+    const normalizedHealth = normalizeEnrollmentText(healthBefore);
+    const normalizedMapped = normalizeEnrollmentText(mappedGve);
+    const healthMatchesState =
+      normalizedState && normalizedHealth && normalizedHealth === normalizedState;
+    const stateLooksLikeGve =
+      Boolean(stateBefore) &&
+      (normalizedState === normalizedMapped ||
+        stateBefore.toLowerCase().includes("gve"));
+    const healthLooksLikeState = isStateValue(healthBefore);
+
+    if (!healthBefore || healthMatchesState || (stateLooksLikeGve && healthLooksLikeState)) {
+      nextHealthRegion = mappedGve;
+    }
+    if (stateLooksLikeGve && healthLooksLikeState) {
+      nextState = healthBefore;
+    }
+  }
+
+  return {
+    state: nextState,
+    health_region: nextHealthRegion,
+    municipality: nextMunicipality,
+  };
+};
+
 export const formatSectionLabel = (value) => {
   if (!value) return "";
   return String(value)
