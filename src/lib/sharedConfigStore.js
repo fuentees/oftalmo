@@ -27,6 +27,20 @@ const isDbPolicyError = (error) => {
     message.includes("permission denied")
   );
 };
+const resolveFallbackTrainingContext = async () => {
+  const { data, error } = await supabase
+    .from("trainings")
+    .select("id, title")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) return null;
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row?.id) return null;
+  return {
+    id: String(row.id),
+    title: String(row.title || "__APP_SHARED_CONFIG__"),
+  };
+};
 
 const parseJsonValue = (value) => {
   if (value === null || value === undefined) return null;
@@ -54,18 +68,34 @@ const loadSharedConfigFromFallback = async (configKey) => {
 };
 
 const saveSharedConfigToFallback = async ({ configKey, value, userEmail }) => {
-  const payload = {
-    training_id: null,
-    training_title: "__APP_SHARED_CONFIG__",
+  const basePayload = {
     name: configKey,
     description: JSON.stringify(value ?? {}),
     file_type: "application/json",
     uploaded_by: userEmail || null,
   };
+  const payload = {
+    ...basePayload,
+    training_id: null,
+    training_title: "__APP_SHARED_CONFIG__",
+  };
   const { error } = await supabase
     .from(SHARED_CONFIG_FALLBACK_TABLE)
     .insert(payload);
-  if (error) throw error;
+  if (!error) return;
+  // Algumas policies de training_materials exigem training_id válido.
+  if (!isDbPolicyError(error)) throw error;
+  const trainingContext = await resolveFallbackTrainingContext();
+  if (!trainingContext?.id) throw error;
+  const contextualPayload = {
+    ...basePayload,
+    training_id: trainingContext.id,
+    training_title: trainingContext.title,
+  };
+  const { error: contextualError } = await supabase
+    .from(SHARED_CONFIG_FALLBACK_TABLE)
+    .insert(contextualPayload);
+  if (contextualError) throw contextualError;
 };
 
 export const loadSharedConfigJson = async (configKey) => {
