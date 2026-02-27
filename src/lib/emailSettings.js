@@ -72,7 +72,7 @@ const resolveLatestEmailSettingsPath = async () => {
     }
   );
   if (error) {
-    if (isEmailSettingsStoragePermissionError(error)) throw error;
+    if (isEmailSettingsStoragePermissionError(error)) return null;
     return EMAIL_SETTINGS_STORAGE_PATH;
   }
 
@@ -117,11 +117,15 @@ export const loadEmailSettingsFromStorage = async () => {
   if (sharedSettings) return sharedSettings;
 
   const latestPath = await resolveLatestEmailSettingsPath();
+  if (!latestPath) return { ...DEFAULT_EMAIL_SETTINGS };
   const { data, error } = await supabase.storage
     .from(STORAGE_BUCKET)
     .download(latestPath);
 
   if (error || !data) {
+    if (isEmailSettingsStoragePermissionError(error)) {
+      return { ...DEFAULT_EMAIL_SETTINGS };
+    }
     if (isStorageObjectNotFoundError(error)) {
       return { ...DEFAULT_EMAIL_SETTINGS };
     }
