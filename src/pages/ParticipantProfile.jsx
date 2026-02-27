@@ -4,7 +4,7 @@ import { dataClient } from "@/api/dataClient";
 import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
-  loadCertificateEmailTemplate,
+  resolveCertificateEmailTemplate,
   interpolateEmailTemplate,
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
@@ -658,7 +658,7 @@ export default function ParticipantProfile() {
       if (!training) {
         throw new Error("Treinamento não encontrado para enviar.");
       }
-      const emailTemplate = loadCertificateEmailTemplate();
+      const emailTemplate = await resolveCertificateEmailTemplate();
       const participantPayload = buildCertificateParticipantPayload(
         participation,
         training

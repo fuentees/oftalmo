@@ -2,6 +2,7 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { supabase } from "@/api/supabaseClient";
 import { resolveUserRole } from "@/lib/accessControl";
+import { loadEmailSettingsFromStorage } from "@/lib/emailSettings";
 
 const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
@@ -23,9 +24,11 @@ const USER_ADMIN_FUNCTION_LABEL = USER_ADMIN_FUNCTION_CANDIDATES.map(
   (name) => `"${name}"`
 ).join(" ou ");
 const EMAIL_WEBHOOK_URL = import.meta.env.VITE_EMAIL_WEBHOOK_URL;
-const EMAIL_SETTINGS_KEY = "emailSettings";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const EMAIL_SETTINGS_CACHE_TTL_MS = 60 * 1000;
+let sharedEmailSettingsCache = null;
+let sharedEmailSettingsCacheTime = 0;
 
 const toSnakeCase = (value) =>
   value.replace(/([A-Z])/g, "_$1").toLowerCase();
@@ -1006,14 +1009,19 @@ const getWebhookUrl = (value) => {
   }
 };
 
-const getStoredEmailSettings = () => {
-  if (typeof window === "undefined") return {};
+const getSharedEmailSettings = async () => {
+  const now = Date.now();
+  if (
+    sharedEmailSettingsCache &&
+    now - sharedEmailSettingsCacheTime < EMAIL_SETTINGS_CACHE_TTL_MS
+  ) {
+    return sharedEmailSettingsCache;
+  }
   try {
-    const raw = window.localStorage.getItem(EMAIL_SETTINGS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed;
+    const loaded = await loadEmailSettingsFromStorage();
+    sharedEmailSettingsCache = loaded;
+    sharedEmailSettingsCacheTime = now;
+    return loaded;
   } catch (error) {
     return {};
   }
@@ -1139,7 +1147,7 @@ const shouldFallbackByStatus = (status) =>
   Number(status) === 401 || Number(status) === 403;
 
 const SendEmail = async ({ to, subject, body, attachments }) => {
-  const settings = getStoredEmailSettings();
+  const settings = await getSharedEmailSettings();
   const fromEmail =
     typeof settings.fromEmail === "string" ? settings.fromEmail.trim() : "";
   const fromName =
