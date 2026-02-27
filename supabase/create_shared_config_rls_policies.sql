@@ -1,6 +1,7 @@
 -- Configuração compartilhada global do app (sem storage.objects)
 -- Execute este script no SQL Editor do Supabase.
--- Modo recomendado: RLS habilitado com policies simples de SELECT + INSERT.
+-- Modo de emergência: remove bloqueios de RLS para shared_app_config
+-- e para o fallback em training_materials.
 
 create table if not exists public.shared_app_config (
   config_key text primary key,
@@ -9,27 +10,11 @@ create table if not exists public.shared_app_config (
   updated_by text
 );
 
-alter table public.shared_app_config enable row level security;
+alter table public.shared_app_config disable row level security;
+grant select, insert, update, delete on public.shared_app_config to authenticated;
+grant select, insert, update, delete on public.shared_app_config to anon;
 
-grant select, insert on public.shared_app_config to authenticated;
-grant select, insert on public.shared_app_config to anon;
-
-drop policy if exists shared_app_config_select_authenticated on public.shared_app_config;
-drop policy if exists shared_app_config_insert_authenticated on public.shared_app_config;
-drop policy if exists shared_app_config_update_authenticated on public.shared_app_config;
-
-create policy shared_app_config_select_authenticated
-  on public.shared_app_config
-  for select
-  to public
-  using (
-    config_key like '__config__:%'
-  );
-
-create policy shared_app_config_insert_authenticated
-  on public.shared_app_config
-  for insert
-  to public
-  with check (
-    config_key like '__config__:%'
-  );
+-- Fallback usado pelo app quando shared_app_config falhar por policy.
+alter table public.training_materials disable row level security;
+grant select, insert, update, delete on public.training_materials to authenticated;
+grant select, insert, update, delete on public.training_materials to anon;
