@@ -27,7 +27,6 @@ begin
       to authenticated
       using (
         auth.role() = 'authenticated'
-        and training_id is null
         and name like '__config__:%'
       );
   end if;
@@ -48,7 +47,6 @@ begin
       to authenticated
       with check (
         auth.role() = 'authenticated'
-        and training_id is null
         and name like '__config__:%'
       );
   end if;
