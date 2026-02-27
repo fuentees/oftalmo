@@ -1,4 +1,5 @@
 import { supabase } from "@/api/supabaseClient";
+import { loadSharedConfigJson, saveSharedConfigJson } from "@/lib/sharedConfigStore";
 
 const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
@@ -6,6 +7,7 @@ const CERTIFICATE_EMAIL_TEMPLATE_FOLDER = "certificates";
 const CERTIFICATE_EMAIL_TEMPLATE_STORAGE_PATH =
   `${CERTIFICATE_EMAIL_TEMPLATE_FOLDER}/certificate-email-template.json`;
 const CERTIFICATE_EMAIL_TEMPLATE_FILE_PREFIX = "certificate-email-template-";
+const SHARED_CONFIG_KEY_EMAIL_TEMPLATE = "__config__:certificate-email-template";
 
 export const DEFAULT_CERTIFICATE_EMAIL_TEMPLATE = {
   subject: "Certificado de Conclusão",
@@ -118,7 +120,20 @@ const resolveLatestTemplatePath = async () => {
   return `${CERTIFICATE_EMAIL_TEMPLATE_FOLDER}/${candidates[0]}`;
 };
 
+const loadTemplateFromSharedStore = async () => {
+  try {
+    const parsed = await loadSharedConfigJson(SHARED_CONFIG_KEY_EMAIL_TEMPLATE);
+    if (!parsed || typeof parsed !== "object") return null;
+    return mergeTemplate(parsed);
+  } catch {
+    return null;
+  }
+};
+
 export const resolveCertificateEmailTemplate = async () => {
+  const sharedTemplate = await loadTemplateFromSharedStore();
+  if (sharedTemplate) return sharedTemplate;
+
   const latestPath = await resolveLatestTemplatePath();
   const { data, error } = await supabase.storage
     .from(STORAGE_BUCKET)
@@ -141,6 +156,8 @@ export const resolveCertificateEmailTemplate = async () => {
 
 export const saveCertificateEmailTemplateToStorage = async (template) => {
   const payload = mergeTemplate(template);
+  await saveSharedConfigJson(SHARED_CONFIG_KEY_EMAIL_TEMPLATE, payload);
+
   const content = JSON.stringify(payload);
   const blob = new Blob([content], { type: "application/json" });
   const fileName = `${CERTIFICATE_EMAIL_TEMPLATE_FILE_PREFIX}${Date.now()}.json`;
@@ -151,7 +168,9 @@ export const saveCertificateEmailTemplateToStorage = async (template) => {
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
     .upload(path, file, { upsert: false });
-  if (error) throw error;
+  if (error && !isCertificateEmailTemplatePermissionError(error)) {
+    throw error;
+  }
   return payload;
 };
 
