@@ -1,6 +1,7 @@
 import { supabase } from "@/api/supabaseClient";
 
 const SHARED_CONFIG_TABLE = "shared_app_config";
+const SHARED_CONFIG_VERSION_SEPARATOR = "::";
 
 const toSafeConfigKey = (value) => String(value || "").trim();
 const isMissingSharedConfigTableError = (error) => {
@@ -18,10 +19,12 @@ export const loadSharedConfigJson = async (configKey) => {
   const safeKey = toSafeConfigKey(configKey);
   if (!safeKey) return null;
 
+  const versionPrefix = `${safeKey}${SHARED_CONFIG_VERSION_SEPARATOR}`;
   const { data, error } = await supabase
     .from(SHARED_CONFIG_TABLE)
-    .select("config_value")
-    .eq("config_key", safeKey)
+    .select("config_key, config_value, updated_at")
+    .like("config_key", `${versionPrefix}%`)
+    .order("updated_at", { ascending: false })
     .limit(1);
   if (error) {
     if (isMissingSharedConfigTableError(error)) {
@@ -30,7 +33,23 @@ export const loadSharedConfigJson = async (configKey) => {
     throw error;
   }
 
-  const row = Array.isArray(data) ? data[0] : null;
+  let row = Array.isArray(data) ? data[0] : null;
+  if (!row) {
+    // Compatibilidade com chave legada sem versionamento.
+    const { data: legacyData, error: legacyError } = await supabase
+      .from(SHARED_CONFIG_TABLE)
+      .select("config_key, config_value, updated_at")
+      .eq("config_key", safeKey)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    if (legacyError) {
+      if (isMissingSharedConfigTableError(legacyError)) {
+        return null;
+      }
+      throw legacyError;
+    }
+    row = Array.isArray(legacyData) ? legacyData[0] : null;
+  }
   if (!row || row.config_value === undefined || row.config_value === null) {
     return null;
   }
@@ -56,7 +75,7 @@ export const saveSharedConfigJson = async (configKey, value) => {
   const { data: userData } = await supabase.auth.getUser();
   const userEmail = String(userData?.user?.email || "").trim();
   const payload = {
-    config_key: safeKey,
+    config_key: `${safeKey}${SHARED_CONFIG_VERSION_SEPARATOR}${Date.now()}`,
     config_value: value ?? {},
     updated_at: new Date().toISOString(),
     updated_by: userEmail || null,
@@ -64,14 +83,18 @@ export const saveSharedConfigJson = async (configKey, value) => {
 
   const { error } = await supabase
     .from(SHARED_CONFIG_TABLE)
-    .upsert(payload, { onConflict: "config_key" });
+    .insert(payload);
   if (error) {
     if (isMissingSharedConfigTableError(error)) {
       throw new Error(
         "Configuração compartilhada não inicializada. Execute o script supabase/create_shared_config_rls_policies.sql no Supabase."
       );
     }
-    throw error;
+    throw new Error(
+      `Falha ao salvar configuração compartilhada (${safeKey}). ${String(
+        error?.message || error || "Erro de banco"
+      )}`
+    );
   }
   return value;
 };
