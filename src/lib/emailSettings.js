@@ -1,10 +1,12 @@
 import { supabase } from "@/api/supabaseClient";
+import { loadSharedConfigJson, saveSharedConfigJson } from "@/lib/sharedConfigStore";
 
 const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
 const EMAIL_SETTINGS_FOLDER = "certificates";
 const EMAIL_SETTINGS_STORAGE_PATH = `${EMAIL_SETTINGS_FOLDER}/email-settings.json`;
 const EMAIL_SETTINGS_FILE_PREFIX = "email-settings-";
+const SHARED_CONFIG_KEY_EMAIL_SETTINGS = "__config__:email-settings";
 
 export const DEFAULT_EMAIL_SETTINGS = {
   fromEmail: "",
@@ -100,7 +102,20 @@ const resolveLatestEmailSettingsPath = async () => {
   return `${EMAIL_SETTINGS_FOLDER}/${candidates[0]}`;
 };
 
+const loadEmailSettingsFromSharedStore = async () => {
+  try {
+    const parsed = await loadSharedConfigJson(SHARED_CONFIG_KEY_EMAIL_SETTINGS);
+    if (!parsed || typeof parsed !== "object") return null;
+    return normalizeEmailSettings(parsed);
+  } catch {
+    return null;
+  }
+};
+
 export const loadEmailSettingsFromStorage = async () => {
+  const sharedSettings = await loadEmailSettingsFromSharedStore();
+  if (sharedSettings) return sharedSettings;
+
   const latestPath = await resolveLatestEmailSettingsPath();
   const { data, error } = await supabase.storage
     .from(STORAGE_BUCKET)
@@ -126,6 +141,8 @@ export const loadEmailSettingsFromStorage = async () => {
 
 export const saveEmailSettingsToStorage = async (value) => {
   const payload = normalizeEmailSettings(value);
+  await saveSharedConfigJson(SHARED_CONFIG_KEY_EMAIL_SETTINGS, payload);
+
   const content = JSON.stringify(payload);
   const blob = new Blob([content], { type: "application/json" });
   const fileName = `${EMAIL_SETTINGS_FILE_PREFIX}${Date.now()}.json`;
@@ -137,7 +154,7 @@ export const saveEmailSettingsToStorage = async (value) => {
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
     .upload(path, file, { upsert: false });
-  if (error) throw error;
+  if (error && !isEmailSettingsStoragePermissionError(error)) throw error;
 
   return payload;
 };

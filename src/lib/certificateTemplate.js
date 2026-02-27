@@ -1,4 +1,5 @@
 import { supabase } from "@/api/supabaseClient";
+import { loadSharedConfigJson, saveSharedConfigJson } from "@/lib/sharedConfigStore";
 
 export const CERTIFICATE_TEMPLATE_KEY = "certificateTemplate";
 export const CERTIFICATE_TEMPLATE_BY_TRAINING_KEY =
@@ -11,6 +12,9 @@ const CERTIFICATE_TEMPLATE_BY_TRAINING_STORAGE_PATH =
   `${CERTIFICATE_TEMPLATE_FOLDER}/certificate-template-by-training.json`;
 const CERTIFICATE_TEMPLATE_FILE_PREFIX = "certificate-template-";
 const CERTIFICATE_TEMPLATE_MAP_FILE_PREFIX = "certificate-template-by-training-";
+const SHARED_CONFIG_KEY_TEMPLATE = "__config__:certificate-template";
+const SHARED_CONFIG_KEY_TEMPLATE_MAP =
+  "__config__:certificate-template-by-training";
 
 export const DEFAULT_CERTIFICATE_TEMPLATE = {
   headerLines: [
@@ -261,6 +265,38 @@ const mergeTemplateMap = (templateMap) => {
   }, {});
 };
 
+const loadGlobalTemplateFromSharedStore = async () => {
+  try {
+    const parsed = await loadSharedConfigJson(SHARED_CONFIG_KEY_TEMPLATE);
+    if (!parsed || typeof parsed !== "object") return null;
+    return mergeTemplate(parsed);
+  } catch {
+    return null;
+  }
+};
+
+const loadTemplateMapFromSharedStore = async () => {
+  try {
+    const parsed = await loadSharedConfigJson(SHARED_CONFIG_KEY_TEMPLATE_MAP);
+    if (!parsed || typeof parsed !== "object") return null;
+    return mergeTemplateMap(parsed);
+  } catch {
+    return null;
+  }
+};
+
+const saveGlobalTemplateToSharedStore = async (template) => {
+  const payload = mergeTemplate(template);
+  await saveSharedConfigJson(SHARED_CONFIG_KEY_TEMPLATE, payload);
+  return payload;
+};
+
+const saveTemplateMapToSharedStore = async (templateMap) => {
+  const payload = mergeTemplateMap(templateMap);
+  await saveSharedConfigJson(SHARED_CONFIG_KEY_TEMPLATE_MAP, payload);
+  return payload;
+};
+
 const stableStringifyMap = (templateMap) => {
   const sorted = Object.keys(templateMap || {})
     .sort()
@@ -389,6 +425,8 @@ const loadCertificateTemplateMapFromStorage = async () => {
 
 export const saveCertificateTemplateToStorage = async (template) => {
   const payload = mergeTemplate(template);
+  await saveGlobalTemplateToSharedStore(payload);
+
   const content = JSON.stringify(payload);
   const blob = new Blob([content], { type: "application/json" });
   const fileName = `${CERTIFICATE_TEMPLATE_FILE_PREFIX}${Date.now()}.json`;
@@ -400,6 +438,9 @@ export const saveCertificateTemplateToStorage = async (template) => {
     .from(STORAGE_BUCKET)
     .upload(path, file, { upsert: false });
   if (error) {
+    if (isStoragePermissionError(error)) {
+      return true;
+    }
     throw error;
   }
   return true;
@@ -407,6 +448,8 @@ export const saveCertificateTemplateToStorage = async (template) => {
 
 const saveCertificateTemplateMapToStorage = async (templateMap) => {
   const payload = mergeTemplateMap(templateMap);
+  await saveTemplateMapToSharedStore(payload);
+
   const content = JSON.stringify(payload);
   const blob = new Blob([content], { type: "application/json" });
   const fileName = `${CERTIFICATE_TEMPLATE_MAP_FILE_PREFIX}${Date.now()}.json`;
@@ -418,6 +461,9 @@ const saveCertificateTemplateMapToStorage = async (templateMap) => {
     .from(STORAGE_BUCKET)
     .upload(path, file, { upsert: false });
   if (error) {
+    if (isStoragePermissionError(error)) {
+      return true;
+    }
     throw error;
   }
   return true;
@@ -437,15 +483,26 @@ const mergeTemplateMapsByFreshness = (localMap, remoteMap) => {
 };
 
 const resolveGlobalCertificateTemplate = async () => {
-  const remote = await loadCertificateTemplateFromStorage();
-  if (!remote) return DEFAULT_CERTIFICATE_TEMPLATE;
-  return remote;
+  const [shared, remote] = await Promise.all([
+    loadGlobalTemplateFromSharedStore(),
+    loadCertificateTemplateFromStorage(),
+  ]);
+  if (shared) return shared;
+  if (remote) return remote;
+  return DEFAULT_CERTIFICATE_TEMPLATE;
 };
 
 const resolveCertificateTemplateMap = async () => {
-  const remoteMap = await loadCertificateTemplateMapFromStorage();
-  if (!remoteMap) return {};
-  return remoteMap;
+  const [sharedMap, remoteMap] = await Promise.all([
+    loadTemplateMapFromSharedStore(),
+    loadCertificateTemplateMapFromStorage(),
+  ]);
+  if (sharedMap && remoteMap) {
+    return mergeTemplateMapsByFreshness(sharedMap, remoteMap);
+  }
+  if (sharedMap) return sharedMap;
+  if (remoteMap) return remoteMap;
+  return {};
 };
 
 export const saveCertificateTemplateForTraining = async (
