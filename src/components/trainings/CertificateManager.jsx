@@ -117,6 +117,49 @@ const resolveSingleRecipientEmail = (value) => {
     hasInvalid: uniqueCandidates.some((item) => !SIMPLE_EMAIL_REGEX.test(item)),
   };
 };
+const normalizeAttendanceRecords = (value) => {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item && typeof item === "object");
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item) => item && typeof item === "object");
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+const resolveAttendancePercentage = ({
+  participant,
+  attendanceRecords,
+  totalTrainingDates,
+}) => {
+  const parsedPercentage = toNumeric(participant?.attendance_percentage);
+  if (Number.isFinite(parsedPercentage)) {
+    const normalizedPercentage =
+      parsedPercentage > 0 && parsedPercentage <= 1
+        ? parsedPercentage * 100
+        : parsedPercentage;
+    return clamp(normalizedPercentage, 0, 100);
+  }
+  if (!attendanceRecords.length) return null;
+  const presentCount = attendanceRecords.filter(
+    (record) =>
+      String(record?.status || "")
+        .trim()
+        .toLowerCase() === "presente"
+  ).length;
+  const denominator =
+    totalTrainingDates > 0 ? totalTrainingDates : attendanceRecords.length;
+  if (!denominator) return null;
+  return clamp((presentCount / denominator) * 100, 0, 100);
+};
 
 const normalizeStaffEntries = (value) => {
   const rows = Array.isArray(value) ? value : [];
@@ -162,12 +205,12 @@ export default function CertificateManager({ training, participants = [], onClos
         { training_id: training?.id },
         "-created_at"
       ),
-    enabled: Boolean(training?.id),
+    enabled: Boolean(training?.id && isRepadTraining),
   });
   const answerKeyRowsQuery = useQuery({
     queryKey: ["certificateManagerTracomaAnswerKeys"],
     queryFn: () => dataClient.entities.TracomaExamAnswerKey.list("question_number"),
-    enabled: Boolean(training?.id),
+    enabled: Boolean(training?.id && isRepadTraining),
   });
   const trainingsQuery = useQuery({
     queryKey: ["trainings"],
@@ -175,10 +218,10 @@ export default function CertificateManager({ training, participants = [], onClos
     enabled: true,
   });
 
-  const tracomaRows = Array.isArray(tracomaResultsQuery.data)
-    ? tracomaResultsQuery.data
-    : [];
-  const useRepadScoreCriteria = isRepadTraining || tracomaRows.length > 0;
+  const useRepadScoreCriteria = isRepadTraining;
+  const totalTrainingDates = Array.isArray(training?.dates)
+    ? training.dates.filter((dateItem) => dateItem?.date).length
+    : 0;
 
   const coordinatorRecipient = useMemo(() => {
     const name = String(training?.coordinator || "").trim();
@@ -935,11 +978,16 @@ export default function CertificateManager({ training, participants = [], onClos
         gradeValue >= REPAD_APPROVAL_KAPPA * 100
       );
     }
-    const hasRecords =
-      Array.isArray(p.attendance_records) && p.attendance_records.length > 0;
-    if (!hasRecords) return false;
-    const percentage = Number(p.attendance_percentage || 0);
-    return p.approved || percentage >= 75;
+    const attendanceRecords = normalizeAttendanceRecords(p.attendance_records);
+    const percentage = resolveAttendancePercentage({
+      participant: p,
+      attendanceRecords,
+      totalTrainingDates,
+    });
+    if (Number.isFinite(percentage)) {
+      return percentage >= 75;
+    }
+    return p.approved === true && attendanceRecords.length > 0;
   });
 
   const alreadySentCount = eligibleParticipants.filter(p => p.certificate_issued).length;
