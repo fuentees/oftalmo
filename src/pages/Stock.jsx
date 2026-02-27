@@ -106,16 +106,7 @@ export default function Stock() {
   const [importTarget, setImportTarget] = useState("materials");
   const [importFile, setImportFile] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
-  const [customCategories, setCustomCategories] = useState(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const saved = window.localStorage.getItem("stockCategories");
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      return [];
-    }
-  });
+  const [customCategories, setCustomCategories] = useState([]);
 
   const queryClient = useQueryClient();
   const { getGveByMunicipio: getRawGveByMunicipio } = useGveMapping();
@@ -196,14 +187,6 @@ export default function Stock() {
       });
     },
   });
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(
-      "stockCategories",
-      JSON.stringify(customCategories)
-    );
-  }, [customCategories]);
 
   const normalizeCategoryKey = (value) =>
     String(value ?? "").trim().toLowerCase();

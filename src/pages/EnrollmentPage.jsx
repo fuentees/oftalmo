@@ -101,9 +101,6 @@ export default function EnrollmentPage({
   const resolvedInitialTab = normalizedAllowedTabs.includes(initialTabValue)
     ? initialTabValue
     : normalizedAllowedTabs[0];
-  const sectionStorageKey = trainingId
-    ? `enrollment_sections_${trainingId}`
-    : "enrollment_sections_global";
   
   const [formData, setFormData] = useState(/** @type {Record<string, any>} */ ({}));
   const [submitted, setSubmitted] = useState(false);
@@ -190,26 +187,9 @@ export default function EnrollmentPage({
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
     if (!trainingId) return;
-    try {
-      const stored = window.localStorage.getItem(sectionStorageKey);
-      if (!stored) {
-        setCustomSections([]);
-        return;
-      }
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        setCustomSections(
-          parsed
-            .filter((item) => item?.key && item?.label)
-            .map((item) => ({ key: String(item.key), label: String(item.label) }))
-        );
-      }
-    } catch (error) {
-      // Ignora erro de leitura
-    }
-  }, [trainingId, sectionStorageKey]);
+    setCustomSections([]);
+  }, [trainingId]);
 
   const normalizeHeader = (value) =>
     String(value ?? "")
@@ -504,9 +484,6 @@ export default function EnrollmentPage({
     }
     const next = [...customSections, { key, label }];
     setCustomSections(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(sectionStorageKey, JSON.stringify(next));
-    }
     setSectionName("");
     setSectionStatus({ type: "success", message: "Seção criada com sucesso." });
   };
@@ -523,9 +500,6 @@ export default function EnrollmentPage({
     }
     const next = customSections.filter((section) => section.key !== key);
     setCustomSections(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(sectionStorageKey, JSON.stringify(next));
-    }
     setSectionStatus({ type: "success", message: "Seção removida." });
   };
 
@@ -662,15 +636,12 @@ export default function EnrollmentPage({
       dataClient.entities.EnrollmentField.bulkCreate(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment-fields"] });
-      localStorage.setItem("enrollment_defaults_seeded_global", "true");
     },
   });
 
   React.useEffect(() => {
     if (!trainingId || !fieldsFetched) return;
     if (enrollmentFields.length > 0 || seedDefaults.isPending) return;
-    const seededFlag = localStorage.getItem("enrollment_defaults_seeded_global");
-    if (seededFlag === "true") return;
     const payload = DEFAULT_ENROLLMENT_FIELDS.map((field) => ({
       ...field,
       training_id: null,

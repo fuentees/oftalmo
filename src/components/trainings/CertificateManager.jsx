@@ -32,7 +32,7 @@ import { Mail, CheckCircle, Award, Printer, Eye, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
-  loadCertificateEmailTemplate,
+  resolveCertificateEmailTemplate,
   interpolateEmailTemplate,
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
@@ -194,7 +194,13 @@ export default function CertificateManager({ training, participants = [], onClos
   const [result, setResult] = useState(null);
   
   const queryClient = useQueryClient();
-  const emailTemplate = loadCertificateEmailTemplate();
+  const certificateEmailTemplateQuery = useQuery({
+    queryKey: ["certificateEmailTemplate"],
+    queryFn: () => resolveCertificateEmailTemplate(),
+    enabled: true,
+  });
+  const emailTemplate =
+    certificateEmailTemplateQuery.data || DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
   const safeParticipants = Array.isArray(participants) ? participants : [];
   const isRepadTraining = isRepadronizacaoTraining(training);
 

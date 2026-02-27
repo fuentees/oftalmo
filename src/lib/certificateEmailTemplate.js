@@ -1,4 +1,9 @@
-export const CERTIFICATE_EMAIL_TEMPLATE_KEY = "certificateEmailTemplate";
+import { supabase } from "@/api/supabaseClient";
+
+const STORAGE_BUCKET =
+  import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
+const CERTIFICATE_EMAIL_TEMPLATE_STORAGE_PATH =
+  "certificates/certificate-email-template.json";
 
 export const DEFAULT_CERTIFICATE_EMAIL_TEMPLATE = {
   subject: "Certificado de Conclusão",
@@ -17,33 +22,82 @@ const mergeTemplate = (template) => ({
 });
 
 export const loadCertificateEmailTemplate = () => {
-  if (typeof window === "undefined") return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
+  return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
+};
+
+export const saveCertificateEmailTemplate = (template) => {
+  return mergeTemplate(template);
+};
+
+export const resetCertificateEmailTemplate = () => {
+  return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
+};
+
+const extractStorageErrorText = (error) =>
+  String(
+    error?.message || error?.error_description || error?.details || error?.hint || ""
+  )
+    .trim()
+    .toLowerCase();
+
+const isStorageObjectNotFoundError = (error) => {
+  const status = Number(error?.status || 0);
+  const message = extractStorageErrorText(error);
+  return (
+    status === 404 ||
+    message.includes("not found") ||
+    message.includes("object not found")
+  );
+};
+
+export const isCertificateEmailTemplatePermissionError = (error) => {
+  const status = Number(error?.status || 0);
+  const code = String(error?.code || "").toLowerCase();
+  const message = extractStorageErrorText(error);
+  return (
+    status === 401 ||
+    status === 403 ||
+    code === "42501" ||
+    message.includes("row-level security") ||
+    message.includes("violates row-level security policy") ||
+    message.includes("permission denied") ||
+    message.includes("not authorized") ||
+    message.includes("unauthorized")
+  );
+};
+
+export const resolveCertificateEmailTemplate = async () => {
+  const { data, error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .download(CERTIFICATE_EMAIL_TEMPLATE_STORAGE_PATH);
+  if (error || !data) {
+    if (isStorageObjectNotFoundError(error)) {
+      return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
+    }
+    throw error;
+  }
+  const content = await data.text();
+  if (!content) return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
   try {
-    const stored = window.localStorage.getItem(CERTIFICATE_EMAIL_TEMPLATE_KEY);
-    if (!stored) return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
-    const parsed = JSON.parse(stored);
+    const parsed = JSON.parse(content);
     return mergeTemplate(parsed);
-  } catch (error) {
+  } catch {
     return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
   }
 };
 
-export const saveCertificateEmailTemplate = (template) => {
-  if (typeof window === "undefined") return;
+export const saveCertificateEmailTemplateToStorage = async (template) => {
   const payload = mergeTemplate(template);
-  window.localStorage.setItem(
-    CERTIFICATE_EMAIL_TEMPLATE_KEY,
-    JSON.stringify(payload)
-  );
-};
-
-export const resetCertificateEmailTemplate = () => {
-  if (typeof window === "undefined") return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
-  window.localStorage.setItem(
-    CERTIFICATE_EMAIL_TEMPLATE_KEY,
-    JSON.stringify(DEFAULT_CERTIFICATE_EMAIL_TEMPLATE)
-  );
-  return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
+  const content = JSON.stringify(payload);
+  const blob = new Blob([content], { type: "application/json" });
+  const file = new File([blob], "certificate-email-template.json", {
+    type: "application/json",
+  });
+  const { error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(CERTIFICATE_EMAIL_TEMPLATE_STORAGE_PATH, file, { upsert: true });
+  if (error) throw error;
+  return payload;
 };
 
 export const interpolateEmailTemplate = (text, data) =>

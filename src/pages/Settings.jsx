@@ -48,21 +48,25 @@ import {
   DEFAULT_CERTIFICATE_TEMPLATE,
   loadCertificateTemplate,
   resetCertificateTemplate,
-  saveCertificateTemplate,
   saveCertificateTemplateToStorage,
   saveCertificateTemplateForTraining,
   resetCertificateTemplateForTraining,
   resolveCertificateTemplate,
-  isCertificateTemplateCloudSyncDisabled,
 } from "@/lib/certificateTemplate";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
-  loadCertificateEmailTemplate,
   resetCertificateEmailTemplate,
-  saveCertificateEmailTemplate,
+  resolveCertificateEmailTemplate,
+  saveCertificateEmailTemplateToStorage,
   interpolateEmailTemplate,
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
+import {
+  DEFAULT_EMAIL_SETTINGS,
+  clearEmailSettingsInStorage,
+  loadEmailSettingsFromStorage,
+  saveEmailSettingsToStorage,
+} from "@/lib/emailSettings";
 import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
@@ -149,11 +153,7 @@ export default function Settings() {
     CERTIFICATE_SCOPE_GLOBAL
   );
   const [certificateStatus, setCertificateStatus] = useState(null);
-  const [emailSettings, setEmailSettings] = useState({
-    fromEmail: "",
-    fromName: "",
-    webhookUrl: "",
-  });
+  const [emailSettings, setEmailSettings] = useState(DEFAULT_EMAIL_SETTINGS);
   const [emailStatus, setEmailStatus] = useState(null);
   const [certificateEmailTemplate, setCertificateEmailTemplate] = useState(
     DEFAULT_CERTIFICATE_EMAIL_TEMPLATE
@@ -173,30 +173,51 @@ export default function Settings() {
   });
 
   useEffect(() => {
-    const savedColor = localStorage.getItem("theme-color") || "blue";
-    setSelectedColor(savedColor);
-    applyColor(savedColor);
+    applyColor(selectedColor);
+  }, [selectedColor]);
+
+  useEffect(() => {
+    let active = true;
+    const loadSharedEmailSettings = async () => {
+      try {
+        const settings = await loadEmailSettingsFromStorage();
+        if (!active) return;
+        setEmailSettings(settings);
+      } catch (error) {
+        if (!active) return;
+        setEmailStatus({
+          type: "error",
+          message:
+            "Não foi possível carregar as configurações globais de e-mail no Supabase.",
+        });
+      }
+    };
+    loadSharedEmailSettings();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("emailSettings");
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (!parsed || typeof parsed !== "object") return;
-      setEmailSettings({
-        fromEmail: parsed.fromEmail || "",
-        fromName: parsed.fromName || "",
-        webhookUrl: parsed.webhookUrl || "",
-      });
-    } catch (error) {
-      // Ignora erro de leitura
-    }
-  }, []);
-
-  useEffect(() => {
-    const template = loadCertificateEmailTemplate();
-    setCertificateEmailTemplate(template);
+    let active = true;
+    const loadSharedEmailTemplate = async () => {
+      try {
+        const template = await resolveCertificateEmailTemplate();
+        if (!active) return;
+        setCertificateEmailTemplate(template || DEFAULT_CERTIFICATE_EMAIL_TEMPLATE);
+      } catch (error) {
+        if (!active) return;
+        setEmailTemplateStatus({
+          type: "error",
+          message:
+            "Não foi possível carregar o template global de e-mail no Supabase.",
+        });
+      }
+    };
+    loadSharedEmailTemplate();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const colors = [
@@ -280,14 +301,12 @@ export default function Settings() {
   }, [certificateScope, selectedCertificateTraining]);
 
   const applyColor = (colorValue) => {
-    // Just save to localStorage, reload will apply it via layout
+    return colorValue;
   };
 
   const handleColorChange = (colorValue) => {
     setSelectedColor(colorValue);
     applyColor(colorValue);
-    localStorage.setItem("theme-color", colorValue);
-    window.location.reload();
   };
 
   const handleCertificateHeaderChange = (value) => {
@@ -788,22 +807,6 @@ export default function Settings() {
         ""
     ).trim();
 
-  const isCertificateSyncPermissionError = (error) => {
-    const message = getCertificateSyncErrorText(error).toLowerCase();
-    const code = String(error?.code || "").toLowerCase();
-    return (
-      message.includes("row-level security") ||
-      message.includes("violates row-level security policy") ||
-      message.includes("permission denied") ||
-      message.includes("not authorized") ||
-      message.includes("unauthorized") ||
-      code === "42501"
-    );
-  };
-
-  const buildCertificateSyncWarningMessage = (baseMessage) =>
-    `${baseMessage} A sincronização online está indisponível para este perfil neste navegador.`;
-
   const handleSaveCertificate = async () => {
     const payload = {
       ...certificateTemplate,
@@ -826,63 +829,35 @@ export default function Settings() {
     if (scopedTrainingId) {
       try {
         await saveCertificateTemplateForTraining(scopedTrainingScope, payload);
-        const cloudSyncDisabled = isCertificateTemplateCloudSyncDisabled();
         setCertificateStatus({
-          type: cloudSyncDisabled ? "warning" : "success",
-          message: cloudSyncDisabled
-            ? buildCertificateSyncWarningMessage(
-                `Modelo de certificado salvo para "${scopeLabel}"${groupedScopeSuffix}.`
-              )
-            : `Modelo de certificado salvo para "${scopeLabel}"${groupedScopeSuffix}.`,
+          type: "success",
+          message: `Modelo de certificado salvo para "${scopeLabel}"${groupedScopeSuffix}.`,
         });
       } catch (error) {
         const syncErrorText = getCertificateSyncErrorText(error);
-        if (isCertificateSyncPermissionError(error)) {
-          setCertificateStatus({
-            type: "warning",
-            message: buildCertificateSyncWarningMessage(
-              `Modelo de certificado salvo para "${scopeLabel}"${groupedScopeSuffix} neste navegador.`
-            ),
-          });
-          return;
-        }
         setCertificateStatus({
           type: "error",
           message:
             syncErrorText ||
-            `Modelo salvo localmente para "${scopeLabel}"${groupedScopeSuffix}, mas falhou ao sincronizar no Supabase.`,
+            `Falha ao salvar o modelo de certificado para "${scopeLabel}"${groupedScopeSuffix} no Supabase.`,
         });
       }
       return;
     }
 
-    saveCertificateTemplate(payload);
     try {
-      const synced = await saveCertificateTemplateToStorage(payload);
+      await saveCertificateTemplateToStorage(payload);
       setCertificateStatus({
-        type: synced ? "success" : "warning",
-        message: synced
-          ? "Modelo padrão de certificado salvo com sucesso."
-          : buildCertificateSyncWarningMessage(
-              "Modelo padrão de certificado salvo neste navegador."
-            ),
+        type: "success",
+        message: "Modelo padrão de certificado salvo com sucesso.",
       });
     } catch (error) {
       const syncErrorText = getCertificateSyncErrorText(error);
-      if (isCertificateSyncPermissionError(error)) {
-        setCertificateStatus({
-          type: "warning",
-          message: buildCertificateSyncWarningMessage(
-            "Modelo padrão salvo neste navegador."
-          ),
-        });
-        return;
-      }
       setCertificateStatus({
         type: "error",
         message:
           syncErrorText ||
-          "Modelo padrão salvo localmente, mas falhou ao sincronizar no Supabase.",
+          "Falha ao salvar o modelo padrão no Supabase.",
       });
     }
   };
@@ -907,31 +882,17 @@ export default function Settings() {
           scopedTrainingScope
         );
         setCertificateTemplate(fallback);
-        const cloudSyncDisabled = isCertificateTemplateCloudSyncDisabled();
         setCertificateStatus({
-          type: cloudSyncDisabled ? "warning" : "success",
-          message: cloudSyncDisabled
-            ? buildCertificateSyncWarningMessage(
-                `Modelo específico removido para "${scopeLabel}"${groupedScopeSuffix}. Agora será usado o modelo padrão.`
-              )
-            : `Modelo específico removido para "${scopeLabel}"${groupedScopeSuffix}. Agora será usado o modelo padrão.`,
+          type: "success",
+          message: `Modelo específico removido para "${scopeLabel}"${groupedScopeSuffix}. Agora será usado o modelo padrão.`,
         });
       } catch (error) {
         const syncErrorText = getCertificateSyncErrorText(error);
-        if (isCertificateSyncPermissionError(error)) {
-          setCertificateStatus({
-            type: "warning",
-            message: buildCertificateSyncWarningMessage(
-              `Modelo local removido para "${scopeLabel}"${groupedScopeSuffix}.`
-            ),
-          });
-          return;
-        }
         setCertificateStatus({
           type: "error",
           message:
             syncErrorText ||
-            `Modelo local removido para "${scopeLabel}"${groupedScopeSuffix}, mas falhou ao sincronizar no Supabase.`,
+            `Falha ao remover o modelo específico de "${scopeLabel}"${groupedScopeSuffix} no Supabase.`,
         });
       }
       return;
@@ -943,31 +904,18 @@ export default function Settings() {
     };
     setCertificateTemplate(reset);
     try {
-      const synced = await saveCertificateTemplateToStorage(reset);
+      await saveCertificateTemplateToStorage(reset);
       setCertificateStatus({
-        type: synced ? "success" : "warning",
-        message: synced
-          ? "Modelo padrão restaurado."
-          : buildCertificateSyncWarningMessage(
-              "Modelo padrão restaurado neste navegador."
-            ),
+        type: "success",
+        message: "Modelo padrão restaurado.",
       });
     } catch (error) {
       const syncErrorText = getCertificateSyncErrorText(error);
-      if (isCertificateSyncPermissionError(error)) {
-        setCertificateStatus({
-          type: "warning",
-          message: buildCertificateSyncWarningMessage(
-            "Modelo padrão restaurado neste navegador."
-          ),
-        });
-        return;
-      }
       setCertificateStatus({
         type: "error",
         message:
           syncErrorText ||
-          "Modelo padrão restaurado localmente, mas falhou ao sincronizar no Supabase.",
+          "Falha ao restaurar o modelo padrão no Supabase.",
       });
     }
   };
@@ -1013,43 +961,77 @@ export default function Settings() {
     }));
   };
 
-  const handleSaveEmailTemplate = () => {
-    saveCertificateEmailTemplate(certificateEmailTemplate);
-    setEmailTemplateStatus({
-      type: "success",
-      message: "Mensagem de e-mail salva com sucesso.",
-    });
+  const handleSaveEmailTemplate = async () => {
+    try {
+      await saveCertificateEmailTemplateToStorage(certificateEmailTemplate);
+      setEmailTemplateStatus({
+        type: "success",
+        message: "Mensagem de e-mail salva com sucesso.",
+      });
+    } catch (error) {
+      setEmailTemplateStatus({
+        type: "error",
+        message:
+          "Falha ao salvar a mensagem de e-mail no Supabase. Verifique as permissões.",
+      });
+    }
   };
 
-  const handleResetEmailTemplate = () => {
+  const handleResetEmailTemplate = async () => {
     const reset = resetCertificateEmailTemplate();
-    setCertificateEmailTemplate(reset);
-    setEmailTemplateStatus({
-      type: "success",
-      message: "Mensagem padrão restaurada.",
-    });
+    try {
+      await saveCertificateEmailTemplateToStorage(reset);
+      setCertificateEmailTemplate(reset);
+      setEmailTemplateStatus({
+        type: "success",
+        message: "Mensagem padrão restaurada.",
+      });
+    } catch (error) {
+      setEmailTemplateStatus({
+        type: "error",
+        message:
+          "Falha ao restaurar a mensagem padrão no Supabase. Verifique as permissões.",
+      });
+    }
   };
 
-  const handleSaveEmailSettings = () => {
+  const handleSaveEmailSettings = async () => {
     const payload = {
       fromEmail: String(emailSettings.fromEmail || "").trim(),
       fromName: String(emailSettings.fromName || "").trim(),
       webhookUrl: String(emailSettings.webhookUrl || "").trim(),
     };
-    localStorage.setItem("emailSettings", JSON.stringify(payload));
-    setEmailStatus({
-      type: "success",
-      message: "Configurações de e-mail salvas.",
-    });
+    try {
+      const saved = await saveEmailSettingsToStorage(payload);
+      setEmailSettings(saved);
+      setEmailStatus({
+        type: "success",
+        message: "Configurações globais de e-mail salvas.",
+      });
+    } catch (error) {
+      setEmailStatus({
+        type: "error",
+        message:
+          "Falha ao salvar configurações globais de e-mail no Supabase.",
+      });
+    }
   };
 
-  const handleClearEmailSettings = () => {
-    localStorage.removeItem("emailSettings");
-    setEmailSettings({ fromEmail: "", fromName: "", webhookUrl: "" });
-    setEmailStatus({
-      type: "success",
-      message: "Configurações de e-mail removidas.",
-    });
+  const handleClearEmailSettings = async () => {
+    try {
+      const cleared = await clearEmailSettingsInStorage();
+      setEmailSettings(cleared);
+      setEmailStatus({
+        type: "success",
+        message: "Configurações globais de e-mail limpas.",
+      });
+    } catch (error) {
+      setEmailStatus({
+        type: "error",
+        message:
+          "Falha ao limpar configurações globais de e-mail no Supabase.",
+      });
+    }
   };
 
   const interpolateText = (text, data) =>
