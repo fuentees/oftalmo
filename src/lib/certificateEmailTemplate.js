@@ -133,48 +133,12 @@ const loadTemplateFromSharedStore = async () => {
 export const resolveCertificateEmailTemplate = async () => {
   const sharedTemplate = await loadTemplateFromSharedStore();
   if (sharedTemplate) return sharedTemplate;
-
-  const latestPath = await resolveLatestTemplatePath();
-  if (!latestPath) return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
-  const { data, error } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .download(latestPath);
-  if (error || !data) {
-    if (isCertificateEmailTemplatePermissionError(error)) {
-      return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
-    }
-    if (isStorageObjectNotFoundError(error)) {
-      return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
-    }
-    throw error;
-  }
-  const content = await data.text();
-  if (!content) return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
-  try {
-    const parsed = JSON.parse(content);
-    return mergeTemplate(parsed);
-  } catch {
-    return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
-  }
+  return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
 };
 
 export const saveCertificateEmailTemplateToStorage = async (template) => {
   const payload = mergeTemplate(template);
   await saveSharedConfigJson(SHARED_CONFIG_KEY_EMAIL_TEMPLATE, payload);
-
-  const content = JSON.stringify(payload);
-  const blob = new Blob([content], { type: "application/json" });
-  const fileName = `${CERTIFICATE_EMAIL_TEMPLATE_FILE_PREFIX}${Date.now()}.json`;
-  const file = new File([blob], fileName, {
-    type: "application/json",
-  });
-  const path = `${CERTIFICATE_EMAIL_TEMPLATE_FOLDER}/${fileName}`;
-  const { error } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(path, file, { upsert: false });
-  if (error && !isCertificateEmailTemplatePermissionError(error)) {
-    throw error;
-  }
   return payload;
 };
 

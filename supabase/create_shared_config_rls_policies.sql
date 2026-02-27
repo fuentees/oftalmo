@@ -1,53 +1,34 @@
--- Políticas RLS para configurações compartilhadas do app
+-- Configuração compartilhada global do app (sem storage.objects)
 -- Execute este script no SQL Editor do Supabase.
---
--- Objetivo:
--- 1) Permitir salvar/ler configurações globais no fallback em training_materials
---    (chaves com prefixo "__config__:")
---
--- Observação:
--- Em alguns projetos, o usuário do SQL Editor não é owner de storage.objects.
--- Por isso, este script NÃO altera policies do Storage.
--- O app já funciona com fallback compartilhado em training_materials.
 
-alter table public.training_materials enable row level security;
+create table if not exists public.shared_app_config (
+  config_key text primary key,
+  config_value jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  updated_by text
+);
 
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_policies
-    where schemaname = 'public'
-      and tablename = 'training_materials'
-      and policyname = 'tm_shared_config_select_authenticated'
-  ) then
-    create policy tm_shared_config_select_authenticated
-      on public.training_materials
-      for select
-      to authenticated
-      using (
-        auth.role() = 'authenticated'
-        and name like '__config__:%'
-      );
-  end if;
-end $$;
+alter table public.shared_app_config enable row level security;
 
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_policies
-    where schemaname = 'public'
-      and tablename = 'training_materials'
-      and policyname = 'tm_shared_config_insert_authenticated'
-  ) then
-    create policy tm_shared_config_insert_authenticated
-      on public.training_materials
-      for insert
-      to authenticated
-      with check (
-        auth.role() = 'authenticated'
-        and name like '__config__:%'
-      );
-  end if;
-end $$;
+drop policy if exists shared_app_config_select_authenticated on public.shared_app_config;
+drop policy if exists shared_app_config_insert_authenticated on public.shared_app_config;
+drop policy if exists shared_app_config_update_authenticated on public.shared_app_config;
+
+create policy shared_app_config_select_authenticated
+  on public.shared_app_config
+  for select
+  to authenticated
+  using (auth.role() = 'authenticated');
+
+create policy shared_app_config_insert_authenticated
+  on public.shared_app_config
+  for insert
+  to authenticated
+  with check (auth.role() = 'authenticated');
+
+create policy shared_app_config_update_authenticated
+  on public.shared_app_config
+  for update
+  to authenticated
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');

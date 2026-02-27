@@ -115,51 +115,12 @@ const loadEmailSettingsFromSharedStore = async () => {
 export const loadEmailSettingsFromStorage = async () => {
   const sharedSettings = await loadEmailSettingsFromSharedStore();
   if (sharedSettings) return sharedSettings;
-
-  const latestPath = await resolveLatestEmailSettingsPath();
-  if (!latestPath) return { ...DEFAULT_EMAIL_SETTINGS };
-  const { data, error } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .download(latestPath);
-
-  if (error || !data) {
-    if (isEmailSettingsStoragePermissionError(error)) {
-      return { ...DEFAULT_EMAIL_SETTINGS };
-    }
-    if (isStorageObjectNotFoundError(error)) {
-      return { ...DEFAULT_EMAIL_SETTINGS };
-    }
-    throw error;
-  }
-
-  const content = await data.text();
-  if (!content) return { ...DEFAULT_EMAIL_SETTINGS };
-
-  try {
-    const parsed = JSON.parse(content);
-    return normalizeEmailSettings(parsed);
-  } catch {
-    return { ...DEFAULT_EMAIL_SETTINGS };
-  }
+  return { ...DEFAULT_EMAIL_SETTINGS };
 };
 
 export const saveEmailSettingsToStorage = async (value) => {
   const payload = normalizeEmailSettings(value);
   await saveSharedConfigJson(SHARED_CONFIG_KEY_EMAIL_SETTINGS, payload);
-
-  const content = JSON.stringify(payload);
-  const blob = new Blob([content], { type: "application/json" });
-  const fileName = `${EMAIL_SETTINGS_FILE_PREFIX}${Date.now()}.json`;
-  const file = new File([blob], fileName, {
-    type: "application/json",
-  });
-  const path = `${EMAIL_SETTINGS_FOLDER}/${fileName}`;
-
-  const { error } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(path, file, { upsert: false });
-  if (error && !isEmailSettingsStoragePermissionError(error)) throw error;
-
   return payload;
 };
 

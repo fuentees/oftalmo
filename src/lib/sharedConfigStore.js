@@ -1,68 +1,48 @@
 import { supabase } from "@/api/supabaseClient";
 
-const SHARED_CONFIG_TRAINING_TITLE = "__APP_SHARED_CONFIG__";
+const SHARED_CONFIG_TABLE = "shared_app_config";
 
 const toSafeConfigKey = (value) => String(value || "").trim();
-const extractDbErrorText = (error) =>
-  String(error?.message || error?.details || error?.hint || "")
+const isMissingSharedConfigTableError = (error) => {
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || "")
     .trim()
     .toLowerCase();
-const isDbPolicyError = (error) => {
-  const status = Number(error?.status || 0);
-  const code = String(error?.code || "").toLowerCase();
-  const message = extractDbErrorText(error);
   return (
-    status === 401 ||
-    status === 403 ||
-    code === "42501" ||
-    message.includes("row-level security") ||
-    message.includes("violates row-level security policy") ||
-    message.includes("permission denied")
+    code === "42p01" ||
+    message.includes("relation") && message.includes("shared_app_config")
   );
 };
-const resolveFallbackTrainingContext = async () => {
-  const { data, error } = await supabase
-    .from("trainings")
-    .select("id, title")
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (error) return null;
-  const row = Array.isArray(data) ? data[0] : null;
-  if (!row?.id) return null;
-  return {
-    id: String(row.id),
-    title: String(row.title || SHARED_CONFIG_TRAINING_TITLE),
-  };
-};
-const buildSharedConfigPayload = ({ configKey, value, userEmail, trainingContext }) => ({
-  training_id: trainingContext?.id || null,
-  training_title: trainingContext?.title || SHARED_CONFIG_TRAINING_TITLE,
-  name: configKey,
-  description: JSON.stringify(value ?? {}),
-  file_type: "application/json",
-  uploaded_by: userEmail || "sistema",
-});
 
 export const loadSharedConfigJson = async (configKey) => {
   const safeKey = toSafeConfigKey(configKey);
   if (!safeKey) return null;
 
   const { data, error } = await supabase
-    .from("training_materials")
-    .select("id, description, created_at")
-    .eq("name", safeKey)
-    .order("created_at", { ascending: false })
-    .limit(50);
-  if (error) throw error;
-
-  const rows = Array.isArray(data) ? data : [];
-  for (const row of rows) {
-    if (!row?.description) continue;
-    try {
-      return JSON.parse(String(row.description));
-    } catch {
-      // tenta próximo registro
+    .from(SHARED_CONFIG_TABLE)
+    .select("config_value")
+    .eq("config_key", safeKey)
+    .limit(1);
+  if (error) {
+    if (isMissingSharedConfigTableError(error)) {
+      return null;
     }
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row || row.config_value === undefined || row.config_value === null) {
+    return null;
+  }
+  if (typeof row.config_value === "string") {
+    try {
+      return JSON.parse(row.config_value);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof row.config_value === "object") {
+    return row.config_value;
   }
   return null;
 };
@@ -75,28 +55,23 @@ export const saveSharedConfigJson = async (configKey, value) => {
 
   const { data: userData } = await supabase.auth.getUser();
   const userEmail = String(userData?.user?.email || "").trim();
-  const payload = buildSharedConfigPayload({
-    configKey: safeKey,
-    value,
-    userEmail,
-    trainingContext: null,
-  });
+  const payload = {
+    config_key: safeKey,
+    config_value: value ?? {},
+    updated_at: new Date().toISOString(),
+    updated_by: userEmail || null,
+  };
 
-  const { error } = await supabase.from("training_materials").insert(payload);
+  const { error } = await supabase
+    .from(SHARED_CONFIG_TABLE)
+    .upsert(payload, { onConflict: "config_key" });
   if (error) {
-    if (!isDbPolicyError(error)) throw error;
-    const trainingContext = await resolveFallbackTrainingContext();
-    if (!trainingContext?.id) throw error;
-    const fallbackPayload = buildSharedConfigPayload({
-      configKey: safeKey,
-      value,
-      userEmail,
-      trainingContext,
-    });
-    const { error: fallbackError } = await supabase
-      .from("training_materials")
-      .insert(fallbackPayload);
-    if (fallbackError) throw fallbackError;
+    if (isMissingSharedConfigTableError(error)) {
+      throw new Error(
+        "Configuração compartilhada não inicializada. Execute o script supabase/create_shared_config_rls_policies.sql no Supabase."
+      );
+    }
+    throw error;
   }
   return value;
 };
