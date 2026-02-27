@@ -89,7 +89,7 @@ const resolveLatestTemplatePath = async () => {
     }
   );
   if (error) {
-    if (isCertificateEmailTemplatePermissionError(error)) throw error;
+    if (isCertificateEmailTemplatePermissionError(error)) return null;
     return CERTIFICATE_EMAIL_TEMPLATE_STORAGE_PATH;
   }
 
@@ -135,10 +135,14 @@ export const resolveCertificateEmailTemplate = async () => {
   if (sharedTemplate) return sharedTemplate;
 
   const latestPath = await resolveLatestTemplatePath();
+  if (!latestPath) return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
   const { data, error } = await supabase.storage
     .from(STORAGE_BUCKET)
     .download(latestPath);
   if (error || !data) {
+    if (isCertificateEmailTemplatePermissionError(error)) {
+      return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
+    }
     if (isStorageObjectNotFoundError(error)) {
       return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
     }

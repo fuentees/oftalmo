@@ -191,7 +191,7 @@ const resolveLatestVersionedPath = async ({ filePrefix, legacyPath }) => {
     }
   );
   if (error) {
-    if (isStoragePermissionError(error)) throw error;
+    if (isStoragePermissionError(error)) return null;
     return legacyPath || null;
   }
 
@@ -387,9 +387,6 @@ export const loadCertificateTemplateFromStorage = async () => {
     const parsed = JSON.parse(text);
     return mergeTemplate(parsed);
   } catch (error) {
-    if (isStoragePermissionError(error)) {
-      throw error;
-    }
     return null;
   }
 };
@@ -416,9 +413,6 @@ const loadCertificateTemplateMapFromStorage = async () => {
     const parsed = JSON.parse(text);
     return mergeTemplateMap(parsed);
   } catch (error) {
-    if (isStoragePermissionError(error)) {
-      throw error;
-    }
     return null;
   }
 };
