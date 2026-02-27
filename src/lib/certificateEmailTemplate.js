@@ -2,8 +2,10 @@ import { supabase } from "@/api/supabaseClient";
 
 const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
+const CERTIFICATE_EMAIL_TEMPLATE_FOLDER = "certificates";
 const CERTIFICATE_EMAIL_TEMPLATE_STORAGE_PATH =
-  "certificates/certificate-email-template.json";
+  `${CERTIFICATE_EMAIL_TEMPLATE_FOLDER}/certificate-email-template.json`;
+const CERTIFICATE_EMAIL_TEMPLATE_FILE_PREFIX = "certificate-email-template-";
 
 export const DEFAULT_CERTIFICATE_EMAIL_TEMPLATE = {
   subject: "Certificado de Conclusão",
@@ -66,10 +68,61 @@ export const isCertificateEmailTemplatePermissionError = (error) => {
   );
 };
 
+const getVersionTimestampFromFileName = (name, prefix) => {
+  const normalizedName = String(name || "").trim();
+  if (!normalizedName.startsWith(prefix) || !normalizedName.endsWith(".json")) {
+    return 0;
+  }
+  const rawTimestamp = normalizedName.slice(prefix.length, -5);
+  const parsed = Number(rawTimestamp);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const resolveLatestTemplatePath = async () => {
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).list(
+    CERTIFICATE_EMAIL_TEMPLATE_FOLDER,
+    {
+      limit: 1000,
+      sortBy: { column: "name", order: "desc" },
+    }
+  );
+  if (error) {
+    if (isCertificateEmailTemplatePermissionError(error)) throw error;
+    return CERTIFICATE_EMAIL_TEMPLATE_STORAGE_PATH;
+  }
+
+  const candidates = (data || [])
+    .map((item) => String(item?.name || "").trim())
+    .filter(
+      (name) =>
+        name.startsWith(CERTIFICATE_EMAIL_TEMPLATE_FILE_PREFIX) &&
+        name.endsWith(".json")
+    );
+  if (candidates.length === 0) {
+    return CERTIFICATE_EMAIL_TEMPLATE_STORAGE_PATH;
+  }
+
+  candidates.sort((a, b) => {
+    const timestampA = getVersionTimestampFromFileName(
+      a,
+      CERTIFICATE_EMAIL_TEMPLATE_FILE_PREFIX
+    );
+    const timestampB = getVersionTimestampFromFileName(
+      b,
+      CERTIFICATE_EMAIL_TEMPLATE_FILE_PREFIX
+    );
+    if (timestampA !== timestampB) return timestampB - timestampA;
+    return b.localeCompare(a);
+  });
+
+  return `${CERTIFICATE_EMAIL_TEMPLATE_FOLDER}/${candidates[0]}`;
+};
+
 export const resolveCertificateEmailTemplate = async () => {
+  const latestPath = await resolveLatestTemplatePath();
   const { data, error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .download(CERTIFICATE_EMAIL_TEMPLATE_STORAGE_PATH);
+    .download(latestPath);
   if (error || !data) {
     if (isStorageObjectNotFoundError(error)) {
       return DEFAULT_CERTIFICATE_EMAIL_TEMPLATE;
@@ -90,12 +143,14 @@ export const saveCertificateEmailTemplateToStorage = async (template) => {
   const payload = mergeTemplate(template);
   const content = JSON.stringify(payload);
   const blob = new Blob([content], { type: "application/json" });
-  const file = new File([blob], "certificate-email-template.json", {
+  const fileName = `${CERTIFICATE_EMAIL_TEMPLATE_FILE_PREFIX}${Date.now()}.json`;
+  const file = new File([blob], fileName, {
     type: "application/json",
   });
+  const path = `${CERTIFICATE_EMAIL_TEMPLATE_FOLDER}/${fileName}`;
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(CERTIFICATE_EMAIL_TEMPLATE_STORAGE_PATH, file, { upsert: true });
+    .upload(path, file, { upsert: false });
   if (error) throw error;
   return payload;
 };
