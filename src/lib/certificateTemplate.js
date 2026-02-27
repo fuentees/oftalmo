@@ -5,9 +5,12 @@ export const CERTIFICATE_TEMPLATE_BY_TRAINING_KEY =
   "certificateTemplateByTraining";
 const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
-const CERTIFICATE_TEMPLATE_STORAGE_PATH = "certificates/certificate-template.json";
+const CERTIFICATE_TEMPLATE_FOLDER = "certificates";
+const CERTIFICATE_TEMPLATE_STORAGE_PATH = `${CERTIFICATE_TEMPLATE_FOLDER}/certificate-template.json`;
 const CERTIFICATE_TEMPLATE_BY_TRAINING_STORAGE_PATH =
-  "certificates/certificate-template-by-training.json";
+  `${CERTIFICATE_TEMPLATE_FOLDER}/certificate-template-by-training.json`;
+const CERTIFICATE_TEMPLATE_FILE_PREFIX = "certificate-template-";
+const CERTIFICATE_TEMPLATE_MAP_FILE_PREFIX = "certificate-template-by-training-";
 
 export const DEFAULT_CERTIFICATE_TEMPLATE = {
   headerLines: [
@@ -155,6 +158,58 @@ const isStoragePermissionError = (error) => {
   );
 };
 
+const isStorageObjectNotFoundError = (error) => {
+  const status = Number(error?.status || 0);
+  const message = extractStorageErrorText(error);
+  return (
+    status === 404 ||
+    message.includes("not found") ||
+    message.includes("object not found")
+  );
+};
+
+const getVersionTimestampFromFileName = (name, prefix) => {
+  const normalizedName = String(name || "").trim();
+  if (!normalizedName.startsWith(prefix) || !normalizedName.endsWith(".json")) {
+    return 0;
+  }
+  const rawTimestamp = normalizedName.slice(prefix.length, -5);
+  const parsed = Number(rawTimestamp);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const resolveLatestVersionedPath = async ({ filePrefix, legacyPath }) => {
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).list(
+    CERTIFICATE_TEMPLATE_FOLDER,
+    {
+      limit: 1000,
+      sortBy: { column: "name", order: "desc" },
+    }
+  );
+  if (error) {
+    if (isStoragePermissionError(error)) throw error;
+    return legacyPath || null;
+  }
+
+  const versionedNames = (data || [])
+    .map((item) => String(item?.name || "").trim())
+    .filter(
+      (name) => name.startsWith(filePrefix) && name.endsWith(".json")
+    );
+  if (versionedNames.length === 0) {
+    return legacyPath || null;
+  }
+
+  versionedNames.sort((a, b) => {
+    const timestampA = getVersionTimestampFromFileName(a, filePrefix);
+    const timestampB = getVersionTimestampFromFileName(b, filePrefix);
+    if (timestampA !== timestampB) return timestampB - timestampA;
+    return b.localeCompare(a);
+  });
+
+  return `${CERTIFICATE_TEMPLATE_FOLDER}/${versionedNames[0]}`;
+};
+
 const getCertificateTemplateSyncDisabled = () => {
   return false;
 };
@@ -276,15 +331,21 @@ const saveCertificateTemplateMap = (templateMap) => {
 
 export const loadCertificateTemplateFromStorage = async () => {
   try {
+    const latestPath = await resolveLatestVersionedPath({
+      filePrefix: CERTIFICATE_TEMPLATE_FILE_PREFIX,
+      legacyPath: CERTIFICATE_TEMPLATE_STORAGE_PATH,
+    });
+    if (!latestPath) return null;
+
     const { data, error } = await supabase.storage
       .from(STORAGE_BUCKET)
-      .download(CERTIFICATE_TEMPLATE_STORAGE_PATH);
+      .download(latestPath);
     if (error || !data) {
-      if (isStoragePermissionError(error)) {
-        throw error;
-      }
+      if (isStoragePermissionError(error)) throw error;
+      if (isStorageObjectNotFoundError(error)) return null;
       return null;
     }
+
     const text = await data.text();
     if (!text) return null;
     const parsed = JSON.parse(text);
@@ -299,15 +360,21 @@ export const loadCertificateTemplateFromStorage = async () => {
 
 const loadCertificateTemplateMapFromStorage = async () => {
   try {
+    const latestPath = await resolveLatestVersionedPath({
+      filePrefix: CERTIFICATE_TEMPLATE_MAP_FILE_PREFIX,
+      legacyPath: CERTIFICATE_TEMPLATE_BY_TRAINING_STORAGE_PATH,
+    });
+    if (!latestPath) return null;
+
     const { data, error } = await supabase.storage
       .from(STORAGE_BUCKET)
-      .download(CERTIFICATE_TEMPLATE_BY_TRAINING_STORAGE_PATH);
+      .download(latestPath);
     if (error || !data) {
-      if (isStoragePermissionError(error)) {
-        throw error;
-      }
+      if (isStoragePermissionError(error)) throw error;
+      if (isStorageObjectNotFoundError(error)) return null;
       return null;
     }
+
     const text = await data.text();
     if (!text) return null;
     const parsed = JSON.parse(text);
@@ -324,12 +391,14 @@ export const saveCertificateTemplateToStorage = async (template) => {
   const payload = mergeTemplate(template);
   const content = JSON.stringify(payload);
   const blob = new Blob([content], { type: "application/json" });
-  const file = new File([blob], "certificate-template.json", {
+  const fileName = `${CERTIFICATE_TEMPLATE_FILE_PREFIX}${Date.now()}.json`;
+  const file = new File([blob], fileName, {
     type: "application/json",
   });
+  const path = `${CERTIFICATE_TEMPLATE_FOLDER}/${fileName}`;
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(CERTIFICATE_TEMPLATE_STORAGE_PATH, file, { upsert: true });
+    .upload(path, file, { upsert: false });
   if (error) {
     throw error;
   }
@@ -340,14 +409,14 @@ const saveCertificateTemplateMapToStorage = async (templateMap) => {
   const payload = mergeTemplateMap(templateMap);
   const content = JSON.stringify(payload);
   const blob = new Blob([content], { type: "application/json" });
-  const file = new File([blob], "certificate-template-by-training.json", {
+  const fileName = `${CERTIFICATE_TEMPLATE_MAP_FILE_PREFIX}${Date.now()}.json`;
+  const file = new File([blob], fileName, {
     type: "application/json",
   });
+  const path = `${CERTIFICATE_TEMPLATE_FOLDER}/${fileName}`;
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(CERTIFICATE_TEMPLATE_BY_TRAINING_STORAGE_PATH, file, {
-      upsert: true,
-    });
+    .upload(path, file, { upsert: false });
   if (error) {
     throw error;
   }

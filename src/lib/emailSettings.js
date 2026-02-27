@@ -2,7 +2,9 @@ import { supabase } from "@/api/supabaseClient";
 
 const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
-const EMAIL_SETTINGS_STORAGE_PATH = "certificates/email-settings.json";
+const EMAIL_SETTINGS_FOLDER = "certificates";
+const EMAIL_SETTINGS_STORAGE_PATH = `${EMAIL_SETTINGS_FOLDER}/email-settings.json`;
+const EMAIL_SETTINGS_FILE_PREFIX = "email-settings-";
 
 export const DEFAULT_EMAIL_SETTINGS = {
   fromEmail: "",
@@ -49,10 +51,60 @@ export const isEmailSettingsStoragePermissionError = (error) => {
   );
 };
 
+const getVersionTimestampFromFileName = (name, prefix) => {
+  const normalizedName = String(name || "").trim();
+  if (!normalizedName.startsWith(prefix) || !normalizedName.endsWith(".json")) {
+    return 0;
+  }
+  const rawTimestamp = normalizedName.slice(prefix.length, -5);
+  const parsed = Number(rawTimestamp);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const resolveLatestEmailSettingsPath = async () => {
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).list(
+    EMAIL_SETTINGS_FOLDER,
+    {
+      limit: 1000,
+      sortBy: { column: "name", order: "desc" },
+    }
+  );
+  if (error) {
+    if (isEmailSettingsStoragePermissionError(error)) throw error;
+    return EMAIL_SETTINGS_STORAGE_PATH;
+  }
+
+  const candidates = (data || [])
+    .map((item) => String(item?.name || "").trim())
+    .filter(
+      (name) =>
+        name.startsWith(EMAIL_SETTINGS_FILE_PREFIX) && name.endsWith(".json")
+    );
+  if (candidates.length === 0) {
+    return EMAIL_SETTINGS_STORAGE_PATH;
+  }
+
+  candidates.sort((a, b) => {
+    const timestampA = getVersionTimestampFromFileName(
+      a,
+      EMAIL_SETTINGS_FILE_PREFIX
+    );
+    const timestampB = getVersionTimestampFromFileName(
+      b,
+      EMAIL_SETTINGS_FILE_PREFIX
+    );
+    if (timestampA !== timestampB) return timestampB - timestampA;
+    return b.localeCompare(a);
+  });
+
+  return `${EMAIL_SETTINGS_FOLDER}/${candidates[0]}`;
+};
+
 export const loadEmailSettingsFromStorage = async () => {
+  const latestPath = await resolveLatestEmailSettingsPath();
   const { data, error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .download(EMAIL_SETTINGS_STORAGE_PATH);
+    .download(latestPath);
 
   if (error || !data) {
     if (isStorageObjectNotFoundError(error)) {
@@ -76,13 +128,15 @@ export const saveEmailSettingsToStorage = async (value) => {
   const payload = normalizeEmailSettings(value);
   const content = JSON.stringify(payload);
   const blob = new Blob([content], { type: "application/json" });
-  const file = new File([blob], "email-settings.json", {
+  const fileName = `${EMAIL_SETTINGS_FILE_PREFIX}${Date.now()}.json`;
+  const file = new File([blob], fileName, {
     type: "application/json",
   });
+  const path = `${EMAIL_SETTINGS_FOLDER}/${fileName}`;
 
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(EMAIL_SETTINGS_STORAGE_PATH, file, { upsert: true });
+    .upload(path, file, { upsert: false });
   if (error) throw error;
 
   return payload;
