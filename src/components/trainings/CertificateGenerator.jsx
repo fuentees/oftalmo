@@ -735,6 +735,7 @@ export const generateParticipantCertificate = (participant, training, templateOv
   const trainingPeriod = buildTrainingPeriod(trainingDates);
   const trainingDays = buildTrainingDays(trainingDates);
   const participantDate = trainingDates[0] || formatDateSafe(training?.dates?.[0]?.date);
+  const emissionDate = formatDateSafe(new Date());
   const scoreInfo = resolveParticipantScore(participant);
 
   const textData = {
@@ -743,6 +744,8 @@ export const generateParticipantCertificate = (participant, training, templateOv
     treinamento: training.title || "",
     carga_horaria: training.duration_hours || "",
     data: participantDate || formatDateSafe(new Date()),
+    data_treinamento: participantDate || "",
+    data_emissao: emissionDate || "",
     entidade: template.entityName || "",
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
@@ -798,7 +801,10 @@ export const generateParticipantCertificate = (participant, training, templateOv
 
   if (template.footer) {
     pdf.setFontSize(sizes.footer);
-    const footerText = interpolateText(template.footer, textData);
+    const footerText = interpolateText(template.footer, {
+      ...textData,
+      data: emissionDate || textData.data || "",
+    });
     pdf.text(footerText, footerPosition.x, footerPosition.y, { align: "center" });
   }
 
@@ -925,16 +931,20 @@ const generateStaffCertificate = ({
   const trainingDates = getTrainingDates(training);
   const trainingPeriod = buildTrainingPeriod(trainingDates);
   const trainingDays = buildTrainingDays(trainingDates);
+  const trainingDate =
+    trainingDates[0] ||
+    formatDateSafe(training.dates?.[0]?.date) ||
+    formatDateSafe(new Date());
+  const emissionDate = formatDateSafe(new Date());
 
   const textData = {
     nome: staff.name || "",
     rg: staff.rg ? `RG ${staff.rg}` : "",
     treinamento: training.title || "",
     carga_horaria: training.duration_hours || "",
-    data:
-      trainingDates[0] ||
-      formatDateSafe(training.dates?.[0]?.date) ||
-      formatDateSafe(new Date()),
+    data: trainingDate,
+    data_treinamento: trainingDate || "",
+    data_emissao: emissionDate || "",
     entidade: template.entityName || "",
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
@@ -990,7 +1000,10 @@ const generateStaffCertificate = ({
 
   if (template.footer) {
     pdf.setFontSize(sizes.footer);
-    const footerText = interpolateText(template.footer, textData);
+    const footerText = interpolateText(template.footer, {
+      ...textData,
+      data: emissionDate || textData.data || "",
+    });
     pdf.text(footerText, footerPosition.x, footerPosition.y, { align: "center" });
   }
 
