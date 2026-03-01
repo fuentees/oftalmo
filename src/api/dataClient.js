@@ -1201,10 +1201,33 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-      throw new Error("Falha ao enviar email via webhook.");
+    const rawBody = await response.text();
+    let parsedBody = null;
+    if (rawBody) {
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        parsedBody = null;
+      }
     }
-    return response.json().catch(() => ({}));
+    const webhookErrorText =
+      typeof parsedBody?.error === "string"
+        ? parsedBody.error.trim()
+        : typeof parsedBody?.message === "string"
+          ? parsedBody.message.trim()
+          : "";
+    const webhookExplicitFailure =
+      parsedBody &&
+      typeof parsedBody === "object" &&
+      (parsedBody.success === false ||
+        parsedBody.ok === false ||
+        parsedBody.sent === false ||
+        String(parsedBody.status || "").trim().toLowerCase() === "error");
+
+    if (!response.ok || webhookExplicitFailure || webhookErrorText) {
+      throw new Error(webhookErrorText || "Falha ao enviar email via webhook.");
+    }
+    return parsedBody || {};
   }
 
   const accessToken = await getAccessToken();
