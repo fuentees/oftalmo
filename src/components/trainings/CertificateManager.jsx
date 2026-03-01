@@ -497,7 +497,8 @@ export default function CertificateManager({ training, participants = [], onClos
     const failMessage = failCount > 0 ? `, ${failCount} falha(s)` : "!";
     return {
       success: failCount === 0,
-      message: `${successCount} certificado(s) de ${roleLabel} emitido(s)${warningMessage}${failMessage}`,
+      message: `${successCount} certificado(s) de ${roleLabel} enviado(s)${warningMessage}${failMessage}`,
+      details: results,
     };
   };
 
@@ -558,6 +559,7 @@ export default function CertificateManager({ training, participants = [], onClos
         await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
         const warnings = [];
+        let emailError = "";
         if (recipientEmailInfo.hasMultiple && recipientEmail) {
           warnings.push(
             `Mais de um e-mail detectado; enviado apenas para ${recipientEmail}.`
@@ -583,19 +585,28 @@ export default function CertificateManager({ training, participants = [], onClos
               attachments: [attachment],
             });
           } catch (error) {
-            warnings.push(error.message || "Falha ao enviar e-mail.");
+            emailError = error.message || "Falha ao enviar e-mail.";
           }
         } else if (recipientEmailInfo.provided) {
-          warnings.push("E-mail inválido para envio automático.");
+          emailError = "E-mail inválido para envio automático.";
         } else {
-          warnings.push("Sem e-mail cadastrado para envio automático.");
+          emailError = "Sem e-mail cadastrado para envio automático.";
         }
 
-        results.push({
-          name: recipientName,
-          status: warnings.length > 0 ? "warning" : "success",
-          warning: warnings.join(" "),
-        });
+        if (emailError) {
+          results.push({
+            name: recipientName,
+            status: "error",
+            error: emailError,
+            warning: warnings.join(" "),
+          });
+        } else {
+          results.push({
+            name: recipientName,
+            status: warnings.length > 0 ? "warning" : "success",
+            warning: warnings.join(" "),
+          });
+        }
       } catch (error) {
         results.push({
           name: recipientName,
@@ -867,6 +878,8 @@ export default function CertificateManager({ training, participants = [], onClos
           const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
           const warnings = [];
+          let emailError = "";
+          let emailSent = false;
           const participantEmailInfo = resolveSingleRecipientEmail(
             participant.professional_email
           );
@@ -880,7 +893,7 @@ export default function CertificateManager({ training, participants = [], onClos
             warnings.push("E-mail(s) inválido(s) foram ignorados.");
           }
 
-          // Send email to participant (best effort)
+          // Send email to participant
           if (participantEmail) {
             try {
               const emailData = buildCertificateEmailData({
@@ -896,31 +909,62 @@ export default function CertificateManager({ training, participants = [], onClos
                 body: emailContent.body,
                 attachments: [attachment],
               });
+              emailSent = true;
             } catch (error) {
-              warnings.push(error.message || "Falha ao enviar e-mail ao participante.");
+              emailError =
+                error.message || "Falha ao enviar e-mail ao participante.";
             }
           } else if (participantEmailInfo.provided) {
-            warnings.push("E-mail do participante inválido para envio.");
+            emailError = "E-mail do participante inválido para envio.";
+          } else {
+            emailError = "Participante sem e-mail cadastrado para envio.";
           }
 
           // Update participant with validity date
-          const validityDate = training.validity_months 
+          const validityDate = training.validity_months
             ? format(addMonths(new Date(), training.validity_months), "yyyy-MM-dd")
             : null;
-
-          await dataClient.entities.TrainingParticipant.update(participant.id, {
-            certificate_issued: true,
-            certificate_sent_date: new Date().toISOString(),
+          const participantUpdatePayload = {
             certificate_url: file_url,
             validity_date: validityDate,
-            ...(useRepadScoreCriteria && Number.isFinite(participantWithMetrics?.certificate_score)
+            ...(useRepadScoreCriteria &&
+            Number.isFinite(participantWithMetrics?.certificate_score)
               ? { grade: formatScore(participantWithMetrics.certificate_score, 1) }
               : {}),
-          });
+          };
+          if (emailSent) {
+            participantUpdatePayload.certificate_issued = true;
+            participantUpdatePayload.certificate_sent_date = new Date().toISOString();
+          }
 
-          results.push({ name: participant.professional_name, success: true, warnings });
+          await dataClient.entities.TrainingParticipant.update(
+            participant.id,
+            participantUpdatePayload
+          );
+
+          if (!emailSent) {
+            results.push({
+              name: participant.professional_name,
+              success: false,
+              error:
+                emailError ||
+                "Certificado gerado, mas não foi possível enviar e-mail.",
+              warnings,
+            });
+            continue;
+          }
+
+          results.push({
+            name: participant.professional_name,
+            success: true,
+            warnings,
+          });
         } catch (error) {
-          results.push({ name: participant.professional_name, success: false, error: error.message });
+          results.push({
+            name: participant.professional_name,
+            success: false,
+            error: error.message,
+          });
         }
       }
 
@@ -928,17 +972,23 @@ export default function CertificateManager({ training, participants = [], onClos
     },
     onSuccess: (results) => {
       setProcessing(false);
-      const successCount = results.filter(r => r.success).length;
-      const failCount = results.filter(r => !r.success).length;
-      const warningCount = results.reduce((acc, r) => acc + (r.warnings?.length || 0), 0);
+      const successCount = results.filter((r) => r.success).length;
+      const failCount = results.filter((r) => !r.success).length;
+      const warningCount = results.reduce(
+        (acc, r) => acc + (r.warnings?.length || 0),
+        0
+      );
       const warningMessage = warningCount > 0 ? `, ${warningCount} aviso(s) de e-mail` : "";
-      
+
       setResult({
-        success: true,
-        message: `${successCount} certificado(s) emitido(s)${failCount > 0 ? `, ${failCount} falha(s)` : '!'}` + warningMessage,
+        success: failCount === 0,
+        message:
+          `${successCount} certificado(s) enviado(s)` +
+          (failCount > 0 ? `, ${failCount} falha(s)` : "!") +
+          warningMessage,
         details: results,
       });
-      
+
       queryClient.invalidateQueries({ queryKey: ["participants"] });
       setSelectedParticipants([]);
     },
@@ -1308,6 +1358,50 @@ export default function CertificateManager({ training, participants = [], onClos
           </AlertDescription>
         </Alert>
       )}
+
+      {(() => {
+        if (!Array.isArray(result?.details)) return null;
+        const detailItems = result.details
+          .filter((item) => {
+            if (!item || typeof item !== "object") return false;
+            if (item.success === false || item.status === "error") return true;
+            if (Array.isArray(item.warnings) && item.warnings.length > 0) return true;
+            if (typeof item.warning === "string" && item.warning.trim()) return true;
+            return false;
+          })
+          .slice(0, 12);
+        if (detailItems.length === 0) return null;
+
+        return (
+          <div className="rounded-md border border-slate-200 bg-white p-3">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-600">
+              Detalhes do envio
+            </p>
+            <ul className="space-y-1 text-xs text-slate-700">
+              {detailItems.map((item, index) => {
+                const messages = [];
+                if (typeof item.error === "string" && item.error.trim()) {
+                  messages.push(item.error.trim());
+                }
+                if (Array.isArray(item.warnings) && item.warnings.length > 0) {
+                  messages.push(item.warnings.filter(Boolean).join(" "));
+                }
+                if (typeof item.warning === "string" && item.warning.trim()) {
+                  messages.push(item.warning.trim());
+                }
+                const resolvedMessage =
+                  messages.filter(Boolean).join(" ") || "Falha no envio.";
+                return (
+                  <li key={`${item.name || "registro"}-${index}`}>
+                    <span className="font-medium">{item.name || "Registro"}:</span>{" "}
+                    <span>{resolvedMessage}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })()}
 
       <Tabs defaultValue="participants" className="space-y-4">
         <TabsList className="grid w-full grid-cols-2">
