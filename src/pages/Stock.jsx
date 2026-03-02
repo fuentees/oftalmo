@@ -1746,7 +1746,7 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
 
       {/* Movement Form Dialog */}
       <Dialog open={showMovementForm} onOpenChange={setShowMovementForm}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingMovement
