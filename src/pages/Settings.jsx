@@ -2700,6 +2700,10 @@ export default function Settings() {
                   handleEmailSettingChange("fromEmail", e.target.value)
                 }
               />
+              <p className="text-xs text-slate-500">
+                Se usar Resend, o domínio após o @ precisa estar verificado em
+                https://resend.com/domains.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="email-name">Nome do remetente</Label>

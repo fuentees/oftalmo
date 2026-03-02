@@ -12,6 +12,28 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const extractResendErrorMessage = (rawText: string) => {
+  const text = String(rawText || "").trim();
+  if (!text) return "Falha ao enviar e-mail via Resend.";
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed?.message === "string" && parsed.message.trim()) {
+      return parsed.message.trim();
+    }
+    if (typeof parsed?.error === "string" && parsed.error.trim()) {
+      return parsed.error.trim();
+    }
+  } catch {
+    // Keep original plain-text response when body is not JSON.
+  }
+  return text;
+};
+
+const isDomainNotVerifiedMessage = (message: string) => {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("domain") && normalized.includes("not verified");
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeaders });
@@ -39,7 +61,7 @@ serve(async (req) => {
         : [],
     };
 
-    const response = await fetch("https://api.resend.com/emails", {
+    let response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${RESEND_API_KEY}`,
@@ -49,10 +71,50 @@ serve(async (req) => {
     });
 
     if (!response.ok) {
-      return new Response(await response.text(), {
+      let responseBody = await response.text();
+      let errorMessage = extractResendErrorMessage(responseBody);
+      const canRetryWithDefaultSender =
+        Boolean(from?.email) &&
+        Boolean(RESEND_FROM) &&
+        fromValue !== RESEND_FROM &&
+        isDomainNotVerifiedMessage(errorMessage);
+
+      if (canRetryWithDefaultSender) {
+        response = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...payload,
+            from: RESEND_FROM,
+          }),
+        });
+        if (response.ok) {
+          return new Response(await response.text(), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        responseBody = await response.text();
+        errorMessage = extractResendErrorMessage(responseBody);
+      }
+
+      const hint = isDomainNotVerifiedMessage(errorMessage)
+        ? "Domínio do remetente não verificado no Resend. Verifique em https://resend.com/domains ou limpe o e-mail de envio em Configurações para usar o remetente padrão."
+        : "";
+
+      return new Response(
+        JSON.stringify({
+          error: errorMessage,
+          ...(hint ? { hint } : {}),
+        }),
+        {
         status: 500,
-        headers: corsHeaders,
-      });
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     return new Response(await response.text(), {
