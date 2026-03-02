@@ -2703,6 +2703,7 @@ export default function Settings() {
               <p className="text-xs text-slate-500">
                 Se usar Resend, o domínio após o @ precisa estar verificado em
                 https://resend.com/domains.
+                Se houver dúvida, use um remetente em @treinamentos.vilagi.app.
               </p>
             </div>
             <div className="space-y-2">

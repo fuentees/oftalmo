@@ -4,6 +4,12 @@ export const config = { verify_jwt: false };
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "";
+const RESEND_VERIFIED_FALLBACK_DOMAIN = String(
+  Deno.env.get("RESEND_VERIFIED_FALLBACK_DOMAIN") ||
+    "treinamentos.vilagi.app"
+)
+  .trim()
+  .toLowerCase();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -34,6 +40,24 @@ const isDomainNotVerifiedMessage = (message: string) => {
   return normalized.includes("domain") && normalized.includes("not verified");
 };
 
+const normalizeEmail = (value: unknown) => String(value || "").trim().toLowerCase();
+
+const buildFromValue = (email: string, name?: string) => {
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedName = String(name || "").trim();
+  if (!normalizedEmail) return "";
+  return normalizedName ? `${normalizedName} <${normalizedEmail}>` : normalizedEmail;
+};
+
+const parseEmailParts = (email: string) => {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !normalized.includes("@")) return null;
+  const [localPart, ...domainParts] = normalized.split("@");
+  const domain = domainParts.join("@");
+  if (!localPart || !domain) return null;
+  return { localPart, domain };
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeaders });
@@ -41,10 +65,12 @@ serve(async (req) => {
 
   try {
     const { to, subject, html, from, attachments } = await req.json();
+    const requestedFromEmail = normalizeEmail(from?.email);
+    const requestedFromName = String(from?.name || "").trim();
 
     const fromValue =
-      from?.email
-        ? `${from?.name ? `${from.name} ` : ""}<${from.email}>`
+      requestedFromEmail
+        ? buildFromValue(requestedFromEmail, requestedFromName)
         : RESEND_FROM;
 
     const payload = {
@@ -73,13 +99,38 @@ serve(async (req) => {
     if (!response.ok) {
       let responseBody = await response.text();
       let errorMessage = extractResendErrorMessage(responseBody);
-      const canRetryWithDefaultSender =
-        Boolean(from?.email) &&
-        Boolean(RESEND_FROM) &&
-        fromValue !== RESEND_FROM &&
-        isDomainNotVerifiedMessage(errorMessage);
+      const attemptedSenders = [payload.from];
+      const retryCandidates = [];
 
-      if (canRetryWithDefaultSender) {
+      if (
+        requestedFromEmail &&
+        isDomainNotVerifiedMessage(errorMessage)
+      ) {
+        if (RESEND_FROM && RESEND_FROM !== payload.from) {
+          retryCandidates.push(RESEND_FROM);
+        }
+        const requestedParts = parseEmailParts(requestedFromEmail);
+        if (
+          requestedParts &&
+          RESEND_VERIFIED_FALLBACK_DOMAIN &&
+          requestedParts.domain !== RESEND_VERIFIED_FALLBACK_DOMAIN
+        ) {
+          const fallbackFrom = buildFromValue(
+            `${requestedParts.localPart}@${RESEND_VERIFIED_FALLBACK_DOMAIN}`,
+            requestedFromName
+          );
+          if (
+            fallbackFrom &&
+            fallbackFrom !== payload.from &&
+            !retryCandidates.includes(fallbackFrom)
+          ) {
+            retryCandidates.push(fallbackFrom);
+          }
+        }
+      }
+
+      for (const retryFrom of retryCandidates) {
+        attemptedSenders.push(retryFrom);
         response = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
@@ -88,7 +139,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             ...payload,
-            from: RESEND_FROM,
+            from: retryFrom,
           }),
         });
         if (response.ok) {
@@ -102,16 +153,17 @@ serve(async (req) => {
       }
 
       const hint = isDomainNotVerifiedMessage(errorMessage)
-        ? "Domínio do remetente não verificado no Resend. Verifique em https://resend.com/domains ou limpe o e-mail de envio em Configurações para usar o remetente padrão."
+        ? "Domínio do remetente não verificado no Resend. Verifique em https://resend.com/domains ou ajuste o e-mail de envio para o domínio verificado (ex.: treinamentos.vilagi.app)."
         : "";
 
       return new Response(
         JSON.stringify({
           error: errorMessage,
           ...(hint ? { hint } : {}),
+          attempted_from: attemptedSenders,
         }),
         {
-        status: 500,
+          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
