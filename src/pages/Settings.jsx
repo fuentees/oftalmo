@@ -2694,7 +2694,7 @@ export default function Settings() {
               <Input
                 id="email-from"
                 type="email"
-                placeholder="exemplo@dominio.com"
+                placeholder="treinamentos@treinamentos.vilagi.app"
                 value={emailSettings.fromEmail}
                 onChange={(e) =>
                   handleEmailSettingChange("fromEmail", e.target.value)
@@ -2703,14 +2703,16 @@ export default function Settings() {
               <p className="text-xs text-slate-500">
                 Se usar Resend, o domínio após o @ precisa estar verificado em
                 https://resend.com/domains.
-                Se houver dúvida, use um remetente em @treinamentos.vilagi.app.
+                Padrão recomendado: treinamentos@treinamentos.vilagi.app
+                (remetente: Treinamentos). Endereços em
+                @certificados.vilagi.app são convertidos automaticamente.
               </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="email-name">Nome do remetente</Label>
               <Input
                 id="email-name"
-                placeholder="Equipe de Treinamentos"
+                placeholder="Treinamentos"
                 value={emailSettings.fromName}
                 onChange={(e) =>
                   handleEmailSettingChange("fromName", e.target.value)

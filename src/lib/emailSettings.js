@@ -7,18 +7,45 @@ const EMAIL_SETTINGS_FOLDER = "certificates";
 const EMAIL_SETTINGS_STORAGE_PATH = `${EMAIL_SETTINGS_FOLDER}/email-settings.json`;
 const EMAIL_SETTINGS_FILE_PREFIX = "email-settings-";
 const SHARED_CONFIG_KEY_EMAIL_SETTINGS = "__config__:email-settings";
+const VERIFIED_EMAIL_DOMAIN = "treinamentos.vilagi.app";
+const LEGACY_EMAIL_DOMAIN = "certificados.vilagi.app";
+const DEFAULT_FROM_LOCAL_PART = "treinamentos";
+const DEFAULT_FROM_EMAIL = `${DEFAULT_FROM_LOCAL_PART}@${VERIFIED_EMAIL_DOMAIN}`;
+const DEFAULT_FROM_NAME = "Treinamentos";
 
 export const DEFAULT_EMAIL_SETTINGS = {
-  fromEmail: "",
-  fromName: "",
+  fromEmail: DEFAULT_FROM_EMAIL,
+  fromName: DEFAULT_FROM_NAME,
   webhookUrl: "",
 };
 
-const normalizeEmailSettings = (value) => ({
-  fromEmail: String(value?.fromEmail || "").trim(),
-  fromName: String(value?.fromName || "").trim(),
-  webhookUrl: String(value?.webhookUrl || "").trim(),
-});
+const parseEmailParts = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized || !normalized.includes("@")) return null;
+  const [localPart, ...domainParts] = normalized.split("@");
+  const domain = domainParts.join("@");
+  if (!localPart || !domain) return null;
+  return { localPart, domain };
+};
+
+const normalizeFromEmail = (value) => {
+  const parsed = parseEmailParts(value);
+  if (!parsed) return DEFAULT_FROM_EMAIL;
+  if (parsed.domain === LEGACY_EMAIL_DOMAIN) {
+    return `${parsed.localPart || DEFAULT_FROM_LOCAL_PART}@${VERIFIED_EMAIL_DOMAIN}`;
+  }
+  return `${parsed.localPart}@${parsed.domain}`;
+};
+
+const normalizeEmailSettings = (value) => {
+  const normalizedFromEmail = normalizeFromEmail(value?.fromEmail);
+  const normalizedFromName = String(value?.fromName || "").trim() || DEFAULT_FROM_NAME;
+  return {
+    fromEmail: normalizedFromEmail,
+    fromName: normalizedFromName,
+    webhookUrl: String(value?.webhookUrl || "").trim(),
+  };
+};
 
 const extractStorageErrorText = (error) =>
   String(

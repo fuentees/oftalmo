@@ -10,6 +10,20 @@ const RESEND_VERIFIED_FALLBACK_DOMAIN = String(
 )
   .trim()
   .toLowerCase();
+const RESEND_LEGACY_UNVERIFIED_DOMAIN = String(
+  Deno.env.get("RESEND_LEGACY_UNVERIFIED_DOMAIN") ||
+    "certificados.vilagi.app"
+)
+  .trim()
+  .toLowerCase();
+const RESEND_PREFERRED_FROM_LOCAL_PART = String(
+  Deno.env.get("RESEND_PREFERRED_FROM_LOCAL_PART") || "treinamentos"
+)
+  .trim()
+  .toLowerCase();
+const RESEND_PREFERRED_FROM_NAME =
+  String(Deno.env.get("RESEND_PREFERRED_FROM_NAME") || "Treinamentos").trim() ||
+  "Treinamentos";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,6 +72,28 @@ const parseEmailParts = (email: string) => {
   return { localPart, domain };
 };
 
+const normalizeRequestedFromEmail = (email: string) => {
+  const parsed = parseEmailParts(email);
+  if (!parsed) return "";
+  if (
+    parsed.domain === RESEND_LEGACY_UNVERIFIED_DOMAIN &&
+    RESEND_VERIFIED_FALLBACK_DOMAIN
+  ) {
+    return `${parsed.localPart || RESEND_PREFERRED_FROM_LOCAL_PART}@${
+      RESEND_VERIFIED_FALLBACK_DOMAIN
+    }`;
+  }
+  return `${parsed.localPart}@${parsed.domain}`;
+};
+
+const pushUnique = (list: string[], value: string) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return;
+  if (!list.includes(normalized)) {
+    list.push(normalized);
+  }
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeaders });
@@ -65,8 +101,11 @@ serve(async (req) => {
 
   try {
     const { to, subject, html, from, attachments } = await req.json();
-    const requestedFromEmail = normalizeEmail(from?.email);
-    const requestedFromName = String(from?.name || "").trim();
+    const requestedFromEmail = normalizeRequestedFromEmail(
+      normalizeEmail(from?.email)
+    );
+    const requestedFromName =
+      String(from?.name || "").trim() || RESEND_PREFERRED_FROM_NAME;
 
     const fromValue =
       requestedFromEmail
@@ -106,9 +145,8 @@ serve(async (req) => {
         requestedFromEmail &&
         isDomainNotVerifiedMessage(errorMessage)
       ) {
-        if (RESEND_FROM && RESEND_FROM !== payload.from) {
-          retryCandidates.push(RESEND_FROM);
-        }
+        pushUnique(retryCandidates, RESEND_FROM);
+
         const requestedParts = parseEmailParts(requestedFromEmail);
         if (
           requestedParts &&
@@ -119,17 +157,18 @@ serve(async (req) => {
             `${requestedParts.localPart}@${RESEND_VERIFIED_FALLBACK_DOMAIN}`,
             requestedFromName
           );
-          if (
-            fallbackFrom &&
-            fallbackFrom !== payload.from &&
-            !retryCandidates.includes(fallbackFrom)
-          ) {
-            retryCandidates.push(fallbackFrom);
-          }
+          pushUnique(retryCandidates, fallbackFrom);
         }
+
+        const preferredFrom = buildFromValue(
+          `${RESEND_PREFERRED_FROM_LOCAL_PART}@${RESEND_VERIFIED_FALLBACK_DOMAIN}`,
+          RESEND_PREFERRED_FROM_NAME
+        );
+        pushUnique(retryCandidates, preferredFrom);
       }
 
       for (const retryFrom of retryCandidates) {
+        if (retryFrom === payload.from) continue;
         attemptedSenders.push(retryFrom);
         response = await fetch("https://api.resend.com/emails", {
           method: "POST",
