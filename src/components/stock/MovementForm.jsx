@@ -17,12 +17,27 @@ import {
   MapPin,
   Briefcase,
   Package,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import {
   buildStockMovementNotes,
   parseStockMovementNotes,
 } from "@/lib/stockMovementMetadata";
+
+const createMovementItemId = () =>
+  `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const buildBatchItem = (material) => ({
+  row_id: createMovementItemId(),
+  material_id: material?.id || "",
+  material_name: material?.name || "",
+  material_input: material?.code
+    ? `${material.code} - ${material.name}`
+    : material?.name || "",
+  quantity: 1,
+});
 
 export default function MovementForm({
   type,
@@ -51,6 +66,7 @@ export default function MovementForm({
     notes: "",
   });
   const [materialInput, setMaterialInput] = useState("");
+  const [batchItems, setBatchItems] = useState(() => [buildBatchItem(preselectedMaterial)]);
   const [formStatus, setFormStatus] = useState(null);
 
   const queryClient = useQueryClient();
@@ -146,12 +162,17 @@ export default function MovementForm({
         material_id: preselectedMaterial.id,
         material_name: preselectedMaterial.name,
       }));
-      setMaterialInput(
-        preselectedMaterial.code
-          ? `${preselectedMaterial.code} - ${preselectedMaterial.name}`
-          : preselectedMaterial.name
-      );
+      const preselectedLabel = preselectedMaterial.code
+        ? `${preselectedMaterial.code} - ${preselectedMaterial.name}`
+        : preselectedMaterial.name;
+      setMaterialInput(preselectedLabel);
+      setBatchItems((prev) => {
+        if (prev.length > 0 && prev.some((item) => item.material_id)) return prev;
+        return [buildBatchItem(preselectedMaterial)];
+      });
+      return;
     }
+    setBatchItems((prev) => (prev.length > 0 ? prev : [buildBatchItem()]));
   }, [movement, preselectedMaterial, getGveByMunicipio]);
 
   useEffect(() => {
@@ -261,9 +282,31 @@ export default function MovementForm({
   const saveMovement = useMutation({
     mutationFn: async (/** @type {any} */ data) => {
       if (!movement) {
-        await dataClient.entities.StockMovement.create(data);
-        const effect = computeEffect(data);
-        await applyStockDelta(data.material_id, effect);
+        const { items = [], ...baseData } = data || {};
+        if (!Array.isArray(items) || items.length === 0) {
+          throw new Error("Adicione ao menos um item para registrar a movimentação.");
+        }
+        const payloads = items
+          .map((item) => ({
+            ...baseData,
+            material_id: item.material_id,
+            material_name: item.material_name,
+            quantity: Number(item.quantity || 0),
+          }))
+          .filter(
+            (item) =>
+              item.material_id &&
+              Number.isFinite(item.quantity) &&
+              item.quantity > 0
+          );
+        if (payloads.length === 0) {
+          throw new Error("Nenhum item válido encontrado para registrar.");
+        }
+        await dataClient.entities.StockMovement.bulkCreate(payloads);
+        for (const movementItem of payloads) {
+          const effect = computeEffect(movementItem);
+          await applyStockDelta(movementItem.material_id, effect);
+        }
         return;
       }
 
@@ -301,19 +344,42 @@ export default function MovementForm({
     e.preventDefault();
     setFormStatus(null);
     const quantityValue = Number(formData.quantity || 0);
-    if (!formData.material_id) {
-      setFormStatus({
-        type: "error",
-        message: "Selecione um material válido para continuar.",
-      });
-      return;
+    if (movement) {
+      if (!formData.material_id) {
+        setFormStatus({
+          type: "error",
+          message: "Selecione um material válido para continuar.",
+        });
+        return;
+      }
+      if (!Number.isFinite(quantityValue) || quantityValue <= 0) {
+        setFormStatus({
+          type: "error",
+          message: "Informe uma quantidade maior que zero.",
+        });
+        return;
+      }
     }
-    if (!Number.isFinite(quantityValue) || quantityValue <= 0) {
-      setFormStatus({
-        type: "error",
-        message: "Informe uma quantidade maior que zero.",
+    if (!movement) {
+      if (!Array.isArray(batchItems) || batchItems.length === 0) {
+        setFormStatus({
+          type: "error",
+          message: "Adicione ao menos um item para registrar a movimentação.",
+        });
+        return;
+      }
+      const hasInvalidItem = batchItems.some((item) => {
+        const itemQuantity = Number(item.quantity || 0);
+        return !item.material_id || !Number.isFinite(itemQuantity) || itemQuantity <= 0;
       });
-      return;
+      if (hasInvalidItem) {
+        setFormStatus({
+          type: "error",
+          message:
+            "Verifique os itens: cada linha precisa ter material válido e quantidade maior que zero.",
+        });
+        return;
+      }
     }
     const responsibleValue = responsibleDisplayValue;
     if (!responsibleValue) {
@@ -429,17 +495,46 @@ export default function MovementForm({
       }
     );
 
-    const payload = {
-      material_id: formData.material_id,
-      material_name: formData.material_name,
-      type: formData.type,
-      quantity: quantityValue,
-      date: formData.date,
-      responsible: responsibleValue,
-      sector: destinationSector,
-      document_number: formData.document_number,
-      notes: notesValue,
-    };
+    const payload = movement
+      ? {
+          material_id: formData.material_id,
+          material_name: formData.material_name,
+          type: formData.type,
+          quantity: quantityValue,
+          date: formData.date,
+          responsible: responsibleValue,
+          sector: destinationSector,
+          document_number: formData.document_number,
+          notes: notesValue,
+        }
+      : {
+          type: formData.type,
+          date: formData.date,
+          responsible: responsibleValue,
+          sector: destinationSector,
+          document_number: formData.document_number,
+          notes: notesValue,
+          items: (() => {
+            const grouped = new Map();
+            batchItems.forEach((item) => {
+              const materialId = String(item.material_id || "").trim();
+              const materialName = String(item.material_name || "").trim();
+              const itemQuantity = Number(item.quantity || 0);
+              if (!materialId || !Number.isFinite(itemQuantity) || itemQuantity <= 0) return;
+              const current = grouped.get(materialId);
+              if (current) {
+                current.quantity += itemQuantity;
+                return;
+              }
+              grouped.set(materialId, {
+                material_id: materialId,
+                material_name: materialName,
+                quantity: itemQuantity,
+              });
+            });
+            return Array.from(grouped.values());
+          })(),
+        };
 
     saveMovement.mutate(payload);
   };
@@ -533,6 +628,52 @@ export default function MovementForm({
     }));
   };
 
+  const updateBatchItem = (rowId, updater) => {
+    setBatchItems((prev) =>
+      prev.map((item) =>
+        item.row_id === rowId
+          ? {
+              ...item,
+              ...(typeof updater === "function" ? updater(item) : updater),
+            }
+          : item
+      )
+    );
+  };
+
+  const handleBatchMaterialInput = (rowId, value) => {
+    const match = findMaterialByInput(value);
+    updateBatchItem(rowId, () => ({
+      material_input: value,
+      material_id: match?.id || "",
+      material_name: match?.name || value,
+    }));
+  };
+
+  const handleBatchQuantityChange = (rowId, value) => {
+    const parsed = Number(value);
+    updateBatchItem(rowId, {
+      quantity: Number.isFinite(parsed) ? parsed : 0,
+    });
+  };
+
+  const handleAddBatchItem = () => {
+    setBatchItems((prev) => [...prev, buildBatchItem()]);
+  };
+
+  const handleRemoveBatchItem = (rowId) => {
+    setBatchItems((prev) =>
+      prev.length <= 1 ? prev : prev.filter((item) => item.row_id !== rowId)
+    );
+  };
+
+  const hasInvalidBatchItems =
+    !movement &&
+    batchItems.some((item) => {
+      const quantity = Number(item.quantity || 0);
+      return !item.material_id || !Number.isFinite(quantity) || quantity <= 0;
+    });
+
   const selectedMaterial = materials.find((m) => m.id === formData.material_id);
 
   return (
@@ -555,57 +696,160 @@ export default function MovementForm({
             : "Saída de Material"}
         </span>
       </div>
+      {!movement && (
+        <p className="text-xs text-slate-500">
+          Você pode registrar vários materiais de uma vez usando o botão
+          "Adicionar item".
+        </p>
+      )}
 
-      <div className="space-y-2">
-        <Label htmlFor="material-input">Material *</Label>
-        <Input
-          id="material-input"
-          value={materialInput}
-          onChange={(e) => handleMaterialInput(e.target.value)}
-          placeholder="Digite o nome ou código do material"
-          list="materials-list"
-        />
-        <datalist id="materials-list">
-          {materialOptions.map((option) => (
-            <option key={option.id} value={option.label} />
-          ))}
-        </datalist>
-        {materialInput && !formData.material_id && (
-          <p className="text-sm text-slate-500">
-            Selecione um material da lista para continuar.
-          </p>
-        )}
-        {selectedMaterial && (
-          <p className="text-sm text-slate-500">
-            Estoque atual: {selectedMaterial.current_stock || 0}{" "}
-            {selectedMaterial.unit}
-          </p>
-        )}
-      </div>
+      {movement ? (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="material-input">Material *</Label>
+            <Input
+              id="material-input"
+              value={materialInput}
+              onChange={(e) => handleMaterialInput(e.target.value)}
+              placeholder="Digite o nome ou código do material"
+              list="materials-list"
+            />
+            <datalist id="materials-list">
+              {materialOptions.map((option) => (
+                <option key={option.id} value={option.label} />
+              ))}
+            </datalist>
+            {materialInput && !formData.material_id && (
+              <p className="text-sm text-slate-500">
+                Selecione um material da lista para continuar.
+              </p>
+            )}
+            {selectedMaterial && (
+              <p className="text-sm text-slate-500">
+                Estoque atual: {selectedMaterial.current_stock || 0}{" "}
+                {selectedMaterial.unit}
+              </p>
+            )}
+          </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="quantity">Quantidade *</Label>
-          <Input
-            id="quantity"
-            type="number"
-            min="1"
-            value={formData.quantity}
-            onChange={(e) => handleChange("quantity", Number(e.target.value))}
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="date">Data *</Label>
-          <Input
-            id="date"
-            type="date"
-            value={formData.date}
-            onChange={(e) => handleChange("date", e.target.value)}
-            required
-          />
-        </div>
-      </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="quantity">Quantidade *</Label>
+              <Input
+                id="quantity"
+                type="number"
+                min="1"
+                value={formData.quantity}
+                onChange={(e) => handleChange("quantity", Number(e.target.value))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="date">Data *</Label>
+              <Input
+                id="date"
+                type="date"
+                value={formData.date}
+                onChange={(e) => handleChange("date", e.target.value)}
+                required
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Itens da movimentação *</Label>
+              <Button type="button" variant="outline" size="sm" onClick={handleAddBatchItem}>
+                <Plus className="mr-2 h-4 w-4" />
+                Adicionar item
+              </Button>
+            </div>
+
+            <datalist id="materials-list">
+              {materialOptions.map((option) => (
+                <option key={option.id} value={option.label} />
+              ))}
+            </datalist>
+
+            {batchItems.map((item, index) => {
+              const selectedBatchMaterial = materials.find(
+                (material) => material.id === item.material_id
+              );
+              return (
+                <div
+                  key={item.row_id}
+                  className="space-y-2 rounded-lg border border-slate-200 p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500">
+                      Item {index + 1}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveBatchItem(item.row_id)}
+                      disabled={batchItems.length <= 1}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="mr-1 h-4 w-4" />
+                      Remover
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_140px]">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">Material</Label>
+                      <Input
+                        value={item.material_input}
+                        onChange={(e) =>
+                          handleBatchMaterialInput(item.row_id, e.target.value)
+                        }
+                        placeholder="Digite o nome ou código do material"
+                        list="materials-list"
+                      />
+                      {item.material_input && !item.material_id && (
+                        <p className="text-xs text-slate-500">
+                          Selecione um material da lista.
+                        </p>
+                      )}
+                      {selectedBatchMaterial && (
+                        <p className="text-xs text-slate-500">
+                          Estoque atual: {selectedBatchMaterial.current_stock || 0}{" "}
+                          {selectedBatchMaterial.unit}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">Quantidade</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) =>
+                          handleBatchQuantityChange(item.row_id, e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="date">Data *</Label>
+            <Input
+              id="date"
+              type="date"
+              value={formData.date}
+              onChange={(e) => handleChange("date", e.target.value)}
+              required
+            />
+          </div>
+        </>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="responsible">Responsável *</Label>
@@ -888,7 +1132,10 @@ export default function MovementForm({
         </Button>
         <Button 
           type="submit" 
-          disabled={saveMovement.isPending || !formData.material_id} 
+          disabled={
+            saveMovement.isPending ||
+            (movement ? !formData.material_id : hasInvalidBatchItems)
+          }
           className={
             formData.type === "entrada"
               ? "bg-green-600 hover:bg-green-700"
@@ -898,8 +1145,10 @@ export default function MovementForm({
           {saveMovement.isPending && (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           )}
-          {movement ? "Salvar Alterações" : "Registrar"}{" "}
-          {formData.type === "entrada" ? "Entrada" : "Saída"}
+          {movement
+            ? "Salvar Alterações"
+            : `Registrar ${formData.type === "entrada" ? "Entrada" : "Saída"}`}
+          {!movement ? ` (${batchItems.length} item(ns))` : ""}
         </Button>
       </div>
     </form>

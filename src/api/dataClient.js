@@ -305,11 +305,27 @@ const normalizeMunicipalityGveRows = (rows) => {
   );
 };
 
+const detectCsvDelimiter = (text) => {
+  const content = String(text || "");
+  const firstLine = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!firstLine) return ",";
+  const semicolonCount = (firstLine.match(/;/g) || []).length;
+  const commaCount = (firstLine.match(/,/g) || []).length;
+  const tabCount = (firstLine.match(/\t/g) || []).length;
+  if (tabCount > semicolonCount && tabCount > commaCount) return "\t";
+  if (semicolonCount > commaCount) return ";";
+  return ",";
+};
+
 const parseCsv = (text) =>
   new Promise((resolve, reject) => {
     Papa.parse(text, {
       header: true,
       skipEmptyLines: true,
+      delimiter: detectCsvDelimiter(text),
       complete: (result) => resolve(normalizeRows(result.data || [])),
       error: (error) => reject(error),
     });

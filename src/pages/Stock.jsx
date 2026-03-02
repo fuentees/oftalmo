@@ -490,6 +490,22 @@ export default function Stock() {
     return "municipio";
   };
 
+  const parsePurposeFlags = (value) => {
+    const normalized = normalizeHeader(value);
+    if (!normalized) {
+      return {
+        event: false,
+        training: false,
+        distribution: false,
+      };
+    }
+    return {
+      event: normalized.includes("evento"),
+      training: normalized.includes("treinamento"),
+      distribution: normalized.includes("distribuicao"),
+    };
+  };
+
   const importStock = useMutation({
     mutationFn: async (/** @type {{ file: File; target: "materials" | "movements" }} */ payload) => {
       const { file, target } = payload;
@@ -562,16 +578,39 @@ export default function Stock() {
         .map((rawRow) => {
           const row = normalizeRow(rawRow);
           const materialId = cleanValue(
-            pickValue(row, ["material_id", "id_material"])
+            pickValue(row, ["material_id", "id_material", "id_do_material"])
           );
           const materialCode = cleanValue(
-            pickValue(row, ["material_code", "codigo_material", "codigo"])
+            pickValue(row, [
+              "material_code",
+              "codigo_material",
+              "codigo_do_material",
+              "codigo_material_estoque",
+              "codigo",
+            ])
           );
           const materialName = cleanValue(
-            pickValue(row, ["material_name", "nome_material", "material", "nome"])
+            pickValue(row, [
+              "material_name",
+              "nome_material",
+              "nome_do_material",
+              "material",
+              "nome",
+            ])
           );
-          const quantity = toInteger(pickValue(row, ["quantity", "quantidade"]));
-          const type = normalizeMovementType(pickValue(row, ["type", "tipo"]));
+          const quantity = toInteger(
+            pickValue(row, ["quantity", "quantidade", "qtd", "qtde", "quant"])
+          );
+          const type = normalizeMovementType(
+            pickValue(row, [
+              "type",
+              "tipo",
+              "tipo_da_movimentacao",
+              "tipo_movimentacao",
+              "movimentacao",
+              "entrada_saida",
+            ])
+          );
 
           const matchedByCode = materialCode
             ? materials.find(
@@ -597,31 +636,42 @@ export default function Stock() {
             return null;
           }
 
+          const fallbackDestination = cleanValue(
+            pickValue(row, ["sector", "setor", "destino"])
+          );
           const destinationMode = normalizeDestinationMode(
             pickValue(row, [
               "destination_mode",
               "tipo_destino",
+              "tipo_de_destino",
+              "tipo_do_destino",
               "destino_tipo",
               "destination_type",
-            ])
-          );
-          const fallbackDestination = cleanValue(
-            pickValue(row, ["sector", "setor", "destino"])
+            ]) || fallbackDestination
           );
           const destinationMunicipio = cleanValue(
             pickValue(row, [
               "destination_municipio",
+              "municipio_de_destino",
               "municipio_destino",
+              "destino_municipio",
               "municipio",
             ])
           );
           const destinationGve = cleanValue(
-            pickValue(row, ["destination_gve", "gve_destino", "gve"])
+            pickValue(row, [
+              "destination_gve",
+              "gve_destino",
+              "gve_de_destino",
+              "destino_gve",
+              "gve",
+            ])
           );
           const destinationSectorLabel = cleanValue(
             pickValue(row, [
               "destination_sector",
               "setor_destino",
+              "setor_de_destino",
               "sector_destination",
               "setor",
             ])
@@ -643,19 +693,45 @@ export default function Stock() {
             (destinationMode === "setor" ? "Setor de Compras" : null);
           const resolvedDestinationOther =
             destinationOther || (destinationMode === "outros" ? fallbackDestination : null);
-          const outputForEvent = parseBooleanValue(
-            pickValue(row, ["output_for_event", "saida_evento"])
+          const linkedGveByMunicipio = resolvedDestinationMunicipio
+            ? getGveByMunicipio(resolvedDestinationMunicipio)
+            : "";
+          const resolvedDestinationGve =
+            destinationGve ||
+            (destinationMode === "municipio" ? linkedGveByMunicipio : "");
+          const purposeFlags = parsePurposeFlags(
+            pickValue(row, [
+              "purpose",
+              "finalidade",
+              "finalidade_da_saida",
+              "finalidade_saida",
+            ])
           );
-          const outputForTraining = parseBooleanValue(
-            pickValue(row, ["output_for_training", "saida_treinamento"])
-          );
-          const outputForDistribution = parseBooleanValue(
-            pickValue(row, ["output_for_distribution", "saida_distribuicao"])
-          );
+          const outputForEventRaw = pickValue(row, ["output_for_event", "saida_evento"]);
+          const outputForTrainingRaw = pickValue(row, [
+            "output_for_training",
+            "saida_treinamento",
+          ]);
+          const outputForDistributionRaw = pickValue(row, [
+            "output_for_distribution",
+            "saida_distribuicao",
+          ]);
+          const outputForEvent =
+            outputForEventRaw === null
+              ? purposeFlags.event
+              : parseBooleanValue(outputForEventRaw);
+          const outputForTraining =
+            outputForTrainingRaw === null
+              ? purposeFlags.training
+              : parseBooleanValue(outputForTrainingRaw);
+          const outputForDistribution =
+            outputForDistributionRaw === null
+              ? purposeFlags.distribution
+              : parseBooleanValue(outputForDistributionRaw);
           const destinationSector =
             destinationMode === "gve"
-              ? destinationGve
-                ? `GVE: ${destinationGve}`
+              ? resolvedDestinationGve
+                ? `GVE: ${resolvedDestinationGve}`
                 : ""
               : destinationMode === "setor"
               ? `SETOR: ${resolvedDestinationSector || "Setor"}`
@@ -670,7 +746,10 @@ export default function Stock() {
             destination_mode: destinationMode,
             destination_municipio:
               destinationMode === "municipio" ? resolvedDestinationMunicipio : null,
-            destination_gve: destinationMode === "gve" ? destinationGve : null,
+            destination_gve:
+              destinationMode === "gve" || destinationMode === "municipio"
+                ? resolvedDestinationGve
+                : null,
             destination_sector:
               destinationMode === "setor" ? resolvedDestinationSector : null,
             destination_other:
@@ -682,13 +761,38 @@ export default function Stock() {
             material_name: resolvedMaterialName,
             type,
             quantity,
-            date: normalizeDateValue(pickValue(row, ["date", "data"])),
-            responsible: cleanValue(pickValue(row, ["responsible", "responsavel"])),
+            date: normalizeDateValue(
+              pickValue(row, ["date", "data", "data_movimentacao", "data_da_movimentacao"])
+            ),
+            responsible: cleanValue(
+              pickValue(row, [
+                "responsible",
+                "responsavel",
+                "responsavel_movimentacao",
+                "responsavel_pela_movimentacao",
+              ])
+            ),
             sector: destinationSector,
             document_number: cleanValue(
-              pickValue(row, ["document_number", "documento", "numero_documento"])
+              pickValue(row, [
+                "document_number",
+                "documento",
+                "numero_documento",
+                "numero_do_documento",
+              ])
             ),
-            notes,
+            notes:
+              notes ||
+              cleanValue(
+                pickValue(row, [
+                  "notes",
+                  "observacoes",
+                  "observacao",
+                  "obs",
+                  "comentarios",
+                  "comentario",
+                ])
+              ),
           };
         })
         .filter(Boolean);
@@ -698,6 +802,18 @@ export default function Stock() {
       }
 
       await dataClient.entities.StockMovement.bulkCreate(payloads);
+      const stockDeltaByMaterial = new Map();
+      payloads.forEach((item) => {
+        const materialId = String(item.material_id || "").trim();
+        const quantity = Number(item.quantity || 0);
+        if (!materialId || !Number.isFinite(quantity) || quantity <= 0) return;
+        const delta = item.type === "entrada" ? quantity : -quantity;
+        const currentDelta = stockDeltaByMaterial.get(materialId) || 0;
+        stockDeltaByMaterial.set(materialId, currentDelta + delta);
+      });
+      for (const [materialId, delta] of stockDeltaByMaterial.entries()) {
+        await applyStockDelta(materialId, delta);
+      }
 
       const skipped = rows.length - payloads.length;
       setImportStatus({
@@ -1630,7 +1746,7 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
 
       {/* Movement Form Dialog */}
       <Dialog open={showMovementForm} onOpenChange={setShowMovementForm}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               {editingMovement
