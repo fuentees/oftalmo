@@ -26,6 +26,7 @@ import {
   ArrowLeft,
   BarChart3,
   Building2,
+  CalendarPlus,
   GraduationCap, 
   CheckCircle,
   AlertCircle,
@@ -66,6 +67,7 @@ import {
   orderEnrollmentFields,
   resolveParticipantFieldFromEnrollmentField,
 } from "@/lib/enrollmentSchema";
+import { buildGoogleCalendarUrl } from "@/lib/googleCalendar";
 
 const ENROLLMENT_MAIN_TABS = ["mask", "form", "list", "summary"];
 
@@ -1021,6 +1023,23 @@ export default function EnrollmentPage({
     alert("Link de inscrição copiado!");
   };
 
+  const handleOpenGoogleCalendar = (participant) => {
+    if (!training) return;
+    const email = String(participant?.professional_email || "").trim();
+    if (!email) {
+      alert("Este inscrito não possui e-mail cadastrado para convite na agenda.");
+      return;
+    }
+    const url = buildGoogleCalendarUrl({
+      training,
+      participantEmail: email,
+    });
+    const popup = window.open(url, "_blank", "noopener,noreferrer");
+    if (!popup) {
+      alert("Não foi possível abrir o Google Agenda. Verifique o bloqueador de pop-up.");
+    }
+  };
+
   const handleEditField = (field) => {
     setEditingField(field);
     setFieldFormData({
@@ -1547,6 +1566,15 @@ export default function EnrollmentPage({
       sortable: false,
       render: (row) => (
         <div className="flex justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleOpenGoogleCalendar(row)}
+            className="text-blue-600 hover:text-blue-700"
+            title="Vincular no Google Agenda"
+          >
+            <CalendarPlus className="h-4 w-4" />
+          </Button>
           <Button
             variant="ghost"
             size="sm"
