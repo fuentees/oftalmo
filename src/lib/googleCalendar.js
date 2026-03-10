@@ -1,6 +1,18 @@
 const DEFAULT_START_TIME = "08:00";
 const DEFAULT_END_TIME = "12:00";
 const GOOGLE_CALENDAR_BASE_URL = "https://calendar.google.com/calendar/render";
+const SIMPLE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
+export const DEFAULT_GOOGLE_CALENDAR_VISIBILITY = {
+  includeTrainingDescription: true,
+  includeTrainingCode: true,
+  includeCoordinator: true,
+  includeInstructor: true,
+  includeParticipantName: true,
+  includeParticipantEmail: true,
+  includeParticipantRegion: true,
+  includeLocation: true,
+};
 
 const normalizeDateValue = (value) => {
   const raw = String(value || "").trim();
@@ -74,30 +86,61 @@ const resolveEventBounds = (training) => {
 };
 
 const resolveSingleEmail = (value) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
   const candidates = String(value || "")
     .split(/[;,\n]+/)
     .map((item) => String(item || "").trim().toLowerCase())
     .filter(Boolean);
   for (const candidate of candidates) {
-    if (emailRegex.test(candidate)) return candidate;
+    if (SIMPLE_EMAIL_REGEX.test(candidate)) return candidate;
   }
   return "";
 };
 
-export const buildGoogleCalendarUrl = ({ training, participantEmail }) => {
+export const isValidCalendarEmail = (value) => {
+  const resolved = resolveSingleEmail(value);
+  return Boolean(resolved);
+};
+
+export const buildGoogleCalendarUrl = ({
+  training,
+  participant,
+  attendeeEmail,
+  visibilityOptions = {},
+}) => {
+  const options = {
+    ...DEFAULT_GOOGLE_CALENDAR_VISIBILITY,
+    ...(visibilityOptions || {}),
+  };
+  const participantName = String(participant?.professional_name || "").trim();
+  const participantEmail = String(participant?.professional_email || "").trim();
+  const participantMunicipality = String(participant?.municipality || "").trim();
+  const participantGve = String(participant?.health_region || "").trim();
   const eventTitle = String(training?.title || "Treinamento").trim();
-  const location = String(training?.location || "").trim();
+  const location = options.includeLocation
+    ? String(training?.location || "").trim()
+    : "";
   const description = String(training?.description || "").trim();
   const trainingCode = String(training?.code || "").trim();
   const instructor = String(training?.instructor || "").trim();
   const coordinator = String(training?.coordinator || "").trim();
   const { start, end } = resolveEventBounds(training);
   const lines = [];
-  if (description) lines.push(description);
-  if (trainingCode) lines.push(`Código: ${trainingCode}`);
-  if (coordinator) lines.push(`Coordenação: ${coordinator}`);
-  if (instructor) lines.push(`Instrutor(a): ${instructor}`);
+  if (options.includeTrainingDescription && description) lines.push(description);
+  if (options.includeTrainingCode && trainingCode) lines.push(`Código: ${trainingCode}`);
+  if (options.includeCoordinator && coordinator) lines.push(`Coordenação: ${coordinator}`);
+  if (options.includeInstructor && instructor) lines.push(`Instrutor(a): ${instructor}`);
+  if (options.includeParticipantName && participantName) {
+    lines.push(`Participante: ${participantName}`);
+  }
+  if (options.includeParticipantEmail && participantEmail) {
+    lines.push(`E-mail: ${participantEmail}`);
+  }
+  if (options.includeParticipantRegion && (participantMunicipality || participantGve)) {
+    const regionLine = [participantMunicipality, participantGve]
+      .filter(Boolean)
+      .join(" • ");
+    if (regionLine) lines.push(`Região: ${regionLine}`);
+  }
   const details = lines.join("\n");
   const params = new URLSearchParams({
     action: "TEMPLATE",
@@ -108,7 +151,7 @@ export const buildGoogleCalendarUrl = ({ training, participantEmail }) => {
     ctz: "America/Sao_Paulo",
   });
 
-  const attendee = resolveSingleEmail(participantEmail);
+  const attendee = resolveSingleEmail(attendeeEmail || participantEmail);
   if (attendee) {
     params.set("add", attendee);
   }

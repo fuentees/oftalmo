@@ -67,9 +67,47 @@ import {
   orderEnrollmentFields,
   resolveParticipantFieldFromEnrollmentField,
 } from "@/lib/enrollmentSchema";
-import { buildGoogleCalendarUrl } from "@/lib/googleCalendar";
+import {
+  buildGoogleCalendarUrl,
+  DEFAULT_GOOGLE_CALENDAR_VISIBILITY,
+  isValidCalendarEmail,
+} from "@/lib/googleCalendar";
 
 const ENROLLMENT_MAIN_TABS = ["mask", "form", "list", "summary"];
+const GOOGLE_CALENDAR_FIELD_OPTIONS = [
+  {
+    key: "includeTrainingDescription",
+    label: "Descrição do treinamento",
+  },
+  {
+    key: "includeTrainingCode",
+    label: "Código do treinamento",
+  },
+  {
+    key: "includeCoordinator",
+    label: "Coordenação",
+  },
+  {
+    key: "includeInstructor",
+    label: "Instrutor(a)",
+  },
+  {
+    key: "includeParticipantName",
+    label: "Nome do participante",
+  },
+  {
+    key: "includeParticipantEmail",
+    label: "E-mail do participante",
+  },
+  {
+    key: "includeParticipantRegion",
+    label: "Município/GVE do participante",
+  },
+  {
+    key: "includeLocation",
+    label: "Local do treinamento",
+  },
+];
 
 export default function EnrollmentPage({
   allowedTabs = null,
@@ -134,6 +172,12 @@ export default function EnrollmentPage({
   const [summaryStartDate, setSummaryStartDate] = useState("");
   const [summaryEndDate, setSummaryEndDate] = useState("");
   const [summarySearch, setSummarySearch] = useState("");
+  const [showGoogleCalendarDialog, setShowGoogleCalendarDialog] = useState(false);
+  const [calendarParticipant, setCalendarParticipant] = useState(null);
+  const [calendarInviteEmail, setCalendarInviteEmail] = useState("");
+  const [calendarVisibility, setCalendarVisibility] = useState(
+    DEFAULT_GOOGLE_CALENDAR_VISIBILITY
+  );
 
   const handleGoBack = () => {
     if (window.history.length > 1) {
@@ -1024,20 +1068,32 @@ export default function EnrollmentPage({
   };
 
   const handleOpenGoogleCalendar = (participant) => {
-    if (!training) return;
-    const email = String(participant?.professional_email || "").trim();
-    if (!email) {
-      alert("Este inscrito não possui e-mail cadastrado para convite na agenda.");
+    if (!training || !participant) return;
+    setCalendarParticipant(participant);
+    setCalendarInviteEmail(String(participant?.professional_email || "").trim());
+    setCalendarVisibility(DEFAULT_GOOGLE_CALENDAR_VISIBILITY);
+    setShowGoogleCalendarDialog(true);
+  };
+
+  const handleCreateGoogleCalendarLink = () => {
+    if (!training || !calendarParticipant) return;
+    const inviteEmail = String(calendarInviteEmail || "").trim();
+    if (inviteEmail && !isValidCalendarEmail(inviteEmail)) {
+      alert("Informe um e-mail Google válido ou deixe em branco.");
       return;
     }
     const url = buildGoogleCalendarUrl({
       training,
-      participantEmail: email,
+      participant: calendarParticipant,
+      attendeeEmail: inviteEmail,
+      visibilityOptions: calendarVisibility,
     });
     const popup = window.open(url, "_blank", "noopener,noreferrer");
     if (!popup) {
       alert("Não foi possível abrir o Google Agenda. Verifique o bloqueador de pop-up.");
+      return;
     }
+    setShowGoogleCalendarDialog(false);
   };
 
   const handleEditField = (field) => {
@@ -2441,6 +2497,88 @@ export default function EnrollmentPage({
           </Tabs>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={showGoogleCalendarDialog}
+        onOpenChange={(open) => {
+          setShowGoogleCalendarDialog(open);
+          if (!open) {
+            setCalendarParticipant(null);
+            setCalendarInviteEmail("");
+            setCalendarVisibility(DEFAULT_GOOGLE_CALENDAR_VISIBILITY);
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Vincular inscrito ao Google Agenda</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Participante</p>
+              <p className="text-sm font-medium text-slate-800">
+                {calendarParticipant?.professional_name || "-"}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="calendar-google-email">
+                E-mail Google para convite (opcional)
+              </Label>
+              <Input
+                id="calendar-google-email"
+                type="email"
+                placeholder="exemplo@gmail.com"
+                value={calendarInviteEmail}
+                onChange={(e) => setCalendarInviteEmail(e.target.value)}
+              />
+              <p className="text-xs text-slate-500">
+                Se preencher, o Google Agenda abre com este e-mail em convidados.
+                Se deixar vazio, abre sem convidado.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>O que aparecerá na agenda</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-md border border-slate-200 p-3">
+                {GOOGLE_CALENDAR_FIELD_OPTIONS.map((option) => (
+                  <label
+                    key={option.key}
+                    className="flex items-center gap-2 text-sm text-slate-700"
+                  >
+                    <Checkbox
+                      checked={Boolean(calendarVisibility[option.key])}
+                      onCheckedChange={(checked) =>
+                        setCalendarVisibility((prev) => ({
+                          ...prev,
+                          [option.key]: Boolean(checked),
+                        }))
+                      }
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowGoogleCalendarDialog(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateGoogleCalendarLink}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <CalendarPlus className="h-4 w-4 mr-2" />
+                Abrir Google Agenda
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <AlertDialog
