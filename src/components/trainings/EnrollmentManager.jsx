@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,11 +14,61 @@ import {
 import { UserPlus, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { addMonths, format } from "date-fns";
 import { parseDateSafe } from "@/lib/date";
+import {
+  loadProfessionalGoogleEmailStore,
+  resolveProfessionalGoogleEmail,
+} from "@/lib/professionalGoogleEmailStore";
 
 export default function EnrollmentManager({ training, professionals, existingParticipants, onClose }) {
   const [selectedProfessional, setSelectedProfessional] = useState("");
   
   const queryClient = useQueryClient();
+  const { data: professionalGoogleEmailStore = { byProfessionalId: {}, byProfessionalEmail: {} } } =
+    useQuery({
+      queryKey: ["professional-google-email-store"],
+      queryFn: loadProfessionalGoogleEmailStore,
+    });
+
+  const resolveCalendarInviteEmail = ({ professional, participant }) => {
+    const mappedByProfessional = resolveProfessionalGoogleEmail(
+      professionalGoogleEmailStore,
+      {
+        professionalId: professional?.id || participant?.professional_id,
+        professionalEmail: professional?.email || participant?.professional_email,
+      }
+    );
+    if (mappedByProfessional) return mappedByProfessional;
+    return String(
+      professional?.email || participant?.professional_email || ""
+    ).trim();
+  };
+
+  const syncEnrollmentCalendar = async ({
+    participant,
+    professional,
+    operation = "upsert",
+  }) => {
+    try {
+      await dataClient.integrations.Core.SyncGoogleCalendarEnrollment({
+        operation,
+        training: {
+          id: training?.id,
+          title: training?.title,
+          description: training?.description,
+          code: training?.code,
+          location: training?.location,
+          coordinator: training?.coordinator,
+          instructor: training?.instructor,
+          dates: Array.isArray(training?.dates) ? training.dates : [],
+        },
+        participant,
+        attendee_email: resolveCalendarInviteEmail({ professional, participant }),
+      });
+    } catch (error) {
+      // Não bloqueia fluxo principal por falha externa de agenda.
+      console.warn("[calendar-sync]", error?.message || error);
+    }
+  };
 
   const enrollParticipant = useMutation({
     mutationFn: async (/** @type {any} */ professionalId) => {
@@ -53,7 +103,12 @@ export default function EnrollmentManager({ training, professionals, existingPar
         validity_date: validityDate,
       };
 
-      await dataClient.entities.TrainingParticipant.create(participant);
+      const createdParticipant = await dataClient.entities.TrainingParticipant.create(participant);
+      await syncEnrollmentCalendar({
+        participant: createdParticipant || participant,
+        professional,
+        operation: "upsert",
+      });
       
       // Update training participant count
       await dataClient.entities.Training.update(training.id, {
@@ -68,11 +123,23 @@ export default function EnrollmentManager({ training, professionals, existingPar
   });
 
   const updateEnrollmentStatus = useMutation({
-    mutationFn: (/** @type {{ participantId: any; status: string }} */ payload) => {
-      const { participantId, status } = payload;
-      return dataClient.entities.TrainingParticipant.update(participantId, {
+    mutationFn: async (/** @type {{ participant: any; status: string }} */ payload) => {
+      const participantId = payload?.participant?.id;
+      const status = payload?.status;
+      const updatedParticipant = await dataClient.entities.TrainingParticipant.update(participantId, {
         enrollment_status: status,
       });
+      const linkedProfessional = professionals.find(
+        (professional) =>
+          String(professional?.id || "").trim() ===
+          String(payload?.participant?.professional_id || "").trim()
+      );
+      await syncEnrollmentCalendar({
+        participant: updatedParticipant || payload?.participant,
+        professional: linkedProfessional,
+        operation: status === "cancelado" ? "delete" : "upsert",
+      });
+      return updatedParticipant;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["participants"] });
@@ -174,7 +241,7 @@ export default function EnrollmentManager({ training, professionals, existingPar
                             variant="ghost"
                             size="sm"
                             onClick={() => updateEnrollmentStatus.mutate({
-                              participantId: participant.id,
+                              participant,
                               status: "confirmado"
                             })}
                           >
@@ -186,7 +253,7 @@ export default function EnrollmentManager({ training, professionals, existingPar
                             variant="ghost"
                             size="sm"
                             onClick={() => updateEnrollmentStatus.mutate({
-                              participantId: participant.id,
+                              participant,
                               status: "cancelado"
                             })}
                           >

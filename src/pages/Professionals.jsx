@@ -30,6 +30,11 @@ import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
 import { useNavigate } from "react-router-dom";
+import {
+  loadProfessionalGoogleEmailStore,
+  resolveProfessionalGoogleEmail,
+  upsertProfessionalGoogleEmail,
+} from "@/lib/professionalGoogleEmailStore";
 
 export default function Professionals() {
   const [search, setSearch] = useState("");
@@ -41,6 +46,7 @@ export default function Professionals() {
   const [editForm, setEditForm] = useState({
     name: "",
     email: "",
+    google_email: "",
     phone: "",
     position: "",
     rg: "",
@@ -69,6 +75,12 @@ export default function Professionals() {
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
   });
+
+  const { data: googleEmailStore = { byProfessionalId: {}, byProfessionalEmail: {} } } =
+    useQuery({
+      queryKey: ["professional-google-email-store"],
+      queryFn: loadProfessionalGoogleEmailStore,
+    });
 
   const normalizeText = (value) =>
     String(value ?? "")
@@ -112,6 +124,10 @@ export default function Professionals() {
     setEditForm({
       name: String(professional?.name || ""),
       email: String(professional?.email || ""),
+      google_email: resolveProfessionalGoogleEmail(googleEmailStore, {
+        professionalId: professional?.id,
+        professionalEmail: professional?.email,
+      }),
       phone: String(professional?.phone || ""),
       position: String(professional?.position || ""),
       rg: String(professional?.rg || ""),
@@ -151,10 +167,19 @@ export default function Professionals() {
         sector: normalizeOptionalField(editForm.sector),
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (updatedProfessional) => {
+      const nextProfessional = updatedProfessional || editingProfessional;
+      await upsertProfessionalGoogleEmail({
+        professionalId: nextProfessional?.id,
+        professionalEmail: nextProfessional?.email,
+        googleEmail: normalizeOptionalField(editForm.google_email),
+      });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["professionals"] }),
         queryClient.invalidateQueries({ queryKey: ["participants"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["professional-google-email-store"],
+        }),
       ]);
       setPageStatus({
         type: "success",
@@ -210,10 +235,16 @@ export default function Professionals() {
         const matchesSearch =
           p.name?.toLowerCase().includes(normalizedSearch) ||
           p.email?.toLowerCase().includes(normalizedSearch) ||
+          resolveProfessionalGoogleEmail(googleEmailStore, {
+            professionalId: p?.id,
+            professionalEmail: p?.email,
+          })
+            ?.toLowerCase()
+            .includes(normalizedSearch) ||
           p.phone?.toLowerCase().includes(normalizedSearch);
         return matchesSearch;
       }),
-    [professionals, search]
+    [professionals, search, googleEmailStore]
   );
 
   const columns = [
@@ -246,6 +277,19 @@ export default function Professionals() {
             <div className="flex items-center gap-1 text-slate-600">
               <Mail className="h-3 w-3" />
               {row.email}
+            </div>
+          )}
+          {resolveProfessionalGoogleEmail(googleEmailStore, {
+            professionalId: row?.id,
+            professionalEmail: row?.email,
+          }) && (
+            <div className="flex items-center gap-1 text-slate-600">
+              <Mail className="h-3 w-3" />
+              Google:{" "}
+              {resolveProfessionalGoogleEmail(googleEmailStore, {
+                professionalId: row?.id,
+                professionalEmail: row?.email,
+              })}
             </div>
           )}
           {row.phone && (
@@ -355,7 +399,7 @@ export default function Professionals() {
       <SearchFilter
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Buscar por nome, email ou telefone..."
+        searchPlaceholder="Buscar por nome, e-mail institucional, e-mail Google ou telefone..."
       />
 
       <DataTable
@@ -400,6 +444,22 @@ export default function Professionals() {
                     setEditForm((prev) => ({ ...prev, email: event.target.value }))
                   }
                   placeholder="profissional@dominio.com"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="professional-google-email">E-mail Google</Label>
+                <Input
+                  id="professional-google-email"
+                  type="email"
+                  value={editForm.google_email}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      google_email: event.target.value,
+                    }))
+                  }
+                  placeholder="profissional@gmail.com"
                 />
               </div>
 
