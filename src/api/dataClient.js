@@ -8,6 +8,8 @@ const STORAGE_BUCKET =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "uploads";
 const EMAIL_FUNCTION_NAME =
   import.meta.env.VITE_SUPABASE_EMAIL_FUNCTION || "send-email";
+const CALENDAR_SYNC_FUNCTION_NAME =
+  import.meta.env.VITE_SUPABASE_CALENDAR_SYNC_FUNCTION || "google-calendar-sync";
 const USER_ADMIN_FUNCTION_FALLBACK = "user-admin";
 const USER_ADMIN_FUNCTION_NAME =
   import.meta.env.VITE_SUPABASE_USER_ADMIN_FUNCTION ||
@@ -1275,6 +1277,55 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
   }
 };
 
+const SyncGoogleCalendarEnrollment = async ({
+  operation = "upsert",
+  training,
+  participant,
+  attendee_email,
+  visibility_options,
+}) => {
+  const payload = {
+    operation: String(operation || "upsert").trim().toLowerCase(),
+    training: training && typeof training === "object" ? training : null,
+    participant: participant && typeof participant === "object" ? participant : null,
+    attendee_email: String(attendee_email || "").trim(),
+    visibility_options:
+      visibility_options && typeof visibility_options === "object"
+        ? visibility_options
+        : null,
+  };
+  const accessToken = await getAccessToken();
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      CALENDAR_SYNC_FUNCTION_NAME,
+      {
+        body: payload,
+      }
+    );
+    if (error) {
+      const message = error.message || "";
+      if (shouldFallbackFunctionCall(message) || shouldFallbackByStatus(error.status)) {
+        return await invokeSupabaseFunction(
+          CALENDAR_SYNC_FUNCTION_NAME,
+          payload,
+          accessToken
+        );
+      }
+      throw new Error(
+        error.message ||
+          "Função de sincronização com Google Agenda não configurada no Supabase."
+      );
+    }
+    return data || {};
+  } catch (error) {
+    const message = error?.message || String(error || "");
+    if (shouldFallbackFunctionCall(message) || shouldFallbackByStatus(error?.status)) {
+      return invokeSupabaseFunction(CALENDAR_SYNC_FUNCTION_NAME, payload, accessToken);
+    }
+    throw error;
+  }
+};
+
 const logUserInApp = async (pageName) => {
   if (!pageName) return null;
   try {
@@ -1325,6 +1376,7 @@ export const dataClient = {
       UploadFile,
       ExtractDataFromUploadedFile,
       SendEmail,
+      SyncGoogleCalendarEnrollment,
       ListMunicipalityGveMapping,
       ReplaceMunicipalityGveMapping,
       ClearMunicipalityGveMapping,

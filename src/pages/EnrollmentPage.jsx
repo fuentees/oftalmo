@@ -755,7 +755,7 @@ export default function EnrollmentPage({
 
       const mappedParticipantData = mapEnrollmentDataToParticipantFields(data);
 
-      await dataClient.entities.TrainingParticipant.create({
+      const createdParticipant = await dataClient.entities.TrainingParticipant.create({
         training_id: trainingId,
         training_title: training.title,
         training_date: firstDate,
@@ -789,6 +789,15 @@ export default function EnrollmentPage({
         validity_date: validityDate,
       });
 
+      const calendarSyncError = await syncParticipantWithGoogleCalendar({
+        participant: createdParticipant,
+        operation: "upsert",
+      });
+      if (calendarSyncError) {
+        // Não bloqueia inscrição por falha externa no Google.
+        console.warn("[calendar-sync]", calendarSyncError);
+      }
+
       await dataClient.entities.Training.update(trainingId, {
         participants_count: (training.participants_count || 0) + 1,
       });
@@ -812,6 +821,13 @@ export default function EnrollmentPage({
       }
 
       let warningMessage = null;
+      const calendarSyncError = await syncParticipantWithGoogleCalendar({
+        participant,
+        operation: "delete",
+      });
+      if (calendarSyncError) {
+        warningMessage = calendarSyncError;
+      }
       try {
         const remainingParticipants = await dataClient.entities.TrainingParticipant.filter(
           { training_id: trainingId }
@@ -820,8 +836,9 @@ export default function EnrollmentPage({
           participants_count: remainingParticipants.length,
         });
       } catch {
-        warningMessage =
-          "Inscrito removido, mas não foi possível atualizar o contador automaticamente.";
+        warningMessage = warningMessage
+          ? `${warningMessage} Inscrito removido, mas não foi possível atualizar o contador automaticamente.`
+          : "Inscrito removido, mas não foi possível atualizar o contador automaticamente.";
       }
 
       return { warningMessage };
@@ -967,14 +984,29 @@ export default function EnrollmentPage({
   });
 
   const updateParticipant = useMutation({
-    mutationFn: async (/** @type {{ id: string, data: Record<string, any> }} */ payload) =>
-      dataClient.entities.TrainingParticipant.update(payload.id, payload.data),
-    onSuccess: () => {
+    mutationFn: async (/** @type {{ id: string, data: Record<string, any> }} */ payload) => {
+      const updatedParticipant = await dataClient.entities.TrainingParticipant.update(
+        payload.id,
+        payload.data
+      );
+      const status = String(updatedParticipant?.enrollment_status || "")
+        .trim()
+        .toLowerCase();
+      const operation = status === "cancelado" ? "delete" : "upsert";
+      const calendarSyncError = await syncParticipantWithGoogleCalendar({
+        participant: updatedParticipant,
+        operation,
+      });
+      return { calendarSyncError };
+    },
+    onSuccess: ({ calendarSyncError }) => {
       queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
       queryClient.invalidateQueries({ queryKey: ["training"] });
       setEditStatus({
         type: "success",
-        message: "Inscrito atualizado com sucesso.",
+        message: calendarSyncError
+          ? `Inscrito atualizado, mas a agenda Google não sincronizou: ${calendarSyncError}`
+          : "Inscrito atualizado com sucesso.",
       });
       setTimeout(() => {
         setShowEditParticipant(false);
@@ -1065,6 +1097,42 @@ export default function EnrollmentPage({
     const link = `${window.location.origin}/PublicEnrollment?training=${encodeURIComponent(trainingId)}`;
     navigator.clipboard.writeText(link);
     alert("Link de inscrição copiado!");
+  };
+
+  const syncParticipantWithGoogleCalendar = async ({
+    participant,
+    operation = "upsert",
+    attendeeEmail = "",
+    visibilityOptions = DEFAULT_GOOGLE_CALENDAR_VISIBILITY,
+  }) => {
+    if (!training || !participant) return null;
+    try {
+      const response = await dataClient.integrations.Core.SyncGoogleCalendarEnrollment({
+        operation,
+        training: {
+          id: training.id,
+          title: training.title,
+          description: training.description,
+          code: training.code,
+          location: training.location,
+          coordinator: training.coordinator,
+          instructor: training.instructor,
+          dates: trainingDates,
+        },
+        participant,
+        attendee_email: attendeeEmail || participant?.professional_email || "",
+        visibility_options: visibilityOptions,
+      });
+      if (response?.success === false && !response?.skipped) {
+        return response?.error || response?.message || "Falha ao sincronizar Google Agenda.";
+      }
+      return null;
+    } catch (error) {
+      return (
+        error?.message ||
+        "Falha ao sincronizar automaticamente o evento no Google Agenda."
+      );
+    }
   };
 
   const handleOpenGoogleCalendar = (participant) => {

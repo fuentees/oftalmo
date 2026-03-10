@@ -31,6 +31,7 @@ import {
   orderEnrollmentFields,
   resolveParticipantFieldFromEnrollmentField,
 } from "@/lib/enrollmentSchema";
+import { DEFAULT_GOOGLE_CALENDAR_VISIBILITY } from "@/lib/googleCalendar";
 
 export default function PublicEnrollment() {
   const queryString =
@@ -215,6 +216,37 @@ export default function PublicEnrollment() {
     });
   }, [orderedTemplateFields]);
 
+  const syncParticipantWithGoogleCalendar = async (participant) => {
+    if (!training || !participant) return null;
+    try {
+      const response = await dataClient.integrations.Core.SyncGoogleCalendarEnrollment({
+        operation: "upsert",
+        training: {
+          id: training.id,
+          title: training.title,
+          description: training.description,
+          code: training.code,
+          location: training.location,
+          coordinator: training.coordinator,
+          instructor: training.instructor,
+          dates: trainingDates,
+        },
+        participant,
+        attendee_email: participant?.professional_email || "",
+        visibility_options: DEFAULT_GOOGLE_CALENDAR_VISIBILITY,
+      });
+      if (response?.success === false && !response?.skipped) {
+        return response?.error || response?.message || "Falha ao sincronizar agenda.";
+      }
+      return null;
+    } catch (error) {
+      return (
+        error?.message ||
+        "Falha ao sincronizar automaticamente o evento no Google Agenda."
+      );
+    }
+  };
+
   const enrollMutation = useMutation({
     mutationFn: async (/** @type {Record<string, any>} */ data) => {
       const normalizedCpf = normalizeCpf(data.cpf);
@@ -298,8 +330,11 @@ export default function PublicEnrollment() {
         validity_date: validityDate,
       };
 
+      let createdParticipant = null;
       try {
-        await dataClient.entities.TrainingParticipant.create(participantPayload);
+        createdParticipant = await dataClient.entities.TrainingParticipant.create(
+          participantPayload
+        );
       } catch (error) {
         if (isDuplicateEnrollmentError(error)) {
           return {
@@ -311,13 +346,18 @@ export default function PublicEnrollment() {
       }
 
       let warningMessage = null;
+      const calendarSyncError = await syncParticipantWithGoogleCalendar(createdParticipant);
+      if (calendarSyncError) {
+        warningMessage = calendarSyncError;
+      }
       try {
         await dataClient.entities.Training.update(trainingId, {
           participants_count: (training.participants_count || 0) + 1,
         });
       } catch (error) {
-        warningMessage =
-          "Seu cadastro foi registrado, mas a atualização do contador não concluiu agora.";
+        warningMessage = warningMessage
+          ? `${warningMessage} Seu cadastro foi registrado, mas a atualização do contador não concluiu agora.`
+          : "Seu cadastro foi registrado, mas a atualização do contador não concluiu agora.";
       }
 
       return {
