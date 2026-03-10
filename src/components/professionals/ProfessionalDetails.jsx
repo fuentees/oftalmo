@@ -298,6 +298,16 @@ export default function ProfessionalDetails({
               )}
             </div>
             <div className="flex items-center gap-2 text-slate-700">
+              <Mail className="h-4 w-4 text-slate-400" />
+              {professional.google_email ? (
+                <a href={`mailto:${professional.google_email}`} className="hover:underline">
+                  Google: {professional.google_email}
+                </a>
+              ) : (
+                "Google: -"
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-slate-700">
               <Phone className="h-4 w-4 text-slate-400" />
               {professional.phone || "-"}
             </div>

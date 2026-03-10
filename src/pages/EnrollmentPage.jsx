@@ -72,6 +72,10 @@ import {
   DEFAULT_GOOGLE_CALENDAR_VISIBILITY,
   isValidCalendarEmail,
 } from "@/lib/googleCalendar";
+import {
+  loadProfessionalGoogleEmailStore,
+  resolveProfessionalGoogleEmail,
+} from "@/lib/professionalGoogleEmailStore";
 
 const ENROLLMENT_MAIN_TABS = ["mask", "form", "list", "summary"];
 const GOOGLE_CALENDAR_FIELD_OPTIONS = [
@@ -219,6 +223,12 @@ export default function EnrollmentPage({
     queryFn: () => dataClient.entities.TrainingParticipant.filter({ training_id: trainingId }, "-enrollment_date"),
     enabled: !!trainingId,
   });
+
+  const { data: professionalGoogleEmailStore = { byProfessionalId: {}, byProfessionalEmail: {} } } =
+    useQuery({
+      queryKey: ["professional-google-email-store"],
+      queryFn: loadProfessionalGoogleEmailStore,
+    });
 
   const formatDateSafe = (value, pattern = "dd/MM/yyyy") => {
     if (!value) return null;
@@ -1099,6 +1109,22 @@ export default function EnrollmentPage({
     alert("Link de inscrição copiado!");
   };
 
+  const resolveCalendarInviteEmail = (participant) => {
+    const mappedGoogleEmail = resolveProfessionalGoogleEmail(
+      professionalGoogleEmailStore,
+      {
+        professionalId: participant?.professional_id,
+        professionalEmail: participant?.professional_email,
+      }
+    );
+    if (mappedGoogleEmail) return mappedGoogleEmail;
+    const participantGoogleEmail = String(
+      participant?.professional_google_email || participant?.google_email || ""
+    ).trim();
+    if (participantGoogleEmail) return participantGoogleEmail;
+    return String(participant?.professional_email || "").trim();
+  };
+
   const syncParticipantWithGoogleCalendar = async ({
     participant,
     operation = "upsert",
@@ -1120,7 +1146,7 @@ export default function EnrollmentPage({
           dates: trainingDates,
         },
         participant,
-        attendee_email: attendeeEmail || participant?.professional_email || "",
+        attendee_email: attendeeEmail || resolveCalendarInviteEmail(participant),
         visibility_options: visibilityOptions,
       });
       if (response?.success === false && !response?.skipped) {
@@ -1138,7 +1164,7 @@ export default function EnrollmentPage({
   const handleOpenGoogleCalendar = (participant) => {
     if (!training || !participant) return;
     setCalendarParticipant(participant);
-    setCalendarInviteEmail(String(participant?.professional_email || "").trim());
+    setCalendarInviteEmail(resolveCalendarInviteEmail(participant));
     setCalendarVisibility(DEFAULT_GOOGLE_CALENDAR_VISIBILITY);
     setShowGoogleCalendarDialog(true);
   };

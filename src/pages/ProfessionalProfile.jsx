@@ -8,6 +8,10 @@ import { getEffectiveEventStatus } from "@/lib/statusRules";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, AlertCircle, Loader2 } from "lucide-react";
+import {
+  loadProfessionalGoogleEmailStore,
+  resolveProfessionalGoogleEmail,
+} from "@/lib/professionalGoogleEmailStore";
 
 const normalizeText = (value) =>
   String(value ?? "")
@@ -64,6 +68,12 @@ export default function ProfessionalProfile() {
     refetchOnWindowFocus: true,
   });
 
+  const { data: googleEmailStore = { byProfessionalId: {}, byProfessionalEmail: {} } } =
+    useQuery({
+      queryKey: ["professional-google-email-store"],
+      queryFn: loadProfessionalGoogleEmailStore,
+    });
+
   const { data: trainings = [], isLoading: loadingTrainings } = useQuery({
     queryKey: ["trainings"],
     queryFn: () => dataClient.entities.Training.list("-date"),
@@ -85,6 +95,17 @@ export default function ProfessionalProfile() {
       ) || null,
     [professionals, professionalId]
   );
+
+  const professionalWithGoogleEmail = useMemo(() => {
+    if (!professional) return null;
+    return {
+      ...professional,
+      google_email: resolveProfessionalGoogleEmail(googleEmailStore, {
+        professionalId: professional?.id,
+        professionalEmail: professional?.email,
+      }),
+    };
+  }, [professional, googleEmailStore]);
 
   const linkedParticipations = useMemo(() => {
     if (!professional) return [];
@@ -158,7 +179,7 @@ export default function ProfessionalProfile() {
             subtitle={`${professional.name || "Profissional"} • ${linkedParticipations.length} vínculos em treinamentos`}
           />
           <ProfessionalDetails
-            professional={professional}
+            professional={professionalWithGoogleEmail}
             participations={linkedParticipations}
             trainings={trainings}
             events={linkedEvents}

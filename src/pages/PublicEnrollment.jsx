@@ -32,6 +32,10 @@ import {
   resolveParticipantFieldFromEnrollmentField,
 } from "@/lib/enrollmentSchema";
 import { DEFAULT_GOOGLE_CALENDAR_VISIBILITY } from "@/lib/googleCalendar";
+import {
+  loadProfessionalGoogleEmailStore,
+  resolveProfessionalGoogleEmail,
+} from "@/lib/professionalGoogleEmailStore";
 
 export default function PublicEnrollment() {
   const queryString =
@@ -83,6 +87,12 @@ export default function PublicEnrollment() {
     },
     enabled: !!trainingId,
   });
+
+  const { data: professionalGoogleEmailStore = { byProfessionalId: {}, byProfessionalEmail: {} } } =
+    useQuery({
+      queryKey: ["professional-google-email-store"],
+      queryFn: loadProfessionalGoogleEmailStore,
+    });
 
   const trainingDates = useMemo(() => {
     const list = Array.isArray(training?.dates) ? [...training.dates] : [];
@@ -218,6 +228,11 @@ export default function PublicEnrollment() {
 
   const syncParticipantWithGoogleCalendar = async (participant) => {
     if (!training || !participant) return null;
+    const attendeeEmail =
+      resolveProfessionalGoogleEmail(professionalGoogleEmailStore, {
+        professionalId: participant?.professional_id,
+        professionalEmail: participant?.professional_email,
+      }) || String(participant?.professional_email || "").trim();
     try {
       const response = await dataClient.integrations.Core.SyncGoogleCalendarEnrollment({
         operation: "upsert",
@@ -232,7 +247,7 @@ export default function PublicEnrollment() {
           dates: trainingDates,
         },
         participant,
-        attendee_email: participant?.professional_email || "",
+        attendee_email: attendeeEmail,
         visibility_options: DEFAULT_GOOGLE_CALENDAR_VISIBILITY,
       });
       if (response?.success === false && !response?.skipped) {
