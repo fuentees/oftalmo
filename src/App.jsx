@@ -7,6 +7,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'r
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import Login from './pages/Login';
 import TrainingFeedback from './pages/TrainingFeedback';
 import TracomaExaminerTest from './pages/TracomaExaminerTest';
@@ -98,20 +99,22 @@ const AuthenticatedApp = () => {
 function App() {
 
   return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
-        <Router>
-          <NavigationTracker />
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/TrainingFeedback" element={<TrainingFeedback />} />
-            <Route path="/TracomaExaminerTest" element={<TracomaExaminerTest />} />
-            <Route path="/*" element={<AuthenticatedApp />} />
-          </Routes>
-        </Router>
-        <Toaster />
-      </QueryClientProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <QueryClientProvider client={queryClientInstance}>
+          <Router>
+            <NavigationTracker />
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/TrainingFeedback" element={<TrainingFeedback />} />
+              <Route path="/TracomaExaminerTest" element={<TracomaExaminerTest />} />
+              <Route path="/*" element={<AuthenticatedApp />} />
+            </Routes>
+          </Router>
+          <Toaster />
+        </QueryClientProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 
