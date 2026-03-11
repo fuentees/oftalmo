@@ -61,7 +61,7 @@ const parseSeenBy = (value) => {
       if (Array.isArray(parsed)) {
         return Array.from(new Set(parsed.map(normalizeEmail).filter(Boolean)));
       }
-    } catch (error) {
+    } catch {
       // mantém fallback vazio quando não for JSON válido
     }
   }

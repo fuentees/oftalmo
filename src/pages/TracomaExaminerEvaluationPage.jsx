@@ -663,7 +663,7 @@ export default function TracomaExaminerEvaluationPage({
         };
       })
       .filter((item) => item.isApproved)
-      .map(({ isApproved, ...item }) => item)
+      .map(({ isApproved: _isApproved, ...item }) => item)
       .sort((a, b) =>
         String(a.name || "").localeCompare(String(b.name || ""), "pt-BR", {
           sensitivity: "base",

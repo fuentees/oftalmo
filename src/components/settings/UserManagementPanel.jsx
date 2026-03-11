@@ -98,7 +98,7 @@ export default function UserManagementPanel() {
         if (Number(syncResult?.created || 0) > 0 || Number(syncResult?.updated || 0) > 0) {
           queryClient.invalidateQueries({ queryKey: ["professionals"] });
         }
-      } catch (syncError) {
+      } catch {
         // sincronização é complementar: não deve bloquear a gestão de usuários
       }
     } catch (error) {

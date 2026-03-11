@@ -369,7 +369,7 @@ export default function PublicEnrollment() {
         await dataClient.entities.Training.update(trainingId, {
           participants_count: (training.participants_count || 0) + 1,
         });
-      } catch (error) {
+      } catch {
         warningMessage = warningMessage
           ? `${warningMessage} Seu cadastro foi registrado, mas a atualização do contador não concluiu agora.`
           : "Seu cadastro foi registrado, mas a atualização do contador não concluiu agora.";

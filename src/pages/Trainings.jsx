@@ -901,7 +901,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
         );
         if (cancelled) return;
         queryClient.invalidateQueries({ queryKey: ["trainings"] });
-      } catch (error) {
+      } catch {
         // Se falhar (RLS), mantém apenas o status visual.
       }
     };

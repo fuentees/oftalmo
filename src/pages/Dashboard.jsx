@@ -36,7 +36,7 @@ import DataTable from "@/components/common/DataTable";
 export default function Dashboard() {
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
 
-  const { data: materials = [], isLoading: loadingMaterials } = useQuery({
+  const { data: materials = [] } = useQuery({
     queryKey: ["materials"],
     queryFn: () => dataClient.entities.Material.list(),
   });

@@ -174,7 +174,7 @@ export default function Reports() {
 
   const exportToPDF = async () => {
     const pdf = new jsPDF('p', 'mm', 'a4');
-    const pageWidth = pdf.internal.pageSize.getWidth();
+    const _pageWidth = pdf.internal.pageSize.getWidth();
     
     pdf.setFontSize(20);
     pdf.text('Relatório de Treinamentos', 15, 20);
@@ -241,7 +241,7 @@ export default function Reports() {
   const sectors = [...new Set(professionals.map(p => p.sector).filter(Boolean))];
   const categories = ["NR", "tecnico", "comportamental", "integracao", "reciclagem", "outros"];
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+  const _COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
   const expiredColumns = [
     {

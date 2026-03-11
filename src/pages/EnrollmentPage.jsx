@@ -584,7 +584,7 @@ export default function EnrollmentPage({
     try {
       const bytes = Uint8Array.from(value, (char) => char.charCodeAt(0));
       return new TextDecoder("utf-8").decode(bytes);
-    } catch (error) {
+    } catch {
       return value;
     }
   };

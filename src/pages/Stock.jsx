@@ -191,7 +191,7 @@ export default function Stock() {
   const normalizeCategoryKey = (value) =>
     String(value ?? "").trim().toLowerCase();
 
-  const normalizeText = (value) =>
+  const _normalizeText = (value) =>
     String(value ?? "")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")

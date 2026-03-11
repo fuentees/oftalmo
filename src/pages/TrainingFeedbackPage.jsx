@@ -643,7 +643,7 @@ export default function TrainingFeedbackPage({
       questionText = buildChoiceQuestionText(cleanQuestionText, options);
     }
 
-    const { question_options_text, ...questionBase } = questionFormData;
+    const { question_options_text: _question_options_text, ...questionBase } = questionFormData;
     const payload = {
       ...questionBase,
       question_text: questionText,
@@ -700,7 +700,7 @@ export default function TrainingFeedbackPage({
 
     const payload = DEFAULT_TRAINING_FEEDBACK_QUESTIONS.map((question) => {
       const options = normalizeChoiceOptions(question.question_options);
-      const { question_options, ...restQuestion } = question;
+      const { question_options: _question_options, ...restQuestion } = question;
       return {
         ...restQuestion,
         question_text:

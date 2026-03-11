@@ -183,7 +183,7 @@ export default function Settings() {
         const settings = await loadEmailSettingsFromStorage();
         if (!active) return;
         setEmailSettings(settings);
-      } catch (error) {
+      } catch {
         if (!active) return;
         setEmailStatus({
           type: "error",
@@ -205,7 +205,7 @@ export default function Settings() {
         const template = await resolveCertificateEmailTemplate();
         if (!active) return;
         setCertificateEmailTemplate(template || DEFAULT_CERTIFICATE_EMAIL_TEMPLATE);
-      } catch (error) {
+      } catch {
         if (!active) return;
         setEmailTemplateStatus({
           type: "error",
@@ -289,7 +289,7 @@ export default function Settings() {
         const template = await resolveCertificateTemplate(trainingScope);
         if (!active) return;
         setCertificateTemplate(template || loadCertificateTemplate());
-      } catch (error) {
+      } catch {
         if (!active) return;
         setCertificateTemplate(loadCertificateTemplate());
       }
@@ -968,7 +968,7 @@ export default function Settings() {
         type: "success",
         message: "Mensagem de e-mail salva com sucesso.",
       });
-    } catch (error) {
+    } catch {
       setEmailTemplateStatus({
         type: "error",
         message:
@@ -986,7 +986,7 @@ export default function Settings() {
         type: "success",
         message: "Mensagem padrão restaurada.",
       });
-    } catch (error) {
+    } catch {
       setEmailTemplateStatus({
         type: "error",
         message:
@@ -1008,7 +1008,7 @@ export default function Settings() {
         type: "success",
         message: "Configurações globais de e-mail salvas.",
       });
-    } catch (error) {
+    } catch {
       setEmailStatus({
         type: "error",
         message:
@@ -1025,7 +1025,7 @@ export default function Settings() {
         type: "success",
         message: "Configurações globais de e-mail limpas.",
       });
-    } catch (error) {
+    } catch {
       setEmailStatus({
         type: "error",
         message:
