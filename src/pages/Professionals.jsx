@@ -202,8 +202,8 @@ export default function Professionals() {
   };
 
   const deleteProfessional = useMutation({
-    mutationFn: async () => {
-      const professionalId = String(deleteConfirm?.id || "").trim();
+  mutationFn: async (/** @type {string} */ professionalIdRaw) => {
+      const professionalId = String(professionalIdRaw || "").trim();
       if (!professionalId) {
         throw new Error("Profissional inválido para exclusão.");
       }
@@ -580,7 +580,9 @@ export default function Professionals() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteProfessional.mutate()}
+              onClick={() =>
+                deleteProfessional.mutate(String(deleteConfirm?.id || "").trim())
+              }
               className="bg-red-600 hover:bg-red-700"
               disabled={deleteProfessional.isPending}
             >
