@@ -76,13 +76,48 @@ const normalizeDates = (training: any) => {
     .sort((a, b) => a.date.localeCompare(b.date));
 };
 
-const resolveEventBounds = (training: any) => {
+const resolveEventEntries = (training: any) => {
   const dates = normalizeDates(training);
   if (dates.length > 0) {
-    const first = dates[0];
-    const last = dates[dates.length - 1];
-    const start = parseDateTime(first.date, first.start_time) || new Date();
-    const endCandidate = parseDateTime(last.date, last.end_time);
+    return dates.map((item) => ({
+      ...item,
+      key: item.date,
+    }));
+  }
+  const fallbackDate = normalizeDate(training?.date);
+  if (fallbackDate) {
+    return [
+      {
+        date: fallbackDate,
+        start_time: normalizeTime(training?.start_time, DEFAULT_START_TIME),
+        end_time: normalizeTime(training?.end_time, DEFAULT_END_TIME),
+        key: fallbackDate,
+      },
+    ];
+  }
+  return [
+    {
+      date: "",
+      start_time: DEFAULT_START_TIME,
+      end_time: DEFAULT_END_TIME,
+      key: "single",
+    },
+  ];
+};
+
+const resolveEventBoundsForEntry = (entry: {
+  date: string;
+  start_time: string;
+  end_time: string;
+}) => {
+  if (entry?.date) {
+    const start =
+      parseDateTime(entry.date, normalizeTime(entry.start_time, DEFAULT_START_TIME)) ||
+      new Date();
+    const endCandidate = parseDateTime(
+      entry.date,
+      normalizeTime(entry.end_time, DEFAULT_END_TIME)
+    );
     const end =
       endCandidate && endCandidate > start
         ? endCandidate
@@ -246,14 +281,26 @@ const getGoogleAccessToken = async () => {
   return token;
 };
 
-const buildEventId = async (training: any, participant: any, attendeeEmail: string) => {
-  const trainingId = normalizeString(training?.id) || normalizeString(training?.code);
-  const participantId =
-    normalizeString(participant?.id) ||
-    normalizeString(participant?.professional_cpf) ||
-    parseEmail(participant?.professional_email) ||
-    attendeeEmail;
-  const raw = `${trainingId}|${participantId}`.toLowerCase();
+const resolveTrainingRef = (training: any) =>
+  normalizeString(training?.id) || normalizeString(training?.code) || "training";
+
+const resolveParticipantRef = (participant: any, attendeeEmail: string) =>
+  normalizeString(participant?.id) ||
+  normalizeString(participant?.professional_cpf) ||
+  parseEmail(participant?.professional_email) ||
+  attendeeEmail ||
+  "participant";
+
+const buildEventId = async (
+  training: any,
+  participant: any,
+  attendeeEmail: string,
+  entryKey: string
+) => {
+  const trainingRef = resolveTrainingRef(training);
+  const participantRef = resolveParticipantRef(participant, attendeeEmail);
+  const raw = `${trainingRef}|${participantRef}|${normalizeString(entryKey) || "single"}`
+    .toLowerCase();
   const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(raw));
   const hex = Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -277,42 +324,36 @@ const googleRequest = async (
   return response;
 };
 
-const upsertCalendarEvent = async (payload: any) => {
-  const training = payload?.training || {};
-  const participant = payload?.participant || {};
-  const attendeeEmail = parseEmail(payload?.attendee_email || participant?.professional_email);
-  const visibility = resolveVisibility(payload?.visibility_options);
-  const summary = normalizeString(training?.title) || "Treinamento";
-  const location = visibility.includeLocation ? normalizeString(training?.location) : "";
-  const description = buildEventDescription(training, participant, visibility);
-  const { start, end } = resolveEventBounds(training);
-  const eventId = await buildEventId(training, participant, attendeeEmail);
-  const eventBody: Record<string, unknown> = {
-    id: eventId,
-    summary,
-    description,
-    location,
-    start: {
-      dateTime: start.toISOString(),
-      timeZone: GOOGLE_CALENDAR_TIMEZONE || DEFAULT_TIMEZONE,
-    },
-    end: {
-      dateTime: end.toISOString(),
-      timeZone: GOOGLE_CALENDAR_TIMEZONE || DEFAULT_TIMEZONE,
-    },
-    extendedProperties: {
-      private: {
-        source: "oftalmo",
-        training_id: normalizeString(training?.id),
-        participant_id: normalizeString(participant?.id),
-      },
-    },
-  };
-  if (attendeeEmail) {
-    eventBody.attendees = [{ email: attendeeEmail }];
+const listManagedCalendarEvents = async (
+  accessToken: string,
+  trainingRef: string,
+  participantRef: string
+) => {
+  const encodedCalendarId = encodeURIComponent(GOOGLE_CALENDAR_ID || "primary");
+  const params = new URLSearchParams();
+  params.append("privateExtendedProperty", "source=oftalmo");
+  params.append("privateExtendedProperty", `training_ref=${trainingRef}`);
+  params.append("privateExtendedProperty", `participant_ref=${participantRef}`);
+  params.append("showDeleted", "false");
+  params.append("maxResults", "2500");
+  const response = await googleRequest(
+    accessToken,
+    `/calendars/${encodedCalendarId}/events?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Falha ao listar eventos (${response.status}).`);
   }
+  const data = await response.json().catch(() => ({}));
+  return Array.isArray(data?.items) ? data.items : [];
+};
 
-  const accessToken = await getGoogleAccessToken();
+const upsertSingleCalendarEvent = async (
+  accessToken: string,
+  eventId: string,
+  eventBody: Record<string, unknown>
+) => {
   const encodedCalendarId = encodeURIComponent(GOOGLE_CALENDAR_ID || "primary");
   let response = await googleRequest(
     accessToken,
@@ -339,11 +380,84 @@ const upsertCalendarEvent = async (payload: any) => {
     throw new Error(errorText || `Falha ao sincronizar evento (${response.status}).`);
   }
 
-  const data = await response.json().catch(() => ({}));
+  return response.json().catch(() => ({}));
+};
+
+const upsertCalendarEvent = async (payload: any) => {
+  const training = payload?.training || {};
+  const participant = payload?.participant || {};
+  const attendeeEmail = parseEmail(payload?.attendee_email || participant?.professional_email);
+  const visibility = resolveVisibility(payload?.visibility_options);
+  const summary = normalizeString(training?.title) || "Treinamento";
+  const location = visibility.includeLocation ? normalizeString(training?.location) : "";
+  const description = buildEventDescription(training, participant, visibility);
+  const trainingRef = resolveTrainingRef(training);
+  const participantRef = resolveParticipantRef(participant, attendeeEmail);
+  const entries = resolveEventEntries(training);
+  const accessToken = await getGoogleAccessToken();
+  const existingEvents = await listManagedCalendarEvents(
+    accessToken,
+    trainingRef,
+    participantRef
+  );
+
+  const syncedEventIds: string[] = [];
+  let firstHtmlLink = "";
+
+  for (const entry of entries) {
+    const { start, end } = resolveEventBoundsForEntry(entry);
+    const eventId = await buildEventId(training, participant, attendeeEmail, entry.key);
+    const eventBody: Record<string, unknown> = {
+      id: eventId,
+      summary,
+      description,
+      location,
+      start: {
+        dateTime: start.toISOString(),
+        timeZone: GOOGLE_CALENDAR_TIMEZONE || DEFAULT_TIMEZONE,
+      },
+      end: {
+        dateTime: end.toISOString(),
+        timeZone: GOOGLE_CALENDAR_TIMEZONE || DEFAULT_TIMEZONE,
+      },
+      extendedProperties: {
+        private: {
+          source: "oftalmo",
+          training_id: normalizeString(training?.id),
+          participant_id: normalizeString(participant?.id),
+          training_ref: trainingRef,
+          participant_ref: participantRef,
+          training_date: normalizeString(entry.date),
+        },
+      },
+    };
+    if (attendeeEmail) {
+      eventBody.attendees = [{ email: attendeeEmail }];
+    }
+
+    const data = await upsertSingleCalendarEvent(accessToken, eventId, eventBody);
+    syncedEventIds.push(data?.id || eventId);
+    if (!firstHtmlLink && normalizeString(data?.htmlLink)) {
+      firstHtmlLink = normalizeString(data?.htmlLink);
+    }
+  }
+
+  const desiredIds = new Set(syncedEventIds);
+  for (const existingEvent of existingEvents) {
+    const existingId = normalizeString(existingEvent?.id);
+    if (!existingId || desiredIds.has(existingId)) continue;
+    await googleRequest(
+      accessToken,
+      `/calendars/${encodeURIComponent(GOOGLE_CALENDAR_ID || "primary")}/events/${existingId}?sendUpdates=all`,
+      { method: "DELETE" }
+    );
+  }
+
   return {
     success: true,
-    event_id: data?.id || eventId,
-    html_link: data?.htmlLink || "",
+    event_id: syncedEventIds[0] || "",
+    event_ids: syncedEventIds,
+    html_link: firstHtmlLink,
     attendee_email: attendeeEmail,
   };
 };
@@ -352,26 +466,37 @@ const deleteCalendarEvent = async (payload: any) => {
   const training = payload?.training || {};
   const participant = payload?.participant || {};
   const attendeeEmail = parseEmail(payload?.attendee_email || participant?.professional_email);
-  const eventId = await buildEventId(training, participant, attendeeEmail);
+  const trainingRef = resolveTrainingRef(training);
+  const participantRef = resolveParticipantRef(participant, attendeeEmail);
   const accessToken = await getGoogleAccessToken();
-  const encodedCalendarId = encodeURIComponent(GOOGLE_CALENDAR_ID || "primary");
-  const response = await googleRequest(
+  const existingEvents = await listManagedCalendarEvents(
     accessToken,
-    `/calendars/${encodedCalendarId}/events/${eventId}?sendUpdates=all`,
-    {
-      method: "DELETE",
-    }
+    trainingRef,
+    participantRef
   );
 
-  if (response.status !== 204 && response.status !== 404) {
-    const errorText = await response.text();
-    throw new Error(errorText || `Falha ao remover evento (${response.status}).`);
+  let deletedCount = 0;
+  for (const eventItem of existingEvents) {
+    const eventId = normalizeString(eventItem?.id);
+    if (!eventId) continue;
+    const response = await googleRequest(
+      accessToken,
+      `/calendars/${encodeURIComponent(GOOGLE_CALENDAR_ID || "primary")}/events/${eventId}?sendUpdates=all`,
+      {
+        method: "DELETE",
+      }
+    );
+    if (response.status !== 204 && response.status !== 404) {
+      const errorText = await response.text();
+      throw new Error(errorText || `Falha ao remover evento (${response.status}).`);
+    }
+    if (response.status === 204) deletedCount += 1;
   }
 
   return {
     success: true,
-    deleted: response.status === 204,
-    event_id: eventId,
+    deleted: deletedCount > 0,
+    deleted_count: deletedCount,
   };
 };
 

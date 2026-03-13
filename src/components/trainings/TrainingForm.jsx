@@ -469,7 +469,34 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     return "planejado";
   };
 
-  const buildEventPayload = (payload) => {
+  const resolveTrainingEventDates = (payload) => {
+    const dates = Array.isArray(payload?.dates) ? payload.dates : [];
+    const normalized = dates
+      .map((item) => {
+        const date = String(item?.date || "").trim();
+        if (!date) return null;
+        return {
+          date,
+          start_time: String(item?.start_time || "").trim(),
+          end_time: String(item?.end_time || "").trim(),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    if (normalized.length > 0) return normalized;
+
+    const fallbackDate = String(payload?.date || "").trim();
+    if (!fallbackDate) return [];
+    return [
+      {
+        date: fallbackDate,
+        start_time: "",
+        end_time: "",
+      },
+    ];
+  };
+
+  const buildEventPayload = (payload, eventDate = null) => {
     const dateRange = getTrainingDateRange(payload.dates || []);
     const professionalNames = [
       payload.coordinator,
@@ -483,10 +510,24 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       title: payload.title || "Treinamento",
       type: "treinamento",
       description: payload.description || "",
-      start_date: dateRange.start_date || payload.date || null,
-      end_date: dateRange.end_date || payload.date || null,
-      start_time: dateRange.start_time || "",
-      end_time: dateRange.end_time || "",
+      start_date:
+        String(eventDate?.date || "").trim() ||
+        dateRange.start_date ||
+        payload.date ||
+        null,
+      end_date:
+        String(eventDate?.date || "").trim() ||
+        dateRange.end_date ||
+        payload.date ||
+        null,
+      start_time:
+        String(eventDate?.start_time || "").trim() ||
+        dateRange.start_time ||
+        "",
+      end_time:
+        String(eventDate?.end_time || "").trim() ||
+        dateRange.end_time ||
+        "",
       location: payload.location || "",
       professional_names: professionalNames.length ? professionalNames : null,
       status: mapTrainingStatusToEvent(payload.status),
@@ -496,6 +537,30 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         onlineLink: payload.online_link,
       }),
     };
+  };
+
+  const buildTrainingEventPayloads = (payload, trainingId) => {
+    const eventDates = resolveTrainingEventDates(payload);
+    if (eventDates.length === 0) {
+      return [
+        {
+          ...buildEventPayload(payload),
+          notes: buildEventNotes({
+            notes: payload.notes,
+            onlineLink: payload.online_link,
+            trainingId,
+          }),
+        },
+      ];
+    }
+    return eventDates.map((eventDate) => ({
+      ...buildEventPayload(payload, eventDate),
+      notes: buildEventNotes({
+        notes: payload.notes,
+        onlineLink: payload.online_link,
+        trainingId,
+      }),
+    }));
   };
 
   const normalizeComparisonText = (value) =>
@@ -537,6 +602,15 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
           data
         );
         try {
+          const desiredEventPayloads = buildTrainingEventPayloads(data, training.id);
+          const desiredByDate = new Map();
+          desiredEventPayloads.forEach((payload) => {
+            const dateKey = String(payload.start_date || "").trim() || "__single__";
+            if (!desiredByDate.has(dateKey)) {
+              desiredByDate.set(dateKey, []);
+            }
+            desiredByDate.get(dateKey).push(payload);
+          });
           const trainingEvents = await dataClient.entities.Event.filter(
             { type: "treinamento" },
             "-start_date"
@@ -545,29 +619,47 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             (item) =>
               extractTrainingIdFromEventNotes(item.notes) === training.id
           );
-          const eventPayload = {
-            ...buildEventPayload(data),
-            notes: buildEventNotes({
-              notes: data.notes,
-              onlineLink: data.online_link,
-              trainingId: training.id,
-            }),
-          };
-          if (linkedEvents.length > 0) {
-            await Promise.all(
-              linkedEvents.map((item) =>
-                dataClient.entities.Event.update(item.id, eventPayload)
-              )
-            );
-          } else {
-            const legacyEvent =
-              findLegacyTrainingEvent(trainingEvents, training) ||
-              findLegacyTrainingEvent(trainingEvents, data);
-            if (legacyEvent?.id) {
-              await dataClient.entities.Event.update(legacyEvent.id, eventPayload);
-            } else {
-              await dataClient.entities.Event.create(eventPayload);
+
+          const candidateEvents =
+            linkedEvents.length > 0
+              ? linkedEvents
+              : (() => {
+                  const legacyEvent =
+                    findLegacyTrainingEvent(trainingEvents, training) ||
+                    findLegacyTrainingEvent(trainingEvents, data);
+                  return legacyEvent?.id ? [legacyEvent] : [];
+                })();
+
+          const candidatesByDate = new Map();
+          candidateEvents.forEach((eventItem) => {
+            const dateKey =
+              String(eventItem?.start_date || "").trim() || "__single__";
+            if (!candidatesByDate.has(dateKey)) {
+              candidatesByDate.set(dateKey, []);
             }
+            candidatesByDate.get(dateKey).push(eventItem);
+          });
+
+          const usedEventIds = new Set();
+
+          for (const [dateKey, payloads] of desiredByDate.entries()) {
+            const availableEvents = candidatesByDate.get(dateKey) || [];
+            for (const payload of payloads) {
+              const nextExisting = availableEvents.shift();
+              if (nextExisting?.id) {
+                await dataClient.entities.Event.update(nextExisting.id, payload);
+                usedEventIds.add(String(nextExisting.id));
+                continue;
+              }
+              await dataClient.entities.Event.create(payload);
+            }
+          }
+
+          // Remove eventos antigos ligados ao treinamento que não existem mais nas datas atuais.
+          for (const eventItem of candidateEvents) {
+            const eventId = String(eventItem?.id || "").trim();
+            if (!eventId || usedEventIds.has(eventId)) continue;
+            await dataClient.entities.Event.delete(eventId);
           }
         } catch (error) {
           console.error("Falha ao sincronizar evento do treinamento:", error);
@@ -576,14 +668,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       }
       const created = await dataClient.entities.Training.create(data);
       try {
-        await dataClient.entities.Event.create({
-          ...buildEventPayload(data),
-          notes: buildEventNotes({
-            notes: data.notes,
-            onlineLink: data.online_link,
-            trainingId: created.id,
-          }),
-        });
+        const eventPayloads = buildTrainingEventPayloads(data, created.id);
+        if (eventPayloads.length > 0) {
+          await dataClient.entities.Event.bulkCreate(eventPayloads);
+        }
       } catch (error) {
         console.error("Falha ao criar evento do treinamento:", error);
       }
