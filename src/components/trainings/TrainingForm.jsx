@@ -174,34 +174,111 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       const trimmed = value.trim();
       const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
       if (match) return match[1];
+      const brMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (brMatch) {
+        const day = brMatch[1];
+        const month = brMatch[2];
+        const year = brMatch[3];
+        return `${year}-${month}-${day}`;
+      }
     }
     const parsed = parseDateSafe(value);
     if (Number.isNaN(parsed.getTime())) return "";
     return format(parsed, "yyyy-MM-dd");
   };
 
+  const parseRawDateEntries = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          return parseRawDateEntries(parsed);
+        } catch {
+          // Segue para parser delimitado.
+        }
+      }
+      return trimmed
+        .split(/[;,|\n]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+    if (typeof value === "object") {
+      const candidateDate =
+        value.date ??
+        value.data ??
+        value.day ??
+        value.training_date ??
+        value.start_date ??
+        value.startDate;
+      if (candidateDate) return [value];
+      return Object.values(value);
+    }
+    return [];
+  };
+
   const normalizeTrainingDates = (dates, fallbackTimes = {}) => {
-    const items = Array.isArray(dates) ? dates : [];
-    return items
+    const items = parseRawDateEntries(dates);
+    const normalized = items
       .map((item) => {
-        const rawDate = typeof item === "object" ? item?.date : item;
+        if (typeof item === "string") {
+          const trimmed = item.trim();
+          if (!trimmed) return null;
+          if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            try {
+              const parsedItem = JSON.parse(trimmed);
+              const innerItems = parseRawDateEntries(parsedItem);
+              if (innerItems.length > 0) {
+                return normalizeTrainingDates(innerItems, fallbackTimes);
+              }
+            } catch {
+              // Ignora JSON inválido e tenta tratar como data simples.
+            }
+          }
+        }
+        const rawDate =
+          typeof item === "object"
+            ? item?.date ??
+              item?.data ??
+              item?.day ??
+              item?.training_date ??
+              item?.start_date ??
+              item?.startDate
+            : item;
         const date = toNormalizedDate(rawDate);
         if (!date) return null;
         const start_time =
           String(
-            (typeof item === "object" ? item?.start_time : "") ||
+            (typeof item === "object"
+              ? item?.start_time ?? item?.startTime ?? item?.hora_inicio
+              : "") ||
               fallbackTimes?.start_time ||
               "08:00"
           ).trim() || "08:00";
         const end_time =
           String(
-            (typeof item === "object" ? item?.end_time : "") ||
+            (typeof item === "object"
+              ? item?.end_time ?? item?.endTime ?? item?.hora_fim
+              : "") ||
               fallbackTimes?.end_time ||
               "12:00"
           ).trim() || "12:00";
         return { date, start_time, end_time };
       })
+      .flat()
       .filter(Boolean);
+    const seen = new Set();
+    return normalized
+      .filter((item) => {
+      const key = `${item.date}|${item.start_time}|${item.end_time}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+      })
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   };
 
   const buildLegacyDatesFromTraining = (trainingItem) => {

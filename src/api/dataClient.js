@@ -35,28 +35,97 @@ let sharedEmailSettingsCacheTime = 0;
 const toSnakeCase = (value) =>
   value.replace(/([A-Z])/g, "_$1").toLowerCase();
 
-const normalizeTrainingDates = (dates) => {
-  if (!dates) return [];
-  let parsed = dates;
-
-  if (typeof dates === "string") {
-    try {
-      parsed = JSON.parse(dates);
-    } catch (error) {
-      return [];
-    }
+const normalizeDateValue = (value) => {
+  if (!value) return "";
+  const text = String(value).trim();
+  if (!text) return "";
+  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+  const brMatch = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brMatch) {
+    const day = brMatch[1];
+    const month = brMatch[2];
+    const year = brMatch[3];
+    return `${year}-${month}-${day}`;
   }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
-  if (!Array.isArray(parsed)) return [];
+const parseRawTrainingDates = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      try {
+        return parseRawTrainingDates(JSON.parse(trimmed));
+      } catch {
+        // Continua para parser delimitado.
+      }
+    }
+    return trimmed
+      .split(/[;,|\n]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === "object") {
+    const candidateDate =
+      value.date ??
+      value.data ??
+      value.day ??
+      value.training_date ??
+      value.start_date ??
+      value.startDate;
+    if (candidateDate) return [value];
+    return Object.values(value);
+  }
+  return [];
+};
 
-  return parsed
+const normalizeTrainingDates = (dates) => {
+  const parsed = parseRawTrainingDates(dates);
+  const normalized = parsed
     .map((item) => {
       if (!item) return null;
-      if (typeof item === "string") return { date: item };
-      if (typeof item === "object" && item.date) return { ...item };
+      if (typeof item === "string") {
+        const date = normalizeDateValue(item);
+        return date ? { date } : null;
+      }
+      if (typeof item === "object") {
+        const date = normalizeDateValue(
+          item.date ??
+            item.data ??
+            item.day ??
+            item.training_date ??
+            item.start_date ??
+            item.startDate
+        );
+        if (!date) return null;
+        return {
+          ...item,
+          date,
+        };
+      }
       return null;
     })
     .filter(Boolean);
+  const seen = new Set();
+  return normalized
+    .filter((item) => {
+      const key = `${String(item?.date || "")}|${String(item?.start_time || "")}|${String(
+        item?.end_time || ""
+      )}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
 };
 
 const normalizeTrainingRecord = (record) => {
