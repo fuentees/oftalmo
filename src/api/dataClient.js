@@ -1282,39 +1282,47 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
 
   const webhookUrl =
     getWebhookUrl(settings.webhookUrl) || getWebhookUrl(EMAIL_WEBHOOK_URL);
+  let webhookFailureMessage = "";
   if (webhookUrl) {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const rawBody = await response.text();
-    let parsedBody = null;
-    if (rawBody) {
-      try {
-        parsedBody = JSON.parse(rawBody);
-      } catch {
-        parsedBody = null;
+    try {
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const rawBody = await response.text();
+      let parsedBody = null;
+      if (rawBody) {
+        try {
+          parsedBody = JSON.parse(rawBody);
+        } catch {
+          parsedBody = null;
+        }
       }
-    }
-    const webhookErrorText =
-      typeof parsedBody?.error === "string"
-        ? parsedBody.error.trim()
-        : typeof parsedBody?.message === "string"
-          ? parsedBody.message.trim()
-          : "";
-    const webhookExplicitFailure =
-      parsedBody &&
-      typeof parsedBody === "object" &&
-      (parsedBody.success === false ||
-        parsedBody.ok === false ||
-        parsedBody.sent === false ||
-        String(parsedBody.status || "").trim().toLowerCase() === "error");
+      const webhookErrorText =
+        typeof parsedBody?.error === "string"
+          ? parsedBody.error.trim()
+          : typeof parsedBody?.message === "string"
+            ? parsedBody.message.trim()
+            : "";
+      const webhookExplicitFailure =
+        parsedBody &&
+        typeof parsedBody === "object" &&
+        (parsedBody.success === false ||
+          parsedBody.ok === false ||
+          parsedBody.sent === false ||
+          String(parsedBody.status || "").trim().toLowerCase() === "error");
 
-    if (!response.ok || webhookExplicitFailure || webhookErrorText) {
-      throw new Error(webhookErrorText || "Falha ao enviar email via webhook.");
+      if (!response.ok || webhookExplicitFailure || webhookErrorText) {
+        webhookFailureMessage =
+          webhookErrorText || `Falha no webhook de e-mail (${response.status}).`;
+      } else {
+        return parsedBody || {};
+      }
+    } catch (error) {
+      webhookFailureMessage =
+        error?.message || "Falha ao enviar email pelo webhook configurado.";
     }
-    return parsedBody || {};
   }
 
   const accessToken = await getAccessToken();
@@ -1329,18 +1337,47 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
     if (error) {
       const message = error.message || "";
       if (shouldFallbackFunctionCall(message) || shouldFallbackByStatus(error.status)) {
-        return await invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload, accessToken);
+        try {
+          return await invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload, accessToken);
+        } catch (fallbackError) {
+          const fallbackMessage =
+            fallbackError?.message || "Falha ao enviar e-mail pela função send-email.";
+          if (webhookFailureMessage) {
+            throw new Error(
+              `${fallbackMessage} (Webhook também falhou: ${webhookFailureMessage})`
+            );
+          }
+          throw fallbackError;
+        }
       }
-      throw new Error(
-        error.message ||
-          "Função send-email não configurada no Supabase."
-      );
+      const functionErrorMessage =
+        error.message || "Função send-email não configurada no Supabase.";
+      if (webhookFailureMessage) {
+        throw new Error(
+          `${functionErrorMessage} (Webhook também falhou: ${webhookFailureMessage})`
+        );
+      }
+      throw new Error(functionErrorMessage);
     }
     return data;
   } catch (error) {
     const message = error?.message || String(error || "");
     if (shouldFallbackFunctionCall(message) || shouldFallbackByStatus(error?.status)) {
-      return invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload, accessToken);
+      try {
+        return await invokeSupabaseFunction(EMAIL_FUNCTION_NAME, payload, accessToken);
+      } catch (fallbackError) {
+        const fallbackMessage =
+          fallbackError?.message || "Falha ao enviar e-mail pela função send-email.";
+        if (webhookFailureMessage) {
+          throw new Error(
+            `${fallbackMessage} (Webhook também falhou: ${webhookFailureMessage})`
+          );
+        }
+        throw fallbackError;
+      }
+    }
+    if (webhookFailureMessage) {
+      throw new Error(`${message} (Webhook também falhou: ${webhookFailureMessage})`);
     }
     throw error;
   }

@@ -100,17 +100,36 @@ serve(async (req) => {
   }
 
   try {
-    const { to, subject, html, from, attachments } = await req.json();
+    const { to, subject, html, from, from_email, from_name, attachments } =
+      await req.json();
+    if (!String(RESEND_API_KEY || "").trim()) {
+      return new Response(
+        JSON.stringify({
+          error: "RESEND_API_KEY não configurada.",
+          hint:
+            "Após redeploy, confirme o secret RESEND_API_KEY na função send-email.",
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
     const requestedFromEmail = normalizeRequestedFromEmail(
-      normalizeEmail(from?.email)
+      normalizeEmail(from?.email || from_email)
     );
     const requestedFromName =
-      String(from?.name || "").trim() || RESEND_PREFERRED_FROM_NAME;
+      String(from?.name || from_name || "").trim() || RESEND_PREFERRED_FROM_NAME;
+
+    const preferredFallbackFrom = buildFromValue(
+      `${RESEND_PREFERRED_FROM_LOCAL_PART}@${RESEND_VERIFIED_FALLBACK_DOMAIN}`,
+      RESEND_PREFERRED_FROM_NAME
+    );
 
     const fromValue =
       requestedFromEmail
         ? buildFromValue(requestedFromEmail, requestedFromName)
-        : RESEND_FROM;
+        : String(RESEND_FROM || "").trim() || preferredFallbackFrom;
 
     const payload = {
       from: fromValue,
