@@ -15,6 +15,9 @@ const CERTIFICATE_TEMPLATE_MAP_FILE_PREFIX = "certificate-template-by-training-"
 const SHARED_CONFIG_KEY_TEMPLATE = "__config__:certificate-template";
 const SHARED_CONFIG_KEY_TEMPLATE_MAP =
   "__config__:certificate-template-by-training";
+const SHARED_CONFIG_KEY_TEMPLATE_MODELS =
+  "__config__:certificate-template-models";
+export const DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID = "__default_model__";
 
 export const DEFAULT_CERTIFICATE_TEMPLATE = {
   headerLines: [
@@ -255,6 +258,36 @@ const normalizeTrainingTemplateIds = (value) => {
 const normalizeTrainingTemplateId = (value) =>
   normalizeTrainingTemplateIds(value)[0] || "";
 
+const normalizeTemplateModelName = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\s+/g, " ");
+
+const normalizeTemplateModelId = (value) =>
+  String(value || "")
+    .trim();
+
+const normalizeTemplateModelsPayload = (value) => {
+  const rows = Array.isArray(value?.models)
+    ? value.models
+    : Array.isArray(value)
+    ? value
+    : [];
+  const uniqueById = new Map();
+  rows.forEach((row) => {
+    if (!row || typeof row !== "object") return;
+    const id = normalizeTemplateModelId(row.id);
+    if (!id || id === DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID) return;
+    const name = normalizeTemplateModelName(row.name) || `Modelo ${id}`;
+    uniqueById.set(id, {
+      id,
+      name,
+      template: mergeTemplate(row.template || row),
+    });
+  });
+  return Array.from(uniqueById.values());
+};
+
 const mergeTemplateMap = (templateMap) => {
   const rows = Object.entries(templateMap || {});
   return rows.reduce((acc, [key, value]) => {
@@ -285,6 +318,15 @@ const loadTemplateMapFromSharedStore = async () => {
   }
 };
 
+const loadTemplateModelsFromSharedStore = async () => {
+  try {
+    const parsed = await loadSharedConfigJson(SHARED_CONFIG_KEY_TEMPLATE_MODELS);
+    return normalizeTemplateModelsPayload(parsed);
+  } catch {
+    return [];
+  }
+};
+
 const saveGlobalTemplateToSharedStore = async (template) => {
   const payload = mergeTemplate(template);
   await saveSharedConfigJson(SHARED_CONFIG_KEY_TEMPLATE, payload);
@@ -295,6 +337,14 @@ const saveTemplateMapToSharedStore = async (templateMap) => {
   const payload = mergeTemplateMap(templateMap);
   await saveSharedConfigJson(SHARED_CONFIG_KEY_TEMPLATE_MAP, payload);
   return payload;
+};
+
+const saveTemplateModelsToSharedStore = async (models) => {
+  const payload = {
+    models: normalizeTemplateModelsPayload({ models }),
+  };
+  await saveSharedConfigJson(SHARED_CONFIG_KEY_TEMPLATE_MODELS, payload);
+  return payload.models;
 };
 
 const stableStringifyMap = (templateMap) => {
@@ -503,6 +553,122 @@ export const resolveCertificateTemplate = async (trainingScope = null) => {
   }
 
   return mergeTemplate(scopedTemplate);
+};
+
+export const listCertificateTemplateModels = async () => {
+  const [globalTemplate, customModels] = await Promise.all([
+    resolveGlobalCertificateTemplate(),
+    loadTemplateModelsFromSharedStore(),
+  ]);
+  return [
+    {
+      id: DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID,
+      name: "Modelo padrão",
+      template: mergeTemplate(globalTemplate),
+      isDefault: true,
+    },
+    ...customModels.map((item) => ({
+      id: item.id,
+      name: item.name,
+      template: mergeTemplate(item.template),
+      isDefault: false,
+    })),
+  ];
+};
+
+export const resolveCertificateTemplateByModel = async (modelId) => {
+  const normalizedId = normalizeTemplateModelId(modelId);
+  if (
+    !normalizedId ||
+    normalizedId === DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID
+  ) {
+    return resolveGlobalCertificateTemplate();
+  }
+  const customModels = await loadTemplateModelsFromSharedStore();
+  const found = customModels.find((item) => item.id === normalizedId);
+  if (!found) {
+    return resolveGlobalCertificateTemplate();
+  }
+  return mergeTemplate(found.template);
+};
+
+const slugifyTemplateModelName = (value) =>
+  normalizeTemplateModelName(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+export const createCertificateTemplateModel = async ({
+  name,
+  baseTemplate,
+}) => {
+  const normalizedName = normalizeTemplateModelName(name);
+  if (!normalizedName) {
+    throw new Error("Informe um nome para o modelo.");
+  }
+  const customModels = await loadTemplateModelsFromSharedStore();
+  const existingNames = new Set(
+    customModels.map((item) => normalizeTemplateModelName(item.name).toLowerCase())
+  );
+  if (existingNames.has(normalizedName.toLowerCase())) {
+    throw new Error("Já existe um modelo com esse nome.");
+  }
+  const baseId = slugifyTemplateModelName(normalizedName) || "modelo";
+  let candidateId = baseId;
+  let suffix = 2;
+  const usedIds = new Set(customModels.map((item) => item.id));
+  while (usedIds.has(candidateId) || candidateId === DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID) {
+    candidateId = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+  const template =
+    mergeTemplate(baseTemplate) || (await resolveGlobalCertificateTemplate());
+  const nextModels = [
+    ...customModels,
+    {
+      id: candidateId,
+      name: normalizedName,
+      template,
+    },
+  ];
+  await saveTemplateModelsToSharedStore(nextModels);
+  return {
+    id: candidateId,
+    name: normalizedName,
+    template,
+    isDefault: false,
+  };
+};
+
+export const saveCertificateTemplateByModel = async (modelId, template) => {
+  const normalizedId = normalizeTemplateModelId(modelId);
+  const payload = mergeTemplate(template);
+  if (
+    !normalizedId ||
+    normalizedId === DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID
+  ) {
+    await saveCertificateTemplateToStorage(payload);
+    return payload;
+  }
+  const customModels = await loadTemplateModelsFromSharedStore();
+  const existingIndex = customModels.findIndex((item) => item.id === normalizedId);
+  if (existingIndex >= 0) {
+    const current = customModels[existingIndex];
+    customModels[existingIndex] = {
+      ...current,
+      template: payload,
+    };
+  } else {
+    customModels.push({
+      id: normalizedId,
+      name: normalizedId,
+      template: payload,
+    });
+  }
+  await saveTemplateModelsToSharedStore(customModels);
+  return payload;
 };
 
 export const resetCertificateTemplate = () => {

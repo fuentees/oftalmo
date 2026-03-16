@@ -36,7 +36,11 @@ import {
   interpolateEmailTemplate,
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
-import { resolveCertificateTemplate } from "@/lib/certificateTemplate";
+import {
+  DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID,
+  listCertificateTemplateModels,
+  resolveCertificateTemplateByModel,
+} from "@/lib/certificateTemplate";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
 import {
   normalizeParticipantEmail,
@@ -75,8 +79,7 @@ const escapeHtml = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-const CERT_TEMPLATE_SCOPE_CURRENT = "__current_training__";
-const CERT_TEMPLATE_SCOPE_GLOBAL = "__global_template__";
+const CERT_TEMPLATE_SCOPE_GLOBAL = DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID;
 const STAFF_ROLE_LABELS = {
   coordenador: "Coordenador",
   monitor: "Monitor",
@@ -84,13 +87,6 @@ const STAFF_ROLE_LABELS = {
 };
 const EMAIL_SPLIT_REGEX = /[;,\n]+/;
 const SIMPLE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-const normalizeTemplateTitleKey = (value) =>
-  String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ");
 const normalizeEmailToken = (value) => {
   const raw = String(value || "").trim().toLowerCase();
   if (!raw) return "";
@@ -188,7 +184,7 @@ export default function CertificateManager({ training, participants = [], onClos
   const [previewParticipantId, setPreviewParticipantId] = useState("");
   const [previewTeamRecipientId, setPreviewTeamRecipientId] = useState("");
   const [selectedTemplateScope, setSelectedTemplateScope] = useState(
-    CERT_TEMPLATE_SCOPE_CURRENT
+    CERT_TEMPLATE_SCOPE_GLOBAL
   );
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
@@ -218,9 +214,9 @@ export default function CertificateManager({ training, participants = [], onClos
     queryFn: () => dataClient.entities.TracomaExamAnswerKey.list("question_number"),
     enabled: Boolean(training?.id && isRepadTraining),
   });
-  const trainingsQuery = useQuery({
-    queryKey: ["trainings"],
-    queryFn: () => dataClient.entities.Training.list("-date"),
+  const certificateModelsQuery = useQuery({
+    queryKey: ["certificate-template-models"],
+    queryFn: () => listCertificateTemplateModels(),
     enabled: true,
   });
 
@@ -404,67 +400,23 @@ export default function CertificateManager({ training, participants = [], onClos
     };
   };
 
-  const allTrainings = Array.isArray(trainingsQuery.data)
-    ? trainingsQuery.data
-    : [];
-  const templateTrainingOptions = useMemo(() => {
-    const groupedByTitle = new Map();
-    allTrainings.forEach((item) => {
-      const id = String(item?.id || "").trim();
-      if (!id) return;
-      const title = String(item?.title || "").trim() || "Treinamento sem título";
-      const titleKey = normalizeTemplateTitleKey(title) || id;
-      const existing = groupedByTitle.get(titleKey);
-      if (existing) {
-        if (!existing.trainingIds.includes(id)) {
-          existing.trainingIds.push(id);
-        }
-        return;
-      }
-      groupedByTitle.set(titleKey, {
-        id,
-        title,
-        trainingIds: [id],
-      });
-    });
-
-    return Array.from(groupedByTitle.values()).sort((a, b) =>
-      a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" })
-    );
-  }, [allTrainings]);
-
-  const selectedTemplateTraining = useMemo(
-    () =>
-      selectedTemplateScope === CERT_TEMPLATE_SCOPE_GLOBAL ||
-      selectedTemplateScope === CERT_TEMPLATE_SCOPE_CURRENT
-        ? null
-        : templateTrainingOptions.find((item) => item.id === selectedTemplateScope) ||
-          null,
-    [selectedTemplateScope, templateTrainingOptions]
+  const certificateModelOptions = useMemo(
+    () => certificateModelsQuery.data || [],
+    [certificateModelsQuery.data]
   );
 
-  const resolveTemplateScope = () => {
-    if (selectedTemplateScope === CERT_TEMPLATE_SCOPE_GLOBAL) {
-      return null;
-    }
-    if (selectedTemplateScope === CERT_TEMPLATE_SCOPE_CURRENT) {
-      return training;
-    }
-    const scopedIds = selectedTemplateTraining?.trainingIds?.filter(Boolean) || [];
-    if (scopedIds.length > 0) {
-      return {
-        id: selectedTemplateTraining?.id || scopedIds[0],
-        trainingIds: scopedIds,
-      };
-    }
-    return selectedTemplateTraining?.id || training;
-  };
+  const selectedTemplateModel = useMemo(
+    () =>
+      certificateModelOptions.find((item) => item.id === selectedTemplateScope) ||
+      null,
+    [certificateModelOptions, selectedTemplateScope]
+  );
 
   const resolveSelectedTemplateOverride = async () =>
-    resolveCertificateTemplate(resolveTemplateScope());
+    resolveCertificateTemplateByModel(selectedTemplateScope);
 
   React.useEffect(() => {
-    setSelectedTemplateScope(CERT_TEMPLATE_SCOPE_CURRENT);
+    setSelectedTemplateScope(CERT_TEMPLATE_SCOPE_GLOBAL);
     setPreviewParticipantId("");
     setPreviewTeamRecipientId("");
   }, [training?.id]);
@@ -1082,20 +1034,14 @@ export default function CertificateManager({ training, participants = [], onClos
   const totalTeamCount = teamRecipients.length;
 
   const selectedTemplateDescription = useMemo(() => {
-    if (selectedTemplateScope === CERT_TEMPLATE_SCOPE_GLOBAL) {
+    if (selectedTemplateModel?.isDefault) {
       return "Modelo padrão global (todos os treinamentos).";
     }
-    if (selectedTemplateScope === CERT_TEMPLATE_SCOPE_CURRENT) {
-      return "Modelo deste treinamento.";
+    if (selectedTemplateModel?.name) {
+      return `Modelo personalizado: ${selectedTemplateModel.name}.`;
     }
-    if (!selectedTemplateTraining) {
-      return "Modelo de outro treinamento.";
-    }
-    const groupsCount = selectedTemplateTraining.trainingIds?.length || 0;
-    return groupsCount > 1
-      ? `Modelo compartilhado: ${selectedTemplateTraining.title} (${groupsCount} turmas).`
-      : `Modelo: ${selectedTemplateTraining.title}.`;
-  }, [selectedTemplateScope, selectedTemplateTraining]);
+    return "Modelo padrão global (todos os treinamentos).";
+  }, [selectedTemplateModel]);
 
   React.useEffect(() => {
     if (!previewParticipantId) return;
@@ -1428,18 +1374,10 @@ export default function CertificateManager({ training, participants = [], onClos
                     <SelectValue placeholder="Selecione o modelo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={CERT_TEMPLATE_SCOPE_CURRENT}>
-                      Modelo deste treinamento
-                    </SelectItem>
-                    <SelectItem value={CERT_TEMPLATE_SCOPE_GLOBAL}>
-                      Modelo padrão global
-                    </SelectItem>
-                    {templateTrainingOptions.map((option) => (
+                    {certificateModelOptions.map((option) => (
                       <SelectItem key={option.id} value={option.id}>
-                        {option.title}
-                        {option.trainingIds?.length > 1
-                          ? ` (${option.trainingIds.length} turmas)`
-                          : ""}
+                        {option.name}
+                        {option.isDefault ? " (padrão)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1669,18 +1607,10 @@ export default function CertificateManager({ training, participants = [], onClos
                     <SelectValue placeholder="Selecione o modelo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={CERT_TEMPLATE_SCOPE_CURRENT}>
-                      Modelo deste treinamento
-                    </SelectItem>
-                    <SelectItem value={CERT_TEMPLATE_SCOPE_GLOBAL}>
-                      Modelo padrão global
-                    </SelectItem>
-                    {templateTrainingOptions.map((option) => (
+                    {certificateModelOptions.map((option) => (
                       <SelectItem key={option.id} value={option.id}>
-                        {option.title}
-                        {option.trainingIds?.length > 1
-                          ? ` (${option.trainingIds.length} turmas)`
-                          : ""}
+                        {option.name}
+                        {option.isDefault ? " (padrão)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

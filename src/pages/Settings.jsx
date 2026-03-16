@@ -48,10 +48,11 @@ import {
   DEFAULT_CERTIFICATE_TEMPLATE,
   loadCertificateTemplate,
   resetCertificateTemplate,
-  saveCertificateTemplateToStorage,
-  saveCertificateTemplateForTraining,
-  resetCertificateTemplateForTraining,
-  resolveCertificateTemplate,
+  DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID,
+  listCertificateTemplateModels,
+  createCertificateTemplateModel,
+  resolveCertificateTemplateByModel,
+  saveCertificateTemplateByModel,
 } from "@/lib/certificateTemplate";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
@@ -71,7 +72,6 @@ import { generateParticipantCertificate } from "@/components/trainings/Certifica
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 
-const CERTIFICATE_SCOPE_GLOBAL = "__global__";
 const DEFAULT_BODY_MAX_WORD_SPACING = 2;
 const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i;
 const CERTIFICATE_BODY_EDITOR_MODULES = {
@@ -149,9 +149,10 @@ export default function Settings() {
   const [certificateTemplate, setCertificateTemplate] = useState(
     DEFAULT_CERTIFICATE_TEMPLATE
   );
-  const [certificateScope, setCertificateScope] = useState(
-    CERTIFICATE_SCOPE_GLOBAL
+  const [certificateModelId, setCertificateModelId] = useState(
+    DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID
   );
+  const [newCertificateModelName, setNewCertificateModelName] = useState("");
   const [certificateStatus, setCertificateStatus] = useState(null);
   const [emailSettings, setEmailSettings] = useState(DEFAULT_EMAIL_SETTINGS);
   const [emailStatus, setEmailStatus] = useState(null);
@@ -170,6 +171,10 @@ export default function Settings() {
   const { data: trainings = [] } = useQuery({
     queryKey: ["trainings"],
     queryFn: () => dataClient.entities.Training.list("-date"),
+  });
+  const certificateModelsQuery = useQuery({
+    queryKey: ["certificate-template-models"],
+    queryFn: () => listCertificateTemplateModels(),
   });
 
   useEffect(() => {
@@ -229,64 +234,34 @@ export default function Settings() {
     { name: "Ciano", value: "cyan", classes: "bg-cyan-900 border-cyan-800 bg-cyan-500 text-cyan-100 hover:bg-cyan-800 bg-cyan-600 hover:bg-cyan-700" },
   ];
 
-  const normalizeTemplateTitleKey = (value) =>
-    String(value || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, " ");
+  const certificateModelOptions = useMemo(
+    () => certificateModelsQuery.data || [],
+    [certificateModelsQuery.data]
+  );
 
-  const certificateTrainingOptions = useMemo(() => {
-    const groupedByTitle = new Map();
-    (trainings || []).forEach((training) => {
-      const id = String(training?.id || "").trim();
-      if (!id) return;
-      const title = String(training?.title || "").trim() || "Treinamento sem título";
-      const titleKey = normalizeTemplateTitleKey(title) || id;
-      const existing = groupedByTitle.get(titleKey);
-      if (existing) {
-        if (!existing.trainingIds.includes(id)) {
-          existing.trainingIds.push(id);
-        }
-        return;
-      }
-      groupedByTitle.set(titleKey, {
-        id,
-        title,
-        date: training?.date || "",
-        trainingIds: [id],
-      });
-    });
-
-    return Array.from(groupedByTitle.values()).sort((a, b) =>
-      a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" })
-    );
-  }, [trainings]);
-
-  const selectedCertificateTraining = useMemo(
+  const selectedCertificateModel = useMemo(
     () =>
-      certificateScope === CERTIFICATE_SCOPE_GLOBAL
-        ? null
-        : certificateTrainingOptions.find((item) => item.id === certificateScope) ||
-          null,
-    [certificateScope, certificateTrainingOptions]
+      certificateModelOptions.find((item) => item.id === certificateModelId) ||
+      null,
+    [certificateModelId, certificateModelOptions]
   );
 
   useEffect(() => {
+    if (!certificateModelOptions.length) return;
+    const exists = certificateModelOptions.some(
+      (item) => item.id === certificateModelId
+    );
+    if (exists) return;
+    setCertificateModelId(DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID);
+  }, [certificateModelOptions, certificateModelId]);
+
+  useEffect(() => {
     let active = true;
-    const loadTemplateByScope = async () => {
-      const trainingScope =
-        certificateScope === CERTIFICATE_SCOPE_GLOBAL
-          ? null
-          : selectedCertificateTraining
-          ? {
-              id: selectedCertificateTraining.id,
-              trainingIds: selectedCertificateTraining.trainingIds,
-            }
-          : certificateScope;
+    const loadTemplateByModel = async () => {
       try {
-        const template = await resolveCertificateTemplate(trainingScope);
+        const template = await resolveCertificateTemplateByModel(
+          certificateModelId
+        );
         if (!active) return;
         setCertificateTemplate(template || loadCertificateTemplate());
       } catch (error) {
@@ -294,11 +269,11 @@ export default function Settings() {
         setCertificateTemplate(loadCertificateTemplate());
       }
     };
-    loadTemplateByScope();
+    loadTemplateByModel();
     return () => {
       active = false;
     };
-  }, [certificateScope, selectedCertificateTraining]);
+  }, [certificateModelId]);
 
   const applyColor = (colorValue) => {
     return colorValue;
@@ -813,109 +788,80 @@ export default function Settings() {
       updatedAt: new Date().toISOString(),
     };
     setCertificateTemplate(payload);
-    const scopedTrainingId =
-      certificateScope === CERTIFICATE_SCOPE_GLOBAL ? "" : certificateScope;
-    const scopeLabel = selectedCertificateTraining?.title || "treinamento selecionado";
-    const scopedTrainingIds =
-      selectedCertificateTraining?.trainingIds?.filter(Boolean) || [];
-    const scopedTrainingScope = scopedTrainingIds.length
-      ? { id: scopedTrainingId, trainingIds: scopedTrainingIds }
-      : scopedTrainingId;
-    const groupedScopeSuffix =
-      scopedTrainingIds.length > 1
-        ? ` (aplicado a ${scopedTrainingIds.length} turmas com o mesmo nome)`
-        : "";
-
-    if (scopedTrainingId) {
-      try {
-        await saveCertificateTemplateForTraining(scopedTrainingScope, payload);
-        setCertificateStatus({
-          type: "success",
-          message: `Modelo de certificado salvo para "${scopeLabel}"${groupedScopeSuffix}.`,
-        });
-      } catch (error) {
-        const syncErrorText = getCertificateSyncErrorText(error);
-        setCertificateStatus({
-          type: "error",
-          message:
-            syncErrorText ||
-            `Falha ao salvar o modelo de certificado para "${scopeLabel}"${groupedScopeSuffix} no Supabase.`,
-        });
-      }
-      return;
-    }
-
     try {
-      await saveCertificateTemplateToStorage(payload);
+      await saveCertificateTemplateByModel(certificateModelId, payload);
+      const modelLabel = selectedCertificateModel?.isDefault
+        ? "modelo padrão"
+        : `modelo "${selectedCertificateModel?.name || certificateModelId}"`;
       setCertificateStatus({
         type: "success",
-        message: "Modelo padrão de certificado salvo com sucesso.",
+        message: `Certificado salvo no ${modelLabel} com sucesso.`,
       });
+      queryClient.invalidateQueries({ queryKey: ["certificate-template-models"] });
     } catch (error) {
       const syncErrorText = getCertificateSyncErrorText(error);
       setCertificateStatus({
         type: "error",
         message:
           syncErrorText ||
-          "Falha ao salvar o modelo padrão no Supabase.",
+          "Falha ao salvar o modelo de certificado no Supabase.",
       });
     }
   };
 
   const handleResetCertificate = async () => {
-    const scopedTrainingId =
-      certificateScope === CERTIFICATE_SCOPE_GLOBAL ? "" : certificateScope;
-    const scopeLabel = selectedCertificateTraining?.title || "treinamento selecionado";
-    const scopedTrainingIds =
-      selectedCertificateTraining?.trainingIds?.filter(Boolean) || [];
-    const scopedTrainingScope = scopedTrainingIds.length
-      ? { id: scopedTrainingId, trainingIds: scopedTrainingIds }
-      : scopedTrainingId;
-    const groupedScopeSuffix =
-      scopedTrainingIds.length > 1
-        ? ` (${scopedTrainingIds.length} turmas com o mesmo nome)`
-        : "";
-
-    if (scopedTrainingId) {
-      try {
-        const fallback = await resetCertificateTemplateForTraining(
-          scopedTrainingScope
-        );
-        setCertificateTemplate(fallback);
-        setCertificateStatus({
-          type: "success",
-          message: `Modelo específico removido para "${scopeLabel}"${groupedScopeSuffix}. Agora será usado o modelo padrão.`,
-        });
-      } catch (error) {
-        const syncErrorText = getCertificateSyncErrorText(error);
-        setCertificateStatus({
-          type: "error",
-          message:
-            syncErrorText ||
-            `Falha ao remover o modelo específico de "${scopeLabel}"${groupedScopeSuffix} no Supabase.`,
-        });
-      }
-      return;
-    }
-
     const reset = {
       ...resetCertificateTemplate(),
       updatedAt: new Date().toISOString(),
     };
     setCertificateTemplate(reset);
     try {
-      await saveCertificateTemplateToStorage(reset);
+      await saveCertificateTemplateByModel(certificateModelId, reset);
+      const modelLabel = selectedCertificateModel?.isDefault
+        ? "modelo padrão"
+        : `modelo "${selectedCertificateModel?.name || certificateModelId}"`;
       setCertificateStatus({
         type: "success",
-        message: "Modelo padrão restaurado.",
+        message: `Conteúdo restaurado no ${modelLabel}.`,
       });
+      queryClient.invalidateQueries({ queryKey: ["certificate-template-models"] });
     } catch (error) {
       const syncErrorText = getCertificateSyncErrorText(error);
       setCertificateStatus({
         type: "error",
         message:
           syncErrorText ||
-          "Falha ao restaurar o modelo padrão no Supabase.",
+          "Falha ao restaurar o modelo no Supabase.",
+      });
+    }
+  };
+
+  const handleCreateCertificateModel = async () => {
+    const modelName = String(newCertificateModelName || "").trim();
+    if (!modelName) {
+      setCertificateStatus({
+        type: "error",
+        message: "Informe o nome do novo modelo.",
+      });
+      return;
+    }
+    try {
+      const created = await createCertificateTemplateModel({
+        name: modelName,
+        baseTemplate: certificateTemplate,
+      });
+      setNewCertificateModelName("");
+      setCertificateModelId(created.id);
+      setCertificateStatus({
+        type: "success",
+        message: `Modelo "${created.name}" criado com sucesso.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["certificate-template-models"] });
+    } catch (error) {
+      const syncErrorText = getCertificateSyncErrorText(error);
+      setCertificateStatus({
+        type: "error",
+        message: syncErrorText || "Não foi possível criar o novo modelo.",
       });
     }
   };
@@ -1667,9 +1613,9 @@ export default function Settings() {
                         Modelo de Certificado
                       </CardTitle>
                       <CardDescription className="mt-1 text-blue-900/80">
-                        Configure textos, assinaturas e logos. Você pode salvar um
-                        modelo padrão geral ou um modelo específico para cada
-                        treinamento.
+                        Configure textos, assinaturas e logos. Existe sempre um
+                        modelo padrão e você pode criar novos modelos somente
+                        quando precisar.
                       </CardDescription>
                     </div>
                     <Button
@@ -1689,46 +1635,51 @@ export default function Settings() {
                 <CardContent className="space-y-4">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Escopo do modelo</Label>
+                  <Label>Modelo de certificado</Label>
                   <Select
-                    value={certificateScope}
+                    value={certificateModelId}
                     onValueChange={(value) => {
-                      setCertificateScope(value);
+                      setCertificateModelId(value);
                       setCertificateStatus(null);
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione o escopo" />
+                      <SelectValue placeholder="Selecione o modelo" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={CERTIFICATE_SCOPE_GLOBAL}>
-                        Modelo padrão (todos os treinamentos)
-                      </SelectItem>
-                      {certificateTrainingOptions.map((option) => (
+                      {certificateModelOptions.map((option) => (
                         <SelectItem key={option.id} value={option.id}>
-                          {option.title}
-                          {option.trainingIds?.length > 1
-                            ? ` (${option.trainingIds.length} turmas)`
-                            : ""}
+                          {option.name}
+                          {option.isDefault ? " (padrão)" : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-slate-500">
-                    Treinamentos com o mesmo nome usam o mesmo modelo.
-                    Selecione o nome para editar o modelo compartilhado.
+                    O modelo padrão é usado por todos os treinamentos.
+                    Modelos extras só existem quando você clicar em “Criar modelo”.
                   </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Input
+                      value={newCertificateModelName}
+                      onChange={(e) => setNewCertificateModelName(e.target.value)}
+                      placeholder="Nome do novo modelo"
+                      className="max-w-xs"
+                    />
+                    <Button type="button" variant="outline" onClick={handleCreateCertificateModel}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Criar modelo
+                    </Button>
+                  </div>
                 </div>
                 <div className="rounded-lg border bg-slate-50 p-3 text-sm">
                   <p className="font-medium text-slate-700">Modelo em edição</p>
                   <p className="text-slate-600 mt-1">
-                    {selectedCertificateTraining
-                      ? `Treinamento: ${selectedCertificateTraining.title}${
-                          selectedCertificateTraining.trainingIds?.length > 1
-                            ? ` (${selectedCertificateTraining.trainingIds.length} turmas)`
-                            : ""
-                        }`
-                      : "Padrão geral (aplicado a todos os treinamentos)."}
+                    {selectedCertificateModel
+                      ? selectedCertificateModel.isDefault
+                        ? "Modelo padrão (aplicado a todos os treinamentos)."
+                        : `Modelo personalizado: ${selectedCertificateModel.name}.`
+                      : "Modelo padrão (aplicado a todos os treinamentos)."}
                   </p>
                 </div>
               </div>
@@ -2273,18 +2224,16 @@ export default function Settings() {
 
               <div className="flex flex-wrap gap-2">
                 <Button onClick={handleSaveCertificate}>
-                  {selectedCertificateTraining
-                    ? "Salvar modelo deste treinamento"
-                    : "Salvar modelo padrão"}
+                  {selectedCertificateModel?.isDefault
+                    ? "Salvar modelo padrão"
+                    : `Salvar modelo "${selectedCertificateModel?.name || ""}"`}
                 </Button>
                 <Button variant="outline" onClick={handlePreviewPdf}>
                   <Eye className="h-4 w-4 mr-2" />
                   Visualizar PDF
                 </Button>
                 <Button variant="outline" onClick={handleResetCertificate}>
-                  {selectedCertificateTraining
-                    ? "Remover modelo deste treinamento"
-                    : "Restaurar padrão"}
+                  Restaurar conteúdo do modelo
                 </Button>
               </div>
 
