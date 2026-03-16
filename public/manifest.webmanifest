@@ -1,0 +1,9 @@
+{
+  "name": "Centro de Oftalmologia Sanitaria",
+  "short_name": "VILAGI Oftalmo",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1d4ed8",
+  "icons": []
+}

@@ -1185,15 +1185,22 @@ const invokeSupabaseFunction = async (functionName, payload, accessToken) => {
   const token = typeof accessToken === "string" && accessToken.trim()
     ? accessToken.trim()
     : anonKey;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: anonKey,
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const executeRequest = (bearerToken) =>
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: anonKey,
+        Authorization: `Bearer ${bearerToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+  let response = await executeRequest(token);
+  // Some deployments return 401 for stale JWTs even when function doesn't require JWT.
+  if ((response.status === 401 || response.status === 403) && token !== anonKey) {
+    response = await executeRequest(anonKey);
+  }
   if (!response.ok) {
     const text = await response.text();
     let parsedMessage = "";
@@ -1317,7 +1324,7 @@ const SendEmail = async ({ to, subject, body, attachments }) => {
     return parsedBody || {};
   }
 
-  const accessToken = await getAccessToken();
+  const accessToken = await getAccessToken({ refreshIfMissing: true });
 
   try {
     const { data, error } = await supabase.functions.invoke(
