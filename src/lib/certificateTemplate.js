@@ -642,6 +642,63 @@ export const createCertificateTemplateModel = async ({
   };
 };
 
+export const renameCertificateTemplateModel = async ({
+  modelId,
+  name,
+}) => {
+  const normalizedId = normalizeTemplateModelId(modelId);
+  if (
+    !normalizedId ||
+    normalizedId === DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID
+  ) {
+    throw new Error("O modelo padrão não pode ser renomeado.");
+  }
+  const normalizedName = normalizeTemplateModelName(name);
+  if (!normalizedName) {
+    throw new Error("Informe um nome para o modelo.");
+  }
+  const customModels = await loadTemplateModelsFromSharedStore();
+  const currentIndex = customModels.findIndex((item) => item.id === normalizedId);
+  if (currentIndex < 0) {
+    throw new Error("Modelo não encontrado.");
+  }
+  const hasDuplicateName = customModels.some(
+    (item, index) =>
+      index !== currentIndex &&
+      normalizeTemplateModelName(item.name).toLowerCase() ===
+        normalizedName.toLowerCase()
+  );
+  if (hasDuplicateName) {
+    throw new Error("Já existe um modelo com esse nome.");
+  }
+  customModels[currentIndex] = {
+    ...customModels[currentIndex],
+    name: normalizedName,
+  };
+  await saveTemplateModelsToSharedStore(customModels);
+  return {
+    ...customModels[currentIndex],
+    isDefault: false,
+  };
+};
+
+export const deleteCertificateTemplateModel = async (modelId) => {
+  const normalizedId = normalizeTemplateModelId(modelId);
+  if (
+    !normalizedId ||
+    normalizedId === DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID
+  ) {
+    throw new Error("O modelo padrão não pode ser excluído.");
+  }
+  const customModels = await loadTemplateModelsFromSharedStore();
+  const nextModels = customModels.filter((item) => item.id !== normalizedId);
+  if (nextModels.length === customModels.length) {
+    throw new Error("Modelo não encontrado.");
+  }
+  await saveTemplateModelsToSharedStore(nextModels);
+  return true;
+};
+
 export const saveCertificateTemplateByModel = async (modelId, template) => {
   const normalizedId = normalizeTemplateModelId(modelId);
   const payload = mergeTemplate(template);

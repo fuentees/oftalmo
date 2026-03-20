@@ -51,6 +51,8 @@ import {
   DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID,
   listCertificateTemplateModels,
   createCertificateTemplateModel,
+  renameCertificateTemplateModel,
+  deleteCertificateTemplateModel,
   resolveCertificateTemplateByModel,
   saveCertificateTemplateByModel,
 } from "@/lib/certificateTemplate";
@@ -153,6 +155,7 @@ export default function Settings() {
     DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID
   );
   const [newCertificateModelName, setNewCertificateModelName] = useState("");
+  const [renameCertificateModelName, setRenameCertificateModelName] = useState("");
   const [certificateStatus, setCertificateStatus] = useState(null);
   const [emailSettings, setEmailSettings] = useState(DEFAULT_EMAIL_SETTINGS);
   const [emailStatus, setEmailStatus] = useState(null);
@@ -245,6 +248,14 @@ export default function Settings() {
       null,
     [certificateModelId, certificateModelOptions]
   );
+
+  useEffect(() => {
+    setRenameCertificateModelName(
+      selectedCertificateModel?.isDefault
+        ? ""
+        : String(selectedCertificateModel?.name || "")
+    );
+  }, [selectedCertificateModel?.id, selectedCertificateModel?.isDefault, selectedCertificateModel?.name]);
 
   useEffect(() => {
     if (!certificateModelOptions.length) return;
@@ -862,6 +873,72 @@ export default function Settings() {
       setCertificateStatus({
         type: "error",
         message: syncErrorText || "Não foi possível criar o novo modelo.",
+      });
+    }
+  };
+
+  const handleRenameCertificateModel = async () => {
+    if (selectedCertificateModel?.isDefault) {
+      setCertificateStatus({
+        type: "error",
+        message: "O modelo padrão não pode ser renomeado.",
+      });
+      return;
+    }
+    const nextName = String(renameCertificateModelName || "").trim();
+    if (!nextName) {
+      setCertificateStatus({
+        type: "error",
+        message: "Informe o novo nome do modelo.",
+      });
+      return;
+    }
+    try {
+      const renamed = await renameCertificateTemplateModel({
+        modelId: certificateModelId,
+        name: nextName,
+      });
+      setRenameCertificateModelName(renamed.name);
+      setCertificateStatus({
+        type: "success",
+        message: `Modelo renomeado para "${renamed.name}".`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["certificate-template-models"] });
+    } catch (error) {
+      const syncErrorText = getCertificateSyncErrorText(error);
+      setCertificateStatus({
+        type: "error",
+        message: syncErrorText || "Não foi possível renomear o modelo.",
+      });
+    }
+  };
+
+  const handleDeleteCertificateModel = async () => {
+    if (selectedCertificateModel?.isDefault) {
+      setCertificateStatus({
+        type: "error",
+        message: "O modelo padrão não pode ser excluído.",
+      });
+      return;
+    }
+    const modelName = String(selectedCertificateModel?.name || "").trim();
+    const confirmed = window.confirm(
+      `Excluir o modelo "${modelName}"? Essa ação não pode ser desfeita.`
+    );
+    if (!confirmed) return;
+    try {
+      await deleteCertificateTemplateModel(certificateModelId);
+      setCertificateModelId(DEFAULT_CERTIFICATE_TEMPLATE_MODEL_ID);
+      setCertificateStatus({
+        type: "success",
+        message: `Modelo "${modelName}" excluído com sucesso.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["certificate-template-models"] });
+    } catch (error) {
+      const syncErrorText = getCertificateSyncErrorText(error);
+      setCertificateStatus({
+        type: "error",
+        message: syncErrorText || "Não foi possível excluir o modelo.",
       });
     }
   };
@@ -1671,6 +1748,33 @@ export default function Settings() {
                       Criar modelo
                     </Button>
                   </div>
+                  {!selectedCertificateModel?.isDefault && (
+                    <div className="flex flex-wrap gap-2">
+                      <Input
+                        value={renameCertificateModelName}
+                        onChange={(e) =>
+                          setRenameCertificateModelName(e.target.value)
+                        }
+                        placeholder="Novo nome do modelo"
+                        className="max-w-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleRenameCertificateModel}
+                      >
+                        Renomear modelo
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={handleDeleteCertificateModel}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Excluir modelo
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <div className="rounded-lg border bg-slate-50 p-3 text-sm">
                   <p className="font-medium text-slate-700">Modelo em edição</p>
