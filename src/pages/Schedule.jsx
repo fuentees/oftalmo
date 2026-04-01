@@ -5,7 +5,7 @@ import {
   extractOnlineLinkFromEventNotes,
   extractTrainingIdFromEventNotes,
 } from "@/lib/eventMetadata";
-import { getEffectiveEventStatus } from "@/lib/statusRules";
+import { getEffectiveEventStatus, getEventDateBounds } from "@/lib/statusRules";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -319,31 +319,6 @@ export default function Schedule() {
     cancelado: "bg-red-100 text-red-700",
   };
 
-  const parseLocalDate = (value) => {
-    if (!value) return null;
-    if (value instanceof Date && !Number.isNaN(value.getTime())) {
-      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-    }
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed) return null;
-      const parts = trimmed.split("-");
-      if (parts.length === 3) {
-        const year = Number(parts[0]);
-        const month = Number(parts[1]);
-        const day = Number(parts[2]);
-        if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
-          return new Date(year, month - 1, day);
-        }
-      }
-      const parsed = new Date(trimmed);
-      if (!Number.isNaN(parsed.getTime())) {
-        return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-      }
-    }
-    return null;
-  };
-
   const getOnlineLink = (event) => {
     if (!event) return "";
     const direct = String(event.online_link || "").trim();
@@ -355,11 +330,28 @@ export default function Schedule() {
   };
 
   const getEventsForDate = (date) => {
+    const dayStart = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      0,
+      0,
+      0,
+      0
+    );
+    const dayEnd = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
     return events.filter((event) => {
-      const eventStart = parseLocalDate(event.start_date);
-      const eventEnd = parseLocalDate(event.end_date || event.start_date);
-      if (!eventStart || !eventEnd) return false;
-      return date >= eventStart && date <= eventEnd;
+      const bounds = getEventDateBounds(event);
+      if (!bounds) return false;
+      return bounds.end >= dayStart && bounds.start <= dayEnd;
     });
   };
 

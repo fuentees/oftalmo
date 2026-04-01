@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Video, X } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 export default function EventForm({ event, onClose, onSuccess, initialDate }) {
   const [formData, setFormData] = useState({
@@ -276,6 +277,12 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const startDate = parseDateInput(formData.start_date);
+    const endDate = formData.end_date ? parseDateInput(formData.end_date) : null;
+    if (startDate && endDate && endDate.getTime() < startDate.getTime()) {
+      toast.error("A Data Fim não pode ser anterior à Data Início.");
+      return;
+    }
     const resolvedGve = isOnlineEvent
       ? ""
       : getGveByMunicipio(formData.municipality) || formData.gve;
@@ -445,6 +452,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
               type="date"
               value={formData.end_date}
               onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+              min={formData.start_date || undefined}
             />
             {repeatConfig.enabled && (
               <p className="text-xs text-slate-500">

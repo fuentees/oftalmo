@@ -111,17 +111,25 @@ export const getEffectiveTrainingStatus = (training, now = new Date()) => {
 
 export const getEventDateBounds = (event) => {
   if (!event) return null;
-  const start = parseDateTimeWithOptionalTime(
+  const rawStart = parseDateTimeWithOptionalTime(
     event.start_date,
     event.start_time,
     false
   );
-  const end = parseDateTimeWithOptionalTime(
+  const rawEnd = parseDateTimeWithOptionalTime(
     event.end_date || event.start_date,
     event.end_time,
     true
   );
-  if (!start || !end) return null;
+  if (!rawStart || !rawEnd) return null;
+  const start =
+    rawStart.getTime() <= rawEnd.getTime()
+      ? rawStart
+      : rawEnd;
+  const end =
+    rawStart.getTime() <= rawEnd.getTime()
+      ? rawEnd
+      : rawStart;
   return { start, end };
 };
 
