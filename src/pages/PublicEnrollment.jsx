@@ -38,10 +38,22 @@ import {
 } from "@/lib/professionalGoogleEmailStore";
 
 export default function PublicEnrollment() {
+  const resolveTrainingIdFromToken = async (rawToken) => {
+    const token = String(rawToken || "").trim();
+    if (!token) return "";
+    if (token.startsWith("c-")) {
+      const code = token.slice(2).trim();
+      if (!code) return "";
+      const trainings = await dataClient.entities.Training.filter({ code });
+      return String(trainings?.[0]?.id || "").trim();
+    }
+    return token;
+  };
+
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
-  const resolveTrainingIdFromPath = () => {
+  const resolveTrainingTokenFromPath = () => {
     if (typeof window === "undefined") return "";
     const path = String(window.location.pathname || "");
     const shortLinkMatch = path.match(/^\/i\/([^/?#]+)/i);
@@ -50,7 +62,10 @@ export default function PublicEnrollment() {
     }
     return "";
   };
-  const trainingId = resolveTrainingIdFromPath() || urlParams.get("training");
+  const shortPathToken = resolveTrainingTokenFromPath();
+  const queryTrainingId = String(urlParams.get("training") || "").trim();
+  const [resolvedTrainingId, setResolvedTrainingId] = useState("");
+  const trainingId = resolvedTrainingId || queryTrainingId;
 
   const [formData, setFormData] = useState(
     /** @type {Record<string, any>} */ ({})
@@ -76,6 +91,26 @@ export default function PublicEnrollment() {
       message.includes("duplicate")
     );
   };
+
+  useEffect(() => {
+    let active = true;
+    const resolveId = async () => {
+      if (queryTrainingId) {
+        if (active) setResolvedTrainingId(queryTrainingId);
+        return;
+      }
+      if (!shortPathToken) {
+        if (active) setResolvedTrainingId("");
+        return;
+      }
+      const nextId = await resolveTrainingIdFromToken(shortPathToken);
+      if (active) setResolvedTrainingId(nextId);
+    };
+    resolveId();
+    return () => {
+      active = false;
+    };
+  }, [shortPathToken, queryTrainingId]);
 
   const { data: training, isLoading } = useQuery({
     queryKey: ["training", trainingId],

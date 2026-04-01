@@ -166,7 +166,7 @@ export default function TrainingDetails({ training, participants = [] }) {
     return fallbackDate ? [fallbackDate] : [];
   }, [sortedTrainingDates, training?.date]);
   const enrollmentLink = trainingId
-    ? buildPublicEnrollmentUrl(appOrigin, trainingId)
+    ? buildPublicEnrollmentUrl(appOrigin, trainingId, training?.code)
     : "";
   const feedbackLink = trainingId
     ? `${appOrigin}/TrainingFeedback?training=${encodeURIComponent(trainingId)}`

@@ -1105,7 +1105,11 @@ export default function EnrollmentPage({
 
   const handleCopyEnrollmentLink = () => {
     if (!trainingId) return;
-    const link = buildPublicEnrollmentUrl(window.location.origin, trainingId);
+    const link = buildPublicEnrollmentUrl(
+      window.location.origin,
+      trainingId,
+      training?.code
+    );
     navigator.clipboard.writeText(link);
     alert("Link de inscrição copiado!");
   };
