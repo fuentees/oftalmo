@@ -41,7 +41,16 @@ export default function PublicEnrollment() {
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
-  const trainingId = urlParams.get("training");
+  const resolveTrainingIdFromPath = () => {
+    if (typeof window === "undefined") return "";
+    const path = String(window.location.pathname || "");
+    const shortLinkMatch = path.match(/^\/i\/([^/?#]+)/i);
+    if (shortLinkMatch?.[1]) {
+      return decodeURIComponent(shortLinkMatch[1]);
+    }
+    return "";
+  };
+  const trainingId = resolveTrainingIdFromPath() || urlParams.get("training");
 
   const [formData, setFormData] = useState(
     /** @type {Record<string, any>} */ ({})

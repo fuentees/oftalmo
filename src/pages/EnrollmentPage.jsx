@@ -76,6 +76,7 @@ import {
   loadProfessionalGoogleEmailStore,
   resolveProfessionalGoogleEmail,
 } from "@/lib/professionalGoogleEmailStore";
+import { buildPublicEnrollmentUrl } from "@/lib/enrollmentLinks";
 
 const ENROLLMENT_MAIN_TABS = ["mask", "form", "list", "summary"];
 const GOOGLE_CALENDAR_FIELD_OPTIONS = [
@@ -1104,7 +1105,7 @@ export default function EnrollmentPage({
 
   const handleCopyEnrollmentLink = () => {
     if (!trainingId) return;
-    const link = `${window.location.origin}/PublicEnrollment?training=${encodeURIComponent(trainingId)}`;
+    const link = buildPublicEnrollmentUrl(window.location.origin, trainingId);
     navigator.clipboard.writeText(link);
     alert("Link de inscrição copiado!");
   };

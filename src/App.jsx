@@ -10,6 +10,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Login from './pages/Login';
 import TrainingFeedback from './pages/TrainingFeedback';
 import TracomaExaminerTest from './pages/TracomaExaminerTest';
+import PublicEnrollment from './pages/PublicEnrollment';
 import { ADMIN_ONLY_PAGES } from "@/lib/accessControl";
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -106,6 +107,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/TrainingFeedback" element={<TrainingFeedback />} />
             <Route path="/TracomaExaminerTest" element={<TracomaExaminerTest />} />
+            <Route path="/i/:trainingId" element={<PublicEnrollment />} />
             <Route path="/*" element={<AuthenticatedApp />} />
           </Routes>
         </Router>

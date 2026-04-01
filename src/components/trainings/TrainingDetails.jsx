@@ -33,6 +33,7 @@ import {
   normalizeAnswerKeyCode,
   normalizeBinaryAnswer,
 } from "@/lib/tracomaExamKappa";
+import { buildPublicEnrollmentUrl } from "@/lib/enrollmentLinks";
 
 const parseStoredAnswers = (
   value,
@@ -165,7 +166,7 @@ export default function TrainingDetails({ training, participants = [] }) {
     return fallbackDate ? [fallbackDate] : [];
   }, [sortedTrainingDates, training?.date]);
   const enrollmentLink = trainingId
-    ? `${appOrigin}/PublicEnrollment?training=${encodeURIComponent(trainingId)}`
+    ? buildPublicEnrollmentUrl(appOrigin, trainingId)
     : "";
   const feedbackLink = trainingId
     ? `${appOrigin}/TrainingFeedback?training=${encodeURIComponent(trainingId)}`
