@@ -37,6 +37,7 @@ export default function Participants() {
   const [courseFilter, setCourseFilter] = useState("all");
   const [compareCourseA, setCompareCourseA] = useState("all");
   const [compareCourseB, setCompareCourseB] = useState("all");
+  const [compareMode, setCompareMode] = useState("both");
   const [municipalityFilter, setMunicipalityFilter] = useState("all");
   const [gveFilter, setGveFilter] = useState("all");
   const [showUpload, setShowUpload] = useState(false);
@@ -154,6 +155,11 @@ export default function Participants() {
     pratico: "Prático",
     teorico_pratico: "Teórico/Prático",
     repadronizacao: "Repadronização",
+  };
+  const compareModeLabels = {
+    both: "Fez os 2 treinamentos",
+    onlyA: "Fez Treinamento 1 e não fez Treinamento 2",
+    onlyB: "Fez Treinamento 2 e não fez Treinamento 1",
   };
 
   const normalizeDateKey = (value) => {
@@ -614,9 +620,16 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         (course) => course !== "all"
       );
       if (selectedCourses.length < 2) return true;
-      return selectedCourses.every((course) =>
-        group.courseOptionValues.includes(course)
-      );
+      const hasA = group.courseOptionValues.includes(compareCourseA);
+      const hasB = group.courseOptionValues.includes(compareCourseB);
+
+      if (compareMode === "onlyA") {
+        return hasA && !hasB;
+      }
+      if (compareMode === "onlyB") {
+        return hasB && !hasA;
+      }
+      return hasA && hasB;
     })
     .filter((group) => {
       if (municipalityFilter === "all") return true;
@@ -686,6 +699,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     courseFilter,
     compareCourseA,
     compareCourseB,
+    compareMode,
     municipalityFilter,
     gveFilter,
   ]);
@@ -770,6 +784,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     courseOptionLabelByValue.get(compareCourseA) || compareCourseA;
   const compareCourseBLabel =
     courseOptionLabelByValue.get(compareCourseB) || compareCourseB;
+  const compareModeLabel = compareModeLabels[compareMode] || compareModeLabels.both;
 
   return (
     <div className="space-y-6">
@@ -842,11 +857,10 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
             Comparar dois treinamentos
           </h3>
           <p className="text-xs text-slate-600">
-            Selecione 2 treinamentos (nome, local e data) para listar apenas
-            participantes que concluíram ambos.
+            Selecione 2 treinamentos (nome, local e data) e o modo da comparação.
           </p>
         </div>
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_auto]">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
           <Select value={compareCourseA} onValueChange={setCompareCourseA}>
             <SelectTrigger>
               <SelectValue placeholder="Treinamento 1" />
@@ -873,12 +887,27 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
               ))}
             </SelectContent>
           </Select>
+          <Select value={compareMode} onValueChange={setCompareMode}>
+            <SelectTrigger>
+              <SelectValue placeholder="Modo da comparação" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="both">Fez os 2 treinamentos</SelectItem>
+              <SelectItem value="onlyA">
+                Fez Treinamento 1 e não fez Treinamento 2
+              </SelectItem>
+              <SelectItem value="onlyB">
+                Fez Treinamento 2 e não fez Treinamento 1
+              </SelectItem>
+            </SelectContent>
+          </Select>
           <Button
             type="button"
             variant="outline"
             onClick={() => {
               setCompareCourseA("all");
               setCompareCourseB("all");
+              setCompareMode("both");
             }}
           >
             Limpar comparação
@@ -886,9 +915,9 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         </div>
         {compareIsActive && (
           <p className="text-xs text-slate-700">
-            Exibindo participantes que concluíram:{" "}
-            <span className="font-medium">{compareCourseALabel}</span> e{" "}
-            <span className="font-medium">{compareCourseBLabel}</span>.
+            Modo ativo: <span className="font-medium">{compareModeLabel}</span>.
+            Treinamento 1: <span className="font-medium">{compareCourseALabel}</span>.{" "}
+            Treinamento 2: <span className="font-medium">{compareCourseBLabel}</span>.
           </p>
         )}
       </div>
