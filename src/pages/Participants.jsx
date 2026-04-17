@@ -222,6 +222,61 @@ export default function Participants() {
     return byDate || null;
   };
 
+  const formatDateForDisplay = (value) => {
+    const dateKey = normalizeDateKey(value);
+    if (!dateKey) return "";
+    const [year, month, day] = dateKey.split("-");
+    if (!year || !month || !day) return "";
+    return `${day}/${month}/${year}`;
+  };
+
+  const buildTrainingOptionLabel = ({ title, location, dateKey }) => {
+    const normalizedTitle = String(title || "").trim() || "Treinamento sem título";
+    const normalizedLocation = String(location || "").trim();
+    const formattedDate = formatDateForDisplay(dateKey);
+    const parts = [normalizedTitle];
+    if (normalizedLocation) parts.push(normalizedLocation);
+    if (formattedDate) parts.push(formattedDate);
+    return parts.join(" • ");
+  };
+
+  const resolveCourseOptionFromParticipant = (participant) => {
+    if (!participant) return null;
+    const resolvedTraining = resolveTrainingFromParticipant(participant);
+    const resolvedTrainingId = String(resolvedTraining?.id || "").trim();
+
+    if (resolvedTrainingId) {
+      const dateKey =
+        getTrainingDateKeys(resolvedTraining)[0] ||
+        normalizeDateKey(participant.training_date);
+      return {
+        value: `training:${resolvedTrainingId}`,
+        label: buildTrainingOptionLabel({
+          title: resolvedTraining.title || participant.training_title,
+          location: resolvedTraining.location,
+          dateKey,
+        }),
+      };
+    }
+
+    const fallbackTitle = String(
+      participant.training_title || resolvedTraining?.title || ""
+    ).trim();
+    if (!fallbackTitle) return null;
+    const dateKey =
+      normalizeDateKey(participant.training_date) ||
+      getTrainingDateKeys(resolvedTraining)[0] ||
+      "";
+    return {
+      value: `legacy:${normalizeText(fallbackTitle)}|${dateKey || "sem-data"}`,
+      label: buildTrainingOptionLabel({
+        title: fallbackTitle,
+        location: resolvedTraining?.location,
+        dateKey,
+      }),
+    };
+  };
+
   const resolveTrainingIdForImportRow = (row) => {
     const explicitTrainingId = String(row?.training_id || "").trim();
     if (explicitTrainingId) return explicitTrainingId;
@@ -498,6 +553,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
       const profile = mergeParticipantData(group.members);
       const typeSet = new Set();
       const titleSet = new Set();
+      const courseOptionSet = new Set();
       group.members.forEach((member) => {
         const type = resolveTrainingType(member);
         if (type) typeSet.add(type);
@@ -505,6 +561,10 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
           member.training_title ||
           trainingMaps.titleById.get(String(member.training_id || "").trim());
         if (title) titleSet.add(title);
+        const courseOption = resolveCourseOptionFromParticipant(member);
+        if (courseOption?.value) {
+          courseOptionSet.add(courseOption.value);
+        }
       });
       return {
         id: group.id,
@@ -512,6 +572,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         members: group.members,
         courseTypes: Array.from(typeSet),
         courseTitles: Array.from(titleSet),
+        courseOptionValues: Array.from(courseOptionSet),
       };
     });
   }, [approvedParticipants, trainingMaps]);
@@ -546,21 +607,15 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     })
     .filter((group) => {
       if (courseFilter === "all") return true;
-      const normalizedFilter = normalizeText(courseFilter);
-      return group.courseTitles.some(
-        (title) => normalizeText(title) === normalizedFilter
-      );
+      return group.courseOptionValues.includes(courseFilter);
     })
     .filter((group) => {
       const selectedCourses = [compareCourseA, compareCourseB].filter(
         (course) => course !== "all"
       );
       if (selectedCourses.length < 2) return true;
-      const normalizedCourseTitles = group.courseTitles.map((title) =>
-        normalizeText(title)
-      );
       return selectedCourses.every((course) =>
-        normalizedCourseTitles.includes(normalizeText(course))
+        group.courseOptionValues.includes(course)
       );
     })
     .filter((group) => {
@@ -582,23 +637,23 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     );
 
   const courseOptions = useMemo(() => {
-    const titles = new Set();
+    const optionMap = new Map();
     approvedParticipants.forEach((participant) => {
-      if (participant.training_title) {
-        titles.add(participant.training_title);
-        return;
-      }
-      if (participant.training_id) {
-        const title = trainingMaps.titleById.get(
-          String(participant.training_id || "").trim()
-        );
-        if (title) titles.add(title);
+      const option = resolveCourseOptionFromParticipant(participant);
+      if (!option?.value || !option?.label) return;
+      if (!optionMap.has(option.value)) {
+        optionMap.set(option.value, option.label);
       }
     });
-    return Array.from(titles)
-      .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
-      .map((title) => ({ value: title, label: title }));
+    return Array.from(optionMap.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
   }, [approvedParticipants, trainingMaps]);
+
+  const courseOptionLabelByValue = useMemo(
+    () => new Map(courseOptions.map((option) => [option.value, option.label])),
+    [courseOptions]
+  );
 
   const municipalityOptions = useMemo(() => {
     const values = new Set();
@@ -711,6 +766,10 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
 
   const compareIsActive =
     compareCourseA !== "all" && compareCourseB !== "all";
+  const compareCourseALabel =
+    courseOptionLabelByValue.get(compareCourseA) || compareCourseA;
+  const compareCourseBLabel =
+    courseOptionLabelByValue.get(compareCourseB) || compareCourseB;
 
   return (
     <div className="space-y-6">
@@ -741,8 +800,8 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
               {
                 value: courseFilter,
                 onChange: setCourseFilter,
-                placeholder: "Curso",
-                allLabel: "Todos os cursos",
+                placeholder: "Treinamento",
+                allLabel: "Todos os treinamentos",
                 options: courseOptions,
               },
               {
@@ -783,8 +842,8 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
             Comparar dois treinamentos
           </h3>
           <p className="text-xs text-slate-600">
-            Selecione 2 cursos para listar apenas participantes que concluíram
-            ambos.
+            Selecione 2 treinamentos (nome, local e data) para listar apenas
+            participantes que concluíram ambos.
           </p>
         </div>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_auto]">
@@ -828,8 +887,8 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         {compareIsActive && (
           <p className="text-xs text-slate-700">
             Exibindo participantes que concluíram:{" "}
-            <span className="font-medium">{compareCourseA}</span> e{" "}
-            <span className="font-medium">{compareCourseB}</span>.
+            <span className="font-medium">{compareCourseALabel}</span> e{" "}
+            <span className="font-medium">{compareCourseBLabel}</span>.
           </p>
         )}
       </div>
