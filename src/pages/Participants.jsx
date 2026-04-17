@@ -38,6 +38,8 @@ export default function Participants() {
   const [compareCourseA, setCompareCourseA] = useState("all");
   const [compareCourseB, setCompareCourseB] = useState("all");
   const [compareMode, setCompareMode] = useState("both");
+  const [compareYearFilter, setCompareYearFilter] = useState("all");
+  const [compareMonthFilter, setCompareMonthFilter] = useState("all");
   const [municipalityFilter, setMunicipalityFilter] = useState("all");
   const [gveFilter, setGveFilter] = useState("all");
   const [showUpload, setShowUpload] = useState(false);
@@ -160,6 +162,20 @@ export default function Participants() {
     both: "Fez os 2 treinamentos",
     onlyA: "Fez Treinamento 1 e não fez Treinamento 2",
     onlyB: "Fez Treinamento 2 e não fez Treinamento 1",
+  };
+  const compareMonthLabels = {
+    "01": "Janeiro",
+    "02": "Fevereiro",
+    "03": "Março",
+    "04": "Abril",
+    "05": "Maio",
+    "06": "Junho",
+    "07": "Julho",
+    "08": "Agosto",
+    "09": "Setembro",
+    "10": "Outubro",
+    "11": "Novembro",
+    "12": "Dezembro",
   };
 
   const normalizeDateKey = (value) => {
@@ -668,6 +684,77 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     [courseOptions]
   );
 
+  const getCourseOptionDateKey = (optionValue) => {
+    const value = String(optionValue || "").trim();
+    if (!value) return "";
+    if (value.startsWith("training:")) {
+      const trainingId = value.slice("training:".length);
+      const training = trainingMaps.byId.get(trainingId);
+      return (
+        getTrainingDateKeys(training)[0] ||
+        normalizeDateKey(training?.date) ||
+        ""
+      );
+    }
+    if (value.startsWith("legacy:")) {
+      const [, legacyDateKey = ""] = value.split("|");
+      return normalizeDateKey(legacyDateKey);
+    }
+    return "";
+  };
+
+  const compareYearOptions = useMemo(() => {
+    const years = new Set();
+    courseOptions.forEach((option) => {
+      const dateKey = getCourseOptionDateKey(option.value);
+      const [year = ""] = String(dateKey).split("-");
+      if (year) years.add(year);
+    });
+    return Array.from(years)
+      .sort((a, b) => b.localeCompare(a))
+      .map((year) => ({ value: year, label: year }));
+  }, [courseOptions]);
+
+  const compareMonthOptions = useMemo(() => {
+    const months = new Set();
+    courseOptions.forEach((option) => {
+      const dateKey = getCourseOptionDateKey(option.value);
+      const [year = "", month = ""] = String(dateKey).split("-");
+      if (compareYearFilter !== "all" && year !== compareYearFilter) return;
+      if (month) months.add(month);
+    });
+    return Array.from(months)
+      .sort((a, b) => a.localeCompare(b))
+      .map((month) => ({
+        value: month,
+        label: compareMonthLabels[month] || month,
+      }));
+  }, [compareMonthLabels, compareYearFilter, courseOptions]);
+
+  const filteredCompareCourseOptions = useMemo(
+    () =>
+      courseOptions.filter((option) => {
+        const dateKey = getCourseOptionDateKey(option.value);
+        const [year = "", month = ""] = String(dateKey).split("-");
+        if (compareYearFilter !== "all" && year !== compareYearFilter) return false;
+        if (compareMonthFilter !== "all" && month !== compareMonthFilter) return false;
+        return true;
+      }),
+    [compareMonthFilter, compareYearFilter, courseOptions]
+  );
+
+  useEffect(() => {
+    const availableValues = new Set(
+      filteredCompareCourseOptions.map((option) => option.value)
+    );
+    if (compareCourseA !== "all" && !availableValues.has(compareCourseA)) {
+      setCompareCourseA("all");
+    }
+    if (compareCourseB !== "all" && !availableValues.has(compareCourseB)) {
+      setCompareCourseB("all");
+    }
+  }, [compareCourseA, compareCourseB, filteredCompareCourseOptions]);
+
   const municipalityOptions = useMemo(() => {
     const values = new Set();
     groupedParticipants.forEach((group) => {
@@ -700,6 +787,8 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     compareCourseA,
     compareCourseB,
     compareMode,
+    compareYearFilter,
+    compareMonthFilter,
     municipalityFilter,
     gveFilter,
   ]);
@@ -851,14 +940,49 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         </div>
       </div>
 
-      <div className="rounded-lg border bg-slate-50/60 p-4 space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm space-y-4">
         <div>
-          <h3 className="text-sm font-semibold text-slate-900">
+          <h3 className="text-sm font-semibold text-slate-900 tracking-tight">
             Comparar dois treinamentos
           </h3>
           <p className="text-xs text-slate-600">
-            Selecione 2 treinamentos (nome, local e data) e o modo da comparação.
+            Escolha ano/mês para reduzir a lista e depois selecione os 2
+            treinamentos com o modo de comparação.
           </p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-xs text-slate-600">Ano do treinamento</Label>
+            <Select value={compareYearFilter} onValueChange={setCompareYearFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Ano" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os anos</SelectItem>
+                {compareYearOptions.map((option) => (
+                  <SelectItem key={`compare-year-${option.value}`} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-slate-600">Mês do treinamento</Label>
+            <Select value={compareMonthFilter} onValueChange={setCompareMonthFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Mês" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os meses</SelectItem>
+                {compareMonthOptions.map((option) => (
+                  <SelectItem key={`compare-month-${option.value}`} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
           <Select value={compareCourseA} onValueChange={setCompareCourseA}>
@@ -867,7 +991,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Treinamento 1</SelectItem>
-              {courseOptions.map((option) => (
+              {filteredCompareCourseOptions.map((option) => (
                 <SelectItem key={`compare-a-${option.value}`} value={option.value}>
                   {option.label}
                 </SelectItem>
@@ -880,7 +1004,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Treinamento 2</SelectItem>
-              {courseOptions.map((option) => (
+              {filteredCompareCourseOptions.map((option) => (
                 <SelectItem key={`compare-b-${option.value}`} value={option.value}>
                   {option.label}
                 </SelectItem>
@@ -908,11 +1032,17 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
               setCompareCourseA("all");
               setCompareCourseB("all");
               setCompareMode("both");
+              setCompareYearFilter("all");
+              setCompareMonthFilter("all");
             }}
           >
             Limpar comparação
           </Button>
         </div>
+        <p className="text-[11px] text-slate-500">
+          Opções disponíveis para comparação:{" "}
+          <span className="font-medium">{filteredCompareCourseOptions.length}</span>
+        </p>
         {compareIsActive && (
           <p className="text-xs text-slate-700">
             Modo ativo: <span className="font-medium">{compareModeLabel}</span>.
