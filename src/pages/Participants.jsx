@@ -35,6 +35,8 @@ export default function Participants() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [courseFilter, setCourseFilter] = useState("all");
+  const [compareCourseA, setCompareCourseA] = useState("all");
+  const [compareCourseB, setCompareCourseB] = useState("all");
   const [municipalityFilter, setMunicipalityFilter] = useState("all");
   const [gveFilter, setGveFilter] = useState("all");
   const [showUpload, setShowUpload] = useState(false);
@@ -550,6 +552,18 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
       );
     })
     .filter((group) => {
+      const selectedCourses = [compareCourseA, compareCourseB].filter(
+        (course) => course !== "all"
+      );
+      if (selectedCourses.length < 2) return true;
+      const normalizedCourseTitles = group.courseTitles.map((title) =>
+        normalizeText(title)
+      );
+      return selectedCourses.every((course) =>
+        normalizedCourseTitles.includes(normalizeText(course))
+      );
+    })
+    .filter((group) => {
       if (municipalityFilter === "all") return true;
       const value = normalizeText(group.profile.municipality);
       return value && value === normalizeText(municipalityFilter);
@@ -611,7 +625,15 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
 
   useEffect(() => {
     setPage(1);
-  }, [search, typeFilter, courseFilter, municipalityFilter, gveFilter]);
+  }, [
+    search,
+    typeFilter,
+    courseFilter,
+    compareCourseA,
+    compareCourseB,
+    municipalityFilter,
+    gveFilter,
+  ]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -687,6 +709,9 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     },
   ];
 
+  const compareIsActive =
+    compareCourseA !== "all" && compareCourseB !== "all";
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -750,6 +775,63 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
             Importar Planilha
           </Button>
         </div>
+      </div>
+
+      <div className="rounded-lg border bg-slate-50/60 p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">
+            Comparar dois treinamentos
+          </h3>
+          <p className="text-xs text-slate-600">
+            Selecione 2 cursos para listar apenas participantes que concluíram
+            ambos.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_auto]">
+          <Select value={compareCourseA} onValueChange={setCompareCourseA}>
+            <SelectTrigger>
+              <SelectValue placeholder="Treinamento 1" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Treinamento 1</SelectItem>
+              {courseOptions.map((option) => (
+                <SelectItem key={`compare-a-${option.value}`} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={compareCourseB} onValueChange={setCompareCourseB}>
+            <SelectTrigger>
+              <SelectValue placeholder="Treinamento 2" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Treinamento 2</SelectItem>
+              {courseOptions.map((option) => (
+                <SelectItem key={`compare-b-${option.value}`} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setCompareCourseA("all");
+              setCompareCourseB("all");
+            }}
+          >
+            Limpar comparação
+          </Button>
+        </div>
+        {compareIsActive && (
+          <p className="text-xs text-slate-700">
+            Exibindo participantes que concluíram:{" "}
+            <span className="font-medium">{compareCourseA}</span> e{" "}
+            <span className="font-medium">{compareCourseB}</span>.
+          </p>
+        )}
       </div>
 
       <DataTable
