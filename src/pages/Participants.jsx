@@ -528,16 +528,22 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
   const handleExport = () => {
     const rows = filteredParticipants.map((group) => ({
       Nome: group.profile.professional_name || "",
+      Matricula: group.profile.professional_registration || "",
       RG: group.profile.professional_rg || "",
       CPF: group.profile.professional_cpf || "",
       Email: group.profile.professional_email || "",
+      "Telefone Comercial": group.profile.commercial_phone || "",
       Celular: group.profile.mobile_phone || "",
-      Municipio: group.profile.municipality || "",
+      Setor: group.profile.professional_sector || "",
+      "Formacao Profissional": group.profile.professional_formation || "",
+      Instituicao: group.profile.institution || "",
+      Estado: group.profile.state || "",
       GVE: group.profile.health_region || "",
-      "Tipo de Curso": group.courseTypes
-        .map((type) => typeLabels[type] || type)
-        .join(", "),
-      "Nome do Curso": group.courseTitles.join(", "),
+      Municipio: group.profile.municipality || "",
+      "Polo Base / Unidade": group.profile.unit_name || "",
+      Cargo: group.profile.position || "",
+      "Endereco de Trabalho": group.profile.work_address || "",
+      "Endereco Residencial": group.profile.residential_address || "",
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
