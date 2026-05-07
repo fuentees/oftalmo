@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   AlertCircle,
@@ -57,8 +56,6 @@ export default function TrainingFeedback() {
 
   const [cpf, setCpf] = useState("");
   const [email, setEmail] = useState("");
-  const [comments, setComments] = useState("");
-  const [wouldRecommend, setWouldRecommend] = useState(false);
   const [lookupError, setLookupError] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [answers, setAnswers] = useState({});
@@ -220,6 +217,33 @@ export default function TrainingFeedback() {
         };
       });
 
+      const generalCommentsAnswer = answersPayload.find((item) =>
+        String(item?.question || "")
+          .toUpperCase()
+          .includes("3 - COMENTÁRIOS/SUGESTÕES")
+      );
+      const recommendationAnswer = answersPayload.find((item) =>
+        String(item?.question || "").toLowerCase().includes("recomendaria")
+      );
+      const normalizedGeneralComments = String(
+        generalCommentsAnswer?.value || ""
+      ).trim();
+      const normalizedRecommendationValue = recommendationAnswer?.value;
+      const normalizedWouldRecommend =
+        normalizedRecommendationValue === true ||
+        String(normalizedRecommendationValue || "")
+          .trim()
+          .toLowerCase() === "sim";
+      const hasRecommendationAnswer =
+        normalizedRecommendationValue === true ||
+        normalizedRecommendationValue === false ||
+        String(normalizedRecommendationValue || "")
+          .trim()
+          .toLowerCase() === "sim" ||
+        String(normalizedRecommendationValue || "")
+          .trim()
+          .toLowerCase() === "nao";
+
       const participant = participants[0];
       await dataClient.entities.TrainingFeedback.create({
         training_id: trainingId,
@@ -227,8 +251,10 @@ export default function TrainingFeedback() {
         participant_id: participant.id,
         participant_name: participant.professional_name,
         rating: ratingAverage,
-        comments,
-        would_recommend: wouldRecommend,
+        comments: normalizedGeneralComments || null,
+        would_recommend: hasRecommendationAnswer
+          ? normalizedWouldRecommend
+          : null,
         answers: answersPayload,
       });
     },
@@ -350,6 +376,13 @@ export default function TrainingFeedback() {
                 />
               </div>
             </div>
+
+            <Alert className="border-blue-200 bg-blue-50">
+              <AlertDescription className="text-blue-800 text-sm">
+                Classifique os itens usando a escala: 5 (ÓTIMO), 4 (BOM), 3
+                (REGULAR), 2 (FRACO) e 1 (INSUFICIENTE).
+              </AlertDescription>
+            </Alert>
 
             {activeQuestions.length === 0 ? (
               hasQuestionsError ? (
@@ -495,27 +528,6 @@ export default function TrainingFeedback() {
                 );
               })
             )}
-
-            <div className="space-y-2">
-              <Label>Comentarios e sugestoes</Label>
-              <Textarea
-                value={comments}
-                onChange={(event) => setComments(event.target.value)}
-                rows={4}
-                placeholder="Compartilhe sua experiencia..."
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="would_recommend"
-                checked={wouldRecommend}
-                onCheckedChange={(checked) => setWouldRecommend(Boolean(checked))}
-              />
-              <Label htmlFor="would_recommend" className="font-normal">
-                Eu recomendaria este treinamento
-              </Label>
-            </div>
 
             {lookupError && (
               <Alert className="border-red-200 bg-red-50">

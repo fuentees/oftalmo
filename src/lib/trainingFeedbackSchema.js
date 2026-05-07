@@ -1,55 +1,80 @@
 export const CHOICE_SPLIT_TOKEN = "||";
 export const CHOICE_OPTION_TOKEN = "|";
 
+const TRAINING_EVALUATION_RATING_OPTIONS = [
+  "5 - ÓTIMO",
+  "4 - BOM",
+  "3 - REGULAR",
+  "2 - FRACO",
+  "1 - INSUFICIENTE",
+];
+
 export const DEFAULT_TRAINING_FEEDBACK_QUESTIONS = [
   {
-    question_text: "Conteúdo apresentado",
-    question_type: "rating",
+    question_text: "A - DURAÇÃO DO CURSO",
+    question_type: "choice",
     order: 1,
+    question_options: TRAINING_EVALUATION_RATING_OPTIONS,
   },
   {
-    question_text: "Didática do instrutor",
-    question_type: "rating",
+    question_text: "A - JUSTIFIQUE A SUA NOTA",
+    question_type: "text",
     order: 2,
   },
   {
-    question_text: "Material de apoio",
-    question_type: "rating",
-    order: 3,
-  },
-  {
-    question_text: "Duração/carga horária do curso",
+    question_text: "B - TEMPO DESTINADO A CADA ASSUNTO",
     question_type: "choice",
-    order: 4,
-    question_options: ["Muito curta", "Adequada", "Muito longa"],
+    order: 3,
+    question_options: TRAINING_EVALUATION_RATING_OPTIONS,
   },
   {
-    question_text: "Horário/tempo do treinamento",
+    question_text: "B - JUSTIFIQUE A SUA NOTA",
+    question_type: "text",
+    order: 4,
+  },
+  {
+    question_text: "C - DIDÁTICA APLICADA A CADA ASSUNTO",
     question_type: "choice",
     order: 5,
-    question_options: ["Muito ruim", "Ruim", "Adequado", "Muito bom"],
+    question_options: TRAINING_EVALUATION_RATING_OPTIONS,
   },
   {
-    question_text: "Local e infraestrutura",
-    question_type: "choice",
-    order: 6,
-    question_options: ["Ruim", "Regular", "Bom", "Excelente"],
-  },
-  {
-    question_text: "Assuntos mais importantes para sua prática",
+    question_text: "C - JUSTIFIQUE A SUA NOTA",
     question_type: "text",
-    order: 7,
+    order: 6,
   },
   {
-    question_text: "Assuntos menos importantes",
+    question_text: "D - LOCAL DO TREINAMENTO",
+    question_type: "choice",
+    order: 7,
+    question_options: TRAINING_EVALUATION_RATING_OPTIONS,
+  },
+  {
+    question_text: "D - JUSTIFIQUE A SUA NOTA",
     question_type: "text",
     order: 8,
-    required: false,
   },
   {
-    question_text: "Sugestões para próximos treinamentos",
-    question_type: "text",
+    question_text: "E - MATERIAL UTILIZADO",
+    question_type: "choice",
     order: 9,
+    question_options: TRAINING_EVALUATION_RATING_OPTIONS,
+  },
+  {
+    question_text: "E - JUSTIFIQUE A SUA NOTA",
+    question_type: "text",
+    order: 10,
+  },
+  {
+    question_text:
+      "2 - QUAL ASSUNTO VOCÊ CONSIDERA MAIS IMPORTANTE E O MENOS IMPORTANTE PARA O DESENVOLVIMENTO DO TRABALHO QUE IRÁ EFETUAR?",
+    question_type: "text",
+    order: 11,
+  },
+  {
+    question_text: "3 - COMENTÁRIOS/SUGESTÕES",
+    question_type: "text",
+    order: 12,
     required: false,
   },
 ];
