@@ -192,7 +192,8 @@ export default function AttendanceControl({ training, participants, onClose }) {
   const filteredParticipants = activeParticipants.filter(
     (p) =>
       p.professional_name?.toLowerCase().includes(search.toLowerCase()) ||
-      p.professional_registration?.toLowerCase().includes(search.toLowerCase())
+      p.municipality?.toLowerCase().includes(search.toLowerCase()) ||
+      p.health_region?.toLowerCase().includes(search.toLowerCase())
   );
 
   const sortedFilteredParticipants = useMemo(() => {
@@ -424,7 +425,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
-              placeholder="Buscar por nome ou matrícula..."
+              placeholder="Buscar por nome, município ou GVE..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10"
@@ -437,7 +438,8 @@ export default function AttendanceControl({ training, participants, onClose }) {
               <TableHeader>
                 <TableRow className="bg-slate-50">
                   <TableHead className="font-semibold">Nome</TableHead>
-                  <TableHead className="font-semibold">Matrícula</TableHead>
+                  <TableHead className="font-semibold">Município</TableHead>
+                  <TableHead className="font-semibold">GVE</TableHead>
                   <TableHead className="font-semibold">Check-in</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="font-semibold">% Presença</TableHead>
@@ -454,7 +456,8 @@ export default function AttendanceControl({ training, participants, onClose }) {
                       <TableCell className="font-medium">
                         {participant.professional_name}
                       </TableCell>
-                      <TableCell>{participant.professional_registration}</TableCell>
+                      <TableCell>{participant.municipality || "-"}</TableCell>
+                      <TableCell>{participant.health_region || "-"}</TableCell>
                       <TableCell className="text-sm text-slate-500">
                         {record?.check_in_time || "-"}
                       </TableCell>
