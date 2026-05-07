@@ -45,17 +45,12 @@ const StarRating = ({ value, onChange, label }) => (
   </div>
 );
 
-const normalizeCpf = (value) => String(value || "").replace(/\D/g, "");
-const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
-
 export default function TrainingFeedback() {
   const queryString =
     window.location.search || window.location.hash.split("?")[1] || "";
   const urlParams = new URLSearchParams(queryString);
   const trainingId = urlParams.get("training");
 
-  const [cpf, setCpf] = useState("");
-  const [email, setEmail] = useState("");
   const [lookupError, setLookupError] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [answers, setAnswers] = useState({});
@@ -130,37 +125,6 @@ export default function TrainingFeedback() {
   const submitFeedback = useMutation({
     mutationFn: async () => {
       setLookupError(null);
-
-      const cpfDigits = normalizeCpf(cpf);
-      const emailValue = normalizeEmail(email);
-      if (!cpfDigits && !emailValue) {
-        throw new Error("Informe CPF ou e-mail para identificar sua inscricao.");
-      }
-
-      const scopedParticipants = await dataClient.entities.TrainingParticipant.filter(
-        { training_id: trainingId },
-        "-enrollment_date"
-      );
-
-      const participants = scopedParticipants.filter((participant) => {
-        const cpfMatch =
-          cpfDigits &&
-          normalizeCpf(participant.professional_cpf) === normalizeCpf(cpfDigits);
-        const emailMatch =
-          emailValue &&
-          normalizeEmail(participant.professional_email) === normalizeEmail(emailValue);
-
-        if (cpfDigits && emailValue) return cpfMatch || emailMatch;
-        if (cpfDigits) return cpfMatch;
-        return emailMatch;
-      });
-
-      if (participants.length === 0) {
-        throw new Error("Inscricao nao encontrada para este treinamento.");
-      }
-      if (participants.length > 1) {
-        throw new Error("Encontramos mais de uma inscricao. Use o CPF completo.");
-      }
 
       if (activeQuestions.length === 0) {
         throw new Error("Nenhuma pergunta foi configurada para este treinamento.");
@@ -244,12 +208,11 @@ export default function TrainingFeedback() {
           .trim()
           .toLowerCase() === "nao";
 
-      const participant = participants[0];
       await dataClient.entities.TrainingFeedback.create({
         training_id: trainingId,
         training_title: training.title,
-        participant_id: participant.id,
-        participant_name: participant.professional_name,
+        participant_id: null,
+        participant_name: "Resposta anônima",
         rating: ratingAverage,
         comments: normalizedGeneralComments || null,
         would_recommend: hasRecommendationAnswer
@@ -355,32 +318,17 @@ export default function TrainingFeedback() {
           </CardHeader>
 
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="cpf">CPF (opcional)</Label>
-                <Input
-                  id="cpf"
-                  value={cpf}
-                  onChange={(event) => setCpf(event.target.value)}
-                  placeholder="000.000.000-00"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">E-mail (opcional)</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="nome@email.com"
-                />
-              </div>
-            </div>
-
             <Alert className="border-blue-200 bg-blue-50">
               <AlertDescription className="text-blue-800 text-sm">
                 Classifique os itens usando a escala: 5 (ÓTIMO), 4 (BOM), 3
                 (REGULAR), 2 (FRACO) e 1 (INSUFICIENTE).
+              </AlertDescription>
+            </Alert>
+
+            <Alert className="border-slate-200 bg-slate-50">
+              <AlertDescription className="text-slate-700 text-sm">
+                Resposta anônima: basta preencher a avaliação e enviar. Não é
+                necessário se identificar.
               </AlertDescription>
             </Alert>
 
