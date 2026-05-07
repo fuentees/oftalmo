@@ -43,6 +43,14 @@ export default function AttendanceControl({ training, participants, onClose }) {
   const [dailySearch, setDailySearch] = useState("");
   const [dailyMunicipalityFilter, setDailyMunicipalityFilter] = useState("all");
   const [dailyGveFilter, setDailyGveFilter] = useState("all");
+  const [attendanceSortConfig, setAttendanceSortConfig] = useState({
+    key: "municipality",
+    direction: "asc",
+  });
+  const [dailySortConfig, setDailySortConfig] = useState({
+    key: "professional_name",
+    direction: "asc",
+  });
   const [confirmAllOpen, setConfirmAllOpen] = useState(false);
   const trainingDates = Array.isArray(training?.dates)
     ? training.dates.filter((dateItem) => dateItem?.date)
@@ -206,38 +214,50 @@ export default function AttendanceControl({ training, participants, onClose }) {
       .toLowerCase()
       .trim();
 
-  const compareParticipants = (a, b) => {
-    const compareField = (aValue, bValue) => {
-      const normalizedA = normalizeSearchText(aValue);
-      const normalizedB = normalizeSearchText(bValue);
-      if (!normalizedA && normalizedB) return 1;
-      if (normalizedA && !normalizedB) return -1;
-      return normalizedA.localeCompare(normalizedB, "pt-BR", {
-        sensitivity: "base",
-      });
-    };
-
-    const byMunicipality = compareField(a.municipality, b.municipality);
-    if (byMunicipality !== 0) return byMunicipality;
-
-    const byName = compareField(a.professional_name, b.professional_name);
-    if (byName !== 0) return byName;
-
-    const byGve = compareField(a.health_region, b.health_region);
-    if (byGve !== 0) return byGve;
-
-    return compareField(a.professional_registration, b.professional_registration);
+  const compareSortValue = (aValue, bValue) => {
+    const normalizedA = normalizeSearchText(aValue);
+    const normalizedB = normalizeSearchText(bValue);
+    if (!normalizedA && normalizedB) return 1;
+    if (normalizedA && !normalizedB) return -1;
+    return normalizedA.localeCompare(normalizedB, "pt-BR", {
+      sensitivity: "base",
+    });
   };
 
-  const sortedActiveParticipants = useMemo(
-    () => [...activeParticipants].sort(compareParticipants),
-    [activeParticipants]
-  );
+  const getSortedParticipants = (items, sortConfig) => {
+    const key = sortConfig?.key || "professional_name";
+    const direction = sortConfig?.direction === "desc" ? "desc" : "asc";
+    return [...items].sort((a, b) => {
+      const comparison = compareSortValue(a?.[key], b?.[key]);
+      if (comparison === 0) {
+        return compareSortValue(a?.professional_name, b?.professional_name);
+      }
+      return direction === "asc" ? comparison : -comparison;
+    });
+  };
 
-  const sortedFilteredParticipants = useMemo(() => {
+  const nextSortConfig = (current, key) => {
+    if (current.key === key) {
+      return {
+        key,
+        direction: current.direction === "asc" ? "desc" : "asc",
+      };
+    }
+    return {
+      key,
+      direction: "asc",
+    };
+  };
+
+  const getSortMark = (sortConfig, key) => {
+    if (sortConfig.key !== key) return "";
+    return sortConfig.direction === "asc" ? "^" : "v";
+  };
+
+  const filteredParticipants = useMemo(() => {
     const normalizedSearch = normalizeSearchText(search);
-    if (!normalizedSearch) return sortedActiveParticipants;
-    return sortedActiveParticipants.filter((participant) => {
+    if (!normalizedSearch) return activeParticipants;
+    return activeParticipants.filter((participant) => {
       const values = [
         participant.professional_name,
         participant.municipality,
@@ -247,16 +267,21 @@ export default function AttendanceControl({ training, participants, onClose }) {
         normalizeSearchText(value).includes(normalizedSearch)
       );
     });
-  }, [search, sortedActiveParticipants]);
+  }, [activeParticipants, search]);
+
+  const sortedFilteredParticipants = useMemo(
+    () => getSortedParticipants(filteredParticipants, attendanceSortConfig),
+    [attendanceSortConfig, filteredParticipants]
+  );
 
   const participantsWithRecords = useMemo(
     () =>
-      sortedActiveParticipants.filter(
+      activeParticipants.filter(
         (participant) =>
           Array.isArray(participant.attendance_records) &&
           participant.attendance_records.length > 0
       ),
-    [sortedActiveParticipants]
+    [activeParticipants]
   );
 
   const dailyMunicipalityOptions = useMemo(() => {
@@ -315,6 +340,11 @@ export default function AttendanceControl({ training, participants, onClose }) {
     participantsWithRecords,
   ]);
 
+  const sortedDailyParticipants = useMemo(
+    () => getSortedParticipants(filteredDailyParticipants, dailySortConfig),
+    [dailySortConfig, filteredDailyParticipants]
+  );
+
   const getAttendanceForDate = (participant, date) => {
     const records = participant.attendance_records || [];
     return records.find(r => r.date === date);
@@ -322,7 +352,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
 
   const exportDailyAttendance = () => {
     if (sortedTrainingDates.length === 0) return;
-    if (filteredDailyParticipants.length === 0) {
+    if (sortedDailyParticipants.length === 0) {
       toast.error("Nenhum participante com presença registrada.");
       return;
     }
@@ -332,7 +362,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
       "E-mail",
       ...sortedTrainingDates.map((item) => formatDate(item.date)),
     ];
-    const rows = filteredDailyParticipants.map((participant) => {
+    const rows = sortedDailyParticipants.map((participant) => {
       const base = [
         participant.professional_name || "",
         participant.professional_rg || "",
@@ -517,9 +547,54 @@ export default function AttendanceControl({ training, participants, onClose }) {
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50">
-                  <TableHead className="font-semibold">Nome</TableHead>
-                  <TableHead className="font-semibold">Município</TableHead>
-                  <TableHead className="font-semibold">GVE</TableHead>
+                  <TableHead className="font-semibold">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1"
+                      onClick={() =>
+                        setAttendanceSortConfig((current) =>
+                          nextSortConfig(current, "professional_name")
+                        )
+                      }
+                    >
+                      Nome
+                      <span className="text-[10px] text-slate-500">
+                        {getSortMark(attendanceSortConfig, "professional_name")}
+                      </span>
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-semibold">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1"
+                      onClick={() =>
+                        setAttendanceSortConfig((current) =>
+                          nextSortConfig(current, "municipality")
+                        )
+                      }
+                    >
+                      Município
+                      <span className="text-[10px] text-slate-500">
+                        {getSortMark(attendanceSortConfig, "municipality")}
+                      </span>
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-semibold">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1"
+                      onClick={() =>
+                        setAttendanceSortConfig((current) =>
+                          nextSortConfig(current, "health_region")
+                        )
+                      }
+                    >
+                      GVE
+                      <span className="text-[10px] text-slate-500">
+                        {getSortMark(attendanceSortConfig, "health_region")}
+                      </span>
+                    </button>
+                  </TableHead>
                   <TableHead className="font-semibold">Check-in</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="font-semibold">% Presença</TableHead>
@@ -674,9 +749,54 @@ export default function AttendanceControl({ training, participants, onClose }) {
           <Table>
             <TableHeader>
               <TableRow className="bg-slate-50">
-                <TableHead className="font-semibold">Nome</TableHead>
-                <TableHead className="font-semibold">RG</TableHead>
-                <TableHead className="font-semibold">E-mail</TableHead>
+                <TableHead className="font-semibold">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1"
+                    onClick={() =>
+                      setDailySortConfig((current) =>
+                        nextSortConfig(current, "professional_name")
+                      )
+                    }
+                  >
+                    Nome
+                    <span className="text-[10px] text-slate-500">
+                      {getSortMark(dailySortConfig, "professional_name")}
+                    </span>
+                  </button>
+                </TableHead>
+                <TableHead className="font-semibold">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1"
+                    onClick={() =>
+                      setDailySortConfig((current) =>
+                        nextSortConfig(current, "professional_rg")
+                      )
+                    }
+                  >
+                    RG
+                    <span className="text-[10px] text-slate-500">
+                      {getSortMark(dailySortConfig, "professional_rg")}
+                    </span>
+                  </button>
+                </TableHead>
+                <TableHead className="font-semibold">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1"
+                    onClick={() =>
+                      setDailySortConfig((current) =>
+                        nextSortConfig(current, "professional_email")
+                      )
+                    }
+                  >
+                    E-mail
+                    <span className="text-[10px] text-slate-500">
+                      {getSortMark(dailySortConfig, "professional_email")}
+                    </span>
+                  </button>
+                </TableHead>
                 {sortedTrainingDates.map((item, index) => (
                   <TableHead key={`${item.date}-${index}`} className="font-semibold">
                     {formatDate(item.date)}
@@ -685,14 +805,14 @@ export default function AttendanceControl({ training, participants, onClose }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredDailyParticipants.length === 0 ? (
+              {sortedDailyParticipants.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={3 + sortedTrainingDates.length} className="text-center py-8 text-slate-500">
                     Nenhum participante com presença registrada.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredDailyParticipants.map((participant) => (
+                sortedDailyParticipants.map((participant) => (
                   <TableRow key={`daily-${participant.id}`}>
                     <TableCell className="font-medium">
                       {participant.professional_name}
