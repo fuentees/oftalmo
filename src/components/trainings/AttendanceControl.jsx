@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Button } from "@/components/ui/button";
@@ -195,7 +195,40 @@ export default function AttendanceControl({ training, participants, onClose }) {
       p.professional_registration?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const participantsWithRecords = filteredParticipants.filter(
+  const sortedFilteredParticipants = useMemo(() => {
+    const normalizeSortText = (value) =>
+      String(value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+
+    const compareField = (aValue, bValue) => {
+      const a = normalizeSortText(aValue);
+      const b = normalizeSortText(bValue);
+      if (!a && b) return 1;
+      if (a && !b) return -1;
+      return a.localeCompare(b, "pt-BR", { sensitivity: "base" });
+    };
+
+    return [...filteredParticipants].sort((a, b) => {
+      const byMunicipality = compareField(a.municipality, b.municipality);
+      if (byMunicipality !== 0) return byMunicipality;
+
+      const byName = compareField(a.professional_name, b.professional_name);
+      if (byName !== 0) return byName;
+
+      const byGve = compareField(a.health_region, b.health_region);
+      if (byGve !== 0) return byGve;
+
+      return compareField(
+        a.professional_registration,
+        b.professional_registration
+      );
+    });
+  }, [filteredParticipants]);
+
+  const participantsWithRecords = sortedFilteredParticipants.filter(
     (participant) =>
       Array.isArray(participant.attendance_records) &&
       participant.attendance_records.length > 0
@@ -412,7 +445,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredParticipants.map((participant) => {
+                {sortedFilteredParticipants.map((participant) => {
                   const record = getAttendanceForDate(participant, selectedDate);
                   const status = record?.status || "ausente";
                   
