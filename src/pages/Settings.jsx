@@ -24,6 +24,7 @@ import {
 import {
   Palette,
   Check,
+  Copy,
   FileSpreadsheet,
   Trash2,
   Download,
@@ -873,6 +874,36 @@ export default function Settings() {
       setCertificateStatus({
         type: "error",
         message: syncErrorText || "Não foi possível criar o novo modelo.",
+      });
+    }
+  };
+
+  const handleCopyCertificateModel = async () => {
+    const modelLabel =
+      selectedCertificateModel?.name ||
+      (selectedCertificateModel?.isDefault ? "Modelo padrão" : "Modelo");
+    const payload = {
+      modelId: certificateModelId,
+      modelName: modelLabel,
+      template: certificateTemplate,
+    };
+    if (!navigator?.clipboard?.writeText) {
+      setCertificateStatus({
+        type: "error",
+        message: "Seu navegador não permite copiar para a área de transferência.",
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setCertificateStatus({
+        type: "success",
+        message: `Modelo "${modelLabel}" copiado.`,
+      });
+    } catch {
+      setCertificateStatus({
+        type: "error",
+        message: "Não foi possível copiar o modelo para a área de transferência.",
       });
     }
   };
@@ -1737,6 +1768,14 @@ export default function Settings() {
                     Modelos extras só existem quando você clicar em “Criar modelo”.
                   </p>
                   <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleCopyCertificateModel}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copiar modelo
+                    </Button>
                     <Input
                       value={newCertificateModelName}
                       onChange={(e) => setNewCertificateModelName(e.target.value)}
