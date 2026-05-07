@@ -14,3 +14,22 @@ export const isMissingSupabaseTableError = (error, tableName) => {
     message.includes(`relation "${normalizedTable}" does not exist`)
   );
 };
+
+export const isMissingSupabaseColumnError = (error, tableName, columnName) => {
+  const message = getSupabaseErrorMessage(error).toLowerCase();
+  const normalizedTable = String(tableName || "").trim().toLowerCase();
+  const normalizedColumn = String(columnName || "").trim().toLowerCase();
+  if (!message || !normalizedTable || !normalizedColumn) return false;
+
+  return (
+    message.includes(
+      `could not find the '${normalizedColumn}' column of '${normalizedTable}' in the schema cache`
+    ) ||
+    message.includes(
+      `column "${normalizedColumn}" of relation "${normalizedTable}" does not exist`
+    ) ||
+    message.includes(
+      `column public.${normalizedTable}.${normalizedColumn} does not exist`
+    )
+  );
+};
