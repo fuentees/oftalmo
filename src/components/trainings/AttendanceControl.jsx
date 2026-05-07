@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -33,6 +40,9 @@ import { isRepadronizacaoTraining } from "@/lib/trainingType";
 
 export default function AttendanceControl({ training, participants, onClose }) {
   const [search, setSearch] = useState("");
+  const [dailySearch, setDailySearch] = useState("");
+  const [dailyMunicipalityFilter, setDailyMunicipalityFilter] = useState("all");
+  const [dailyGveFilter, setDailyGveFilter] = useState("all");
   const [confirmAllOpen, setConfirmAllOpen] = useState(false);
   const trainingDates = Array.isArray(training?.dates)
     ? training.dates.filter((dateItem) => dateItem?.date)
@@ -189,51 +199,121 @@ export default function AttendanceControl({ training, participants, onClose }) {
     (p) => p.enrollment_status !== "cancelado"
   );
 
-  const filteredParticipants = activeParticipants.filter(
-    (p) =>
-      p.professional_name?.toLowerCase().includes(search.toLowerCase()) ||
-      p.municipality?.toLowerCase().includes(search.toLowerCase()) ||
-      p.health_region?.toLowerCase().includes(search.toLowerCase())
+  const normalizeSearchText = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const compareParticipants = (a, b) => {
+    const compareField = (aValue, bValue) => {
+      const normalizedA = normalizeSearchText(aValue);
+      const normalizedB = normalizeSearchText(bValue);
+      if (!normalizedA && normalizedB) return 1;
+      if (normalizedA && !normalizedB) return -1;
+      return normalizedA.localeCompare(normalizedB, "pt-BR", {
+        sensitivity: "base",
+      });
+    };
+
+    const byMunicipality = compareField(a.municipality, b.municipality);
+    if (byMunicipality !== 0) return byMunicipality;
+
+    const byName = compareField(a.professional_name, b.professional_name);
+    if (byName !== 0) return byName;
+
+    const byGve = compareField(a.health_region, b.health_region);
+    if (byGve !== 0) return byGve;
+
+    return compareField(a.professional_registration, b.professional_registration);
+  };
+
+  const sortedActiveParticipants = useMemo(
+    () => [...activeParticipants].sort(compareParticipants),
+    [activeParticipants]
   );
 
   const sortedFilteredParticipants = useMemo(() => {
-    const normalizeSortText = (value) =>
-      String(value ?? "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .trim();
-
-    const compareField = (aValue, bValue) => {
-      const a = normalizeSortText(aValue);
-      const b = normalizeSortText(bValue);
-      if (!a && b) return 1;
-      if (a && !b) return -1;
-      return a.localeCompare(b, "pt-BR", { sensitivity: "base" });
-    };
-
-    return [...filteredParticipants].sort((a, b) => {
-      const byMunicipality = compareField(a.municipality, b.municipality);
-      if (byMunicipality !== 0) return byMunicipality;
-
-      const byName = compareField(a.professional_name, b.professional_name);
-      if (byName !== 0) return byName;
-
-      const byGve = compareField(a.health_region, b.health_region);
-      if (byGve !== 0) return byGve;
-
-      return compareField(
-        a.professional_registration,
-        b.professional_registration
+    const normalizedSearch = normalizeSearchText(search);
+    if (!normalizedSearch) return sortedActiveParticipants;
+    return sortedActiveParticipants.filter((participant) => {
+      const values = [
+        participant.professional_name,
+        participant.municipality,
+        participant.health_region,
+      ];
+      return values.some((value) =>
+        normalizeSearchText(value).includes(normalizedSearch)
       );
     });
-  }, [filteredParticipants]);
+  }, [search, sortedActiveParticipants]);
 
-  const participantsWithRecords = sortedFilteredParticipants.filter(
-    (participant) =>
-      Array.isArray(participant.attendance_records) &&
-      participant.attendance_records.length > 0
+  const participantsWithRecords = useMemo(
+    () =>
+      sortedActiveParticipants.filter(
+        (participant) =>
+          Array.isArray(participant.attendance_records) &&
+          participant.attendance_records.length > 0
+      ),
+    [sortedActiveParticipants]
   );
+
+  const dailyMunicipalityOptions = useMemo(() => {
+    const values = new Set();
+    participantsWithRecords.forEach((participant) => {
+      if (participant.municipality) values.add(participant.municipality);
+    });
+    return Array.from(values)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
+      .map((value) => ({ value, label: value }));
+  }, [participantsWithRecords]);
+
+  const dailyGveOptions = useMemo(() => {
+    const values = new Set();
+    participantsWithRecords.forEach((participant) => {
+      if (participant.health_region) values.add(participant.health_region);
+    });
+    return Array.from(values)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
+      .map((value) => ({ value, label: value }));
+  }, [participantsWithRecords]);
+
+  const filteredDailyParticipants = useMemo(() => {
+    const normalizedSearch = normalizeSearchText(dailySearch);
+    return participantsWithRecords.filter((participant) => {
+      if (dailyMunicipalityFilter !== "all") {
+        const municipality = normalizeSearchText(participant.municipality);
+        if (municipality !== normalizeSearchText(dailyMunicipalityFilter)) {
+          return false;
+        }
+      }
+
+      if (dailyGveFilter !== "all") {
+        const gve = normalizeSearchText(participant.health_region);
+        if (gve !== normalizeSearchText(dailyGveFilter)) {
+          return false;
+        }
+      }
+
+      if (!normalizedSearch) return true;
+      const values = [
+        participant.professional_name,
+        participant.professional_rg,
+        participant.professional_email,
+        participant.municipality,
+        participant.health_region,
+      ];
+      return values.some((value) =>
+        normalizeSearchText(value).includes(normalizedSearch)
+      );
+    });
+  }, [
+    dailyGveFilter,
+    dailyMunicipalityFilter,
+    dailySearch,
+    participantsWithRecords,
+  ]);
 
   const getAttendanceForDate = (participant, date) => {
     const records = participant.attendance_records || [];
@@ -242,7 +322,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
 
   const exportDailyAttendance = () => {
     if (sortedTrainingDates.length === 0) return;
-    if (participantsWithRecords.length === 0) {
+    if (filteredDailyParticipants.length === 0) {
       toast.error("Nenhum participante com presença registrada.");
       return;
     }
@@ -252,7 +332,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
       "E-mail",
       ...sortedTrainingDates.map((item) => formatDate(item.date)),
     ];
-    const rows = participantsWithRecords.map((participant) => {
+    const rows = filteredDailyParticipants.map((participant) => {
       const base = [
         participant.professional_name || "",
         participant.professional_rg || "",
@@ -544,6 +624,47 @@ export default function AttendanceControl({ training, participants, onClose }) {
         </Button>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="relative sm:col-span-3 lg:col-span-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Buscar por nome, RG, e-mail, município ou GVE..."
+            value={dailySearch}
+            onChange={(e) => setDailySearch(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Select
+          value={dailyMunicipalityFilter}
+          onValueChange={setDailyMunicipalityFilter}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Município" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os municípios</SelectItem>
+            {dailyMunicipalityOptions.map((option) => (
+              <SelectItem key={`daily-municipality-${option.value}`} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={dailyGveFilter} onValueChange={setDailyGveFilter}>
+          <SelectTrigger>
+            <SelectValue placeholder="GVE" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as GVE</SelectItem>
+            {dailyGveOptions.map((option) => (
+              <SelectItem key={`daily-gve-${option.value}`} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {sortedTrainingDates.length === 0 ? (
         <div className="rounded-lg border bg-white p-8 text-center text-slate-500">
           Nenhuma data cadastrada para este treinamento.
@@ -564,14 +685,14 @@ export default function AttendanceControl({ training, participants, onClose }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {participantsWithRecords.length === 0 ? (
+              {filteredDailyParticipants.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={3 + sortedTrainingDates.length} className="text-center py-8 text-slate-500">
                     Nenhum participante com presença registrada.
                   </TableCell>
                 </TableRow>
               ) : (
-                participantsWithRecords.map((participant) => (
+                filteredDailyParticipants.map((participant) => (
                   <TableRow key={`daily-${participant.id}`}>
                     <TableCell className="font-medium">
                       {participant.professional_name}
