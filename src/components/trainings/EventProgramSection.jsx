@@ -130,8 +130,10 @@ export default function EventProgramSection({ training }) {
           },
           dateIndex * 100 + sessionIndex
         )
-      )
-      .filter(hasSessionTypedContent);
+      );
+
+  const getTypedSessions = (sessions = [], dateIndex = 0) =>
+    normalizeImportedSessions(sessions, dateIndex).filter(hasSessionTypedContent);
 
   const sortSessionsByStartTime = (sessions) =>
     [...sessions].sort((a, b) => {
@@ -185,7 +187,7 @@ export default function EventProgramSection({ training }) {
     programDates.forEach((dateItem) => {
       const dateLabel = formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "-";
       const sessions = sortSessionsByStartTime(
-        normalizeImportedSessions(dateItem?.sessions)
+        getTypedSessions(dateItem?.sessions)
       );
       sessions.forEach((session, sessionIndex) => {
         const description = formatProgramDescription(session);
@@ -209,7 +211,7 @@ export default function EventProgramSection({ training }) {
       if (!training?.id) throw new Error("Treinamento inválido.");
       const payloadDates = programDates.map((dateItem, dateIndex) => ({
         ...dateItem,
-        sessions: normalizeImportedSessions(dateItem?.sessions, dateIndex).map(
+        sessions: getTypedSessions(dateItem?.sessions, dateIndex).map(
           (session) => ({
             start_time: String(session?.start_time || "").trim(),
             end_time: String(session?.end_time || "").trim(),
@@ -369,7 +371,7 @@ export default function EventProgramSection({ training }) {
       source_training_title: String(training?.title || "").trim(),
       dates: programDates.map((dateItem, dateIndex) => ({
         date: String(dateItem?.date || "").trim(),
-        sessions: normalizeImportedSessions(dateItem?.sessions, dateIndex).map(
+        sessions: getTypedSessions(dateItem?.sessions, dateIndex).map(
           (session) => ({
             start_time: session.start_time,
             end_time: session.end_time,
