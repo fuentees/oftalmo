@@ -40,7 +40,8 @@ import {
   SlidersHorizontal,
   Edit,
   MapPin,
-  Link2
+  Link2,
+  Printer
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -239,6 +240,7 @@ export default function EnrollmentPage({
   };
 
   const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
+  const isInPersonTraining = !String(training?.online_link || "").trim();
   const activeEnrollmentFields = enrollmentFields
     .filter((field) => field.is_active)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -256,6 +258,14 @@ export default function EnrollmentPage({
       .trim()
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "");
+
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
 
   const normalizeRow = (row) =>
     Object.entries(row || {}).reduce((acc, [key, value]) => {
@@ -1278,6 +1288,209 @@ export default function EnrollmentPage({
     link.setAttribute("href", url);
     link.setAttribute("download", `inscricoes_${training?.title || 'treinamento'}_${format(new Date(), "yyyy-MM-dd")}.csv`);
     link.click();
+  };
+
+  const handlePrintAttendanceList = () => {
+    if (!training) return;
+
+    const activeParticipants = filteredParticipants
+      .filter(
+        (participant) =>
+          String(participant?.enrollment_status || "").trim().toLowerCase() !==
+          "cancelado"
+      )
+      .sort((a, b) =>
+        String(a?.professional_name || "").localeCompare(
+          String(b?.professional_name || ""),
+          "pt-BR",
+          { sensitivity: "base" }
+        )
+      );
+
+    if (activeParticipants.length === 0) {
+      alert(
+        "Não há inscritos ativos para gerar a lista de frequência com os filtros atuais."
+      );
+      return;
+    }
+
+    const firstDate = trainingDates.find((item) => item?.date) || null;
+    const trainingDateLabel = firstDate?.date
+      ? formatDateSafe(firstDate.date, "dd/MM/yyyy")
+      : formatDateSafe(training?.date, "dd/MM/yyyy") || "-";
+    const trainingTimeLabel =
+      firstDate?.start_time && firstDate?.end_time
+        ? `${firstDate.start_time} às ${firstDate.end_time}`
+        : "-";
+    const minimumRows = Math.max(20, activeParticipants.length);
+    const printableRows = Array.from({ length: minimumRows }).map((_, index) => {
+      const participant = activeParticipants[index];
+      if (!participant) {
+        return {
+          position: index + 1,
+          name: "",
+          rg: "",
+          formation: "",
+          municipality: "",
+          gve: "",
+        };
+      }
+      return {
+        position: index + 1,
+        name: participant.professional_name || "",
+        rg: participant.professional_rg || participant.professional_cpf || "",
+        formation:
+          participant.professional_formation ||
+          participant.professional_sector ||
+          "",
+        municipality: participant.municipality || "",
+        gve: participant.health_region || "",
+      };
+    });
+
+    const printWindow = window.open("", "_blank", "width=1100,height=820");
+    if (!printWindow) {
+      alert(
+        "Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-up."
+      );
+      return;
+    }
+
+    const rowsHtml = printableRows
+      .map(
+        (row) => `
+          <tr>
+            <td class="idx">${row.position}.</td>
+            <td>${escapeHtml(row.name || "")}</td>
+            <td>${escapeHtml(row.rg || "")}</td>
+            <td>${escapeHtml(row.formation || "")}</td>
+            <td>${escapeHtml(row.municipality || "")}</td>
+            <td>${escapeHtml(row.gve || "")}</td>
+            <td></td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const printableHtml = `
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Lista de Frequência - ${escapeHtml(training.title || "Treinamento")}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 24px;
+              font-family: Arial, Helvetica, sans-serif;
+              color: #111827;
+            }
+            .header-title {
+              text-align: center;
+              font-size: 16px;
+              font-weight: 700;
+              margin-bottom: 8px;
+            }
+            .header-subtitle {
+              text-align: center;
+              font-size: 13px;
+              margin-bottom: 14px;
+            }
+            .meta {
+              font-size: 12px;
+              margin-bottom: 6px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 10px;
+            }
+            th, td {
+              border: 1px solid #111827;
+              padding: 6px 8px;
+              font-size: 12px;
+              vertical-align: middle;
+            }
+            th {
+              background: #f3f4f6;
+              text-transform: uppercase;
+              font-size: 11px;
+              letter-spacing: 0.03em;
+            }
+            td.idx {
+              width: 52px;
+              text-align: left;
+              white-space: nowrap;
+            }
+            td:last-child {
+              width: 190px;
+            }
+            .signature {
+              margin-top: 36px;
+              display: flex;
+              justify-content: space-between;
+              gap: 40px;
+            }
+            .signature-line {
+              flex: 1;
+              text-align: center;
+              font-size: 12px;
+            }
+            .signature-line .line {
+              border-top: 1px solid #111827;
+              margin-bottom: 6px;
+            }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header-title">LISTA DE FREQUÊNCIA - PARTICIPANTES</div>
+          <div class="header-subtitle">${escapeHtml(training.title || "-")}</div>
+          <div class="meta"><strong>LOCAL:</strong> ${escapeHtml(training.location || "-")}</div>
+          <div class="meta"><strong>DATA:</strong> ${escapeHtml(trainingDateLabel || "-")} &nbsp;&nbsp; <strong>HORÁRIO:</strong> ${escapeHtml(trainingTimeLabel || "-")}</div>
+          <div class="meta"><strong>Total de inscritos ativos:</strong> ${activeParticipants.length}</div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nome</th>
+                <th>R.G.</th>
+                <th>Formação</th>
+                <th>Município</th>
+                <th>GVE</th>
+                <th>Assinatura</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <div class="signature">
+            <div class="signature-line">
+              <div class="line"></div>
+              Responsável pelo Projeto
+            </div>
+            <div class="signature-line">
+              <div class="line"></div>
+              Diretor da Unidade
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.focus();
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(printableHtml);
+    printWindow.document.close();
   };
 
   const handleDownloadTemplate = () => {
@@ -2312,6 +2525,16 @@ export default function EnrollmentPage({
                     >
                       <Upload className="h-4 w-4 mr-2" />
                       Importar Lista
+                    </Button>
+                  )}
+                  {isInPersonTraining && (
+                    <Button
+                      onClick={handlePrintAttendanceList}
+                      variant="outline"
+                      disabled={participantsLoading || filteredParticipants.length === 0}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Lista de Frequência
                     </Button>
                   )}
                   <Button onClick={handleExportExcel} variant="outline">
