@@ -62,6 +62,144 @@ const escapeHtml = (value) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+const REPORT_RATING_QUESTION_DEFINITIONS = [
+  { key: "duration", label: "Duração do curso", matcher: "A - DURAÇÃO DO CURSO" },
+  {
+    key: "topic_time",
+    label: "Tempo destinado a cada assunto",
+    matcher: "B - TEMPO DESTINADO A CADA ASSUNTO",
+  },
+  {
+    key: "didactics",
+    label: "Didática aplicada a cada assunto",
+    matcher: "C - DIDÁTICA APLICADA A CADA ASSUNTO",
+  },
+  {
+    key: "location",
+    label: "Local do treinamento",
+    matcher: "D - LOCAL DO TREINAMENTO",
+  },
+  {
+    key: "material",
+    label: "Material utilizado",
+    matcher: "E - MATERIAL UTILIZADO",
+  },
+];
+
+const REPORT_TEXT_QUESTION_DEFINITIONS = [
+  {
+    key: "important_topics",
+    label: "Assuntos considerados mais e menos importantes",
+    matcher:
+      "2 - QUAL ASSUNTO VOCÊ CONSIDERA MAIS IMPORTANTE E O MENOS IMPORTANTE",
+  },
+  {
+    key: "comments",
+    label: "Comentários e sugestões",
+    matcher: "3 - COMENTÁRIOS/SUGESTÕES",
+  },
+];
+
+const REPORT_RATING_BUCKET_LABELS = {
+  otimo: "Ótimo",
+  bom: "Bom",
+  regular: "Regular",
+  fraco: "Fraco",
+  insuficiente: "Insuficiente",
+};
+
+const DEFAULT_REPORT_OBJECTIVES = [
+  "Capacitar profissionais para desenvolver ações básicas relacionadas ao tema do treinamento.",
+  "Fortalecer a vigilância epidemiológica e o planejamento das atividades no território.",
+  "Estimular práticas de promoção e prevenção alinhadas às necessidades dos serviços de saúde.",
+];
+
+const normalizeComparableText = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const normalizeRatingBucket = (value) => {
+  const text = normalizeComparableText(value);
+  if (!text) return null;
+  if (text.includes("otimo") || text.startsWith("5")) return "otimo";
+  if (text.includes("bom") || text.startsWith("4")) return "bom";
+  if (text.includes("regular") || text.startsWith("3")) return "regular";
+  if (text.includes("fraco") || text.startsWith("2")) return "fraco";
+  if (text.includes("insuficiente") || text.startsWith("1")) return "insuficiente";
+  return null;
+};
+
+const formatPercentage = (value) => {
+  if (!Number.isFinite(value)) return "0,0";
+  return value.toFixed(1).replace(".", ",");
+};
+
+const sanitizeFileName = (value) =>
+  String(value || "treinamento")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+
+const pluralizeProfessionals = (count) => (count === 1 ? "profissional" : "profissionais");
+
+const normalizeAttendanceStatus = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+const isPresentAttendanceRecord = (record) => {
+  if (!record || typeof record !== "object") return false;
+  if (record.present === true || record.is_present === true) return true;
+  const status = normalizeAttendanceStatus(
+    record.status ?? record.presence_status ?? record.value
+  );
+  if (!status) return false;
+  return ["presente", "presenca", "present", "checked_in", "checkin", "ok"].includes(
+    status
+  );
+};
+
+const normalizeAttendanceRecords = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && typeof parsed === "object") {
+          return Object.entries(parsed).map(([date, rawValue]) => {
+            if (rawValue && typeof rawValue === "object") {
+              return { date, ...rawValue };
+            }
+            return { date, status: rawValue };
+          });
+        }
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value).map(([date, rawValue]) => {
+      if (rawValue && typeof rawValue === "object") {
+        return { date, ...rawValue };
+      }
+      return { date, status: rawValue };
+    });
+  }
+  return [];
+};
+
 export default function TrainingDetails({ training, participants = [] }) {
   const trainingId = String(training?.id || "").trim();
   const isRepadTraining = isRepadronizacaoTraining(training);
@@ -107,6 +245,16 @@ export default function TrainingDetails({ training, participants = [] }) {
     queryKey: ["trainingTracomaSummaryAnswerKeys"],
     queryFn: () => dataClient.entities.TracomaExamAnswerKey.list("question_number"),
     enabled: Boolean(trainingId && isRepadTraining),
+  });
+
+  const { data: feedbackResponses = [] } = useQuery({
+    queryKey: ["training-report-feedback", trainingId],
+    queryFn: () =>
+      dataClient.entities.TrainingFeedback.filter(
+        { training_id: trainingId },
+        "-created_at"
+      ),
+    enabled: Boolean(trainingId),
   });
 
   const currentReport = reports[0] || null;
@@ -596,6 +744,407 @@ export default function TrainingDetails({ training, participants = [] }) {
     (item) => item.enrollment_status === "cancelado"
   ).length;
 
+  const participantsWithPresenceCount = useMemo(
+    () =>
+      activeParticipants.filter((participant) => {
+        const records = normalizeAttendanceRecords(participant?.attendance_records);
+        if (records.some((record) => isPresentAttendanceRecord(record))) return true;
+        return Number(participant?.attendance_percentage || 0) > 0;
+      }).length,
+    [activeParticipants]
+  );
+
+  const participantDistributionByGve = useMemo(() => {
+    const groups = new Map();
+    activeParticipants.forEach((participant) => {
+      const gve = String(participant?.health_region || "").trim() || "Não informado";
+      const municipality = String(participant?.municipality || "").trim();
+      if (!groups.has(gve)) {
+        groups.set(gve, {
+          gve,
+          count: 0,
+          municipalities: new Set(),
+        });
+      }
+      const entry = groups.get(gve);
+      entry.count += 1;
+      if (municipality) {
+        entry.municipalities.add(municipality);
+      }
+    });
+    return Array.from(groups.values())
+      .map((item) => ({
+        ...item,
+        municipalitiesList: Array.from(item.municipalities).sort((a, b) =>
+          a.localeCompare(b, "pt-BR", { sensitivity: "base" })
+        ),
+      }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.gve.localeCompare(b.gve, "pt-BR", { sensitivity: "base" });
+      });
+  }, [activeParticipants]);
+
+  const trainingObjectives = useMemo(() => {
+    const raw = String(training?.description || "").trim();
+    if (!raw) return DEFAULT_REPORT_OBJECTIVES;
+    let items = raw
+      .split(/\r?\n|•|;/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 10);
+    if (items.length <= 1) {
+      items = raw
+        .split(/[.!?]+/)
+        .map((item) => item.trim())
+        .filter((item) => item.length > 10);
+    }
+    if (items.length === 0) return DEFAULT_REPORT_OBJECTIVES;
+    return Array.from(new Set(items)).slice(0, 6);
+  }, [training?.description]);
+
+  const trainingDateRangeLabel = useMemo(() => {
+    const dates = sortedTrainingDates
+      .map((item) => item?.date)
+      .filter(Boolean);
+    if (dates.length === 0 && training?.date) {
+      return formatDate(training.date);
+    }
+    if (dates.length === 0) return "Data a definir";
+    const first = dates[0];
+    const last = dates[dates.length - 1];
+    const firstLabel = formatDate(first);
+    const lastLabel = formatDate(last);
+    if (firstLabel === lastLabel) return firstLabel;
+    return `${firstLabel} a ${lastLabel}`;
+  }, [sortedTrainingDates, training?.date]);
+
+  const trainingHoursSummary = useMemo(() => {
+    const hourPairs = sortedTrainingDates
+      .map((item) => {
+        const start = String(item?.start_time || "").trim();
+        const end = String(item?.end_time || "").trim();
+        if (!start || !end) return "";
+        return `${start} às ${end}`;
+      })
+      .filter(Boolean);
+    if (hourPairs.length === 0) return "Horário a definir";
+    const uniquePairs = Array.from(new Set(hourPairs));
+    if (uniquePairs.length === 1) return uniquePairs[0];
+    return uniquePairs.join(" | ");
+  }, [sortedTrainingDates]);
+
+  const reportProgramRows = useMemo(() => {
+    const fallbackResponsible =
+      String(training?.instructor || "").trim() ||
+      String(training?.coordinator || "").trim() ||
+      "-";
+    if (sortedTrainingDates.length > 0) {
+      return sortedTrainingDates.map((dateItem, index) => ({
+        date: formatDate(dateItem?.date),
+        meeting: `${index + 1}º encontro`,
+        activity:
+          index === 0
+            ? "Abertura, alinhamento do curso e conteúdos programados."
+            : "Conteúdos teóricos, discussões e exercícios de fixação.",
+        responsible:
+          String(training?.speakers?.[index]?.name || "").trim() || fallbackResponsible,
+      }));
+    }
+    return [
+      {
+        date: formatDate(training?.date),
+        meeting: "Encontro único",
+        activity: "Conteúdo programado do treinamento.",
+        responsible: fallbackResponsible,
+      },
+    ];
+  }, [formatDate, sortedTrainingDates, training?.coordinator, training?.date, training?.instructor, training?.speakers]);
+
+  const feedbackReportInsights = useMemo(() => {
+    const ratingMap = new Map(
+      REPORT_RATING_QUESTION_DEFINITIONS.map((definition) => [
+        definition.key,
+        {
+          ...definition,
+          total: 0,
+          buckets: {
+            otimo: 0,
+            bom: 0,
+            regular: 0,
+            fraco: 0,
+            insuficiente: 0,
+          },
+          justifications: [],
+        },
+      ])
+    );
+
+    const textCollections = new Map(
+      REPORT_TEXT_QUESTION_DEFINITIONS.map((definition) => [definition.key, []])
+    );
+    const generalComments = [];
+
+    (Array.isArray(feedbackResponses) ? feedbackResponses : []).forEach((response) => {
+      const responseComment = String(response?.comments || "").trim();
+      if (responseComment) {
+        generalComments.push(responseComment);
+      }
+      const answers = Array.isArray(response?.answers) ? response.answers : [];
+      answers.forEach((answer) => {
+        const questionText = normalizeComparableText(answer?.question);
+        const answerText = String(answer?.value || "").trim();
+        if (!questionText || !answerText) return;
+
+        REPORT_RATING_QUESTION_DEFINITIONS.forEach((definition) => {
+          const matcher = normalizeComparableText(definition.matcher);
+          if (!questionText.includes(matcher)) return;
+          const entry = ratingMap.get(definition.key);
+          const bucket = normalizeRatingBucket(answerText);
+          if (!entry || !bucket) return;
+          entry.total += 1;
+          entry.buckets[bucket] += 1;
+        });
+
+        if (questionText.includes(normalizeComparableText("A - JUSTIFIQUE"))) {
+          ratingMap.get("duration")?.justifications.push(answerText);
+        } else if (questionText.includes(normalizeComparableText("B - JUSTIFIQUE"))) {
+          ratingMap.get("topic_time")?.justifications.push(answerText);
+        } else if (questionText.includes(normalizeComparableText("C - JUSTIFIQUE"))) {
+          ratingMap.get("didactics")?.justifications.push(answerText);
+        } else if (questionText.includes(normalizeComparableText("D - JUSTIFIQUE"))) {
+          ratingMap.get("location")?.justifications.push(answerText);
+        } else if (questionText.includes(normalizeComparableText("E - JUSTIFIQUE"))) {
+          ratingMap.get("material")?.justifications.push(answerText);
+        }
+
+        REPORT_TEXT_QUESTION_DEFINITIONS.forEach((definition) => {
+          const matcher = normalizeComparableText(definition.matcher);
+          if (!questionText.includes(matcher)) return;
+          textCollections.get(definition.key)?.push(answerText);
+        });
+      });
+    });
+
+    const ratingSummary = REPORT_RATING_QUESTION_DEFINITIONS.map((definition) => {
+      const entry = ratingMap.get(definition.key);
+      return {
+        ...entry,
+        percentages: Object.entries(entry.buckets).reduce((acc, [bucket, count]) => {
+          acc[bucket] =
+            entry.total > 0 ? formatPercentage((count / entry.total) * 100) : "0,0";
+          return acc;
+        }, {}),
+      };
+    });
+
+    const importantTopics = textCollections.get("important_topics") || [];
+    const comments = textCollections.get("comments") || [];
+
+    return {
+      totalResponses: Array.isArray(feedbackResponses) ? feedbackResponses.length : 0,
+      ratingSummary,
+      importantTopics: importantTopics.slice(0, 12),
+      comments: [...comments, ...generalComments].slice(0, 18),
+    };
+  }, [feedbackResponses]);
+
+  const handleDownloadReportTemplate = () => {
+    if (!training) return;
+    const monitorNames = Array.isArray(training?.monitors)
+      ? training.monitors
+          .map((item) => String(item?.name || "").trim())
+          .filter(Boolean)
+      : [];
+    const monitorSummary =
+      monitorNames.length > 0
+        ? `${monitorNames.length} ${pluralizeProfessionals(monitorNames.length)} (${monitorNames.join(", ")})`
+        : "Não há monitores registrados no sistema.";
+    const participantDistributionListHtml =
+      participantDistributionByGve.length > 0
+        ? participantDistributionByGve
+            .map((item) => {
+              const municipalities = item.municipalitiesList.length
+                ? ` – municípios ${item.municipalitiesList.join(", ")}`
+                : "";
+              return `<li>${item.count} ${pluralizeProfessionals(
+                item.count
+              )} (${escapeHtml(item.gve)}${escapeHtml(municipalities)})</li>`;
+            })
+            .join("")
+        : "<li>Sem distribuição regional registrada.</li>";
+
+    const ratingSummaryHtml = feedbackReportInsights.ratingSummary
+      .map((item) => {
+        const labels = Object.keys(REPORT_RATING_BUCKET_LABELS)
+          .map((bucket) => {
+            const count = item.buckets[bucket] || 0;
+            if (!count) return "";
+            return `${REPORT_RATING_BUCKET_LABELS[bucket]} ${item.percentages[bucket]}%`;
+          })
+          .filter(Boolean);
+        const baseText =
+          item.total > 0
+            ? labels.join(", ")
+            : "Sem respostas registradas para este item.";
+        const sampledJustifications = item.justifications
+          .slice(0, 2)
+          .map((value) => `“${escapeHtml(value)}”`)
+          .join(" ");
+        return `<li><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(baseText)}${
+          sampledJustifications ? ` <br/><em>Exemplos:</em> ${sampledJustifications}` : ""
+        }</li>`;
+      })
+      .join("");
+
+    const importantTopicsHtml =
+      feedbackReportInsights.importantTopics.length > 0
+        ? feedbackReportInsights.importantTopics
+            .map((item) => `<li>${escapeHtml(item)}</li>`)
+            .join("")
+        : "<li>Sem respostas abertas registradas.</li>";
+
+    const commentsHtml =
+      feedbackReportInsights.comments.length > 0
+        ? feedbackReportInsights.comments
+            .map((item) => `<li>${escapeHtml(item)}</li>`)
+            .join("")
+        : "<li>Sem comentários registrados.</li>";
+
+    const objectivesHtml = trainingObjectives
+      .map((objective) => `<li>${escapeHtml(objective)}</li>`)
+      .join("");
+
+    const programRowsHtml = reportProgramRows
+      .map(
+        (row) => `
+          <tr>
+            <td>${escapeHtml(row.date)}</td>
+            <td>${escapeHtml(row.meeting)}</td>
+            <td>${escapeHtml(row.activity)}</td>
+            <td>${escapeHtml(row.responsible)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const reportHtml = `
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Relatório do treinamento - ${escapeHtml(training.title || "-")}</title>
+          <style>
+            body { font-family: Calibri, Arial, sans-serif; margin: 28px; color: #111827; line-height: 1.5; }
+            h1 { font-size: 20px; margin: 0 0 14px 0; text-transform: uppercase; }
+            h2 { font-size: 15px; margin: 18px 0 8px 0; text-transform: uppercase; }
+            p { margin: 0 0 8px 0; }
+            ul { margin: 0 0 10px 22px; padding: 0; }
+            .meta { margin-bottom: 14px; }
+            .meta p { margin-bottom: 4px; }
+            .note { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px; font-size: 12px; vertical-align: top; }
+            th { background: #eff6ff; text-align: left; }
+          </style>
+        </head>
+        <body>
+          <h1>Relatório do treinamento – ${escapeHtml(training.title || "-")}</h1>
+
+          <div class="meta">
+            <p><strong>Data:</strong> ${escapeHtml(trainingDateRangeLabel)}</p>
+            <p><strong>Horário:</strong> ${escapeHtml(trainingHoursSummary)}</p>
+            <p><strong>Carga horária:</strong> ${escapeHtml(
+              training?.duration_hours ? `${training.duration_hours} horas` : "Não informada"
+            )}</p>
+            <p><strong>Modalidade:</strong> ${
+              training?.online_link ? "Online" : "Presencial"
+            }</p>
+            <p><strong>Local:</strong> ${escapeHtml(training?.location || "-")}</p>
+          </div>
+
+          <h2>Objetivos do treinamento</h2>
+          <ul>${objectivesHtml}</ul>
+
+          <h2>Monitores</h2>
+          <p>${escapeHtml(monitorSummary)}</p>
+
+          <h2>Participantes</h2>
+          <p>
+            Participaram do treinamento ${totalParticipants} ${pluralizeProfessionals(
+              totalParticipants
+            )} com inscrição ativa, sendo ${participantsWithPresenceCount} com presença registrada.
+          </p>
+          <ul>${participantDistributionListHtml}</ul>
+
+          <h2>Operacionalização</h2>
+          <p>
+            O treinamento foi conduzido na modalidade ${
+              training?.online_link ? "online" : "presencial"
+            }, com acompanhamento da coordenação e equipe técnica.
+            As atividades seguiram o cronograma definido para os encontros e foram ajustadas conforme necessário para garantir a execução do conteúdo.
+          </p>
+
+          <h2>Avaliação dos treinandos sobre o treinamento</h2>
+          <div class="note">
+            <p><strong>Total de respostas recebidas:</strong> ${feedbackReportInsights.totalResponses}</p>
+          </div>
+          <ul>${ratingSummaryHtml}</ul>
+
+          <h2>Assuntos considerados mais e menos importantes</h2>
+          <ul>${importantTopicsHtml}</ul>
+
+          <h2>Comentários e sugestões</h2>
+          <ul>${commentsHtml}</ul>
+
+          <h2>Conclusão</h2>
+          <p>
+            O treinamento foi executado conforme planejamento do período, com participação ativa dos inscritos e avaliação geral positiva.
+            Recomenda-se manter a continuidade das ações formativas e o acompanhamento dos planos apresentados pelos participantes.
+          </p>
+
+          <p style="margin-top: 24px;">
+            ${escapeHtml(formatDateSafe(new Date(), "dd/MM/yyyy") || "-")} <br/>
+            Centro de Oftalmologia Sanitária
+          </p>
+
+          <h2>Anexo – Programa do treinamento</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Encontro</th>
+                <th>Atividade / Tema</th>
+                <th>Responsável</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${programRowsHtml}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob(["\ufeff", reportHtml], {
+      type: "application/msword;charset=utf-8",
+    });
+    const fileName = `relatorio_treinamento_${sanitizeFileName(training?.title)}_${sanitizeFileName(
+      formatDateSafe(new Date(), "yyyy-MM-dd")
+    )}.doc`;
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    window.URL.revokeObjectURL(url);
+
+    setReportStatus({
+      type: "success",
+      message:
+        "Modelo de relatório gerado com dados atualizados. Você pode editar livremente no Word.",
+    });
+  };
+
   if (!training) return null;
 
   return (
@@ -986,6 +1535,18 @@ export default function TrainingDetails({ training, participants = [] }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              type="button"
+              onClick={handleDownloadReportTemplate}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Gerar modelo Word automático
+            </Button>
+          </div>
+
           {currentReport ? (
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-medium">
