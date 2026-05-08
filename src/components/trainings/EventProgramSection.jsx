@@ -7,6 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   CalendarDays,
   ClipboardPaste,
   Copy,
@@ -41,33 +49,6 @@ const hasSessionTypedContent = (session) =>
       String(session?.speaker_name || session?.responsible || "").trim() ||
       String(session?.notes || "").trim()
   );
-
-const formatProgramDescription = (session) => {
-  const start = String(session?.start_time || "").trim();
-  const end = String(session?.end_time || "").trim();
-  const title = String(session?.title || session?.activity || "").trim();
-  const speaker = String(
-    session?.speaker_name || session?.responsible || session?.speaker || ""
-  ).trim();
-  const notes = String(session?.notes || "").trim();
-
-  const parts = [];
-  if (start && end) {
-    parts.push(`${start} às ${end}`);
-  } else if (start || end) {
-    parts.push(start || end);
-  }
-  if (title) {
-    parts.push(title);
-  }
-  if (speaker) {
-    parts.push(speaker);
-  }
-  if (notes) {
-    parts.push(notes);
-  }
-  return parts.join(" • ").trim();
-};
 
 const sanitizeTimeInput = (value) =>
   String(value || "")
@@ -224,12 +205,14 @@ export default function EventProgramSection({ training }) {
       const sessions = sortSessionsByStartTime(
         getTypedSessions(dateItem?.sessions)
       );
-      sessions.forEach((session, sessionIndex) => {
-        const description = formatProgramDescription(session);
-        if (!description) return;
+      sessions.forEach((session) => {
         rows.push({
-          date: sessionIndex === 0 ? dateLabel : "",
-          description,
+          date: dateLabel,
+          start_time: String(session?.start_time || "").trim(),
+          end_time: String(session?.end_time || "").trim(),
+          title: String(session?.title || "").trim(),
+          speaker_name: String(session?.speaker_name || "").trim(),
+          notes: String(session?.notes || "").trim(),
         });
       });
     });
@@ -510,7 +493,11 @@ export default function EventProgramSection({ training }) {
         (item) => `
           <tr>
             <td>${escapeHtml(item.date)}</td>
-            <td>${escapeHtml(item.description)}</td>
+            <td>${escapeHtml(item.start_time || "-")}</td>
+            <td>${escapeHtml(item.end_time || "-")}</td>
+            <td>${escapeHtml(item.title || "-")}</td>
+            <td>${escapeHtml(item.speaker_name || "-")}</td>
+            <td>${escapeHtml(item.notes || "-")}</td>
           </tr>
         `
       )
@@ -560,7 +547,11 @@ export default function EventProgramSection({ training }) {
             <thead>
               <tr>
                 <th>Data</th>
-                <th>Programação digitada</th>
+                <th>Início</th>
+                <th>Fim</th>
+                <th>Tema</th>
+                <th>Palestrante</th>
+                <th>Observação</th>
               </tr>
             </thead>
             <tbody>
@@ -586,17 +577,74 @@ export default function EventProgramSection({ training }) {
   };
 
   const hasProgramDates = programDates.length > 0;
+  const trainingPeriodLabel = useMemo(() => {
+    if (programDates.length === 0) {
+      return formatDateSafe(training?.date, "dd/MM/yyyy") || "Data não informada";
+    }
+    const sorted = [...programDates].sort(
+      (a, b) => parseDateSafe(a?.date).getTime() - parseDateSafe(b?.date).getTime()
+    );
+    const first = formatDateSafe(sorted[0]?.date, "dd/MM/yyyy") || "-";
+    const last = formatDateSafe(sorted[sorted.length - 1]?.date, "dd/MM/yyyy") || "-";
+    return first === last ? first : `${first} a ${last}`;
+  }, [programDates, training?.date]);
+
+  const totalSessions = useMemo(
+    () =>
+      programDates.reduce(
+        (acc, dateItem, dateIndex) =>
+          acc + normalizeImportedSessions(dateItem?.sessions, dateIndex).length,
+        0
+      ),
+    [programDates]
+  );
 
   return (
     <div className="space-y-6">
       <Card className="overflow-hidden border border-slate-200 shadow-sm">
-        <CardHeader className="bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 pb-3">
-          <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-blue-600" />
+        <CardHeader className="bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 pb-4">
+          <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
+            <CalendarDays className="h-5 w-5 text-blue-600" />
             Programação do Evento
           </CardTitle>
+          <p className="text-sm text-slate-600">
+            {training?.title || "Treinamento sem título"}
+          </p>
         </CardHeader>
-        <CardContent className="space-y-4 pt-4">
+        <CardContent className="space-y-5 pt-5">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Treinamento
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-800">
+                {training?.title || "Não informado"}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Período
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-800">{trainingPeriodLabel}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Local
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-800">
+                {training?.location || (training?.online_link ? "Evento online" : "Não informado")}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Coordenação
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-800">
+                {training?.coordinator || "-"}
+              </p>
+            </div>
+          </div>
+
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
             <Button
               type="button"
@@ -630,8 +678,9 @@ export default function EventProgramSection({ training }) {
               Baixar programação (.doc)
             </Button>
 
-            <div className="ml-auto text-xs font-medium text-slate-600">
-              {totalTypedSessions} aula(s) digitada(s)
+            <div className="ml-auto text-xs font-medium text-slate-600 flex items-center gap-3">
+              <span>{totalSessions} aula(s) na grade</span>
+              <span>{totalTypedSessions} aula(s) com conteúdo</span>
             </div>
           </div>
 
@@ -699,6 +748,8 @@ export default function EventProgramSection({ training }) {
                   dateItem?.sessions,
                   dateIndex
                 );
+                const dateLabel =
+                  formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "Data não definida";
                 return (
                   <Card
                     key={`program-date-${dateItem?.date || dateIndex}`}
@@ -706,9 +757,12 @@ export default function EventProgramSection({ training }) {
                   >
                     <CardHeader className="border-b border-slate-100 bg-slate-50/70 pb-3">
                       <CardTitle className="text-sm flex items-center justify-between gap-3">
-                        <span className="font-semibold text-slate-800">
-                          {formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "Data não definida"}
-                        </span>
+                        <div className="space-y-0.5">
+                          <span className="block font-semibold text-slate-800">{dateLabel}</span>
+                          <span className="block text-xs font-normal text-slate-500">
+                            Preencha Data, Hora início, Hora fim, Tema e Palestrante.
+                          </span>
+                        </div>
                         <Button
                           type="button"
                           size="sm"
@@ -721,114 +775,141 @@ export default function EventProgramSection({ training }) {
                         </Button>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-3 pt-4">
-                      {sessions.length === 0 ? (
-                        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-500">
-                          Nenhuma aula digitada para esta data.
-                        </div>
-                      ) : (
-                        sessions.map((session) => (
-                          <div
-                            key={session.id}
-                            className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
-                          >
-                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
-                              <Input
-                                type="text"
-                                inputMode="text"
-                                value={session.start_time}
-                                onChange={(event) =>
-                                  handleUpdateSessionField(
-                                    dateIndex,
-                                    session.id,
-                                    "start_time",
-                                    sanitizeTimeInput(event.target.value)
-                                  )
-                                }
-                                onBlur={(event) =>
-                                  handleUpdateSessionField(
-                                    dateIndex,
-                                    session.id,
-                                    "start_time",
-                                    normalizeTimeOnBlur(event.target.value)
-                                  )
-                                }
-                                placeholder="HH:MM"
-                              />
-                              <Input
-                                type="text"
-                                inputMode="text"
-                                value={session.end_time}
-                                onChange={(event) =>
-                                  handleUpdateSessionField(
-                                    dateIndex,
-                                    session.id,
-                                    "end_time",
-                                    sanitizeTimeInput(event.target.value)
-                                  )
-                                }
-                                onBlur={(event) =>
-                                  handleUpdateSessionField(
-                                    dateIndex,
-                                    session.id,
-                                    "end_time",
-                                    normalizeTimeOnBlur(event.target.value)
-                                  )
-                                }
-                                placeholder="HH:MM"
-                              />
-                              <Input
-                                value={session.title}
-                                onChange={(event) =>
-                                  handleUpdateSessionField(
-                                    dateIndex,
-                                    session.id,
-                                    "title",
-                                    event.target.value
-                                  )
-                                }
-                                placeholder="Tema / atividade"
-                              />
-                              <Input
-                                value={session.speaker_name}
-                                onChange={(event) =>
-                                  handleUpdateSessionField(
-                                    dateIndex,
-                                    session.id,
-                                    "speaker_name",
-                                    event.target.value
-                                  )
-                                }
-                                placeholder="Palestrante"
-                              />
-                            </div>
-                            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                              <Input
-                                value={session.notes}
-                                onChange={(event) =>
-                                  handleUpdateSessionField(
-                                    dateIndex,
-                                    session.id,
-                                    "notes",
-                                    event.target.value
-                                  )
-                                }
-                                placeholder="Observação opcional"
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                onClick={() => handleRemoveSession(dateIndex, session.id)}
-                              >
-                                <Trash2 className="mr-1 h-4 w-4" />
-                                Remover aula
-                              </Button>
-                            </div>
-                          </div>
-                        ))
-                      )}
+                    <CardContent className="pt-4">
+                      <div className="overflow-x-auto rounded-lg border border-slate-200">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-slate-100/70">
+                              <TableHead className="min-w-[110px]">Data</TableHead>
+                              <TableHead className="min-w-[120px]">Hora início</TableHead>
+                              <TableHead className="min-w-[120px]">Hora fim</TableHead>
+                              <TableHead className="min-w-[260px]">Tema</TableHead>
+                              <TableHead className="min-w-[220px]">Palestrante</TableHead>
+                              <TableHead className="min-w-[240px]">Observação</TableHead>
+                              <TableHead className="min-w-[120px] text-right">Ações</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {sessions.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={7} className="py-6 text-center text-sm text-slate-500">
+                                  Nenhuma aula digitada para esta data.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              sessions.map((session) => (
+                                <TableRow key={session.id} className="align-top">
+                                  <TableCell className="font-medium text-slate-700">
+                                    {dateLabel}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="text"
+                                      inputMode="text"
+                                      value={session.start_time}
+                                      onChange={(event) =>
+                                        handleUpdateSessionField(
+                                          dateIndex,
+                                          session.id,
+                                          "start_time",
+                                          sanitizeTimeInput(event.target.value)
+                                        )
+                                      }
+                                      onBlur={(event) =>
+                                        handleUpdateSessionField(
+                                          dateIndex,
+                                          session.id,
+                                          "start_time",
+                                          normalizeTimeOnBlur(event.target.value)
+                                        )
+                                      }
+                                      placeholder="HH:MM"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="text"
+                                      inputMode="text"
+                                      value={session.end_time}
+                                      onChange={(event) =>
+                                        handleUpdateSessionField(
+                                          dateIndex,
+                                          session.id,
+                                          "end_time",
+                                          sanitizeTimeInput(event.target.value)
+                                        )
+                                      }
+                                      onBlur={(event) =>
+                                        handleUpdateSessionField(
+                                          dateIndex,
+                                          session.id,
+                                          "end_time",
+                                          normalizeTimeOnBlur(event.target.value)
+                                        )
+                                      }
+                                      placeholder="HH:MM"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={session.title}
+                                      onChange={(event) =>
+                                        handleUpdateSessionField(
+                                          dateIndex,
+                                          session.id,
+                                          "title",
+                                          event.target.value
+                                        )
+                                      }
+                                      placeholder="Tema / atividade"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={session.speaker_name}
+                                      onChange={(event) =>
+                                        handleUpdateSessionField(
+                                          dateIndex,
+                                          session.id,
+                                          "speaker_name",
+                                          event.target.value
+                                        )
+                                      }
+                                      placeholder="Nome do palestrante"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={session.notes}
+                                      onChange={(event) =>
+                                        handleUpdateSessionField(
+                                          dateIndex,
+                                          session.id,
+                                          "notes",
+                                          event.target.value
+                                        )
+                                      }
+                                      placeholder="Observação opcional"
+                                    />
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      onClick={() => handleRemoveSession(dateIndex, session.id)}
+                                    >
+                                      <Trash2 className="mr-1 h-4 w-4" />
+                                      Remover
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </CardContent>
                   </Card>
                 );

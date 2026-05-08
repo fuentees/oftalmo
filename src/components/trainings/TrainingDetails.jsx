@@ -828,26 +828,13 @@ export default function TrainingDetails({
         );
 
       dateSessions.forEach((session, sessionIndex) => {
-        const parts = [];
-        if (session.start_time && session.end_time) {
-          parts.push(`${session.start_time} às ${session.end_time}`);
-        } else if (session.start_time || session.end_time) {
-          parts.push(session.start_time || session.end_time);
-        }
-        if (session.title) {
-          parts.push(session.title);
-        }
-        if (session.speaker) {
-          parts.push(session.speaker);
-        }
-        if (session.notes) {
-          parts.push(session.notes);
-        }
-        const line = parts.join(" • ").trim();
-        if (!line) return;
         rows.push({
           date: sessionIndex === 0 ? dateLabel : "",
-          program: line,
+          start_time: session.start_time || "-",
+          end_time: session.end_time || "-",
+          title: session.title || "-",
+          speaker: session.speaker || "-",
+          notes: session.notes || "-",
         });
       });
     });
@@ -1088,14 +1075,18 @@ export default function TrainingDetails({
               (row) => `
                 <tr>
                   <td>${escapeHtml(row.date)}</td>
-                  <td>${escapeHtml(row.program)}</td>
+                  <td>${escapeHtml(row.start_time)}</td>
+                  <td>${escapeHtml(row.end_time)}</td>
+                  <td>${escapeHtml(row.title)}</td>
+                  <td>${escapeHtml(row.speaker)}</td>
+                  <td>${escapeHtml(row.notes)}</td>
                 </tr>
               `
             )
             .join("")
         : `
           <tr>
-            <td colspan="2">Sem programação cadastrada.</td>
+            <td colspan="6">Sem programação cadastrada.</td>
           </tr>
         `;
 
@@ -1246,7 +1237,11 @@ export default function TrainingDetails({
             <thead>
               <tr>
                 <th>Data</th>
-                <th>Programação digitada</th>
+                <th>Início</th>
+                <th>Fim</th>
+                <th>Tema</th>
+                <th>Palestrante</th>
+                <th>Observação</th>
               </tr>
             </thead>
             <tbody>
