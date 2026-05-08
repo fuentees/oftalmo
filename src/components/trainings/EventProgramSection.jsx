@@ -7,14 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { CalendarDays, Download, Plus, Save, Trash2 } from "lucide-react";
+  CalendarDays,
+  ClipboardPaste,
+  Copy,
+  Download,
+  Plus,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { formatDateSafe, parseDateSafe } from "@/lib/date";
 
 const escapeHtml = (value) =>
@@ -33,9 +33,45 @@ const sanitizeFileName = (value) =>
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
 
+const hasSessionTypedContent = (session) =>
+  Boolean(
+    String(session?.start_time || "").trim() ||
+      String(session?.end_time || "").trim() ||
+      String(session?.title || session?.activity || "").trim() ||
+      String(session?.speaker_name || session?.responsible || "").trim() ||
+      String(session?.notes || "").trim()
+  );
+
+const formatProgramDescription = (session) => {
+  const start = String(session?.start_time || "").trim();
+  const end = String(session?.end_time || "").trim();
+  const title = String(session?.title || session?.activity || "").trim();
+  const speaker = String(
+    session?.speaker_name || session?.responsible || session?.speaker || ""
+  ).trim();
+  const notes = String(session?.notes || "").trim();
+
+  const parts = [];
+  if (start && end) {
+    parts.push(`${start} às ${end}`);
+  } else if (start || end) {
+    parts.push(start || end);
+  }
+  if (title) {
+    parts.push(title);
+  }
+  if (speaker) {
+    parts.push(speaker);
+  }
+  if (notes) {
+    parts.push(notes);
+  }
+  return parts.join(" • ").trim();
+};
+
 export default function EventProgramSection({ training }) {
   const queryClient = useQueryClient();
-  const [intervalMinutes, setIntervalMinutes] = useState("30");
+  const [intervalMinutes, setIntervalMinutes] = useState("");
   const [programDates, setProgramDates] = useState([]);
   const [programStatus, setProgramStatus] = useState(null);
 
@@ -80,6 +116,33 @@ export default function EventProgramSection({ training }) {
     notes: String(session?.notes || "").trim(),
   });
 
+  const normalizeImportedSessions = (sessions = [], dateIndex = 0) =>
+    (Array.isArray(sessions) ? sessions : [])
+      .map((session, sessionIndex) =>
+        normalizeSession(
+          {
+            start_time: session?.start_time,
+            end_time: session?.end_time,
+            title: session?.title || session?.activity,
+            speaker_name:
+              session?.speaker_name || session?.responsible || session?.speaker,
+            notes: session?.notes,
+          },
+          dateIndex * 100 + sessionIndex
+        )
+      )
+      .filter(hasSessionTypedContent);
+
+  const sortSessionsByStartTime = (sessions) =>
+    [...sessions].sort((a, b) => {
+      const startA = parseTimeToMinutes(a.start_time);
+      const startB = parseTimeToMinutes(b.start_time);
+      if (startA === null && startB === null) return 0;
+      if (startA === null) return 1;
+      if (startB === null) return -1;
+      return startA - startB;
+    });
+
   const buildProgramDatesFromTraining = (trainingItem) => {
     const sourceDates = Array.isArray(trainingItem?.dates)
       ? trainingItem.dates.filter((item) => item?.date)
@@ -91,18 +154,9 @@ export default function EventProgramSection({ training }) {
           date: String(item?.date || "").trim(),
           start_time: String(item?.start_time || "").trim(),
           end_time: String(item?.end_time || "").trim(),
-          sessions: (Array.isArray(item?.sessions) ? item.sessions : [])
-            .map((session, sessionIndex) =>
-              normalizeSession(session, dateIndex * 100 + sessionIndex)
-            )
-            .sort((a, b) => {
-              const startA = parseTimeToMinutes(a.start_time);
-              const startB = parseTimeToMinutes(b.start_time);
-              if (startA === null && startB === null) return 0;
-              if (startA === null) return 1;
-              if (startB === null) return -1;
-              return startA - startB;
-            }),
+          sessions: sortSessionsByStartTime(
+            normalizeImportedSessions(item?.sessions, dateIndex)
+          ),
         }))
         .sort(
           (a, b) => parseDateSafe(a.date).getTime() - parseDateSafe(b.date).getTime()
@@ -126,145 +180,36 @@ export default function EventProgramSection({ training }) {
     setProgramStatus(null);
   }, [training?.id, training?.date, training?.dates]);
 
-  const fallbackResponsible = useMemo(
-    () =>
-      String(training?.instructor || "").trim() ||
-      String(training?.coordinator || "").trim() ||
-      "-",
-    [training?.coordinator, training?.instructor]
-  );
-
-  const sortedDates = useMemo(() => {
-    const rows = Array.isArray(training?.dates)
-      ? training.dates.filter((item) => item?.date)
-      : [];
-    return [...rows].sort(
-      (a, b) => parseDateSafe(a.date).getTime() - parseDateSafe(b.date).getTime()
-    );
-  }, [training?.dates]);
-
-  const speakers = useMemo(
-    () =>
-      (Array.isArray(training?.speakers) ? training.speakers : [])
-        .map((item) => ({
-          name: String(item?.name || "").trim(),
-          lecture: String(item?.lecture || "").trim(),
-        }))
-        .filter((item) => item.name || item.lecture),
-    [training?.speakers]
-  );
-
-  const rows = useMemo(() => {
-    const result = [];
-    if (programDates.length > 0) {
-      programDates.forEach((dateItem, index) => {
-        const dateSessions = Array.isArray(dateItem?.sessions) ? dateItem.sessions : [];
-        if (dateSessions.length > 0) {
-          dateSessions.forEach((session, sessionIndex) => {
-            result.push({
-              date:
-                sessionIndex === 0
-                  ? formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "-"
-                  : "",
-              meeting: `${index + 1}º encontro`,
-              schedule:
-                session?.start_time && session?.end_time
-                  ? `${session.start_time} às ${session.end_time}`
-                  : "-",
-              activity:
-                String(session?.title || "").trim() ||
-                "Conteúdos programados para o encontro.",
-              responsible:
-                String(session?.speaker_name || "").trim() || fallbackResponsible,
-            });
-          });
-          return;
-        }
-
-        const linkedSpeaker = speakers[index] || null;
-        const schedule =
-          dateItem?.start_time && dateItem?.end_time
-            ? `${dateItem.start_time} às ${dateItem.end_time}`
-            : "-";
-        result.push({
-          date: formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "-",
-          meeting: `${index + 1}º encontro`,
-          schedule,
-          activity:
-            linkedSpeaker?.lecture ||
-            "Conteúdos programados para o encontro (teoria, discussão e prática).",
-          responsible: linkedSpeaker?.name || fallbackResponsible,
+  const normalizedProgramRows = useMemo(() => {
+    const rows = [];
+    programDates.forEach((dateItem) => {
+      const dateLabel = formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "-";
+      const sessions = sortSessionsByStartTime(
+        normalizeImportedSessions(dateItem?.sessions)
+      );
+      sessions.forEach((session, sessionIndex) => {
+        const description = formatProgramDescription(session);
+        if (!description) return;
+        rows.push({
+          date: sessionIndex === 0 ? dateLabel : "",
+          description,
         });
       });
-    } else if (training?.date) {
-      result.push({
-        date: formatDateSafe(training.date, "dd/MM/yyyy") || "-",
-        meeting: "Encontro único",
-        schedule: "-",
-        activity: "Conteúdo programado do treinamento.",
-        responsible: fallbackResponsible,
-      });
-    }
-
-    if (speakers.length > result.length) {
-      speakers.slice(result.length).forEach((speaker, index) => {
-        result.push({
-          date: "-",
-          meeting: `Tema complementar ${index + 1}`,
-          schedule: "-",
-          activity:
-            speaker.lecture ||
-            "Atividade complementar prevista na programação do treinamento.",
-          responsible: speaker.name || fallbackResponsible,
-        });
-      });
-    }
-
-    if (result.length === 0) {
-      result.push({
-        date: "-",
-        meeting: "Programação a definir",
-        schedule: "-",
-        activity:
-          "Cadastre datas e palestrantes no treinamento para montar a programação detalhada.",
-        responsible: fallbackResponsible,
-      });
-    }
-
-    return result;
-  }, [fallbackResponsible, programDates, speakers, sortedDates, training?.date]);
-
-  const dateRange = useMemo(() => {
-    if (programDates.length === 0) {
-      return formatDateSafe(training?.date, "dd/MM/yyyy") || "Data a definir";
-    }
-    const first = formatDateSafe(programDates[0]?.date, "dd/MM/yyyy") || "-";
-    const last =
-      formatDateSafe(programDates[programDates.length - 1]?.date, "dd/MM/yyyy") || "-";
-    return first === last ? first : `${first} a ${last}`;
-  }, [programDates, training?.date]);
-
-  const scheduleSummary = useMemo(() => {
-    const pairs = programDates
-      .map((item) => {
-        const start = String(item?.start_time || "").trim();
-        const end = String(item?.end_time || "").trim();
-        if (!start || !end) return "";
-        return `${start} às ${end}`;
-      })
-      .filter(Boolean);
-    const unique = Array.from(new Set(pairs));
-    if (!unique.length) return "Horário a definir";
-    if (unique.length === 1) return unique[0];
-    return unique.join(" | ");
+    });
+    return rows;
   }, [programDates]);
+
+  const totalTypedSessions = useMemo(
+    () => normalizedProgramRows.length,
+    [normalizedProgramRows]
+  );
 
   const saveProgram = useMutation({
     mutationFn: async () => {
       if (!training?.id) throw new Error("Treinamento inválido.");
-      const payloadDates = programDates.map((dateItem) => ({
+      const payloadDates = programDates.map((dateItem, dateIndex) => ({
         ...dateItem,
-        sessions: (Array.isArray(dateItem?.sessions) ? dateItem.sessions : []).map(
+        sessions: normalizeImportedSessions(dateItem?.sessions, dateIndex).map(
           (session) => ({
             start_time: String(session?.start_time || "").trim(),
             end_time: String(session?.end_time || "").trim(),
@@ -326,6 +271,7 @@ export default function EventProgramSection({ training }) {
         {
           title: "",
           speaker_name: "",
+          notes: "",
         },
         sessions.length + dateIndex * 1000
       ),
@@ -350,14 +296,16 @@ export default function EventProgramSection({ training }) {
     ) {
       return [];
     }
+
     const existingByStart = new Map(
-      (Array.isArray(dateItem?.sessions) ? dateItem.sessions : [])
+      normalizeImportedSessions(dateItem?.sessions, dateIndex)
         .filter((session) => session?.start_time)
         .map((session) => [String(session.start_time), session])
     );
     const generated = [];
     let cursor = startMinutes;
     let safety = 0;
+
     while (cursor < endMinutes && safety < 200) {
       const slotEnd = Math.min(cursor + interval, endMinutes);
       const startTime = formatMinutesToTime(cursor);
@@ -376,6 +324,7 @@ export default function EventProgramSection({ training }) {
       cursor = slotEnd;
       safety += 1;
     }
+
     return generated;
   };
 
@@ -396,21 +345,135 @@ export default function EventProgramSection({ training }) {
     );
     setProgramStatus({
       type: "success",
-      message: `Aulas geradas com intervalo de ${parsedInterval} minutos. Ajuste livremente antes de salvar.`,
+      message: `Aulas geradas com intervalo de ${parsedInterval} minutos.`,
     });
+  };
+
+  const handleCopyProgram = async () => {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.clipboard?.writeText
+    ) {
+      setProgramStatus({
+        type: "error",
+        message:
+          "Seu navegador não permite cópia automática. Copie manualmente.",
+      });
+      return;
+    }
+
+    const payload = {
+      type: "training-program",
+      version: 1,
+      copied_at: new Date().toISOString(),
+      source_training_title: String(training?.title || "").trim(),
+      dates: programDates.map((dateItem, dateIndex) => ({
+        date: String(dateItem?.date || "").trim(),
+        sessions: normalizeImportedSessions(dateItem?.sessions, dateIndex).map(
+          (session) => ({
+            start_time: session.start_time,
+            end_time: session.end_time,
+            title: session.title,
+            speaker_name: session.speaker_name,
+            notes: session.notes,
+          })
+        ),
+      })),
+    };
+
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setProgramStatus({
+        type: "success",
+        message: "Programação copiada. Você pode colar em outro evento.",
+      });
+    } catch {
+      setProgramStatus({
+        type: "error",
+        message: "Não foi possível copiar a programação.",
+      });
+    }
+  };
+
+  const handlePasteProgram = async () => {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.clipboard?.readText
+    ) {
+      setProgramStatus({
+        type: "error",
+        message:
+          "Seu navegador não permite leitura automática da área de transferência.",
+      });
+      return;
+    }
+
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      const parsed = JSON.parse(clipboardText || "{}");
+      const importedDates = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.dates)
+          ? parsed.dates
+          : [];
+
+      if (importedDates.length === 0) {
+        setProgramStatus({
+          type: "error",
+          message: "Não encontrei uma programação válida para colar.",
+        });
+        return;
+      }
+
+      setProgramDates((prev) =>
+        prev.map((dateItem, dateIndex) => {
+          const dateKey = String(dateItem?.date || "").trim();
+          const byDate = importedDates.find(
+            (item) => String(item?.date || "").trim() === dateKey
+          );
+          const byIndex = importedDates[dateIndex];
+          const source = byDate || byIndex;
+          if (!source) return dateItem;
+          return {
+            ...dateItem,
+            sessions: sortSessionsByStartTime(
+              normalizeImportedSessions(source?.sessions, dateIndex)
+            ),
+          };
+        })
+      );
+
+      setProgramStatus({
+        type: "success",
+        message:
+          "Programação colada com sucesso. Revise e clique em salvar.",
+      });
+    } catch {
+      setProgramStatus({
+        type: "error",
+        message:
+          "Não foi possível colar. Copie uma programação válida em formato JSON.",
+      });
+    }
   };
 
   const handleDownloadProgramDoc = () => {
     if (!training) return;
-    const tableRows = rows
+    if (!normalizedProgramRows.length) {
+      setProgramStatus({
+        type: "error",
+        message:
+          "Não há programação digitada para exportar. Preencha as aulas primeiro.",
+      });
+      return;
+    }
+
+    const tableRows = normalizedProgramRows
       .map(
         (item) => `
           <tr>
             <td>${escapeHtml(item.date)}</td>
-            <td>${escapeHtml(item.meeting)}</td>
-            <td>${escapeHtml(item.schedule)}</td>
-            <td>${escapeHtml(item.activity)}</td>
-            <td>${escapeHtml(item.responsible)}</td>
+            <td>${escapeHtml(item.description)}</td>
           </tr>
         `
       )
@@ -424,32 +487,43 @@ export default function EventProgramSection({ training }) {
           <title>Programação do evento - ${escapeHtml(training?.title || "-")}</title>
           <style>
             @page { margin: 2.5cm 2cm 2.5cm 3cm; }
-            body { font-family: Arial, Helvetica, sans-serif; font-size: 12pt; line-height: 1.5; color: #111827; margin: 0; }
-            h1 { margin: 0 0 14pt 0; text-align: center; text-transform: uppercase; font-size: 12pt; }
-            p { margin: 0 0 8pt 0; text-align: justify; }
-            .meta { margin-bottom: 12pt; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8pt; font-size: 11pt; }
-            th, td { border: 1px solid #9ca3af; padding: 7px; vertical-align: top; }
-            th { background: #f8fafc; text-align: left; }
+            body {
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 12pt;
+              line-height: 1.5;
+              color: #111827;
+              margin: 0;
+            }
+            h1 {
+              margin: 0 0 14pt 0;
+              text-align: center;
+              text-transform: uppercase;
+              font-size: 12pt;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 8pt;
+              font-size: 11pt;
+            }
+            th, td {
+              border: 1px solid #9ca3af;
+              padding: 7px;
+              vertical-align: top;
+            }
+            th {
+              background: #f8fafc;
+              text-align: left;
+            }
           </style>
         </head>
         <body>
           <h1>Programação do evento – ${escapeHtml(training?.title || "-")}</h1>
-          <div class="meta">
-            <p><strong>Período:</strong> ${escapeHtml(dateRange)}</p>
-            <p><strong>Horário:</strong> ${escapeHtml(scheduleSummary)}</p>
-            <p><strong>Carga horária:</strong> ${escapeHtml(
-              training?.duration_hours ? `${training.duration_hours} horas` : "Não informada"
-            )}</p>
-          </div>
           <table>
             <thead>
               <tr>
                 <th>Data</th>
-                <th>Encontro</th>
-                <th>Horário</th>
-                <th>Atividade / Tema</th>
-                <th>Responsável</th>
+                <th>Programação digitada</th>
               </tr>
             </thead>
             <tbody>
@@ -474,50 +548,86 @@ export default function EventProgramSection({ training }) {
     window.URL.revokeObjectURL(url);
   };
 
+  const hasProgramDates = programDates.length > 0;
+
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
-            <CalendarDays className="h-4 w-4" />
+      <Card className="overflow-hidden border border-slate-200 shadow-sm">
+        <CardHeader className="bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 pb-3">
+          <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-blue-600" />
             Programação do Evento
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={handleDownloadProgramDoc}>
-              <Download className="h-4 w-4 mr-1" />
-              Baixar programação (.doc)
+        <CardContent className="space-y-4 pt-4">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <Button
+              type="button"
+              size="sm"
+              className="bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+              onClick={() => saveProgram.mutate()}
+              disabled={saveProgram.isPending}
+            >
+              <Save className="mr-1 h-4 w-4" />
+              {saveProgram.isPending ? "Salvando..." : "Salvar programação"}
             </Button>
+
+            <Button type="button" variant="outline" size="sm" onClick={handleCopyProgram}>
+              <Copy className="mr-1 h-4 w-4" />
+              Copiar programação
+            </Button>
+
+            <Button type="button" variant="outline" size="sm" onClick={handlePasteProgram}>
+              <ClipboardPaste className="mr-1 h-4 w-4" />
+              Colar programação
+            </Button>
+
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => saveProgram.mutate()}
-              disabled={saveProgram.isPending}
+              onClick={handleDownloadProgramDoc}
+              disabled={totalTypedSessions === 0}
             >
-              <Save className="h-4 w-4 mr-1" />
-              {saveProgram.isPending ? "Salvando..." : "Salvar programação"}
+              <Download className="mr-1 h-4 w-4" />
+              Baixar programação (.doc)
             </Button>
+
+            <div className="ml-auto text-xs font-medium text-slate-600">
+              {totalTypedSessions} aula(s) digitada(s)
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,220px)_auto] gap-3 items-end rounded-md border border-slate-200 p-3 bg-white">
-            <div className="space-y-1.5">
-              <Label htmlFor="program-interval-minutes">Intervalo de aula (minutos)</Label>
-              <Input
-                id="program-interval-minutes"
-                type="number"
-                min="5"
-                step="5"
-                value={intervalMinutes}
-                onChange={(event) => setIntervalMinutes(event.target.value)}
-                placeholder="20, 30, 60..."
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" onClick={handleGenerateByInterval}>
-                Gerar aulas por intervalo
-              </Button>
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,220px)_auto] sm:items-end">
+              <div className="space-y-1.5">
+                <Label htmlFor="program-interval-minutes">Gerar aulas por intervalo (opcional)</Label>
+                <Input
+                  id="program-interval-minutes"
+                  type="number"
+                  min="5"
+                  step="5"
+                  value={intervalMinutes}
+                  onChange={(event) => setIntervalMinutes(event.target.value)}
+                  placeholder="Ex.: 20, 30, 60"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[20, 30, 60].map((value) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIntervalMinutes(String(value))}
+                  >
+                    {value} min
+                  </Button>
+                ))}
+                <Button type="button" size="sm" onClick={handleGenerateByInterval}>
+                  Gerar
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -541,145 +651,132 @@ export default function EventProgramSection({ training }) {
             </Alert>
           )}
 
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-            <p>
-              <strong>Período:</strong> {dateRange}
-            </p>
-            <p>
-              <strong>Horário:</strong> {scheduleSummary}
-            </p>
-            <p>
-              <strong>Carga horária:</strong>{" "}
-              {training?.duration_hours ? `${training.duration_hours} horas` : "Não informada"}
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            {programDates.map((dateItem, dateIndex) => {
-              const sessions = Array.isArray(dateItem?.sessions) ? dateItem.sessions : [];
-              return (
-                <Card key={`program-date-${dateItem?.date || dateIndex}`}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center justify-between gap-3">
-                      <span>
-                        {formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "Data não definida"}
-                        <span className="ml-2 text-slate-500 font-normal">
-                          ({dateItem?.start_time || "--:--"} às {dateItem?.end_time || "--:--"})
+          {!hasProgramDates ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+              Cadastre ao menos uma data no treinamento para montar a programação.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {programDates.map((dateItem, dateIndex) => {
+                const sessions = sortSessionsByStartTime(
+                  normalizeImportedSessions(dateItem?.sessions, dateIndex)
+                );
+                return (
+                  <Card
+                    key={`program-date-${dateItem?.date || dateIndex}`}
+                    className="border border-slate-200 shadow-sm"
+                  >
+                    <CardHeader className="border-b border-slate-100 bg-slate-50/70 pb-3">
+                      <CardTitle className="text-sm flex items-center justify-between gap-3">
+                        <span className="font-semibold text-slate-800">
+                          {formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "Data não definida"}
                         </span>
-                      </span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleAddSession(dateIndex)}
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Adicionar aula
-                      </Button>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {sessions.length === 0 ? (
-                      <p className="text-sm text-slate-500">
-                        Nenhuma aula cadastrada para esta data.
-                      </p>
-                    ) : (
-                      <div className="overflow-x-auto rounded-lg border">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-slate-50">
-                              <TableHead className="w-[120px]">Início</TableHead>
-                              <TableHead className="w-[120px]">Fim</TableHead>
-                              <TableHead>Tema da aula</TableHead>
-                              <TableHead>Palestrante</TableHead>
-                              <TableHead className="w-[90px]">Ações</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {sessions.map((session) => (
-                              <TableRow key={session.id}>
-                                <TableCell>
-                                  <Input
-                                    type="time"
-                                    value={session.start_time}
-                                    onChange={(event) =>
-                                      handleUpdateSessionField(
-                                        dateIndex,
-                                        session.id,
-                                        "start_time",
-                                        event.target.value
-                                      )
-                                    }
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <Input
-                                    type="time"
-                                    value={session.end_time}
-                                    onChange={(event) =>
-                                      handleUpdateSessionField(
-                                        dateIndex,
-                                        session.id,
-                                        "end_time",
-                                        event.target.value
-                                      )
-                                    }
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <Input
-                                    value={session.title}
-                                    onChange={(event) =>
-                                      handleUpdateSessionField(
-                                        dateIndex,
-                                        session.id,
-                                        "title",
-                                        event.target.value
-                                      )
-                                    }
-                                    placeholder="Ex.: Diagnóstico clínico do tracoma"
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <Input
-                                    value={session.speaker_name}
-                                    onChange={(event) =>
-                                      handleUpdateSessionField(
-                                        dateIndex,
-                                        session.id,
-                                        "speaker_name",
-                                        event.target.value
-                                      )
-                                    }
-                                    placeholder="Ex.: Norma Helen Medina"
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-red-600 hover:text-red-700"
-                                    onClick={() => handleRemoveSession(dateIndex, session.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-
-          <p className="text-xs text-slate-500">
-            Você pode gerar as aulas por intervalo (20, 30, 60 min etc.) e editar tema e palestrante de cada aula antes de salvar.
-          </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                          onClick={() => handleAddSession(dateIndex)}
+                        >
+                          <Plus className="mr-1 h-4 w-4" />
+                          Adicionar aula
+                        </Button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3 pt-4">
+                      {sessions.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-500">
+                          Nenhuma aula digitada para esta data.
+                        </div>
+                      ) : (
+                        sessions.map((session) => (
+                          <div
+                            key={session.id}
+                            className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                          >
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
+                              <Input
+                                type="time"
+                                value={session.start_time}
+                                onChange={(event) =>
+                                  handleUpdateSessionField(
+                                    dateIndex,
+                                    session.id,
+                                    "start_time",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                              <Input
+                                type="time"
+                                value={session.end_time}
+                                onChange={(event) =>
+                                  handleUpdateSessionField(
+                                    dateIndex,
+                                    session.id,
+                                    "end_time",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                              <Input
+                                value={session.title}
+                                onChange={(event) =>
+                                  handleUpdateSessionField(
+                                    dateIndex,
+                                    session.id,
+                                    "title",
+                                    event.target.value
+                                  )
+                                }
+                                placeholder="Tema / atividade"
+                              />
+                              <Input
+                                value={session.speaker_name}
+                                onChange={(event) =>
+                                  handleUpdateSessionField(
+                                    dateIndex,
+                                    session.id,
+                                    "speaker_name",
+                                    event.target.value
+                                  )
+                                }
+                                placeholder="Palestrante"
+                              />
+                            </div>
+                            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                              <Input
+                                value={session.notes}
+                                onChange={(event) =>
+                                  handleUpdateSessionField(
+                                    dateIndex,
+                                    session.id,
+                                    "notes",
+                                    event.target.value
+                                  )
+                                }
+                                placeholder="Observação opcional"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => handleRemoveSession(dateIndex, session.id)}
+                              >
+                                <Trash2 className="mr-1 h-4 w-4" />
+                                Remover aula
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

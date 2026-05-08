@@ -799,77 +799,60 @@ export default function TrainingDetails({
   }, [sortedTrainingDates]);
 
   const reportProgramRows = useMemo(() => {
-    const fallbackResponsible =
-      String(training?.instructor || "").trim() ||
-      String(training?.coordinator || "").trim() ||
-      "-";
-    if (sortedTrainingDates.length > 0) {
-      const rows = [];
-      sortedTrainingDates.forEach((dateItem, index) => {
-        const dateLabel = formatDate(dateItem?.date);
-        const dateSessions = (Array.isArray(dateItem?.sessions)
-          ? dateItem.sessions
-          : []
+    const rows = [];
+    sortedTrainingDates.forEach((dateItem) => {
+      const dateLabel = formatDate(dateItem?.date);
+      const dateSessions = (Array.isArray(dateItem?.sessions)
+        ? dateItem.sessions
+        : []
+      )
+        .map((session) => ({
+          start_time: String(session?.start_time || "").trim(),
+          end_time: String(session?.end_time || "").trim(),
+          title: String(session?.title || session?.activity || "").trim(),
+          speaker: String(
+            session?.speaker_name || session?.responsible || session?.speaker || ""
+          ).trim(),
+          notes: String(session?.notes || "").trim(),
+        }))
+        .filter(
+          (session) =>
+            session.start_time ||
+            session.end_time ||
+            session.title ||
+            session.speaker ||
+            session.notes
         )
-          .map((session, sessionIndex) => ({
-            start_time: String(session?.start_time || "").trim(),
-            end_time: String(session?.end_time || "").trim(),
-            activity: String(session?.title || session?.activity || "").trim(),
-            responsible: String(
-              session?.speaker_name || session?.responsible || ""
-            ).trim(),
-            index: sessionIndex,
-          }))
-          .sort((a, b) =>
-            String(a.start_time || "").localeCompare(String(b.start_time || ""))
-          );
+        .sort((a, b) =>
+          String(a.start_time || "").localeCompare(String(b.start_time || ""))
+        );
 
-        if (dateSessions.length > 0) {
-          dateSessions.forEach((session, sessionIndex) => {
-            const schedule =
-              session.start_time && session.end_time
-                ? `${session.start_time} às ${session.end_time}`
-                : session.start_time || session.end_time || "-";
-            rows.push({
-              date: sessionIndex === 0 ? dateLabel : "",
-              meeting: `${index + 1}º encontro`,
-              schedule,
-              activity:
-                session.activity ||
-                "Conteúdos teóricos, discussões e exercícios de fixação.",
-              responsible: session.responsible || fallbackResponsible,
-            });
-          });
-          return;
+      dateSessions.forEach((session, sessionIndex) => {
+        const parts = [];
+        if (session.start_time && session.end_time) {
+          parts.push(`${session.start_time} às ${session.end_time}`);
+        } else if (session.start_time || session.end_time) {
+          parts.push(session.start_time || session.end_time);
         }
-
+        if (session.title) {
+          parts.push(session.title);
+        }
+        if (session.speaker) {
+          parts.push(session.speaker);
+        }
+        if (session.notes) {
+          parts.push(session.notes);
+        }
+        const line = parts.join(" • ").trim();
+        if (!line) return;
         rows.push({
-          date: dateLabel,
-          meeting: `${index + 1}º encontro`,
-          schedule:
-            dateItem?.start_time && dateItem?.end_time
-              ? `${dateItem.start_time} às ${dateItem.end_time}`
-              : "-",
-          activity:
-            index === 0
-              ? "Abertura, alinhamento do curso e conteúdos programados."
-              : "Conteúdos teóricos, discussões e exercícios de fixação.",
-          responsible:
-            String(training?.speakers?.[index]?.name || "").trim() || fallbackResponsible,
+          date: sessionIndex === 0 ? dateLabel : "",
+          program: line,
         });
       });
-      return rows;
-    }
-    return [
-      {
-        date: formatDate(training?.date),
-        meeting: "Encontro único",
-        schedule: "-",
-        activity: "Conteúdo programado do treinamento.",
-        responsible: fallbackResponsible,
-      },
-    ];
-  }, [formatDate, sortedTrainingDates, training?.coordinator, training?.date, training?.instructor, training?.speakers]);
+    });
+    return rows;
+  }, [formatDate, sortedTrainingDates]);
 
   const feedbackReportInsights = useMemo(() => {
     const ratingMap = new Map(
@@ -1098,19 +1081,23 @@ export default function TrainingDetails({
           </tr>
         `;
 
-    const programRowsHtml = reportProgramRows
-      .map(
-        (row) => `
+    const programRowsHtml =
+      reportProgramRows.length > 0
+        ? reportProgramRows
+            .map(
+              (row) => `
+                <tr>
+                  <td>${escapeHtml(row.date)}</td>
+                  <td>${escapeHtml(row.program)}</td>
+                </tr>
+              `
+            )
+            .join("")
+        : `
           <tr>
-            <td>${escapeHtml(row.date)}</td>
-            <td>${escapeHtml(row.meeting)}</td>
-            <td>${escapeHtml(row.schedule || "-")}</td>
-            <td>${escapeHtml(row.activity)}</td>
-            <td>${escapeHtml(row.responsible)}</td>
+            <td colspan="2">Sem programação cadastrada.</td>
           </tr>
-        `
-      )
-      .join("");
+        `;
 
     const reportHtml = `
       <!doctype html>
@@ -1259,10 +1246,7 @@ export default function TrainingDetails({
             <thead>
               <tr>
                 <th>Data</th>
-                <th>Encontro</th>
-                <th>Horário</th>
-                <th>Atividade / Tema</th>
-                <th>Responsável</th>
+                <th>Programação digitada</th>
               </tr>
             </thead>
             <tbody>
