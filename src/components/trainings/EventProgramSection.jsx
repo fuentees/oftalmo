@@ -4,7 +4,6 @@ import { dataClient } from "@/api/dataClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Table,
@@ -46,8 +45,7 @@ const hasSessionTypedContent = (session) =>
     String(session?.start_time || "").trim() ||
       String(session?.end_time || "").trim() ||
       String(session?.title || session?.activity || "").trim() ||
-      String(session?.speaker_name || session?.responsible || "").trim() ||
-      String(session?.notes || "").trim()
+      String(session?.speaker_name || session?.responsible || "").trim()
   );
 
 const normalizeTimeValue = (value) => {
@@ -64,7 +62,6 @@ const normalizeTimeValue = (value) => {
 
 export default function EventProgramSection({ training }) {
   const queryClient = useQueryClient();
-  const [intervalMinutes, setIntervalMinutes] = useState("");
   const [programDates, setProgramDates] = useState([]);
   const [programStatus, setProgramStatus] = useState(null);
 
@@ -87,15 +84,6 @@ export default function EventProgramSection({ training }) {
     return hour * 60 + minute;
   };
 
-  const formatMinutesToTime = (value) => {
-    const total = Number(value);
-    if (!Number.isFinite(total)) return "";
-    const safe = Math.max(0, Math.min(24 * 60, total));
-    const hour = String(Math.floor(safe / 60)).padStart(2, "0");
-    const minute = String(safe % 60).padStart(2, "0");
-    return `${hour}:${minute}`;
-  };
-
   const normalizeSession = (session, fallbackIndex = 0) => ({
     id:
       String(session?.id || "").trim() ||
@@ -106,7 +94,6 @@ export default function EventProgramSection({ training }) {
     speaker_name: String(
       session?.speaker_name || session?.responsible || session?.speaker || ""
     ).trim(),
-    notes: String(session?.notes || "").trim(),
   });
 
   const normalizeImportedSessions = (sessions = [], dateIndex = 0) =>
@@ -119,7 +106,6 @@ export default function EventProgramSection({ training }) {
             title: session?.title || session?.activity,
             speaker_name:
               session?.speaker_name || session?.responsible || session?.speaker,
-            notes: session?.notes,
           },
           dateIndex * 100 + sessionIndex
         )
@@ -206,7 +192,6 @@ export default function EventProgramSection({ training }) {
             end_time: String(session?.end_time || "").trim(),
             title: String(session?.title || "").trim(),
             speaker_name: String(session?.speaker_name || "").trim(),
-            notes: String(session?.notes || "").trim(),
           })
         ),
       }));
@@ -262,7 +247,6 @@ export default function EventProgramSection({ training }) {
         {
           title: "",
           speaker_name: "",
-          notes: "",
         },
         sessions.length + dateIndex * 1000
       ),
@@ -273,71 +257,6 @@ export default function EventProgramSection({ training }) {
     upsertDateSessions(dateIndex, (sessions) =>
       sessions.filter((session) => session.id !== sessionId)
     );
-  };
-
-  const generateSessionsForDate = (dateItem, dateIndex, interval) => {
-    const startMinutes = parseTimeToMinutes(dateItem?.start_time);
-    const endMinutes = parseTimeToMinutes(dateItem?.end_time);
-    if (
-      startMinutes === null ||
-      endMinutes === null ||
-      !Number.isFinite(interval) ||
-      interval <= 0 ||
-      endMinutes <= startMinutes
-    ) {
-      return [];
-    }
-
-    const existingByStart = new Map(
-      normalizeImportedSessions(dateItem?.sessions, dateIndex)
-        .filter((session) => session?.start_time)
-        .map((session) => [String(session.start_time), session])
-    );
-    const generated = [];
-    let cursor = startMinutes;
-    let safety = 0;
-
-    while (cursor < endMinutes && safety < 200) {
-      const slotEnd = Math.min(cursor + interval, endMinutes);
-      const startTime = formatMinutesToTime(cursor);
-      const endTime = formatMinutesToTime(slotEnd);
-      const previous = existingByStart.get(startTime);
-      generated.push(
-        normalizeSession(
-          {
-            ...previous,
-            start_time: startTime,
-            end_time: endTime,
-          },
-          dateIndex * 1000 + safety
-        )
-      );
-      cursor = slotEnd;
-      safety += 1;
-    }
-
-    return generated;
-  };
-
-  const handleGenerateByInterval = () => {
-    const parsedInterval = Math.trunc(Number(intervalMinutes || 0));
-    if (!Number.isFinite(parsedInterval) || parsedInterval <= 0) {
-      setProgramStatus({
-        type: "error",
-        message: "Informe um intervalo válido em minutos (ex.: 20, 30, 60).",
-      });
-      return;
-    }
-    setProgramDates((prev) =>
-      prev.map((dateItem, dateIndex) => ({
-        ...dateItem,
-        sessions: generateSessionsForDate(dateItem, dateIndex, parsedInterval),
-      }))
-    );
-    setProgramStatus({
-      type: "success",
-      message: `Aulas geradas com intervalo de ${parsedInterval} minutos.`,
-    });
   };
 
   const handleCopyProgram = async () => {
@@ -366,7 +285,6 @@ export default function EventProgramSection({ training }) {
             end_time: session.end_time,
             title: session.title,
             speaker_name: session.speaker_name,
-            notes: session.notes,
           })
         ),
       })),
@@ -476,7 +394,6 @@ export default function EventProgramSection({ training }) {
                 <td>${escapeHtml(session.end_time || "-")}</td>
                 <td>${escapeHtml(session.title || "-")}</td>
                 <td>${escapeHtml(session.speaker_name || "-")}</td>
-                <td>${escapeHtml(session.notes || "-")}</td>
               </tr>
             `
           )
@@ -506,11 +423,18 @@ export default function EventProgramSection({ training }) {
               font-size: 12pt;
             }
             .brand {
-              text-align: right;
+              text-align: center;
               font-size: 10pt;
               font-weight: 700;
               color: #475569;
               margin-bottom: 10pt;
+              text-transform: uppercase;
+            }
+            .title-helper {
+              margin: 0 0 6pt 0;
+              text-align: center;
+              font-size: 10.5pt;
+              color: #334155;
             }
             .meta {
               margin-bottom: 10pt;
@@ -537,7 +461,8 @@ export default function EventProgramSection({ training }) {
           </style>
         </head>
         <body>
-          <p class="brand">CVE • CCD • SÃO PAULO</p>
+          <p class="brand">Secretaria de Estado da Saúde • CVE • CCD • São Paulo</p>
+          <p class="title-helper">Programa de aulas do treinamento</p>
           <h1>Programação do evento – ${escapeHtml(training?.title || "-")}</h1>
           <div class="meta">
             <p><strong>Período:</strong> ${escapeHtml(trainingPeriodLabel)}</p>
@@ -557,7 +482,6 @@ export default function EventProgramSection({ training }) {
                 <th>Fim</th>
                 <th>Tema</th>
                 <th>Palestrante</th>
-                <th>Observação</th>
               </tr>
             </thead>
             <tbody>
@@ -690,39 +614,6 @@ export default function EventProgramSection({ training }) {
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,220px)_auto] sm:items-end">
-              <div className="space-y-1.5">
-                <Label htmlFor="program-interval-minutes">Gerar aulas por intervalo (opcional)</Label>
-                <Input
-                  id="program-interval-minutes"
-                  type="number"
-                  min="5"
-                  step="5"
-                  value={intervalMinutes}
-                  onChange={(event) => setIntervalMinutes(event.target.value)}
-                  placeholder="Ex.: 20, 30, 60"
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {[20, 30, 60].map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIntervalMinutes(String(value))}
-                  >
-                    {value} min
-                  </Button>
-                ))}
-                <Button type="button" size="sm" onClick={handleGenerateByInterval}>
-                  Gerar
-                </Button>
-              </div>
-            </div>
-          </div>
-
           {programStatus && (
             <Alert
               className={
@@ -791,14 +682,13 @@ export default function EventProgramSection({ training }) {
                               <TableHead className="min-w-[120px]">Hora fim</TableHead>
                               <TableHead className="min-w-[260px]">Tema</TableHead>
                               <TableHead className="min-w-[220px]">Palestrante</TableHead>
-                              <TableHead className="min-w-[240px]">Observação</TableHead>
                               <TableHead className="min-w-[120px] text-right">Ações</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {sessions.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={7} className="py-6 text-center text-sm text-slate-500">
+                                <TableCell colSpan={6} className="py-6 text-center text-sm text-slate-500">
                                   Nenhuma aula digitada para esta data.
                                 </TableCell>
                               </TableRow>
@@ -823,7 +713,7 @@ export default function EventProgramSection({ training }) {
                                           dateIndex,
                                           session.id,
                                           "start_time",
-                                          normalizeTimeValue(event.target.value)
+                                          event.target.value
                                         )
                                       }
                                       placeholder="HH:MM"
@@ -839,7 +729,7 @@ export default function EventProgramSection({ training }) {
                                           dateIndex,
                                           session.id,
                                           "end_time",
-                                          normalizeTimeValue(event.target.value)
+                                          event.target.value
                                         )
                                       }
                                       placeholder="HH:MM"
@@ -871,20 +761,6 @@ export default function EventProgramSection({ training }) {
                                         )
                                       }
                                       placeholder="Nome do palestrante"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      value={session.notes}
-                                      onChange={(event) =>
-                                        handleUpdateSessionField(
-                                          dateIndex,
-                                          session.id,
-                                          "notes",
-                                          event.target.value
-                                        )
-                                      }
-                                      placeholder="Observação opcional"
                                     />
                                   </TableCell>
                                   <TableCell className="text-right">

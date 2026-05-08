@@ -815,15 +815,13 @@ export default function TrainingDetails({
                 String(
                   session?.speaker_name || session?.responsible || session?.speaker || ""
                 ).trim() || "-",
-              notes: String(session?.notes || "").trim() || "-",
             }))
             .filter(
               (session) =>
                 session.start_time !== "-" ||
                 session.end_time !== "-" ||
                 session.title !== "-" ||
-                session.speaker !== "-" ||
-                session.notes !== "-"
+                session.speaker !== "-"
             )
             .sort((a, b) =>
               String(a.start_time || "").localeCompare(String(b.start_time || ""))
@@ -1083,7 +1081,6 @@ export default function TrainingDetails({
                       <td>${escapeHtml(session.end_time)}</td>
                       <td>${escapeHtml(session.title)}</td>
                       <td>${escapeHtml(session.speaker)}</td>
-                      <td>${escapeHtml(session.notes)}</td>
                     </tr>
                   `
                 )
@@ -1092,7 +1089,7 @@ export default function TrainingDetails({
             .join("")
         : `
           <tr>
-            <td colspan="6">Sem programação cadastrada.</td>
+            <td colspan="5">Sem programação cadastrada.</td>
           </tr>
         `;
 
@@ -1247,7 +1244,6 @@ export default function TrainingDetails({
                 <th>Fim</th>
                 <th>Tema</th>
                 <th>Palestrante</th>
-                <th>Observação</th>
               </tr>
             </thead>
             <tbody>
