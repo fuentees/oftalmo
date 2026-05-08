@@ -115,6 +115,25 @@ const GOOGLE_CALENDAR_FIELD_OPTIONS = [
   },
 ];
 
+const ATTENDANCE_PRINT_COLUMN_OPTIONS = [
+  { key: "name", label: "Nome" },
+  { key: "rg", label: "R.G. / CPF" },
+  { key: "formation", label: "Formação" },
+  { key: "municipality", label: "Município" },
+  { key: "gve", label: "GVE" },
+  { key: "email", label: "E-mail" },
+  { key: "sector", label: "Cargo/Setor" },
+  { key: "registration", label: "Matrícula" },
+];
+
+const DEFAULT_ATTENDANCE_PRINT_COLUMNS = [
+  "name",
+  "rg",
+  "formation",
+  "municipality",
+  "gve",
+];
+
 export default function EnrollmentPage({
   allowedTabs = null,
   initialTab = null,
@@ -183,6 +202,11 @@ export default function EnrollmentPage({
   const [calendarInviteEmail, setCalendarInviteEmail] = useState("");
   const [calendarVisibility, setCalendarVisibility] = useState(
     DEFAULT_GOOGLE_CALENDAR_VISIBILITY
+  );
+  const [showPrintAttendanceDialog, setShowPrintAttendanceDialog] = useState(false);
+  const [printExtraBlankRows, setPrintExtraBlankRows] = useState("10");
+  const [printSelectedColumns, setPrintSelectedColumns] = useState(
+    DEFAULT_ATTENDANCE_PRINT_COLUMNS
   );
 
   const handleGoBack = () => {
@@ -1290,8 +1314,61 @@ export default function EnrollmentPage({
     link.click();
   };
 
-  const handlePrintAttendanceList = () => {
-    if (!training) return;
+  const handleTogglePrintColumn = (columnKey, checked) => {
+    const shouldInclude = Boolean(checked);
+    setPrintSelectedColumns((prev) => {
+      if (shouldInclude) {
+        if (prev.includes(columnKey)) return prev;
+        return [...prev, columnKey];
+      }
+      if (!prev.includes(columnKey)) return prev;
+      const next = prev.filter((item) => item !== columnKey);
+      // Mantém ao menos uma coluna dinâmica selecionada.
+      return next.length > 0 ? next : prev;
+    });
+  };
+
+  const resolveAttendanceColumnValue = (participant, columnKey) => {
+    if (!participant) return "";
+    if (columnKey === "name") return participant.professional_name || "";
+    if (columnKey === "rg") {
+      return participant.professional_rg || participant.professional_cpf || "";
+    }
+    if (columnKey === "formation") {
+      return participant.professional_formation || participant.professional_sector || "";
+    }
+    if (columnKey === "municipality") return participant.municipality || "";
+    if (columnKey === "gve") return participant.health_region || "";
+    if (columnKey === "email") return participant.professional_email || "";
+    if (columnKey === "sector") return participant.professional_sector || "";
+    if (columnKey === "registration") return participant.professional_registration || "";
+    return "";
+  };
+
+  const handlePrintAttendanceList = ({
+    selectedColumnKeys = printSelectedColumns,
+    extraBlankRows = printExtraBlankRows,
+  } = {}) => {
+    if (!training) return false;
+    const normalizedSelectedKeys = Array.from(
+      new Set(
+        (Array.isArray(selectedColumnKeys) ? selectedColumnKeys : [])
+          .map((key) => String(key || "").trim())
+          .filter(Boolean)
+      )
+    );
+    if (normalizedSelectedKeys.length === 0) {
+      alert("Selecione pelo menos uma coluna para imprimir.");
+      return false;
+    }
+
+    const selectedColumns = ATTENDANCE_PRINT_COLUMN_OPTIONS.filter((option) =>
+      normalizedSelectedKeys.includes(option.key)
+    );
+    if (selectedColumns.length === 0) {
+      alert("Selecione pelo menos uma coluna válida para imprimir.");
+      return false;
+    }
 
     const activeParticipants = filteredParticipants
       .filter(
@@ -1307,36 +1384,22 @@ export default function EnrollmentPage({
         )
       );
 
-    if (activeParticipants.length === 0) {
-      alert(
-        "Não há inscritos ativos para gerar a lista de frequência com os filtros atuais."
-      );
-      return;
-    }
-
-    const minimumRows = Math.max(20, activeParticipants.length);
+    const parsedExtraRows = Math.max(
+      0,
+      Math.trunc(Number(extraBlankRows || 0)) || 0
+    );
+    const minimumRows = Math.max(20, activeParticipants.length + parsedExtraRows);
     const printableRows = Array.from({ length: minimumRows }).map((_, index) => {
       const participant = activeParticipants[index];
       if (!participant) {
         return {
           position: index + 1,
-          name: "",
-          rg: "",
-          formation: "",
-          municipality: "",
-          gve: "",
+          participant: null,
         };
       }
       return {
         position: index + 1,
-        name: participant.professional_name || "",
-        rg: participant.professional_rg || participant.professional_cpf || "",
-        formation:
-          participant.professional_formation ||
-          participant.professional_sector ||
-          "",
-        municipality: participant.municipality || "",
-        gve: participant.health_region || "",
+        participant,
       };
     });
 
@@ -1345,15 +1408,22 @@ export default function EnrollmentPage({
         (row) => `
           <tr>
             <td class="idx">${row.position}.</td>
-            <td>${escapeHtml(row.name || "")}</td>
-            <td>${escapeHtml(row.rg || "")}</td>
-            <td>${escapeHtml(row.formation || "")}</td>
-            <td>${escapeHtml(row.municipality || "")}</td>
-            <td>${escapeHtml(row.gve || "")}</td>
+            ${selectedColumns
+              .map(
+                (column) =>
+                  `<td>${escapeHtml(
+                    resolveAttendanceColumnValue(row.participant, column.key)
+                  )}</td>`
+              )
+              .join("")}
             <td></td>
           </tr>
         `
       )
+      .join("");
+
+    const tableHeadersHtml = selectedColumns
+      .map((column) => `<th>${escapeHtml(column.label)}</th>`)
       .join("");
 
     const dateSessions = (() => {
@@ -1427,11 +1497,7 @@ export default function EnrollmentPage({
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Nome</th>
-                  <th>R.G.</th>
-                  <th>Formação</th>
-                  <th>Município</th>
-                  <th>GVE</th>
+                  ${tableHeadersHtml}
                   <th>Assinatura</th>
                 </tr>
               </thead>
@@ -1462,7 +1528,7 @@ export default function EnrollmentPage({
       alert(
         "Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-up."
       );
-      return;
+      return false;
     }
 
     const printableHtml = `
@@ -1631,6 +1697,7 @@ export default function EnrollmentPage({
     printWindow.document.open();
     printWindow.document.write(printableHtml);
     printWindow.document.close();
+    return true;
   };
 
   const handleDownloadTemplate = () => {
@@ -2669,9 +2736,9 @@ export default function EnrollmentPage({
                   )}
                   {isInPersonTraining && (
                     <Button
-                      onClick={handlePrintAttendanceList}
+                      onClick={() => setShowPrintAttendanceDialog(true)}
                       variant="outline"
-                      disabled={participantsLoading || filteredParticipants.length === 0}
+                      disabled={participantsLoading}
                     >
                       <Printer className="h-4 w-4 mr-2" />
                       Lista de Frequência
@@ -2959,6 +3026,86 @@ export default function EnrollmentPage({
           </Tabs>
         </CardContent>
       </Card>
+
+      <Dialog open={showPrintAttendanceDialog} onOpenChange={setShowPrintAttendanceDialog}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Printer className="h-4 w-4" />
+              Configurar lista de frequência
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert className="border-blue-200 bg-blue-50">
+              <AlertDescription className="text-blue-800">
+                A impressão gera <strong>uma lista para cada dia</strong> do treinamento,
+                mantendo os filtros atuais da busca e permitindo linhas extras em branco.
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-2">
+              <Label>Variáveis (colunas) que devem aparecer</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-md border border-slate-200 p-3">
+                {ATTENDANCE_PRINT_COLUMN_OPTIONS.map((option) => (
+                  <label
+                    key={`attendance-print-col-${option.key}`}
+                    className="flex items-center gap-2 text-sm text-slate-700"
+                  >
+                    <Checkbox
+                      checked={printSelectedColumns.includes(option.key)}
+                      onCheckedChange={(checked) =>
+                        handleTogglePrintColumn(option.key, checked)
+                      }
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500">
+                Colunas fixas: numeração e assinatura.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="attendance-extra-rows">
+                Linhas em branco extras (além dos inscritos)
+              </Label>
+              <Input
+                id="attendance-extra-rows"
+                type="number"
+                min="0"
+                value={printExtraBlankRows}
+                onChange={(event) => setPrintExtraBlankRows(event.target.value)}
+              />
+              <p className="text-xs text-slate-500">
+                Exemplo: 15 cria 15 linhas adicionais para participantes que chegarem
+                sem inscrição prévia.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowPrintAttendanceDialog(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => {
+                  const printed = handlePrintAttendanceList();
+                  if (printed) {
+                    setShowPrintAttendanceDialog(false);
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Gerar e imprimir
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={showGoogleCalendarDialog}
