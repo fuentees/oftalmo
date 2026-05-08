@@ -119,6 +119,7 @@ const ATTENDANCE_PRINT_COLUMN_OPTIONS = [
   { key: "name", label: "Nome" },
   { key: "rg", label: "R.G. / CPF" },
   { key: "formation", label: "Formação" },
+  { key: "unit_name", label: "Unidade" },
   { key: "municipality", label: "Município" },
   { key: "gve", label: "GVE" },
   { key: "email", label: "E-mail" },
@@ -130,6 +131,7 @@ const DEFAULT_ATTENDANCE_PRINT_COLUMNS = [
   "name",
   "rg",
   "formation",
+  "unit_name",
   "municipality",
   "gve",
 ];
@@ -1337,6 +1339,7 @@ export default function EnrollmentPage({
     if (columnKey === "formation") {
       return participant.professional_formation || participant.professional_sector || "";
     }
+    if (columnKey === "unit_name") return participant.unit_name || "";
     if (columnKey === "municipality") return participant.municipality || "";
     if (columnKey === "gve") return participant.health_region || "";
     if (columnKey === "email") return participant.professional_email || "";
