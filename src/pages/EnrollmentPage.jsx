@@ -1314,14 +1314,6 @@ export default function EnrollmentPage({
       return;
     }
 
-    const firstDate = trainingDates.find((item) => item?.date) || null;
-    const trainingDateLabel = firstDate?.date
-      ? formatDateSafe(firstDate.date, "dd/MM/yyyy")
-      : formatDateSafe(training?.date, "dd/MM/yyyy") || "-";
-    const trainingTimeLabel =
-      firstDate?.start_time && firstDate?.end_time
-        ? `${firstDate.start_time} às ${firstDate.end_time}`
-        : "-";
     const minimumRows = Math.max(20, activeParticipants.length);
     const printableRows = Array.from({ length: minimumRows }).map((_, index) => {
       const participant = activeParticipants[index];
@@ -1348,14 +1340,6 @@ export default function EnrollmentPage({
       };
     });
 
-    const printWindow = window.open("", "_blank", "width=1100,height=820");
-    if (!printWindow) {
-      alert(
-        "Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-up."
-      );
-      return;
-    }
-
     const rowsHtml = printableRows
       .map(
         (row) => `
@@ -1372,6 +1356,115 @@ export default function EnrollmentPage({
       )
       .join("");
 
+    const dateSessions = (() => {
+      const baseSessions =
+        trainingDates.length > 0
+          ? trainingDates
+          : [{ date: training?.date || "", start_time: "", end_time: "" }];
+      const normalized = baseSessions
+        .map((session, index) => {
+          const normalizedDate = normalizeDateKey(session?.date);
+          const dateLabel = session?.date
+            ? formatDateSafe(session.date, "dd/MM/yyyy")
+            : "-";
+          return {
+            id: normalizedDate || `date-${index}`,
+            sortKey: normalizedDate || `zz-${index}`,
+            dateLabel: dateLabel || "-",
+            startTime: String(session?.start_time || "").trim(),
+            endTime: String(session?.end_time || "").trim(),
+          };
+        })
+        .filter((item) => item.dateLabel !== "-");
+
+      const uniqueByDate = [];
+      const seenDates = new Set();
+      normalized
+        .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+        .forEach((item) => {
+          const dateKey = item.sortKey;
+          if (seenDates.has(dateKey)) return;
+          seenDates.add(dateKey);
+          uniqueByDate.push(item);
+        });
+
+      if (uniqueByDate.length > 0) return uniqueByDate;
+      return [
+        {
+          id: "single-date",
+          sortKey: "single-date",
+          dateLabel: "-",
+          startTime: "",
+          endTime: "",
+        },
+      ];
+    })();
+
+    const generatedAt = format(new Date(), "dd/MM/yyyy HH:mm");
+    const sheetsHtml = dateSessions
+      .map((session, index) => {
+        const sessionTimeLabel =
+          session.startTime && session.endTime
+            ? `${session.startTime} às ${session.endTime}`
+            : session.startTime || session.endTime || "-";
+        return `
+          <section class="sheet">
+            <div class="sheet-header">
+              <div class="title-wrap">
+                <p class="org">SECRETARIA DE ESTADO DA SAÚDE</p>
+                <h1>Lista de Frequência - Participantes</h1>
+                <p class="training-title">${escapeHtml(training.title || "-")}</p>
+              </div>
+              <div class="day-chip">Dia ${index + 1} de ${dateSessions.length}</div>
+            </div>
+            <div class="meta-grid">
+              <div class="meta-item"><span>Local</span><strong>${escapeHtml(training.location || "-")}</strong></div>
+              <div class="meta-item"><span>Data</span><strong>${escapeHtml(session.dateLabel)}</strong></div>
+              <div class="meta-item"><span>Horário</span><strong>${escapeHtml(sessionTimeLabel)}</strong></div>
+              <div class="meta-item"><span>Inscritos ativos</span><strong>${activeParticipants.length}</strong></div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Nome</th>
+                  <th>R.G.</th>
+                  <th>Formação</th>
+                  <th>Município</th>
+                  <th>GVE</th>
+                  <th>Assinatura</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+            <div class="signature">
+              <div class="signature-line">
+                <div class="line"></div>
+                Responsável pelo Projeto
+              </div>
+              <div class="signature-line">
+                <div class="line"></div>
+                Diretor da Unidade
+              </div>
+            </div>
+            <div class="generated-at">
+              Gerado em ${escapeHtml(generatedAt)}
+            </div>
+          </section>
+        `;
+      })
+      .join("");
+
+    const printWindow = window.open("", "_blank", "width=1100,height=820");
+    if (!printWindow) {
+      alert(
+        "Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-up."
+      );
+      return;
+    }
+
     const printableHtml = `
       <!doctype html>
       <html lang="pt-BR">
@@ -1382,52 +1475,111 @@ export default function EnrollmentPage({
             * { box-sizing: border-box; }
             body {
               margin: 0;
-              padding: 24px;
+              padding: 20px;
               font-family: Arial, Helvetica, sans-serif;
               color: #111827;
+              background: #f3f4f6;
             }
-            .header-title {
-              text-align: center;
-              font-size: 16px;
-              font-weight: 700;
-              margin-bottom: 8px;
+            .sheet {
+              background: #ffffff;
+              border: 1px solid #d1d5db;
+              border-radius: 12px;
+              padding: 20px;
+              margin-bottom: 20px;
+              box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
             }
-            .header-subtitle {
-              text-align: center;
-              font-size: 13px;
+            .sheet-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              gap: 16px;
               margin-bottom: 14px;
             }
-            .meta {
+            .title-wrap h1 {
+              margin: 4px 0;
+              font-size: 20px;
+              color: #0f172a;
+            }
+            .org {
+              margin: 0;
+              text-transform: uppercase;
+              font-size: 11px;
+              color: #475569;
+              letter-spacing: 0.04em;
+              font-weight: 700;
+            }
+            .training-title {
+              margin: 0;
+              font-size: 14px;
+              color: #1e293b;
+              font-weight: 600;
+            }
+            .day-chip {
+              border: 1px solid #bfdbfe;
+              background: #eff6ff;
+              color: #1d4ed8;
+              font-weight: 700;
               font-size: 12px;
-              margin-bottom: 6px;
+              border-radius: 999px;
+              padding: 6px 12px;
+              white-space: nowrap;
+            }
+            .meta-grid {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 8px 12px;
+              margin-bottom: 12px;
+            }
+            .meta-item {
+              border: 1px solid #e2e8f0;
+              border-radius: 8px;
+              padding: 7px 9px;
+              font-size: 12px;
+              background: #f8fafc;
+            }
+            .meta-item span {
+              display: block;
+              font-size: 10px;
+              text-transform: uppercase;
+              color: #64748b;
+              margin-bottom: 2px;
+              letter-spacing: 0.03em;
+            }
+            .meta-item strong {
+              font-size: 13px;
+              color: #0f172a;
             }
             table {
               width: 100%;
               border-collapse: collapse;
-              margin-top: 10px;
+              margin-top: 8px;
             }
             th, td {
               border: 1px solid #111827;
-              padding: 6px 8px;
+              padding: 7px 8px;
               font-size: 12px;
               vertical-align: middle;
             }
             th {
-              background: #f3f4f6;
+              background: #e2e8f0;
               text-transform: uppercase;
               font-size: 11px;
               letter-spacing: 0.03em;
+              color: #0f172a;
             }
             td.idx {
               width: 52px;
               text-align: left;
               white-space: nowrap;
             }
+            tbody tr:nth-child(even) td {
+              background: #f8fafc;
+            }
             td:last-child {
               width: 190px;
             }
             .signature {
-              margin-top: 36px;
+              margin-top: 30px;
               display: flex;
               justify-content: space-between;
               gap: 40px;
@@ -1441,43 +1593,31 @@ export default function EnrollmentPage({
               border-top: 1px solid #111827;
               margin-bottom: 6px;
             }
+            .generated-at {
+              margin-top: 12px;
+              text-align: right;
+              font-size: 10px;
+              color: #64748b;
+            }
             @media print {
-              body { padding: 0; }
+              body {
+                padding: 0;
+                background: #fff;
+              }
+              .sheet {
+                box-shadow: none;
+                border-radius: 0;
+                margin: 0 0 8mm 0;
+                page-break-after: always;
+              }
+              .sheet:last-child {
+                page-break-after: auto;
+              }
             }
           </style>
         </head>
         <body>
-          <div class="header-title">LISTA DE FREQUÊNCIA - PARTICIPANTES</div>
-          <div class="header-subtitle">${escapeHtml(training.title || "-")}</div>
-          <div class="meta"><strong>LOCAL:</strong> ${escapeHtml(training.location || "-")}</div>
-          <div class="meta"><strong>DATA:</strong> ${escapeHtml(trainingDateLabel || "-")} &nbsp;&nbsp; <strong>HORÁRIO:</strong> ${escapeHtml(trainingTimeLabel || "-")}</div>
-          <div class="meta"><strong>Total de inscritos ativos:</strong> ${activeParticipants.length}</div>
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Nome</th>
-                <th>R.G.</th>
-                <th>Formação</th>
-                <th>Município</th>
-                <th>GVE</th>
-                <th>Assinatura</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-            </tbody>
-          </table>
-          <div class="signature">
-            <div class="signature-line">
-              <div class="line"></div>
-              Responsável pelo Projeto
-            </div>
-            <div class="signature-line">
-              <div class="line"></div>
-              Diretor da Unidade
-            </div>
-          </div>
+          ${sheetsHtml}
           <script>
             window.onload = function() {
               window.focus();
