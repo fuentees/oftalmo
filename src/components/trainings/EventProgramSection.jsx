@@ -69,6 +69,14 @@ const formatProgramDescription = (session) => {
   return parts.join(" • ").trim();
 };
 
+const normalizeTimeDraft = (value) => {
+  const digits = String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+};
+
 export default function EventProgramSection({ training }) {
   const queryClient = useQueryClient();
   const [intervalMinutes, setIntervalMinutes] = useState("");
@@ -660,8 +668,9 @@ export default function EventProgramSection({ training }) {
           ) : (
             <div className="space-y-4">
               {programDates.map((dateItem, dateIndex) => {
-                const sessions = sortSessionsByStartTime(
-                  normalizeImportedSessions(dateItem?.sessions, dateIndex)
+                const sessions = normalizeImportedSessions(
+                  dateItem?.sessions,
+                  dateIndex
                 );
                 return (
                   <Card
@@ -698,28 +707,32 @@ export default function EventProgramSection({ training }) {
                           >
                             <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
                               <Input
-                                type="time"
+                                type="text"
+                                inputMode="numeric"
                                 value={session.start_time}
                                 onChange={(event) =>
                                   handleUpdateSessionField(
                                     dateIndex,
                                     session.id,
                                     "start_time",
-                                    event.target.value
+                                    normalizeTimeDraft(event.target.value)
                                   )
                                 }
+                                placeholder="HH:MM"
                               />
                               <Input
-                                type="time"
+                                type="text"
+                                inputMode="numeric"
                                 value={session.end_time}
                                 onChange={(event) =>
                                   handleUpdateSessionField(
                                     dateIndex,
                                     session.id,
                                     "end_time",
-                                    event.target.value
+                                    normalizeTimeDraft(event.target.value)
                                   )
                                 }
+                                placeholder="HH:MM"
                               />
                               <Input
                                 value={session.title}
