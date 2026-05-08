@@ -798,48 +798,44 @@ export default function TrainingDetails({
     return uniquePairs.join(" | ");
   }, [sortedTrainingDates]);
 
-  const reportProgramRows = useMemo(() => {
-    const rows = [];
-    sortedTrainingDates.forEach((dateItem) => {
-      const dateLabel = formatDate(dateItem?.date);
-      const dateSessions = (Array.isArray(dateItem?.sessions)
-        ? dateItem.sessions
-        : []
-      )
-        .map((session) => ({
-          start_time: String(session?.start_time || "").trim(),
-          end_time: String(session?.end_time || "").trim(),
-          title: String(session?.title || session?.activity || "").trim(),
-          speaker: String(
-            session?.speaker_name || session?.responsible || session?.speaker || ""
-          ).trim(),
-          notes: String(session?.notes || "").trim(),
-        }))
-        .filter(
-          (session) =>
-            session.start_time ||
-            session.end_time ||
-            session.title ||
-            session.speaker ||
-            session.notes
-        )
-        .sort((a, b) =>
-          String(a.start_time || "").localeCompare(String(b.start_time || ""))
-        );
-
-      dateSessions.forEach((session, sessionIndex) => {
-        rows.push({
-          date: sessionIndex === 0 ? dateLabel : "",
-          start_time: session.start_time || "-",
-          end_time: session.end_time || "-",
-          title: session.title || "-",
-          speaker: session.speaker || "-",
-          notes: session.notes || "-",
-        });
-      });
-    });
-    return rows;
-  }, [formatDate, sortedTrainingDates]);
+  const reportProgramGroups = useMemo(
+    () =>
+      sortedTrainingDates
+        .map((dateItem) => {
+          const dateLabel = formatDate(dateItem?.date);
+          const sessions = (Array.isArray(dateItem?.sessions)
+            ? dateItem.sessions
+            : []
+          )
+            .map((session) => ({
+              start_time: String(session?.start_time || "").trim() || "-",
+              end_time: String(session?.end_time || "").trim() || "-",
+              title: String(session?.title || session?.activity || "").trim() || "-",
+              speaker:
+                String(
+                  session?.speaker_name || session?.responsible || session?.speaker || ""
+                ).trim() || "-",
+              notes: String(session?.notes || "").trim() || "-",
+            }))
+            .filter(
+              (session) =>
+                session.start_time !== "-" ||
+                session.end_time !== "-" ||
+                session.title !== "-" ||
+                session.speaker !== "-" ||
+                session.notes !== "-"
+            )
+            .sort((a, b) =>
+              String(a.start_time || "").localeCompare(String(b.start_time || ""))
+            );
+          return {
+            dateLabel,
+            sessions,
+          };
+        })
+        .filter((group) => group.sessions.length > 0),
+    [formatDate, sortedTrainingDates]
+  );
 
   const feedbackReportInsights = useMemo(() => {
     const ratingMap = new Map(
@@ -1069,19 +1065,29 @@ export default function TrainingDetails({
         `;
 
     const programRowsHtml =
-      reportProgramRows.length > 0
-        ? reportProgramRows
-            .map(
-              (row) => `
-                <tr>
-                  <td>${escapeHtml(row.date)}</td>
-                  <td>${escapeHtml(row.start_time)}</td>
-                  <td>${escapeHtml(row.end_time)}</td>
-                  <td>${escapeHtml(row.title)}</td>
-                  <td>${escapeHtml(row.speaker)}</td>
-                  <td>${escapeHtml(row.notes)}</td>
-                </tr>
-              `
+      reportProgramGroups.length > 0
+        ? reportProgramGroups
+            .map((group) =>
+              group.sessions
+                .map(
+                  (session, sessionIndex) => `
+                    <tr>
+                      ${
+                        sessionIndex === 0
+                          ? `<td rowspan="${group.sessions.length}">${escapeHtml(
+                              group.dateLabel
+                            )}</td>`
+                          : ""
+                      }
+                      <td>${escapeHtml(session.start_time)}</td>
+                      <td>${escapeHtml(session.end_time)}</td>
+                      <td>${escapeHtml(session.title)}</td>
+                      <td>${escapeHtml(session.speaker)}</td>
+                      <td>${escapeHtml(session.notes)}</td>
+                    </tr>
+                  `
+                )
+                .join("")
             )
             .join("")
         : `

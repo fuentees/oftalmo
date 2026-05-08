@@ -50,38 +50,15 @@ const hasSessionTypedContent = (session) =>
       String(session?.notes || "").trim()
   );
 
-const sanitizeTimeInput = (value) =>
-  String(value || "")
-    .replace(/[^\d:]/g, "")
-    .slice(0, 5);
-
-const normalizeTimeOnBlur = (value) => {
-  const raw = sanitizeTimeInput(value);
-  if (!raw) return "";
-
-  let hourText = "";
-  let minuteText = "";
-
-  if (raw.includes(":")) {
-    const [h = "", m = ""] = raw.split(":");
-    hourText = h;
-    minuteText = m;
-  } else {
-    const digits = raw.replace(/\D/g, "");
-    if (!digits) return "";
-    if (digits.length <= 2) {
-      hourText = digits;
-      minuteText = "00";
-    } else {
-      hourText = digits.slice(0, digits.length - 2);
-      minuteText = digits.slice(-2);
-    }
-  }
-
-  const hour = Number(hourText);
-  const minute = Number(minuteText || "0");
-  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return raw;
-  if (!Number.isFinite(minute) || minute < 0 || minute > 59) return raw;
+const normalizeTimeValue = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const match = text.match(/^(\d{1,2})(?::?(\d{1,2}))?$/);
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const minute = Number(match[2] || "0");
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return "";
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return "";
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 };
 
@@ -123,8 +100,8 @@ export default function EventProgramSection({ training }) {
     id:
       String(session?.id || "").trim() ||
       `session-${Date.now()}-${Math.random().toString(36).slice(2)}-${fallbackIndex}`,
-    start_time: String(session?.start_time || "").trim(),
-    end_time: String(session?.end_time || "").trim(),
+    start_time: normalizeTimeValue(session?.start_time),
+    end_time: normalizeTimeValue(session?.end_time),
     title: String(session?.title || session?.activity || "").trim(),
     speaker_name: String(
       session?.speaker_name || session?.responsible || session?.speaker || ""
@@ -198,30 +175,24 @@ export default function EventProgramSection({ training }) {
     setProgramStatus(null);
   }, [training?.id, training?.date, training?.dates]);
 
-  const normalizedProgramRows = useMemo(() => {
-    const rows = [];
-    programDates.forEach((dateItem) => {
-      const dateLabel = formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "-";
-      const sessions = sortSessionsByStartTime(
-        getTypedSessions(dateItem?.sessions)
-      );
-      sessions.forEach((session) => {
-        rows.push({
-          date: dateLabel,
-          start_time: String(session?.start_time || "").trim(),
-          end_time: String(session?.end_time || "").trim(),
-          title: String(session?.title || "").trim(),
-          speaker_name: String(session?.speaker_name || "").trim(),
-          notes: String(session?.notes || "").trim(),
-        });
-      });
-    });
-    return rows;
-  }, [programDates]);
+  const groupedProgramRows = useMemo(
+    () =>
+      programDates
+        .map((dateItem) => ({
+          dateLabel: formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "-",
+          sessions: sortSessionsByStartTime(getTypedSessions(dateItem?.sessions)),
+        }))
+        .filter((group) => group.sessions.length > 0),
+    [programDates]
+  );
 
   const totalTypedSessions = useMemo(
-    () => normalizedProgramRows.length,
-    [normalizedProgramRows]
+    () =>
+      groupedProgramRows.reduce(
+        (acc, group) => acc + group.sessions.length,
+        0
+      ),
+    [groupedProgramRows]
   );
 
   const saveProgram = useMutation({
@@ -479,7 +450,7 @@ export default function EventProgramSection({ training }) {
 
   const handleDownloadProgramDoc = () => {
     if (!training) return;
-    if (!normalizedProgramRows.length) {
+    if (!groupedProgramRows.length) {
       setProgramStatus({
         type: "error",
         message:
@@ -488,18 +459,28 @@ export default function EventProgramSection({ training }) {
       return;
     }
 
-    const tableRows = normalizedProgramRows
-      .map(
-        (item) => `
-          <tr>
-            <td>${escapeHtml(item.date)}</td>
-            <td>${escapeHtml(item.start_time || "-")}</td>
-            <td>${escapeHtml(item.end_time || "-")}</td>
-            <td>${escapeHtml(item.title || "-")}</td>
-            <td>${escapeHtml(item.speaker_name || "-")}</td>
-            <td>${escapeHtml(item.notes || "-")}</td>
-          </tr>
-        `
+    const tableRows = groupedProgramRows
+      .map((group) =>
+        group.sessions
+          .map(
+            (session, sessionIndex) => `
+              <tr>
+                ${
+                  sessionIndex === 0
+                    ? `<td rowspan="${group.sessions.length}">${escapeHtml(
+                        group.dateLabel
+                      )}</td>`
+                    : ""
+                }
+                <td>${escapeHtml(session.start_time || "-")}</td>
+                <td>${escapeHtml(session.end_time || "-")}</td>
+                <td>${escapeHtml(session.title || "-")}</td>
+                <td>${escapeHtml(session.speaker_name || "-")}</td>
+                <td>${escapeHtml(session.notes || "-")}</td>
+              </tr>
+            `
+          )
+          .join("")
       )
       .join("");
 
@@ -519,10 +500,24 @@ export default function EventProgramSection({ training }) {
               margin: 0;
             }
             h1 {
-              margin: 0 0 14pt 0;
+              margin: 0 0 8pt 0;
               text-align: center;
               text-transform: uppercase;
               font-size: 12pt;
+            }
+            .brand {
+              text-align: right;
+              font-size: 10pt;
+              font-weight: 700;
+              color: #475569;
+              margin-bottom: 10pt;
+            }
+            .meta {
+              margin-bottom: 10pt;
+            }
+            .meta p {
+              margin: 0 0 4pt 0;
+              font-size: 11pt;
             }
             table {
               width: 100%;
@@ -542,7 +537,18 @@ export default function EventProgramSection({ training }) {
           </style>
         </head>
         <body>
+          <p class="brand">CVE • CCD • SÃO PAULO</p>
           <h1>Programação do evento – ${escapeHtml(training?.title || "-")}</h1>
+          <div class="meta">
+            <p><strong>Período:</strong> ${escapeHtml(trainingPeriodLabel)}</p>
+            <p><strong>Local:</strong> ${escapeHtml(
+              training?.location || (training?.online_link ? "Evento online" : "Não informado")
+            )}</p>
+            <p><strong>Coordenação:</strong> ${escapeHtml(training?.coordinator || "-")}</p>
+            <p><strong>Carga horária:</strong> ${escapeHtml(
+              training?.duration_hours ? `${training.duration_hours} horas` : "Não informada"
+            )}</p>
+          </div>
           <table>
             <thead>
               <tr>
@@ -797,30 +803,27 @@ export default function EventProgramSection({ training }) {
                                 </TableCell>
                               </TableRow>
                             ) : (
-                              sessions.map((session) => (
+                              sessions.map((session, sessionIndex) => (
                                 <TableRow key={session.id} className="align-top">
-                                  <TableCell className="font-medium text-slate-700">
-                                    {dateLabel}
-                                  </TableCell>
+                                  {sessionIndex === 0 ? (
+                                    <TableCell
+                                      rowSpan={sessions.length}
+                                      className="font-medium text-slate-700 align-top"
+                                    >
+                                      {dateLabel}
+                                    </TableCell>
+                                  ) : null}
                                   <TableCell>
                                     <Input
-                                      type="text"
-                                      inputMode="text"
+                                      type="time"
+                                      step="60"
                                       value={session.start_time}
                                       onChange={(event) =>
                                         handleUpdateSessionField(
                                           dateIndex,
                                           session.id,
                                           "start_time",
-                                          sanitizeTimeInput(event.target.value)
-                                        )
-                                      }
-                                      onBlur={(event) =>
-                                        handleUpdateSessionField(
-                                          dateIndex,
-                                          session.id,
-                                          "start_time",
-                                          normalizeTimeOnBlur(event.target.value)
+                                          normalizeTimeValue(event.target.value)
                                         )
                                       }
                                       placeholder="HH:MM"
@@ -828,23 +831,15 @@ export default function EventProgramSection({ training }) {
                                   </TableCell>
                                   <TableCell>
                                     <Input
-                                      type="text"
-                                      inputMode="text"
+                                      type="time"
+                                      step="60"
                                       value={session.end_time}
                                       onChange={(event) =>
                                         handleUpdateSessionField(
                                           dateIndex,
                                           session.id,
                                           "end_time",
-                                          sanitizeTimeInput(event.target.value)
-                                        )
-                                      }
-                                      onBlur={(event) =>
-                                        handleUpdateSessionField(
-                                          dateIndex,
-                                          session.id,
-                                          "end_time",
-                                          normalizeTimeOnBlur(event.target.value)
+                                          normalizeTimeValue(event.target.value)
                                         )
                                       }
                                       placeholder="HH:MM"
