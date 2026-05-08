@@ -147,59 +147,6 @@ const sanitizeFileName = (value) =>
 
 const pluralizeProfessionals = (count) => (count === 1 ? "profissional" : "profissionais");
 
-const normalizeAttendanceStatus = (value) =>
-  String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-
-const isPresentAttendanceRecord = (record) => {
-  if (!record || typeof record !== "object") return false;
-  if (record.present === true || record.is_present === true) return true;
-  const status = normalizeAttendanceStatus(
-    record.status ?? record.presence_status ?? record.value
-  );
-  if (!status) return false;
-  return ["presente", "presenca", "present", "checked_in", "checkin", "ok"].includes(
-    status
-  );
-};
-
-const normalizeAttendanceRecords = (value) => {
-  if (Array.isArray(value)) return value;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) return parsed;
-        if (parsed && typeof parsed === "object") {
-          return Object.entries(parsed).map(([date, rawValue]) => {
-            if (rawValue && typeof rawValue === "object") {
-              return { date, ...rawValue };
-            }
-            return { date, status: rawValue };
-          });
-        }
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  }
-  if (value && typeof value === "object") {
-    return Object.entries(value).map(([date, rawValue]) => {
-      if (rawValue && typeof rawValue === "object") {
-        return { date, ...rawValue };
-      }
-      return { date, status: rawValue };
-    });
-  }
-  return [];
-};
-
 export default function TrainingDetails({ training, participants = [] }) {
   const trainingId = String(training?.id || "").trim();
   const isRepadTraining = isRepadronizacaoTraining(training);
@@ -722,11 +669,6 @@ export default function TrainingDetails({ training, participants = [] }) {
     return map;
   }, [activeParticipants, answerKeyByCode, isRepadTraining, tracomaResults]);
 
-  const approvedCount = isRepadTraining
-    ? activeParticipants.filter(
-        (item) => repadStatusByParticipant.get(item.id)?.approved
-      ).length
-    : activeParticipants.filter((item) => item.approved).length;
   const failedCount = isRepadTraining
     ? activeParticipants.filter((item) => {
         const status = repadStatusByParticipant.get(item.id);
@@ -744,19 +686,32 @@ export default function TrainingDetails({ training, participants = [] }) {
     (item) => item.enrollment_status === "cancelado"
   ).length;
 
-  const participantsWithPresenceCount = useMemo(
-    () =>
-      activeParticipants.filter((participant) => {
-        const records = normalizeAttendanceRecords(participant?.attendance_records);
-        if (records.some((record) => isPresentAttendanceRecord(record))) return true;
-        return Number(participant?.attendance_percentage || 0) > 0;
-      }).length,
-    [activeParticipants]
-  );
+  const isAttendanceApprovedParticipant = (participant) => {
+    const raw = Number(participant?.attendance_percentage);
+    if (!Number.isFinite(raw)) return false;
+    const normalized = raw > 0 && raw <= 1 ? raw * 100 : raw;
+    return normalized >= 75;
+  };
 
-  const participantDistributionByGve = useMemo(() => {
+  const isApprovedParticipant = (participant) => {
+    if (!participant) return false;
+    if (isRepadTraining) {
+      const status = repadStatusByParticipant.get(participant.id);
+      return Boolean(status?.approved);
+    }
+    if (participant.approved === true) return true;
+    return isAttendanceApprovedParticipant(participant);
+  };
+
+  const approvedParticipants = useMemo(
+    () => activeParticipants.filter((participant) => isApprovedParticipant(participant)),
+    [activeParticipants, isRepadTraining, repadStatusByParticipant]
+  );
+  const approvedCount = approvedParticipants.length;
+
+  const approvedParticipantDistributionByGve = useMemo(() => {
     const groups = new Map();
-    activeParticipants.forEach((participant) => {
+    approvedParticipants.forEach((participant) => {
       const gve = String(participant?.health_region || "").trim() || "Não informado";
       const municipality = String(participant?.municipality || "").trim();
       if (!groups.has(gve)) {
@@ -783,7 +738,7 @@ export default function TrainingDetails({ training, participants = [] }) {
         if (b.count !== a.count) return b.count - a.count;
         return a.gve.localeCompare(b.gve, "pt-BR", { sensitivity: "base" });
       });
-  }, [activeParticipants]);
+  }, [approvedParticipants]);
 
   const trainingObjectives = useMemo(() => {
     const raw = String(training?.description || "").trim();
@@ -955,13 +910,16 @@ export default function TrainingDetails({ training, participants = [] }) {
           .map((item) => String(item?.name || "").trim())
           .filter(Boolean)
       : [];
+    const approvedParticipantsCount = approvedParticipants.length;
     const monitorSummary =
       monitorNames.length > 0
-        ? `${monitorNames.length} ${pluralizeProfessionals(monitorNames.length)} (${monitorNames.join(", ")})`
+        ? `Participaram como monitores ${monitorNames.length} ${pluralizeProfessionals(
+            monitorNames.length
+          )}: ${monitorNames.join(", ")}.`
         : "Não há monitores registrados no sistema.";
     const participantDistributionListHtml =
-      participantDistributionByGve.length > 0
-        ? participantDistributionByGve
+      approvedParticipantDistributionByGve.length > 0
+        ? approvedParticipantDistributionByGve
             .map((item) => {
               const municipalities = item.municipalitiesList.length
                 ? ` – municípios ${item.municipalitiesList.join(", ")}`
@@ -971,18 +929,18 @@ export default function TrainingDetails({ training, participants = [] }) {
               )} (${escapeHtml(item.gve)}${escapeHtml(municipalities)})</li>`;
             })
             .join("")
-        : "<li>Sem distribuição regional registrada.</li>";
+        : "<li>Sem distribuição regional registrada para aprovados.</li>";
 
-    const ratingSummaryHtml = feedbackReportInsights.ratingSummary
+    const ratingSummaryParagraphsHtml = feedbackReportInsights.ratingSummary
       .map((item) => {
         const labels = Object.keys(REPORT_RATING_BUCKET_LABELS)
           .map((bucket) => {
             const count = item.buckets[bucket] || 0;
             if (!count) return "";
-            return `${REPORT_RATING_BUCKET_LABELS[bucket]} ${item.percentages[bucket]}%`;
+            return `“${REPORT_RATING_BUCKET_LABELS[bucket].toLowerCase()}” ${item.percentages[bucket]}%`;
           })
           .filter(Boolean);
-        const baseText =
+        const distributionText =
           item.total > 0
             ? labels.join(", ")
             : "Sem respostas registradas para este item.";
@@ -990,9 +948,17 @@ export default function TrainingDetails({ training, participants = [] }) {
           .slice(0, 2)
           .map((value) => `“${escapeHtml(value)}”`)
           .join(" ");
-        return `<li><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(baseText)}${
-          sampledJustifications ? ` <br/><em>Exemplos:</em> ${sampledJustifications}` : ""
-        }</li>`;
+        return `
+          <p>
+            <strong>${escapeHtml(item.label)}:</strong>
+            ${escapeHtml(distributionText)}
+            ${
+              sampledJustifications
+                ? `<br/>Alguns participantes relataram: ${sampledJustifications}`
+                : ""
+            }
+          </p>
+        `;
       })
       .join("");
 
@@ -1011,7 +977,7 @@ export default function TrainingDetails({ training, participants = [] }) {
         : "<li>Sem comentários registrados.</li>";
 
     const objectivesHtml = trainingObjectives
-      .map((objective) => `<li>${escapeHtml(objective)}</li>`)
+      .map((objective) => `<li>${escapeHtml(objective)};</li>`)
       .join("");
 
     const programRowsHtml = reportProgramRows
@@ -1034,21 +1000,27 @@ export default function TrainingDetails({ training, participants = [] }) {
           <meta charset="utf-8" />
           <title>Relatório do treinamento - ${escapeHtml(training.title || "-")}</title>
           <style>
-            body { font-family: Calibri, Arial, sans-serif; margin: 28px; color: #111827; line-height: 1.5; }
-            h1 { font-size: 20px; margin: 0 0 14px 0; text-transform: uppercase; }
-            h2 { font-size: 15px; margin: 18px 0 8px 0; text-transform: uppercase; }
-            p { margin: 0 0 8px 0; }
+            body { font-family: "Times New Roman", serif; margin: 24px 28px; color: #111827; line-height: 1.45; font-size: 12.5pt; }
+            .brand-line { text-align: right; font-size: 10pt; margin-bottom: 12px; font-weight: 600; color: #475569; }
+            h1 { font-size: 14pt; margin: 0 0 14px 0; text-transform: uppercase; text-align: center; line-height: 1.35; }
+            h2 { font-size: 12.5pt; margin: 16px 0 6px 0; font-weight: 700; }
+            p { margin: 0 0 8px 0; text-align: justify; }
             ul { margin: 0 0 10px 22px; padding: 0; }
-            .meta { margin-bottom: 14px; }
-            .meta p { margin-bottom: 4px; }
-            .note { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            th, td { border: 1px solid #cbd5e1; padding: 8px; font-size: 12px; vertical-align: top; }
-            th { background: #eff6ff; text-align: left; }
+            li { margin: 0 0 4px 0; }
+            .meta p { margin-bottom: 2px; }
+            .section-spacer { margin-top: 12px; }
+            .signature { margin-top: 24px; text-align: right; }
+            .annex-title { margin-top: 20px; font-weight: 700; text-transform: uppercase; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11pt; }
+            th, td { border: 1px solid #9ca3af; padding: 7px; vertical-align: top; }
+            th { background: #f8fafc; text-align: left; }
           </style>
         </head>
         <body>
-          <h1>Relatório do treinamento – ${escapeHtml(training.title || "-")}</h1>
+          <div class="brand-line">CVE • CCD • SÃO PAULO</div>
+          <h1>Relatório do treinamento ${
+            training?.online_link ? "online" : ""
+          } – “${escapeHtml(training.title || "-")}”.</h1>
 
           <div class="meta">
             <p><strong>Data:</strong> ${escapeHtml(trainingDateRangeLabel)}</p>
@@ -1056,10 +1028,6 @@ export default function TrainingDetails({ training, participants = [] }) {
             <p><strong>Carga horária:</strong> ${escapeHtml(
               training?.duration_hours ? `${training.duration_hours} horas` : "Não informada"
             )}</p>
-            <p><strong>Modalidade:</strong> ${
-              training?.online_link ? "Online" : "Presencial"
-            }</p>
-            <p><strong>Local:</strong> ${escapeHtml(training?.location || "-")}</p>
           </div>
 
           <h2>Objetivos do treinamento</h2>
@@ -1070,25 +1038,36 @@ export default function TrainingDetails({ training, participants = [] }) {
 
           <h2>Participantes</h2>
           <p>
-            Participaram do treinamento ${totalParticipants} ${pluralizeProfessionals(
-              totalParticipants
-            )} com inscrição ativa, sendo ${participantsWithPresenceCount} com presença registrada.
+            Considerando somente os treinandos aprovados, participaram ${approvedParticipantsCount}
+            ${pluralizeProfessionals(approvedParticipantsCount)}.
+            ${
+              totalParticipants > 0
+                ? ` O total geral de inscritos ativos no treinamento foi ${totalParticipants}.`
+                : ""
+            }
           </p>
           <ul>${participantDistributionListHtml}</ul>
+          <p>Lista de participantes: Anexo I.</p>
 
           <h2>Operacionalização</h2>
           <p>
-            O treinamento foi conduzido na modalidade ${
+            O treinamento foi realizado de forma ${
               training?.online_link ? "online" : "presencial"
-            }, com acompanhamento da coordenação e equipe técnica.
-            As atividades seguiram o cronograma definido para os encontros e foram ajustadas conforme necessário para garantir a execução do conteúdo.
+            }, com acompanhamento da coordenação e equipe técnica. Houve condução dos conteúdos planejados para os encontros e adaptações pontuais para manter a integralidade das atividades propostas.
+          </p>
+          <p>
+            Ao final do treinamento, os participantes foram orientados a aplicar os conhecimentos no território de atuação, conforme os objetivos do curso e as possibilidades locais.
           </p>
 
           <h2>Avaliação dos treinandos sobre o treinamento</h2>
-          <div class="note">
-            <p><strong>Total de respostas recebidas:</strong> ${feedbackReportInsights.totalResponses}</p>
-          </div>
-          <ul>${ratingSummaryHtml}</ul>
+          <p>
+            A avaliação foi realizada ao final das atividades, com ${feedbackReportInsights.totalResponses}
+            resposta(s) registradas no sistema.
+          </p>
+          ${ratingSummaryParagraphsHtml}
+
+          <h2>Qual sua opinião sobre realizar a reunião de forma virtual?</h2>
+          <ul>${commentsHtml}</ul>
 
           <h2>Assuntos considerados mais e menos importantes</h2>
           <ul>${importantTopicsHtml}</ul>
@@ -1102,12 +1081,12 @@ export default function TrainingDetails({ training, participants = [] }) {
             Recomenda-se manter a continuidade das ações formativas e o acompanhamento dos planos apresentados pelos participantes.
           </p>
 
-          <p style="margin-top: 24px;">
+          <p class="signature">
             ${escapeHtml(formatDateSafe(new Date(), "dd/MM/yyyy") || "-")} <br/>
             Centro de Oftalmologia Sanitária
           </p>
 
-          <h2>Anexo – Programa do treinamento</h2>
+          <p class="annex-title">Anexo II – Programa do treinamento</p>
           <table>
             <thead>
               <tr>
