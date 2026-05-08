@@ -6,6 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Calendar,
   MapPin,
   User,
@@ -15,6 +21,8 @@ import {
   Video,
   Copy,
   Link2,
+  QrCode,
+  Printer,
 } from "lucide-react";
 import { Download, Trash2, Upload } from "lucide-react";
 import { formatDateSafe, parseDateSafe } from "@/lib/date";
@@ -34,6 +42,7 @@ import {
   normalizeBinaryAnswer,
 } from "@/lib/tracomaExamKappa";
 import { buildPublicEnrollmentUrl } from "@/lib/enrollmentLinks";
+import * as QRCodeLib from "qrcode";
 
 const parseStoredAnswers = (
   value,
@@ -45,6 +54,14 @@ const parseStoredAnswers = (
   return parsed;
 };
 
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 export default function TrainingDetails({ training, participants = [] }) {
   const trainingId = String(training?.id || "").trim();
   const isRepadTraining = isRepadronizacaoTraining(training);
@@ -53,6 +70,9 @@ export default function TrainingDetails({ training, participants = [] }) {
   const [reportStatus, setReportStatus] = useState(null);
   const [linkActionStatus, setLinkActionStatus] = useState(null);
   const [generatedAttendanceLinks, setGeneratedAttendanceLinks] = useState({});
+  const [attendanceQrDialogOpen, setAttendanceQrDialogOpen] = useState(false);
+  const [attendanceQrPreview, setAttendanceQrPreview] = useState(null);
+  const [qrLoadingDate, setQrLoadingDate] = useState("");
   const [, forceClockTick] = useState(0);
   const REPORT_NAME = "Relatório do Evento";
 
@@ -287,31 +307,156 @@ export default function TrainingDetails({ training, participants = [] }) {
     }
   };
 
-  const generateAttendanceLink = useMutation({
-    mutationFn: async (dateValue) => {
-      const normalizedDate = String(dateValue || "").trim();
-      if (!normalizedDate) throw new Error("Data inválida para gerar o link.");
-      if (!trainingId) throw new Error("Treinamento inválido.");
-      const token =
-        Math.random().toString(36).slice(2) + Date.now().toString(36);
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 6);
+  const createAttendanceLinkForDate = async (dateValue) => {
+    const normalizedDate = String(dateValue || "").trim();
+    if (!normalizedDate) throw new Error("Data inválida para gerar o link.");
+    if (!trainingId) throw new Error("Treinamento inválido.");
+    const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 6);
 
-      await dataClient.entities.AttendanceLink.create({
-        training_id: training.id,
-        training_title: training.title,
-        date: normalizedDate,
-        token,
-        expires_at: expiresAt.toISOString(),
-        is_active: true,
-        check_ins_count: 0,
+    await dataClient.entities.AttendanceLink.create({
+      training_id: training.id,
+      training_title: training.title,
+      date: normalizedDate,
+      token,
+      expires_at: expiresAt.toISOString(),
+      is_active: true,
+      check_ins_count: 0,
+    });
+
+    return {
+      date: normalizedDate,
+      link: `${appOrigin}/CheckIn?token=${token}`,
+    };
+  };
+
+  const handleOpenAttendanceQr = async (dateValue) => {
+    const normalizedDate = String(dateValue || "").trim();
+    if (!normalizedDate) return;
+    setQrLoadingDate(normalizedDate);
+    setLinkActionStatus(null);
+    try {
+      let attendanceLink = generatedAttendanceLinks[normalizedDate];
+      if (!attendanceLink) {
+        const generated = await createAttendanceLinkForDate(normalizedDate);
+        attendanceLink = generated.link;
+        setGeneratedAttendanceLinks((prev) => ({
+          ...prev,
+          [normalizedDate]: attendanceLink,
+        }));
+      }
+
+      const qrDataUrl = await QRCodeLib.toDataURL(attendanceLink, {
+        width: 320,
+        margin: 1,
       });
 
-      return {
+      setAttendanceQrPreview({
         date: normalizedDate,
-        link: `${appOrigin}/CheckIn?token=${token}`,
-      };
-    },
+        link: attendanceLink,
+        qrDataUrl,
+      });
+      setAttendanceQrDialogOpen(true);
+      setLinkActionStatus({
+        type: "success",
+        message: `QR Code de presença (${formatDate(normalizedDate)}) pronto para uso.`,
+      });
+    } catch (error) {
+      setLinkActionStatus({
+        type: "error",
+        message: error?.message || "Não foi possível gerar o QR Code de presença.",
+      });
+    } finally {
+      setQrLoadingDate("");
+    }
+  };
+
+  const handlePrintAttendanceQr = () => {
+    if (!attendanceQrPreview?.qrDataUrl || !attendanceQrPreview?.link) return;
+    const printWindow = window.open("", "_blank", "width=540,height=760");
+    if (!printWindow) {
+      setLinkActionStatus({
+        type: "error",
+        message:
+          "Não foi possível abrir a janela de impressão do QR Code. Verifique o bloqueador de pop-up.",
+      });
+      return;
+    }
+
+    const printableHtml = `
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>QR Code de presença - ${escapeHtml(formatDate(attendanceQrPreview.date))}</title>
+          <style>
+            body {
+              margin: 0;
+              padding: 20px;
+              font-family: Arial, Helvetica, sans-serif;
+              color: #0f172a;
+            }
+            .card {
+              border: 1px solid #cbd5e1;
+              border-radius: 12px;
+              padding: 18px;
+              max-width: 420px;
+              margin: 0 auto;
+              text-align: center;
+            }
+            h1 {
+              font-size: 19px;
+              margin: 0 0 8px 0;
+            }
+            .meta {
+              font-size: 12px;
+              color: #475569;
+              margin-bottom: 16px;
+            }
+            img {
+              width: 260px;
+              height: 260px;
+              border: 1px solid #e2e8f0;
+              border-radius: 10px;
+              padding: 8px;
+              background: #fff;
+            }
+            .url {
+              margin-top: 14px;
+              font-size: 10px;
+              color: #334155;
+              word-break: break-all;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>QR Code de presença</h1>
+            <div class="meta">
+              <div><strong>Treinamento:</strong> ${escapeHtml(training?.title || "-")}</div>
+              <div><strong>Data:</strong> ${escapeHtml(formatDate(attendanceQrPreview.date))}</div>
+            </div>
+            <img src="${attendanceQrPreview.qrDataUrl}" alt="QR Code de presença" />
+            <div class="url">${escapeHtml(attendanceQrPreview.link)}</div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.focus();
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(printableHtml);
+    printWindow.document.close();
+  };
+
+  const generateAttendanceLink = useMutation({
+    mutationFn: createAttendanceLinkForDate,
     onSuccess: async ({ date, link }) => {
       setGeneratedAttendanceLinks((prev) => ({
         ...prev,
@@ -666,6 +811,7 @@ export default function TrainingDetails({ training, participants = [] }) {
                   const isGeneratingThisDate =
                     generateAttendanceLink.isPending &&
                     generateAttendanceLink.variables === dateValue;
+                  const isGeneratingQrThisDate = qrLoadingDate === dateValue;
                   return (
                     <div
                       key={`attendance-link-${dateValue}`}
@@ -679,13 +825,33 @@ export default function TrainingDetails({ training, participants = [] }) {
                           type="button"
                           variant="outline"
                           size="sm"
-                          disabled={generateAttendanceLink.isPending}
+                          disabled={
+                            generateAttendanceLink.isPending ||
+                            Boolean(qrLoadingDate)
+                          }
                           onClick={() => {
                             setLinkActionStatus(null);
                             generateAttendanceLink.mutate(dateValue);
                           }}
                         >
                           {isGeneratingThisDate ? "Gerando..." : "Gerar link de presença"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={
+                            generateAttendanceLink.isPending ||
+                            Boolean(qrLoadingDate)
+                          }
+                          onClick={() => {
+                            handleOpenAttendanceQr(dateValue);
+                          }}
+                        >
+                          <QrCode className="h-3.5 w-3.5 mr-1" />
+                          {isGeneratingQrThisDate
+                            ? "Gerando QR..."
+                            : "QR Code de presença"}
                         </Button>
                         {lastGeneratedLink && (
                           <Button
@@ -722,6 +888,77 @@ export default function TrainingDetails({ training, participants = [] }) {
               {linkActionStatus.message}
             </p>
           )}
+
+          <Dialog
+            open={attendanceQrDialogOpen}
+            onOpenChange={(open) => {
+              setAttendanceQrDialogOpen(open);
+              if (!open) {
+                setAttendanceQrPreview(null);
+              }
+            }}
+          >
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <QrCode className="h-4 w-4" />
+                  QR Code de presença
+                </DialogTitle>
+              </DialogHeader>
+              {attendanceQrPreview ? (
+                <div className="space-y-4">
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                    <p>
+                      <strong>Treinamento:</strong> {training?.title || "-"}
+                    </p>
+                    <p>
+                      <strong>Data:</strong> {formatDate(attendanceQrPreview.date)}
+                    </p>
+                  </div>
+                  <div className="flex justify-center">
+                    <img
+                      src={attendanceQrPreview.qrDataUrl}
+                      alt={`QR Code de presença ${formatDate(attendanceQrPreview.date)}`}
+                      className="h-64 w-64 rounded-lg border border-slate-200 bg-white p-2"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-500">Link do check-in</p>
+                    <Input readOnly value={attendanceQrPreview.link} />
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        copyLinkToClipboard(
+                          `presença de ${formatDate(attendanceQrPreview.date)}`,
+                          attendanceQrPreview.link
+                        )
+                      }
+                    >
+                      <Copy className="h-3.5 w-3.5 mr-1" />
+                      Copiar link
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrintAttendanceQr}
+                    >
+                      <Printer className="h-3.5 w-3.5 mr-1" />
+                      Imprimir QR
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Nenhum QR Code disponível no momento.
+                </p>
+              )}
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
 
