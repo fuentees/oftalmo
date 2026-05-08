@@ -532,6 +532,10 @@ export default function TrainingWorkspace() {
             <ClipboardCheck className="h-3.5 w-3.5" />
             Presença
           </TabsTrigger>
+          <TabsTrigger value="report" className="gap-1.5">
+            <FileText className="h-3.5 w-3.5" />
+            Relatório
+          </TabsTrigger>
           {isRepadTraining && (
             <TabsTrigger value="exams_page" className="gap-1.5">
               <ClipboardCheck className="h-3.5 w-3.5" />
@@ -553,7 +557,11 @@ export default function TrainingWorkspace() {
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
-          <TrainingDetails training={training} participants={trainingParticipants} />
+          <TrainingDetails
+            training={training}
+            participants={trainingParticipants}
+            showReportSection={false}
+          />
         </TabsContent>
 
         <TabsContent value="enrollment_page" className="mt-6">
@@ -577,6 +585,14 @@ export default function TrainingWorkspace() {
             training={training}
             participants={trainingParticipants}
             onClose={() => setActiveTab("overview")}
+          />
+        </TabsContent>
+
+        <TabsContent value="report" className="mt-6">
+          <TrainingDetails
+            training={training}
+            participants={trainingParticipants}
+            reportOnly
           />
         </TabsContent>
 

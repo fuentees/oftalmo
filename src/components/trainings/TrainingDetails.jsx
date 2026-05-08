@@ -147,7 +147,12 @@ const sanitizeFileName = (value) =>
 
 const pluralizeProfessionals = (count) => (count === 1 ? "profissional" : "profissionais");
 
-export default function TrainingDetails({ training, participants = [] }) {
+export default function TrainingDetails({
+  training,
+  participants = [],
+  showReportSection = true,
+  reportOnly = false,
+}) {
   const trainingId = String(training?.id || "").trim();
   const isRepadTraining = isRepadronizacaoTraining(training);
   const queryClient = useQueryClient();
@@ -1126,6 +1131,92 @@ export default function TrainingDetails({ training, participants = [] }) {
 
   if (!training) return null;
 
+  const reportCard = (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+          <FileText className="h-4 w-4" />
+          Relatório do Evento
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            type="button"
+            onClick={handleDownloadReportTemplate}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            Gerar modelo Word automático
+          </Button>
+        </div>
+
+        {currentReport ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-medium">
+              {currentReport.file_type
+                ? `Relatório (${currentReport.file_type.toUpperCase()})`
+                : "Relatório anexado"}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => window.open(currentReport.file_url, "_blank")}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Baixar
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-red-600"
+              onClick={() => deleteReport.mutate(currentReport.id)}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Remover
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">Nenhum relatório enviado.</p>
+        )}
+
+        <div className="grid gap-2">
+          <Input
+            type="file"
+            onChange={(e) => setReportFile(e.target.files?.[0] || null)}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!reportFile || uploadReport.isPending}
+            onClick={() => uploadReport.mutate(reportFile)}
+            className="w-full sm:w-auto"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            {uploadReport.isPending ? "Enviando..." : "Enviar relatório"}
+          </Button>
+        </div>
+
+        {reportStatus && (
+          <p
+            className={
+              reportStatus.type === "error"
+                ? "text-sm text-red-700"
+                : "text-sm text-green-700"
+            }
+          >
+            {reportStatus.message}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  if (reportOnly) {
+    return <div className="space-y-6">{showReportSection ? reportCard : null}</div>;
+  }
+
   return (
     <div className="space-y-6">
       {/* Training Info */}
@@ -1505,86 +1596,7 @@ export default function TrainingDetails({ training, participants = [] }) {
         </Card>
       )}
 
-      {/* Event Report */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Relatório do Evento
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              type="button"
-              onClick={handleDownloadReportTemplate}
-            >
-              <Download className="h-4 w-4 mr-1" />
-              Gerar modelo Word automático
-            </Button>
-          </div>
-
-          {currentReport ? (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium">
-                {currentReport.file_type
-                  ? `Relatório (${currentReport.file_type.toUpperCase()})`
-                  : "Relatório anexado"}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => window.open(currentReport.file_url, "_blank")}
-              >
-                <Download className="h-4 w-4 mr-1" />
-                Baixar
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-red-600"
-                onClick={() => deleteReport.mutate(currentReport.id)}
-              >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Remover
-              </Button>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">Nenhum relatório enviado.</p>
-          )}
-
-          <div className="grid gap-2">
-            <Input
-              type="file"
-              onChange={(e) => setReportFile(e.target.files?.[0] || null)}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!reportFile || uploadReport.isPending}
-              onClick={() => uploadReport.mutate(reportFile)}
-              className="w-full sm:w-auto"
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              {uploadReport.isPending ? "Enviando..." : "Enviar relatório"}
-            </Button>
-          </div>
-
-          {reportStatus && (
-            <p
-              className={
-                reportStatus.type === "error"
-                  ? "text-sm text-red-700"
-                  : "text-sm text-green-700"
-              }
-            >
-              {reportStatus.message}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      {showReportSection && reportCard}
       {training.speakers && training.speakers.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
