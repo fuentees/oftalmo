@@ -8,6 +8,7 @@ import { isRepadronizacaoTraining } from "@/lib/trainingType";
 import PageHeader from "@/components/common/PageHeader";
 import TrainingDetails from "@/components/trainings/TrainingDetails";
 import AttendanceControl from "@/components/trainings/AttendanceControl";
+import EventProgramSection from "@/components/trainings/EventProgramSection";
 import CertificateManager from "@/components/trainings/CertificateManager";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
 import TrainingForm from "@/components/trainings/TrainingForm";
@@ -23,6 +24,7 @@ import {
   AlertCircle,
   ArrowLeft,
   Award,
+  Calendar,
   CheckCircle2,
   ClipboardCheck,
   Eye,
@@ -532,6 +534,10 @@ export default function TrainingWorkspace() {
             <ClipboardCheck className="h-3.5 w-3.5" />
             Presença
           </TabsTrigger>
+          <TabsTrigger value="program" className="gap-1.5">
+            <Calendar className="h-3.5 w-3.5" />
+            Programação
+          </TabsTrigger>
           <TabsTrigger value="report" className="gap-1.5">
             <FileText className="h-3.5 w-3.5" />
             Relatório
@@ -586,6 +592,10 @@ export default function TrainingWorkspace() {
             participants={trainingParticipants}
             onClose={() => setActiveTab("overview")}
           />
+        </TabsContent>
+
+        <TabsContent value="program" className="mt-6">
+          <EventProgramSection training={training} />
         </TabsContent>
 
         <TabsContent value="report" className="mt-6">
