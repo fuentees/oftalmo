@@ -69,12 +69,39 @@ const formatProgramDescription = (session) => {
   return parts.join(" • ").trim();
 };
 
-const normalizeTimeDraft = (value) => {
-  const digits = String(value || "")
-    .replace(/\D/g, "")
-    .slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+const sanitizeTimeInput = (value) =>
+  String(value || "")
+    .replace(/[^\d:]/g, "")
+    .slice(0, 5);
+
+const normalizeTimeOnBlur = (value) => {
+  const raw = sanitizeTimeInput(value);
+  if (!raw) return "";
+
+  let hourText = "";
+  let minuteText = "";
+
+  if (raw.includes(":")) {
+    const [h = "", m = ""] = raw.split(":");
+    hourText = h;
+    minuteText = m;
+  } else {
+    const digits = raw.replace(/\D/g, "");
+    if (!digits) return "";
+    if (digits.length <= 2) {
+      hourText = digits;
+      minuteText = "00";
+    } else {
+      hourText = digits.slice(0, digits.length - 2);
+      minuteText = digits.slice(-2);
+    }
+  }
+
+  const hour = Number(hourText);
+  const minute = Number(minuteText || "0");
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return raw;
+  if (!Number.isFinite(minute) || minute < 0 || minute > 59) return raw;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 };
 
 export default function EventProgramSection({ training }) {
@@ -708,28 +735,44 @@ export default function EventProgramSection({ training }) {
                             <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
                               <Input
                                 type="text"
-                                inputMode="numeric"
+                                inputMode="text"
                                 value={session.start_time}
                                 onChange={(event) =>
                                   handleUpdateSessionField(
                                     dateIndex,
                                     session.id,
                                     "start_time",
-                                    normalizeTimeDraft(event.target.value)
+                                    sanitizeTimeInput(event.target.value)
+                                  )
+                                }
+                                onBlur={(event) =>
+                                  handleUpdateSessionField(
+                                    dateIndex,
+                                    session.id,
+                                    "start_time",
+                                    normalizeTimeOnBlur(event.target.value)
                                   )
                                 }
                                 placeholder="HH:MM"
                               />
                               <Input
                                 type="text"
-                                inputMode="numeric"
+                                inputMode="text"
                                 value={session.end_time}
                                 onChange={(event) =>
                                   handleUpdateSessionField(
                                     dateIndex,
                                     session.id,
                                     "end_time",
-                                    normalizeTimeDraft(event.target.value)
+                                    sanitizeTimeInput(event.target.value)
+                                  )
+                                }
+                                onBlur={(event) =>
+                                  handleUpdateSessionField(
+                                    dateIndex,
+                                    session.id,
+                                    "end_time",
+                                    normalizeTimeOnBlur(event.target.value)
                                   )
                                 }
                                 placeholder="HH:MM"
