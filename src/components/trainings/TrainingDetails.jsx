@@ -1020,6 +1020,38 @@ export default function TrainingDetails({
       .map((objective) => `<li>${escapeHtml(objective)};</li>`)
       .join("");
 
+    const approvedParticipantsRowsHtml =
+      approvedParticipants.length > 0
+        ? [...approvedParticipants]
+            .sort((a, b) =>
+              String(a?.professional_name || "").localeCompare(
+                String(b?.professional_name || ""),
+                "pt-BR",
+                { sensitivity: "base" }
+              )
+            )
+            .map(
+              (participant, index) => `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td>${escapeHtml(participant?.professional_name || "-")}</td>
+                  <td>${escapeHtml(
+                    participant?.professional_rg || participant?.professional_cpf || "-"
+                  )}</td>
+                  <td>${escapeHtml(participant?.municipality || "-")}</td>
+                  <td>${escapeHtml(participant?.health_region || "-")}</td>
+                  <td>${escapeHtml(participant?.unit_name || "-")}</td>
+                  <td>${escapeHtml(participant?.professional_email || "-")}</td>
+                </tr>
+              `
+            )
+            .join("")
+        : `
+          <tr>
+            <td colspan="7">Sem treinandos aprovados para listar neste anexo.</td>
+          </tr>
+        `;
+
     const programRowsHtml = reportProgramRows
       .map(
         (row) => `
@@ -1053,7 +1085,7 @@ export default function TrainingDetails({
             h2 { font-size: 12pt; margin: 14pt 0 6pt 0; font-weight: 700; }
             p { margin: 0 0 8pt 0; text-align: justify; text-indent: 1.25cm; }
             ul { margin: 0 0 10pt 22px; padding: 0; }
-            li { margin: 0 0 4px 0; }
+            li { margin: 0 0 4px 0; text-align: justify; }
             .meta p { margin-bottom: 3pt; }
             .meta p,
             .brand-line,
@@ -1140,6 +1172,24 @@ export default function TrainingDetails({
             ${escapeHtml(formatDateSafe(new Date(), "dd/MM/yyyy") || "-")} <br/>
             Centro de Oftalmologia Sanitária
           </p>
+
+          <p class="annex-title">Anexo I – Lista de participantes aprovados</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Nº</th>
+                <th>Nome</th>
+                <th>RG/CPF</th>
+                <th>Município</th>
+                <th>GVE</th>
+                <th>Unidade</th>
+                <th>E-mail</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${approvedParticipantsRowsHtml}
+            </tbody>
+          </table>
 
           <p class="annex-title">Anexo II – Programa do treinamento</p>
           <table>
