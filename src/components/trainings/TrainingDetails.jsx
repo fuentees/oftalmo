@@ -804,21 +804,67 @@ export default function TrainingDetails({
       String(training?.coordinator || "").trim() ||
       "-";
     if (sortedTrainingDates.length > 0) {
-      return sortedTrainingDates.map((dateItem, index) => ({
-        date: formatDate(dateItem?.date),
-        meeting: `${index + 1}º encontro`,
-        activity:
-          index === 0
-            ? "Abertura, alinhamento do curso e conteúdos programados."
-            : "Conteúdos teóricos, discussões e exercícios de fixação.",
-        responsible:
-          String(training?.speakers?.[index]?.name || "").trim() || fallbackResponsible,
-      }));
+      const rows = [];
+      sortedTrainingDates.forEach((dateItem, index) => {
+        const dateLabel = formatDate(dateItem?.date);
+        const dateSessions = (Array.isArray(dateItem?.sessions)
+          ? dateItem.sessions
+          : []
+        )
+          .map((session, sessionIndex) => ({
+            start_time: String(session?.start_time || "").trim(),
+            end_time: String(session?.end_time || "").trim(),
+            activity: String(session?.title || session?.activity || "").trim(),
+            responsible: String(
+              session?.speaker_name || session?.responsible || ""
+            ).trim(),
+            index: sessionIndex,
+          }))
+          .sort((a, b) =>
+            String(a.start_time || "").localeCompare(String(b.start_time || ""))
+          );
+
+        if (dateSessions.length > 0) {
+          dateSessions.forEach((session, sessionIndex) => {
+            const schedule =
+              session.start_time && session.end_time
+                ? `${session.start_time} às ${session.end_time}`
+                : session.start_time || session.end_time || "-";
+            rows.push({
+              date: sessionIndex === 0 ? dateLabel : "",
+              meeting: `${index + 1}º encontro`,
+              schedule,
+              activity:
+                session.activity ||
+                "Conteúdos teóricos, discussões e exercícios de fixação.",
+              responsible: session.responsible || fallbackResponsible,
+            });
+          });
+          return;
+        }
+
+        rows.push({
+          date: dateLabel,
+          meeting: `${index + 1}º encontro`,
+          schedule:
+            dateItem?.start_time && dateItem?.end_time
+              ? `${dateItem.start_time} às ${dateItem.end_time}`
+              : "-",
+          activity:
+            index === 0
+              ? "Abertura, alinhamento do curso e conteúdos programados."
+              : "Conteúdos teóricos, discussões e exercícios de fixação.",
+          responsible:
+            String(training?.speakers?.[index]?.name || "").trim() || fallbackResponsible,
+        });
+      });
+      return rows;
     }
     return [
       {
         date: formatDate(training?.date),
         meeting: "Encontro único",
+        schedule: "-",
         activity: "Conteúdo programado do treinamento.",
         responsible: fallbackResponsible,
       },
@@ -1058,6 +1104,7 @@ export default function TrainingDetails({
           <tr>
             <td>${escapeHtml(row.date)}</td>
             <td>${escapeHtml(row.meeting)}</td>
+            <td>${escapeHtml(row.schedule || "-")}</td>
             <td>${escapeHtml(row.activity)}</td>
             <td>${escapeHtml(row.responsible)}</td>
           </tr>
@@ -1213,6 +1260,7 @@ export default function TrainingDetails({
               <tr>
                 <th>Data</th>
                 <th>Encontro</th>
+                <th>Horário</th>
                 <th>Atividade / Tema</th>
                 <th>Responsável</th>
               </tr>
