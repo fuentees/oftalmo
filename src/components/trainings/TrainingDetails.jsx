@@ -88,6 +88,11 @@ const REPORT_RATING_QUESTION_DEFINITIONS = [
 
 const REPORT_TEXT_QUESTION_DEFINITIONS = [
   {
+    key: "virtual_opinion",
+    label: "Opinião sobre reunião virtual",
+    matcher: "OPINIAO SOBRE REALIZAR A REUNIAO DE FORMA VIRTUAL",
+  },
+  {
     key: "important_topics",
     label: "Assuntos considerados mais e menos importantes",
     matcher:
@@ -897,14 +902,33 @@ export default function TrainingDetails({
       };
     });
 
-    const importantTopics = textCollections.get("important_topics") || [];
-    const comments = textCollections.get("comments") || [];
+    const uniqueOrdered = (values = []) => {
+      const seen = new Set();
+      const result = [];
+      values.forEach((item) => {
+        const text = String(item || "").trim();
+        if (!text) return;
+        const key = normalizeComparableText(text);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        result.push(text);
+      });
+      return result;
+    };
+
+    const virtualOpinions = uniqueOrdered(textCollections.get("virtual_opinion") || []);
+    const importantTopics = uniqueOrdered(textCollections.get("important_topics") || []);
+    const comments = uniqueOrdered([
+      ...(textCollections.get("comments") || []),
+      ...generalComments,
+    ]);
 
     return {
       totalResponses: Array.isArray(feedbackResponses) ? feedbackResponses.length : 0,
       ratingSummary,
+      virtualOpinions: virtualOpinions.slice(0, 12),
       importantTopics: importantTopics.slice(0, 12),
-      comments: [...comments, ...generalComments].slice(0, 18),
+      comments: comments.slice(0, 18),
     };
   }, [feedbackResponses]);
 
@@ -942,30 +966,41 @@ export default function TrainingDetails({
           .map((bucket) => {
             const count = item.buckets[bucket] || 0;
             if (!count) return "";
-            return `“${REPORT_RATING_BUCKET_LABELS[bucket].toLowerCase()}” ${item.percentages[bucket]}%`;
+            return `${item.percentages[bucket]}% classificaram como “${REPORT_RATING_BUCKET_LABELS[
+              bucket
+            ].toLowerCase()}”`;
           })
           .filter(Boolean);
-        const distributionText =
-          item.total > 0
-            ? labels.join(", ")
-            : "Sem respostas registradas para este item.";
+        const distributionText = (() => {
+          if (item.total <= 0) return "sem respostas registradas para este item";
+          if (labels.length === 1) return labels[0];
+          if (labels.length === 2) return `${labels[0]} e ${labels[1]}`;
+          return `${labels.slice(0, -1).join(", ")} e ${labels[labels.length - 1]}`;
+        })();
         const sampledJustifications = item.justifications
-          .slice(0, 2)
+          .slice(0, 3)
           .map((value) => `“${escapeHtml(value)}”`)
-          .join(" ");
+          .join("; ");
         return `
           <p>
             <strong>${escapeHtml(item.label)}:</strong>
-            ${escapeHtml(distributionText)}
+            ${escapeHtml(distributionText)}.
             ${
               sampledJustifications
-                ? `<br/>Alguns participantes relataram: ${sampledJustifications}`
+                ? ` Alguns participantes relataram: ${sampledJustifications}.`
                 : ""
             }
           </p>
         `;
       })
       .join("");
+
+    const virtualOpinionsHtml =
+      feedbackReportInsights.virtualOpinions.length > 0
+        ? feedbackReportInsights.virtualOpinions
+            .map((item) => `<li>${escapeHtml(item)}</li>`)
+            .join("")
+        : "<li>Sem respostas específicas para esta pergunta.</li>";
 
     const importantTopicsHtml =
       feedbackReportInsights.importantTopics.length > 0
@@ -1005,16 +1040,28 @@ export default function TrainingDetails({
           <meta charset="utf-8" />
           <title>Relatório do treinamento - ${escapeHtml(training.title || "-")}</title>
           <style>
-            body { font-family: "Times New Roman", serif; margin: 24px 28px; color: #111827; line-height: 1.45; font-size: 12.5pt; }
-            .brand-line { text-align: right; font-size: 10pt; margin-bottom: 12px; font-weight: 600; color: #475569; }
-            h1 { font-size: 14pt; margin: 0 0 14px 0; text-transform: uppercase; text-align: center; line-height: 1.35; }
-            h2 { font-size: 12.5pt; margin: 16px 0 6px 0; font-weight: 700; }
-            p { margin: 0 0 8px 0; text-align: justify; }
-            ul { margin: 0 0 10px 22px; padding: 0; }
+            @page { margin: 3cm 2cm 2cm 3cm; }
+            body {
+              font-family: Arial, Helvetica, sans-serif;
+              margin: 0;
+              color: #111827;
+              line-height: 1.5;
+              font-size: 12pt;
+            }
+            .brand-line { text-align: right; font-size: 10pt; margin-bottom: 12pt; font-weight: 700; color: #475569; }
+            h1 { font-size: 12pt; margin: 0 0 14pt 0; text-transform: uppercase; text-align: center; line-height: 1.4; font-weight: 700; }
+            h2 { font-size: 12pt; margin: 14pt 0 6pt 0; font-weight: 700; }
+            p { margin: 0 0 8pt 0; text-align: justify; text-indent: 1.25cm; }
+            ul { margin: 0 0 10pt 22px; padding: 0; }
             li { margin: 0 0 4px 0; }
-            .meta p { margin-bottom: 2px; }
-            .section-spacer { margin-top: 12px; }
-            .signature { margin-top: 24px; text-align: right; }
+            .meta p { margin-bottom: 3pt; }
+            .meta p,
+            .brand-line,
+            .annex-title,
+            h1,
+            h2,
+            .signature { text-indent: 0; }
+            .signature { margin-top: 22pt; text-align: right; }
             .annex-title { margin-top: 20px; font-weight: 700; text-transform: uppercase; }
             table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11pt; }
             th, td { border: 1px solid #9ca3af; padding: 7px; vertical-align: top; }
@@ -1069,10 +1116,13 @@ export default function TrainingDetails({
             A avaliação foi realizada ao final das atividades, com ${feedbackReportInsights.totalResponses}
             resposta(s) registradas no sistema.
           </p>
+          <p>
+            Os trechos entre aspas abaixo reproduzem respostas reais digitadas pelos participantes.
+          </p>
           ${ratingSummaryParagraphsHtml}
 
           <h2>Qual sua opinião sobre realizar a reunião de forma virtual?</h2>
-          <ul>${commentsHtml}</ul>
+          <ul>${virtualOpinionsHtml}</ul>
 
           <h2>Assuntos considerados mais e menos importantes</h2>
           <ul>${importantTopicsHtml}</ul>
