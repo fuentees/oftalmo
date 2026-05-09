@@ -60,6 +60,11 @@ const normalizeTimeValue = (value) => {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 };
 
+const sanitizeTimeDraft = (value) =>
+  String(value || "")
+    .replace(/[^\d:]/g, "")
+    .slice(0, 5);
+
 export default function EventProgramSection({ training }) {
   const queryClient = useQueryClient();
   const [programDates, setProgramDates] = useState([]);
@@ -88,8 +93,8 @@ export default function EventProgramSection({ training }) {
     id:
       String(session?.id || "").trim() ||
       `session-${Date.now()}-${Math.random().toString(36).slice(2)}-${fallbackIndex}`,
-    start_time: normalizeTimeValue(session?.start_time),
-    end_time: normalizeTimeValue(session?.end_time),
+    start_time: String(session?.start_time || "").trim(),
+    end_time: String(session?.end_time || "").trim(),
     title: String(session?.title || session?.activity || "").trim(),
     speaker_name: String(
       session?.speaker_name || session?.responsible || session?.speaker || ""
@@ -188,8 +193,12 @@ export default function EventProgramSection({ training }) {
         ...dateItem,
         sessions: getTypedSessions(dateItem?.sessions, dateIndex).map(
           (session) => ({
-            start_time: String(session?.start_time || "").trim(),
-            end_time: String(session?.end_time || "").trim(),
+            start_time:
+              normalizeTimeValue(session?.start_time) ||
+              String(session?.start_time || "").trim(),
+            end_time:
+              normalizeTimeValue(session?.end_time) ||
+              String(session?.end_time || "").trim(),
             title: String(session?.title || "").trim(),
             speaker_name: String(session?.speaker_name || "").trim(),
           })
@@ -281,8 +290,10 @@ export default function EventProgramSection({ training }) {
         date: String(dateItem?.date || "").trim(),
         sessions: getTypedSessions(dateItem?.sessions, dateIndex).map(
           (session) => ({
-            start_time: session.start_time,
-            end_time: session.end_time,
+            start_time:
+              normalizeTimeValue(session.start_time) || session.start_time,
+            end_time:
+              normalizeTimeValue(session.end_time) || session.end_time,
             title: session.title,
             speaker_name: session.speaker_name,
           })
@@ -390,8 +401,16 @@ export default function EventProgramSection({ training }) {
                       )}</td>`
                     : ""
                 }
-                <td>${escapeHtml(session.start_time || "-")}</td>
-                <td>${escapeHtml(session.end_time || "-")}</td>
+                <td>${escapeHtml(
+                  normalizeTimeValue(session.start_time) ||
+                    session.start_time ||
+                    "-"
+                )}</td>
+                <td>${escapeHtml(
+                  normalizeTimeValue(session.end_time) ||
+                    session.end_time ||
+                    "-"
+                )}</td>
                 <td>${escapeHtml(session.title || "-")}</td>
                 <td>${escapeHtml(session.speaker_name || "-")}</td>
               </tr>
@@ -705,15 +724,15 @@ export default function EventProgramSection({ training }) {
                                   ) : null}
                                   <TableCell>
                                     <Input
-                                      type="time"
-                                      step="60"
+                                      type="text"
+                                      inputMode="numeric"
                                       value={session.start_time}
                                       onChange={(event) =>
                                         handleUpdateSessionField(
                                           dateIndex,
                                           session.id,
                                           "start_time",
-                                          event.target.value
+                                          sanitizeTimeDraft(event.target.value)
                                         )
                                       }
                                       placeholder="HH:MM"
@@ -721,15 +740,15 @@ export default function EventProgramSection({ training }) {
                                   </TableCell>
                                   <TableCell>
                                     <Input
-                                      type="time"
-                                      step="60"
+                                      type="text"
+                                      inputMode="numeric"
                                       value={session.end_time}
                                       onChange={(event) =>
                                         handleUpdateSessionField(
                                           dateIndex,
                                           session.id,
                                           "end_time",
-                                          event.target.value
+                                          sanitizeTimeDraft(event.target.value)
                                         )
                                       }
                                       placeholder="HH:MM"
