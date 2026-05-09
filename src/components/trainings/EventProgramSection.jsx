@@ -60,10 +60,14 @@ const normalizeTimeValue = (value) => {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 };
 
-const sanitizeTimeDraft = (value) =>
-  String(value || "")
-    .replace(/[^\d:]/g, "")
-    .slice(0, 5);
+const formatTimeDraft = (value) => {
+  const digits = String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 4);
+  if (!digits) return "";
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+};
 
 export default function EventProgramSection({ training }) {
   const queryClient = useQueryClient();
@@ -488,6 +492,49 @@ export default function EventProgramSection({ training }) {
               margin: 0 0 4pt 0;
               font-size: 11pt;
             }
+            .hero {
+              border: 1px solid #cbd5e1;
+              border-top: 5px solid #1d4ed8;
+              padding: 12px 14px;
+              margin-bottom: 10pt;
+              background: #f8fafc;
+            }
+            .hero p {
+              margin: 0;
+              text-align: center;
+            }
+            .hero .org {
+              font-size: 9.5pt;
+              font-weight: 700;
+              color: #1e3a8a;
+              text-transform: uppercase;
+              letter-spacing: 0.2px;
+            }
+            .hero .doc-title {
+              margin-top: 6px;
+              font-size: 12pt;
+              font-weight: 700;
+              color: #0f172a;
+              text-transform: uppercase;
+            }
+            .hero .doc-subtitle {
+              margin-top: 3px;
+              font-size: 10.5pt;
+              color: #334155;
+            }
+            .meta-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 10pt;
+              font-size: 10.5pt;
+            }
+            .meta-table td {
+              border: 1px solid #cbd5e1;
+              padding: 7px 8px;
+              vertical-align: top;
+              width: 50%;
+              background: #ffffff;
+            }
             table {
               width: 100%;
               border-collapse: collapse;
@@ -500,25 +547,39 @@ export default function EventProgramSection({ training }) {
               vertical-align: top;
             }
             th {
-              background: #f8fafc;
+              background: #dbeafe;
+              color: #1e3a8a;
+              font-weight: 700;
               text-align: left;
             }
           </style>
         </head>
         <body>
-          <p class="brand">Secretaria de Estado da Saúde • CVE • CCD • São Paulo</p>
-          <p class="title-helper">Programa de aulas do treinamento</p>
-          <h1>Programação do evento – ${escapeHtml(training?.title || "-")}</h1>
-          <div class="meta">
-            <p><strong>Período:</strong> ${escapeHtml(trainingPeriodLabel)}</p>
-            <p><strong>Local:</strong> ${escapeHtml(
-              training?.location || (training?.online_link ? "Evento online" : "Não informado")
-            )}</p>
-            <p><strong>Coordenação:</strong> ${escapeHtml(training?.coordinator || "-")}</p>
-            <p><strong>Carga horária:</strong> ${escapeHtml(
-              training?.duration_hours ? `${training.duration_hours} horas` : "Não informada"
-            )}</p>
+          <div class="hero">
+            <p class="org">Secretaria de Estado da Saúde • CVE • CCD • São Paulo</p>
+            <p class="doc-title">Programação oficial do treinamento</p>
+            <p class="doc-subtitle">${escapeHtml(training?.title || "-")}</p>
           </div>
+
+          <table class="meta-table">
+            <tr>
+              <td><strong>Treinamento:</strong><br/>${escapeHtml(training?.title || "-")}</td>
+              <td><strong>Período:</strong><br/>${escapeHtml(trainingPeriodLabel)}</td>
+            </tr>
+            <tr>
+              <td><strong>Local:</strong><br/>${escapeHtml(
+                training?.location || (training?.online_link ? "Evento online" : "Não informado")
+              )}</td>
+              <td><strong>Coordenação:</strong><br/>${escapeHtml(training?.coordinator || "-")}</td>
+            </tr>
+            <tr>
+              <td colspan="2"><strong>Carga horária:</strong> ${escapeHtml(
+                training?.duration_hours ? `${training.duration_hours} horas` : "Não informada"
+              )}</td>
+            </tr>
+          </table>
+
+          <p class="title-helper">Grade de aulas por dia</p>
           <table>
             <thead>
               <tr>
@@ -758,7 +819,16 @@ export default function EventProgramSection({ training }) {
                                           dateIndex,
                                           session.id,
                                           "start_time",
-                                          sanitizeTimeDraft(event.target.value)
+                                          formatTimeDraft(event.target.value)
+                                        )
+                                      }
+                                      onBlur={(event) =>
+                                        handleUpdateSessionField(
+                                          dateIndex,
+                                          session.id,
+                                          "start_time",
+                                          normalizeTimeValue(event.target.value) ||
+                                            event.target.value
                                         )
                                       }
                                       placeholder="HH:MM"
@@ -774,7 +844,16 @@ export default function EventProgramSection({ training }) {
                                           dateIndex,
                                           session.id,
                                           "end_time",
-                                          sanitizeTimeDraft(event.target.value)
+                                          formatTimeDraft(event.target.value)
+                                        )
+                                      }
+                                      onBlur={(event) =>
+                                        handleUpdateSessionField(
+                                          dateIndex,
+                                          session.id,
+                                          "end_time",
+                                          normalizeTimeValue(event.target.value) ||
+                                            event.target.value
                                         )
                                       }
                                       placeholder="HH:MM"
