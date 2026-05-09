@@ -426,7 +426,7 @@ export default function EventProgramSection({ training }) {
               <tr>
                 ${
                   sessionIndex === 0
-                    ? `<td rowspan="${group.sessions.length}">${escapeHtml(
+                    ? `<td class="date-group" rowspan="${group.sessions.length}">${escapeHtml(
                         group.dateLabel
                       )}</td>`
                     : ""
@@ -479,12 +479,6 @@ export default function EventProgramSection({ training }) {
               margin-bottom: 10pt;
               text-transform: uppercase;
             }
-            .title-helper {
-              margin: 0 0 6pt 0;
-              text-align: center;
-              font-size: 10.5pt;
-              color: #334155;
-            }
             .meta {
               margin-bottom: 10pt;
             }
@@ -535,6 +529,12 @@ export default function EventProgramSection({ training }) {
               width: 50%;
               background: #ffffff;
             }
+            td.date-group {
+              background: #eff6ff;
+              font-weight: 700;
+              text-align: center;
+              vertical-align: middle;
+            }
             table {
               width: 100%;
               border-collapse: collapse;
@@ -557,7 +557,7 @@ export default function EventProgramSection({ training }) {
         <body>
           <div class="hero">
             <p class="org">Secretaria de Estado da Saúde • CVE • CCD • São Paulo</p>
-            <p class="doc-title">Programação oficial do treinamento</p>
+            <p class="doc-title">Programação do treinamento</p>
             <p class="doc-subtitle">${escapeHtml(training?.title || "-")}</p>
           </div>
 
@@ -579,7 +579,6 @@ export default function EventProgramSection({ training }) {
             </tr>
           </table>
 
-          <p class="title-helper">Grade de aulas por dia</p>
           <table>
             <thead>
               <tr>
@@ -756,7 +755,7 @@ export default function EventProgramSection({ training }) {
                 return (
                   <Card
                     key={`program-date-${dateItem?.date || dateIndex}`}
-                    className="border border-slate-200 shadow-sm"
+                    className="rounded-xl border border-slate-200 shadow-sm overflow-hidden"
                   >
                     <CardHeader className="border-b border-slate-100 bg-slate-50/70 pb-3">
                       <CardTitle className="text-sm flex items-center justify-between gap-3">
@@ -804,7 +803,7 @@ export default function EventProgramSection({ training }) {
                                   {sessionIndex === 0 ? (
                                     <TableCell
                                       rowSpan={sessions.length}
-                                      className="font-medium text-slate-700 align-top"
+                                      className="font-semibold text-slate-700 align-middle text-center bg-slate-50"
                                     >
                                       {dateLabel}
                                     </TableCell>
