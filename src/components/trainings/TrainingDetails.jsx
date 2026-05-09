@@ -1105,13 +1105,13 @@ export default function TrainingDetails({
               size: 595.3pt 841.9pt;
               mso-page-orientation: portrait;
             }
-            @page WordSectionAnnex {
+            @page WordSectionAnnexLandscape {
               margin: 3cm 2cm 2cm 3cm;
               size: 841.9pt 595.3pt;
               mso-page-orientation: landscape;
             }
             div.WordSectionMain { page: WordSectionMain; }
-            div.WordSectionAnnex { page: WordSectionAnnex; }
+            div.WordSectionAnnexLandscape { page: WordSectionAnnexLandscape; }
             body {
               font-family: Arial, Helvetica, sans-serif;
               margin: 0;
@@ -1216,7 +1216,7 @@ export default function TrainingDetails({
 
           <div style="mso-element:section-break-next-page;"></div>
 
-          <div class="WordSectionAnnex">
+          <div class="WordSectionAnnexLandscape">
           <p class="annex-title">Anexo I – Lista de participantes aprovados</p>
           <table>
             <thead>
@@ -1234,7 +1234,11 @@ export default function TrainingDetails({
               ${approvedParticipantsRowsHtml}
             </tbody>
           </table>
+          </div>
 
+          <div style="mso-element:section-break-next-page;"></div>
+
+          <div class="WordSectionMain">
           <p class="annex-title">Anexo II – Programa do treinamento</p>
           <table>
             <thead>
