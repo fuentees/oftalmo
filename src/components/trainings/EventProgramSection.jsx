@@ -69,6 +69,32 @@ export default function EventProgramSection({ training }) {
   const queryClient = useQueryClient();
   const [programDates, setProgramDates] = useState([]);
   const [programStatus, setProgramStatus] = useState(null);
+  const trainingProgramSignature = useMemo(() => {
+    const normalizedDates = Array.isArray(training?.dates)
+      ? training.dates.map((dateItem) => ({
+          date: String(dateItem?.date || "").trim(),
+          start_time: String(dateItem?.start_time || "").trim(),
+          end_time: String(dateItem?.end_time || "").trim(),
+          sessions: (Array.isArray(dateItem?.sessions) ? dateItem.sessions : []).map(
+            (session) => ({
+              start_time: String(session?.start_time || "").trim(),
+              end_time: String(session?.end_time || "").trim(),
+              title: String(session?.title || session?.activity || "").trim(),
+              speaker_name: String(
+                session?.speaker_name || session?.responsible || session?.speaker || ""
+              ).trim(),
+            })
+          ),
+        }))
+      : [];
+
+    return JSON.stringify({
+      date: String(training?.date || "").trim(),
+      start_time: String(training?.start_time || "").trim(),
+      end_time: String(training?.end_time || "").trim(),
+      dates: normalizedDates,
+    });
+  }, [training?.date, training?.dates, training?.end_time, training?.start_time]);
 
   const parseTimeToMinutes = (value) => {
     const raw = String(value || "").trim();
@@ -164,7 +190,7 @@ export default function EventProgramSection({ training }) {
   useEffect(() => {
     setProgramDates(buildProgramDatesFromTraining(training));
     setProgramStatus(null);
-  }, [training?.id, training?.date, training?.dates]);
+  }, [training?.id, trainingProgramSignature]);
 
   const groupedProgramRows = useMemo(
     () =>
@@ -541,8 +567,9 @@ export default function EventProgramSection({ training }) {
   const totalSessions = useMemo(
     () =>
       programDates.reduce(
-        (acc, dateItem, dateIndex) =>
-          acc + normalizeImportedSessions(dateItem?.sessions, dateIndex).length,
+        (acc, dateItem) =>
+          acc +
+          (Array.isArray(dateItem?.sessions) ? dateItem.sessions.length : 0),
         0
       ),
     [programDates]
@@ -660,10 +687,9 @@ export default function EventProgramSection({ training }) {
           ) : (
             <div className="space-y-4">
               {programDates.map((dateItem, dateIndex) => {
-                const sessions = normalizeImportedSessions(
-                  dateItem?.sessions,
-                  dateIndex
-                );
+                const sessions = Array.isArray(dateItem?.sessions)
+                  ? dateItem.sessions
+                  : [];
                 const dateLabel =
                   formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "Data não definida";
                 return (
