@@ -679,7 +679,7 @@ export default function PublicEnrollment() {
 
           <CardContent className="pt-6 space-y-6">
             <div className="bg-slate-50 rounded-lg p-4 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div className="rounded-md border bg-white px-3 py-2">
                   <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
                     <Calendar className="h-4 w-4 text-blue-600" />
@@ -704,6 +704,22 @@ export default function PublicEnrollment() {
 
                 <div className="rounded-md border bg-white px-3 py-2">
                   <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    {training.online_link ? (
+                      <Video className="h-4 w-4 text-blue-600" />
+                    ) : (
+                      <MapPin className="h-4 w-4 text-blue-600" />
+                    )}
+                    {training.online_link ? "Modalidade" : "Local"}
+                  </div>
+                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                    {training.online_link
+                      ? "Treinamento on-line"
+                      : eventMunicipalityLabel}
+                  </p>
+                </div>
+
+                <div className="rounded-md border bg-white px-3 py-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
                     <User className="h-4 w-4 text-blue-600" />
                     Coordenador
                   </div>
@@ -711,20 +727,6 @@ export default function PublicEnrollment() {
                     {training.coordinator || "-"}
                   </p>
                 </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                {training.online_link ? (
-                  <div className="flex items-center gap-2 text-sm text-slate-700">
-                    <Video className="h-4 w-4 text-blue-600" />
-                    <span>Modalidade: Treinamento on-line (acesso virtual)</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-sm text-slate-700">
-                    <MapPin className="h-4 w-4 text-blue-600" />
-                    <span>Local: {eventMunicipalityLabel}</span>
-                  </div>
-                )}
               </div>
 
               {training.max_participants && (
