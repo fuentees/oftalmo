@@ -172,9 +172,24 @@ export default function PublicEnrollment() {
       : DEFAULT_ENROLLMENT_FIELDS;
 
   const orderedTemplateFields = useMemo(
-    () => orderEnrollmentFields(templateFields),
+    () =>
+      orderEnrollmentFields(templateFields).filter(
+        (field) => getEnrollmentFieldSemantic(field) !== "gve"
+      ),
     [templateFields]
   );
+
+  const eventMunicipalityLabel = useMemo(() => {
+    const rawLocation = String(training?.location || "").trim();
+    if (!rawLocation) return "Municipio a definir";
+    const withoutGve = rawLocation
+      .replace(/\bGVE\b[:\s-]*[0-9A-Za-z.-]*/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .replace(/[-|•,;:/]\s*$/g, "")
+      .trim();
+    const firstSegment = withoutGve.split(/[-|•]/)[0]?.trim();
+    return firstSegment || withoutGve || "Municipio a definir";
+  }, [training?.location]);
 
   const municipalityFieldKey = useMemo(() => {
     const field = orderedTemplateFields.find(
@@ -607,9 +622,13 @@ export default function PublicEnrollment() {
                   ))}
                 </div>
               )}
-              {training.location && (
+              {training.online_link ? (
                 <p className="text-sm text-slate-600">
-                  <strong>Local:</strong> {training.location}
+                  <strong>Modalidade:</strong> Treinamento on-line
+                </p>
+              ) : (
+                <p className="text-sm text-slate-600">
+                  <strong>Local:</strong> {eventMunicipalityLabel}
                 </p>
               )}
             </div>
@@ -695,16 +714,15 @@ export default function PublicEnrollment() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                {training.location && (
-                  <div className="flex items-center gap-2 text-sm text-slate-700">
-                    <MapPin className="h-4 w-4 text-blue-600" />
-                    {training.location}
-                  </div>
-                )}
-                {training.online_link && (
+                {training.online_link ? (
                   <div className="flex items-center gap-2 text-sm text-slate-700">
                     <Video className="h-4 w-4 text-blue-600" />
-                    <span>Treinamento Online</span>
+                    <span>Modalidade: Treinamento on-line (acesso virtual)</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-slate-700">
+                    <MapPin className="h-4 w-4 text-blue-600" />
+                    <span>Local: {eventMunicipalityLabel}</span>
                   </div>
                 )}
               </div>
