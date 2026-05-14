@@ -6,8 +6,9 @@ const normalizeTrainingCode = (value) =>
 
 const buildEnrollmentToken = ({ trainingId, trainingCode }) => {
   const code = normalizeTrainingCode(trainingCode);
-  if (code) return `c-${code}`;
   const id = String(trainingId || "").trim();
+  if (code && id) return `c-${code}__${id}`;
+  if (code) return `c-${code}`;
   return id;
 };
 
