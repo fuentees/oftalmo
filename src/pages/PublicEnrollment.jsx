@@ -42,7 +42,16 @@ export default function PublicEnrollment() {
     const token = String(rawToken || "").trim();
     if (!token) return "";
     if (token.startsWith("c-")) {
-      const code = token.slice(2).trim();
+      const encoded = token.slice(2).trim();
+      if (!encoded) return "";
+      const separatorIndex = encoded.lastIndexOf("__");
+      let code = encoded;
+      if (separatorIndex > 0) {
+        const explicitIdCandidate = encoded.slice(separatorIndex + 2).trim();
+        if (/^[0-9a-f-]{16,}$/i.test(explicitIdCandidate)) {
+          return explicitIdCandidate;
+        }
+      }
       if (!code) return "";
       const trainings = await dataClient.entities.Training.filter({ code });
       return String(trainings?.[0]?.id || "").trim();
