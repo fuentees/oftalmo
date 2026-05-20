@@ -735,7 +735,7 @@ export default function PublicEnrollment() {
                       </p>
                     )}
                     <div className="flex flex-wrap gap-1.5">
-                      {(showAllDates ? dateLabels : dateLabels.slice(0, 6)).map((label, i) => (
+                      {dateLabels.map((label, i) => (
                         <span
                           key={i}
                           className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs text-blue-700 font-medium"
@@ -743,15 +743,6 @@ export default function PublicEnrollment() {
                           {label}
                         </span>
                       ))}
-                      {dateLabels.length > 6 && (
-                        <button
-                          type="button"
-                          onClick={() => setShowAllDates((v) => !v)}
-                          className="inline-flex items-center rounded-full bg-slate-100 border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600 font-medium hover:bg-slate-200 transition-colors"
-                        >
-                          {showAllDates ? "Recolher" : `+${dateLabels.length - 6} mais`}
-                        </button>
-                      )}
                     </div>
                   </div>
 
