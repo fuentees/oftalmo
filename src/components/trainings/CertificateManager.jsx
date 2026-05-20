@@ -961,10 +961,13 @@ export default function CertificateManager({ training, participants = [], onClos
   };
 
   const toggleAll = () => {
-    if (selectedParticipants.length === eligibleParticipants.length) {
+    const pendingIds = pendingEligibleParticipants.map(p => p.id);
+    const allPendingSelected = pendingIds.length > 0 &&
+      pendingIds.every(id => selectedParticipants.includes(id));
+    if (allPendingSelected) {
       setSelectedParticipants([]);
     } else {
-      setSelectedParticipants(eligibleParticipants.map(p => p.id));
+      setSelectedParticipants(pendingIds);
     }
   };
 
@@ -1003,6 +1006,7 @@ export default function CertificateManager({ training, participants = [], onClos
   });
 
   const alreadySentCount = eligibleParticipants.filter(p => p.certificate_issued).length;
+  const pendingEligibleParticipants = eligibleParticipants.filter(p => !p.certificate_issued);
   const printableEligibleParticipants = useMemo(
     () =>
       [...eligibleParticipants].sort((a, b) =>
@@ -1531,12 +1535,12 @@ export default function CertificateManager({ training, participants = [], onClos
               type="button"
               variant="outline"
               onClick={toggleAll}
-              disabled={eligibleParticipants.length === 0 || processing}
+              disabled={pendingEligibleParticipants.length === 0 || processing}
             >
-              {selectedParticipants.length === eligibleParticipants.length &&
-              eligibleParticipants.length > 0
+              {pendingEligibleParticipants.length > 0 &&
+              pendingEligibleParticipants.every(p => selectedParticipants.includes(p.id))
                 ? "Limpar seleção"
-                : "Selecionar todos"}
+                : "Selecionar pendentes"}
             </Button>
             <Button
               onClick={handleIssueSelected}
@@ -1557,8 +1561,8 @@ export default function CertificateManager({ training, participants = [], onClos
                   <TableHead className="w-10">
                     <Checkbox
                       checked={
-                        selectedParticipants.length === eligibleParticipants.length &&
-                        eligibleParticipants.length > 0
+                        pendingEligibleParticipants.length > 0 &&
+                        pendingEligibleParticipants.every(p => selectedParticipants.includes(p.id))
                       }
                       onCheckedChange={toggleAll}
                     />
