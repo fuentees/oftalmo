@@ -288,7 +288,7 @@ export default function Schedule() {
     trabalho_campo: "#f59e0b",
     treinamento: "#3b82f6",
     ferias: "#ec4899",
-    reuniao: "#9333ea",
+    reuniao: "#ef4444",
     outro: "#64748b",
   };
 
