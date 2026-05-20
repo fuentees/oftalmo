@@ -29,7 +29,9 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Eye,
+  EyeOff,
   FileText,
+  Globe,
   Loader2,
   MessageSquare,
   Package,
@@ -258,6 +260,31 @@ export default function TrainingWorkspace() {
       setActionStatus({
         type: "error",
         message: error?.message || "Não foi possível confirmar o treinamento.",
+      });
+    },
+  });
+
+  const togglePublishProgram = useMutation({
+    mutationFn: () =>
+      dataClient.entities.Training.update(training.id, {
+        program_published: !training.program_published,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      toast({
+        title: training.program_published
+          ? "Programa ocultado da inscrição"
+          : "Programa publicado na inscrição",
+        description: training.program_published
+          ? "A aba de programação não aparece mais na página pública."
+          : "A aba de programação agora está visível na inscrição pública.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Erro ao alterar visibilidade",
+        description: error?.message || "Não foi possível atualizar.",
       });
     },
   });
@@ -596,7 +623,43 @@ export default function TrainingWorkspace() {
           />
         </TabsContent>
 
-        <TabsContent value="program" className="mt-6">
+        <TabsContent value="program" className="mt-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {training.program_published ? (
+                <Globe className="h-4 w-4 text-green-600" />
+              ) : (
+                <EyeOff className="h-4 w-4 text-slate-400" />
+              )}
+              <span className="text-sm text-slate-600">
+                {training.program_published
+                  ? "Programa visível na inscrição pública"
+                  : "Programa não publicado — invisível na inscrição"}
+              </span>
+            </div>
+            <Button
+              type="button"
+              variant={training.program_published ? "outline" : "default"}
+              onClick={() => togglePublishProgram.mutate()}
+              disabled={togglePublishProgram.isPending}
+              className={
+                training.program_published
+                  ? "border-red-200 text-red-600 hover:bg-red-50"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }
+            >
+              {togglePublishProgram.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : training.program_published ? (
+                <EyeOff className="h-4 w-4 mr-2" />
+              ) : (
+                <Globe className="h-4 w-4 mr-2" />
+              )}
+              {training.program_published
+                ? "Ocultar da inscrição pública"
+                : "Publicar na inscrição pública"}
+            </Button>
+          </div>
           <EventProgramSection training={training} />
         </TabsContent>
 

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   GraduationCap,
@@ -86,6 +87,7 @@ export default function PublicEnrollment() {
   const [formErrors, setFormErrors] = useState(
     /** @type {Record<string, string | null>} */ ({})
   );
+  const [activeTab, setActiveTab] = useState("inscricao");
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
 
   const normalizeCpf = (value) => String(value ?? "").replace(/\D/g, "");
@@ -157,6 +159,14 @@ export default function PublicEnrollment() {
       return timeA - timeB;
     });
   }, [training?.dates]);
+
+  const hasPublishedProgram =
+    Boolean(training?.program_published) &&
+    trainingDates.some(
+      (d) =>
+        Array.isArray(d.sessions) &&
+        d.sessions.some((s) => String(s?.title || s?.activity || "").trim())
+    );
 
   const activeEnrollmentFields = useMemo(
     () =>
@@ -429,10 +439,8 @@ export default function PublicEnrollment() {
       }
 
       let warningMessage = null;
-      const calendarSyncError = await syncParticipantWithGoogleCalendar(createdParticipant);
-      if (calendarSyncError) {
-        warningMessage = calendarSyncError;
-      }
+      // Erros de sincronização com o Google não são expostos ao público
+      await syncParticipantWithGoogleCalendar(createdParticipant);
       try {
         await dataClient.entities.Training.update(trainingId, {
           participants_count: (training.participants_count || 0) + 1,
@@ -736,7 +744,72 @@ export default function PublicEnrollment() {
               )}
             </div>
 
-            {(isFullyBooked || isCancelled) && (
+            {hasPublishedProgram && (
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="inscricao" className="gap-2">
+                    <User className="h-3.5 w-3.5" />
+                    Inscrição
+                  </TabsTrigger>
+                  <TabsTrigger value="programacao" className="gap-2">
+                    <Calendar className="h-3.5 w-3.5" />
+                    Programação
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
+
+            {hasPublishedProgram && activeTab === "programacao" && (
+              <div className="space-y-4">
+                {trainingDates
+                  .filter(
+                    (d) =>
+                      Array.isArray(d.sessions) &&
+                      d.sessions.some((s) => String(s?.title || s?.activity || "").trim())
+                  )
+                  .map((dateItem, i) => (
+                    <div key={i} className="rounded-lg border bg-white overflow-hidden">
+                      <div className="bg-blue-50 px-4 py-3 border-b flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-blue-600" />
+                        <span className="font-semibold text-slate-800">
+                          {formatDateSafe(dateItem.date)}
+                        </span>
+                        {dateItem.start_time && (
+                          <span className="text-sm text-slate-500 ml-auto">
+                            {dateItem.start_time}
+                            {dateItem.end_time ? ` – ${dateItem.end_time}` : ""}
+                          </span>
+                        )}
+                      </div>
+                      <div className="divide-y">
+                        {dateItem.sessions
+                          .filter((s) => String(s?.title || s?.activity || "").trim())
+                          .map((session, j) => (
+                            <div key={j} className="px-4 py-3 flex gap-3">
+                              <div className="text-xs text-slate-500 w-28 shrink-0 pt-0.5">
+                                {session.start_time && session.end_time
+                                  ? `${session.start_time} – ${session.end_time}`
+                                  : session.start_time || ""}
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-slate-800">
+                                  {session.title || session.activity}
+                                </p>
+                                {(session.speaker_name || session.responsible) && (
+                                  <p className="text-xs text-slate-500 mt-0.5">
+                                    {session.speaker_name || session.responsible}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            {(!hasPublishedProgram || activeTab === "inscricao") && (isFullyBooked || isCancelled) && (
               <Alert className="border-red-200 bg-red-50">
                 <AlertCircle className="h-4 w-4 text-red-600" />
                 <AlertDescription className="text-red-800">
@@ -747,7 +820,7 @@ export default function PublicEnrollment() {
               </Alert>
             )}
 
-            {enrollMutation.isError && (
+            {(!hasPublishedProgram || activeTab === "inscricao") && enrollMutation.isError && (
               <Alert className="border-red-200 bg-red-50">
                 <AlertCircle className="h-4 w-4 text-red-600" />
                 <AlertDescription className="text-red-800">
@@ -756,7 +829,7 @@ export default function PublicEnrollment() {
               </Alert>
             )}
 
-            {!isFullyBooked && !isCancelled && (
+            {(!hasPublishedProgram || activeTab === "inscricao") && !isFullyBooked && !isCancelled && (
               <form onSubmit={handleSubmit} className="space-y-6">
                 {municipalityOptions.length > 0 && (
                   <datalist id="municipios-list">
