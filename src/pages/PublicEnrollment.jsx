@@ -88,6 +88,7 @@ export default function PublicEnrollment() {
     /** @type {Record<string, string | null>} */ ({})
   );
   const [activeTab, setActiveTab] = useState("inscricao");
+  const [showAllDates, setShowAllDates] = useState(false);
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
 
   const normalizeCpf = (value) => String(value ?? "").replace(/\D/g, "");
@@ -667,6 +668,36 @@ export default function PublicEnrollment() {
     )
   );
 
+  const WEEKDAY_FULL = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+  const WEEKDAY_PLURAL = ["domingos", "segundas", "terças", "quartas", "quintas", "sextas", "sábados"];
+
+  const weekdayPattern = (() => {
+    if (trainingDates.length < 3) return null;
+    const days = trainingDates.map((d) => {
+      const dt = parseDateSafe(d.date);
+      return Number.isNaN(dt.getTime()) ? null : dt.getDay();
+    }).filter((d) => d !== null);
+    if (days.length < 3) return null;
+    const unique = [...new Set(days)].sort((a, b) => a - b);
+    if (!days.every((d) => unique.includes(d))) return null;
+    if (unique.length === 1) {
+      const d = unique[0];
+      return (d === 0 || d === 6 ? "Todo " : "Toda ") + WEEKDAY_FULL[d];
+    }
+    if (unique.length === 2 || unique.length === 3) {
+      const labels = unique.map((d) => WEEKDAY_PLURAL[d]);
+      const last = labels.pop();
+      return "Às " + (labels.join(", ")) + " e " + last;
+    }
+    return null;
+  })();
+
+  const dateRange = trainingDates.length >= 2
+    ? { first: formatDateSafe(trainingDates[0]?.date), last: formatDateSafe(trainingDates[trainingDates.length - 1]?.date) }
+    : null;
+
+  const manyDates = trainingDates.length > 2;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 py-8 px-4">
       <div className="max-w-3xl mx-auto">
@@ -687,55 +718,128 @@ export default function PublicEnrollment() {
 
           <CardContent className="pt-6 space-y-6">
             <div className="bg-slate-50 rounded-lg p-4 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div className="rounded-md border bg-white px-3 py-2">
-                  <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                    <Calendar className="h-4 w-4 text-blue-600" />
-                    Datas
-                  </div>
-                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-                    {dateLabels.length > 0 ? dateLabels.join(" • ") : "Data a definir"}
-                  </p>
-                </div>
-
-                <div className="rounded-md border bg-white px-3 py-2">
-                  <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                    <Clock className="h-4 w-4 text-blue-600" />
-                    Horario
-                  </div>
-                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-                    {timeLabels.length > 0
-                      ? timeLabels.join(" • ")
-                      : "Horario a definir"}
-                  </p>
-                </div>
-
-                <div className="rounded-md border bg-white px-3 py-2">
-                  <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                    {training.online_link ? (
-                      <Video className="h-4 w-4 text-blue-600" />
-                    ) : (
-                      <MapPin className="h-4 w-4 text-blue-600" />
+              {manyDates ? (
+                <>
+                  {/* Card de datas — largura total */}
+                  <div className="rounded-md border bg-white px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+                      <Calendar className="h-4 w-4 text-blue-600" />
+                      Datas
+                    </div>
+                    {weekdayPattern && (
+                      <p className="text-base font-semibold text-blue-700 mb-1">{weekdayPattern}</p>
                     )}
-                    {training.online_link ? "Modalidade" : "Local"}
+                    {dateRange && (
+                      <p className="text-xs text-slate-500 mb-3">
+                        De {dateRange.first} até {dateRange.last} — {trainingDates.length} encontros
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                      {(showAllDates ? dateLabels : dateLabels.slice(0, 6)).map((label, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs text-blue-700 font-medium"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                      {dateLabels.length > 6 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllDates((v) => !v)}
+                          className="inline-flex items-center rounded-full bg-slate-100 border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600 font-medium hover:bg-slate-200 transition-colors"
+                        >
+                          {showAllDates ? "Recolher" : `+${dateLabels.length - 6} mais`}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-                    {training.online_link
-                      ? "Treinamento on-line"
-                      : eventMunicipalityLabel}
-                  </p>
-                </div>
 
-                <div className="rounded-md border bg-white px-3 py-2">
-                  <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                    <User className="h-4 w-4 text-blue-600" />
-                    Coordenador
+                  {/* Horário / Local / Coordenador — 3 colunas */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="rounded-md border bg-white px-3 py-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                        <Clock className="h-4 w-4 text-blue-600" />
+                        Horário
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                        {timeLabels.length > 0 ? timeLabels.join(" • ") : "Horário a definir"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-md border bg-white px-3 py-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                        {training.online_link ? (
+                          <Video className="h-4 w-4 text-blue-600" />
+                        ) : (
+                          <MapPin className="h-4 w-4 text-blue-600" />
+                        )}
+                        {training.online_link ? "Modalidade" : "Local"}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                        {training.online_link ? "Treinamento on-line" : eventMunicipalityLabel}
+                      </p>
+                    </div>
+
+                    <div className="rounded-md border bg-white px-3 py-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                        <User className="h-4 w-4 text-blue-600" />
+                        Coordenador
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                        {training.coordinator || "-"}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-                    {training.coordinator || "-"}
-                  </p>
+                </>
+              ) : (
+                /* Layout original para ≤2 datas */
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="rounded-md border bg-white px-3 py-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                      <Calendar className="h-4 w-4 text-blue-600" />
+                      Datas
+                    </div>
+                    <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                      {dateLabels.length > 0 ? dateLabels.join(" • ") : "Data a definir"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border bg-white px-3 py-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                      <Clock className="h-4 w-4 text-blue-600" />
+                      Horário
+                    </div>
+                    <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                      {timeLabels.length > 0 ? timeLabels.join(" • ") : "Horário a definir"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border bg-white px-3 py-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                      {training.online_link ? (
+                        <Video className="h-4 w-4 text-blue-600" />
+                      ) : (
+                        <MapPin className="h-4 w-4 text-blue-600" />
+                      )}
+                      {training.online_link ? "Modalidade" : "Local"}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                      {training.online_link ? "Treinamento on-line" : eventMunicipalityLabel}
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border bg-white px-3 py-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                      <User className="h-4 w-4 text-blue-600" />
+                      Coordenador
+                    </div>
+                    <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                      {training.coordinator || "-"}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {training.max_participants && (
                 <p className="text-sm text-slate-600">
