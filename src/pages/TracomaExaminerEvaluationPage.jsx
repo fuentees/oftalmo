@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/api/supabaseClient";
 import jsPDF from "jspdf";
 import * as XLSX from "xlsx";
@@ -1124,9 +1125,7 @@ export default function TracomaExaminerEvaluationPage({
     if (!resultRow) return;
     const details = buildResultDetailsFromRow(resultRow);
     if (!details || details.error) {
-      window.alert(
-        details?.error || "Nao foi possivel reconstruir os dados para exportar."
-      );
+      toast({ variant: "destructive", title: "Erro ao exportar", description: details?.error || "Não foi possível reconstruir os dados para exportar." });
       return;
     }
 
@@ -1873,9 +1872,9 @@ export default function TracomaExaminerEvaluationPage({
     if (!testLink) return;
     try {
       await navigator.clipboard.writeText(testLink);
-      window.alert("Link do teste copiado com sucesso.");
+      toast({ title: "Link copiado!", description: "Link do teste copiado para a área de transferência." });
     } catch {
-      window.alert("Nao foi possivel copiar o link.");
+      toast({ variant: "destructive", title: "Erro ao copiar", description: "Não foi possível copiar o link. Tente manualmente." });
     }
   };
 

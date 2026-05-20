@@ -76,6 +76,7 @@ import AttendanceControl from "@/components/trainings/AttendanceControl";
 import CertificateManager from "@/components/trainings/CertificateManager";
 import SendLinkButton from "@/components/trainings/SendLinkButton";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
+import QueryError from "@/components/common/QueryError";
 
 const KNOWN_TRAINING_TYPE_LABELS = {
   teorico: "Teórico",
@@ -136,7 +137,7 @@ export default function Trainings() {
     }
   }, []);
 
-  const { data: trainings = [], isLoading } = useQuery({
+  const { data: trainings = [], isLoading, isError: trainingsError, refetch: refetchTrainings } = useQuery({
     queryKey: ["trainings"],
     queryFn: () => dataClient.entities.Training.list("-date"),
   });
@@ -1461,6 +1462,8 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
 
   return (
     <div className="space-y-6">
+      {trainingsError && <QueryError message="Erro ao carregar treinamentos." onRetry={refetchTrainings} />}
+
       <PageHeader
         title="Treinamentos"
         subtitle="Gerencie treinamentos e participantes"

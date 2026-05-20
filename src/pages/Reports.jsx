@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
+import QueryError from "@/components/common/QueryError";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -36,7 +37,7 @@ export default function Reports() {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
-  const { data: participants = [] } = useQuery({
+  const { data: participants = [], isError: participantsError, refetch: refetchParticipants } = useQuery({
     queryKey: ["participants"],
     queryFn: () => dataClient.entities.TrainingParticipant.list(),
   });
@@ -310,6 +311,8 @@ export default function Reports() {
 
   return (
     <div className="space-y-6">
+      {participantsError && <QueryError message="Erro ao carregar dados dos relatórios." onRetry={refetchParticipants} />}
+
       <PageHeader
         title="Relatórios"
         subtitle="Análises e indicadores de treinamentos"

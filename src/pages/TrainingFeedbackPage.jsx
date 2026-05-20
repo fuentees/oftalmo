@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { toast } from "@/components/ui/use-toast";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
@@ -625,7 +626,7 @@ export default function TrainingFeedbackPage({
     }
     const cleanQuestionText = String(questionFormData.question_text || "").trim();
     if (!cleanQuestionText) {
-      alert("Informe o texto da pergunta.");
+      toast({ variant: "destructive", title: "Campo obrigatório", description: "Informe o texto da pergunta." });
       return;
     }
 
@@ -637,7 +638,7 @@ export default function TrainingFeedbackPage({
           .map((item) => item.trim())
       );
       if (options.length < 2) {
-        alert("Perguntas com alternativas precisam de pelo menos 2 opcoes.");
+        toast({ variant: "destructive", title: "Alternativas insuficientes", description: "Perguntas com alternativas precisam de pelo menos 2 opções." });
         return;
       }
       questionText = buildChoiceQuestionText(cleanQuestionText, options);
@@ -738,7 +739,7 @@ export default function TrainingFeedbackPage({
   const handleCopyFeedbackLink = () => {
     if (!feedbackLink) return;
     navigator.clipboard.writeText(feedbackLink);
-    alert("Link de avaliacao copiado!");
+    toast({ title: "Link copiado!", description: "Link de avaliação copiado para a área de transferência." });
   };
 
   const handleCopyQuestion = async (question) => {

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { toast } from "@/components/ui/use-toast";
 import { useGveMapping } from "@/hooks/useGveMapping";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1147,7 +1148,7 @@ export default function EnrollmentPage({
       training?.code
     );
     navigator.clipboard.writeText(link);
-    alert("Link de inscrição copiado!");
+    toast({ title: "Link copiado!", description: "Link de inscrição copiado para a área de transferência." });
   };
 
   const resolveCalendarInviteEmail = (participant) => {
@@ -1214,7 +1215,8 @@ export default function EnrollmentPage({
     if (!training || !calendarParticipant) return;
     const inviteEmail = String(calendarInviteEmail || "").trim();
     if (inviteEmail && !isValidCalendarEmail(inviteEmail)) {
-      alert("Informe um e-mail Google válido ou deixe em branco.");
+      toast({ variant: "destructive", title: "E-mail inválido", description: "Informe um e-mail Google válido ou deixe em branco." });
+
       return;
     }
     const url = buildGoogleCalendarUrl({
@@ -1225,7 +1227,7 @@ export default function EnrollmentPage({
     });
     const popup = window.open(url, "_blank", "noopener,noreferrer");
     if (!popup) {
-      alert("Não foi possível abrir o Google Agenda. Verifique o bloqueador de pop-up.");
+      toast({ variant: "destructive", title: "Pop-up bloqueado", description: "Não foi possível abrir o Google Agenda. Verifique o bloqueador de pop-up do navegador." });
       return;
     }
     setShowGoogleCalendarDialog(false);
@@ -1266,7 +1268,7 @@ export default function EnrollmentPage({
       }));
 
     if (payload.length === 0) {
-      alert("Todos os campos padrão já existem.");
+      toast({ title: "Nenhum campo novo", description: "Todos os campos padrão já existem neste treinamento." });
       return;
     }
 
@@ -1361,7 +1363,7 @@ export default function EnrollmentPage({
       )
     );
     if (normalizedSelectedKeys.length === 0) {
-      alert("Selecione pelo menos uma coluna para imprimir.");
+      toast({ variant: "destructive", title: "Nenhuma coluna selecionada", description: "Selecione pelo menos uma coluna para imprimir." });
       return false;
     }
 
@@ -1369,7 +1371,7 @@ export default function EnrollmentPage({
       normalizedSelectedKeys.includes(option.key)
     );
     if (selectedColumns.length === 0) {
-      alert("Selecione pelo menos uma coluna válida para imprimir.");
+      toast({ variant: "destructive", title: "Coluna inválida", description: "Selecione pelo menos uma coluna válida para imprimir." });
       return false;
     }
 
@@ -1528,9 +1530,7 @@ export default function EnrollmentPage({
 
     const printWindow = window.open("", "_blank", "width=1100,height=820");
     if (!printWindow) {
-      alert(
-        "Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-up."
-      );
+      toast({ variant: "destructive", title: "Pop-up bloqueado", description: "Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-up do navegador." });
       return false;
     }
 

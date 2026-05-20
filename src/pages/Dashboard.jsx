@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import StatsCard from "@/components/dashboard/StatsCard";
 import DataTable from "@/components/common/DataTable";
+import QueryError from "@/components/common/QueryError";
 
 export default function Dashboard() {
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
@@ -46,7 +47,7 @@ export default function Dashboard() {
     queryFn: () => dataClient.entities.StockMovement.list("-created_at", 10),
   });
 
-  const { data: trainings = [], isLoading: loadingTrainings } = useQuery({
+  const { data: trainings = [], isLoading: loadingTrainings, isError: trainingsError, refetch: refetchTrainings } = useQuery({
     queryKey: ["trainings"],
     queryFn: () => dataClient.entities.Training.list("-date"),
   });
@@ -456,6 +457,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {trainingsError && <QueryError message="Erro ao carregar dados dos treinamentos." onRetry={refetchTrainings} />}
+
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>

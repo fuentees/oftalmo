@@ -65,6 +65,7 @@ import DataTable from "@/components/common/DataTable";
 import MaterialForm from "@/components/stock/MaterialForm";
 import MovementForm from "@/components/stock/MovementForm";
 import MaterialDetails from "@/components/stock/MaterialDetails";
+import QueryError from "@/components/common/QueryError";
 
 const DEFAULT_CATEGORIES = [
   { value: "escritorio", label: "Escritório" },
@@ -120,7 +121,7 @@ export default function Stock() {
     }
   }, []);
 
-  const { data: materials = [], isLoading: loadingMaterials } = useQuery({
+  const { data: materials = [], isLoading: loadingMaterials, isError: materialsError, refetch: refetchMaterials } = useQuery({
     queryKey: ["materials"],
     queryFn: () => dataClient.entities.Material.list(),
   });
@@ -1244,6 +1245,8 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
 
   return (
     <div className="space-y-6">
+      {materialsError && <QueryError message="Erro ao carregar materiais." onRetry={refetchMaterials} />}
+
       <PageHeader
         title="Controle de Estoque"
         subtitle="Gerencie materiais e movimentações"

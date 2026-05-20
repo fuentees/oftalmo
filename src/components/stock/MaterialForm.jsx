@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { toast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -164,7 +165,7 @@ export default function MaterialForm({
     if (!onDeleteCategory) return;
     const removed = onDeleteCategory(value);
     if (!removed) {
-      window.alert("Não é possível excluir uma categoria em uso.");
+      toast({ variant: "destructive", title: "Categoria em uso", description: "Não é possível excluir uma categoria que está sendo utilizada por algum material." });
       return;
     }
     if (formData.category === value) {

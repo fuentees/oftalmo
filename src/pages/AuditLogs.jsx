@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Search, FileText, User, Calendar, Activity } from "lucide-react";
 import QueryError from "@/components/common/QueryError";
 import { format } from "date-fns";
@@ -21,6 +22,7 @@ export default function AuditLogs() {
   const [entityFilter, setEntityFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [detailsLog, setDetailsLog] = useState(null);
 
   const { data: logs = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["audit-logs"],
@@ -125,7 +127,7 @@ export default function AuditLogs() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => alert(JSON.stringify(log.changes, null, 2))}
+            onClick={() => setDetailsLog(log)}
           >
             <FileText className="h-4 w-4" />
           </Button>
@@ -290,6 +292,19 @@ export default function AuditLogs() {
           </div>
         </div>
       )}
+
+      <Dialog open={!!detailsLog} onOpenChange={(open) => !open && setDetailsLog(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Detalhes da ação — {detailsLog?.entity_type} · {detailsLog?.entity_name}
+            </DialogTitle>
+          </DialogHeader>
+          <pre className="text-xs bg-slate-50 rounded-md p-4 overflow-x-auto whitespace-pre-wrap break-all border border-slate-200">
+            {JSON.stringify(detailsLog?.changes, null, 2)}
+          </pre>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { dataClient } from "@/api/dataClient";
+import { toast } from "@/components/ui/use-toast";
 import { extractTrainingIdFromEventNotes } from "@/lib/eventMetadata";
 import { getEffectiveTrainingStatus } from "@/lib/statusRules";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
@@ -364,9 +365,10 @@ export default function TrainingWorkspace() {
         queryClient.invalidateQueries({ queryKey: ["participants"] }),
         queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] }),
       ]);
-      window.alert(
-        `Treinamento excluído com ${deletedEvents} evento(s) e ${deletedParticipants} inscrito(s) removido(s).`
-      );
+      toast({
+        title: "Treinamento excluído",
+        description: `${deletedEvents} evento(s) e ${deletedParticipants} inscrito(s) removido(s).`,
+      });
       navigate("/Trainings");
     },
     onError: (error) => {
