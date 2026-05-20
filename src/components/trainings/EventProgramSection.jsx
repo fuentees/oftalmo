@@ -458,35 +458,35 @@ export default function EventProgramSection({ training }) {
       return;
     }
 
-    const tableRows = groupedProgramRows
-      .map((group) =>
-        group.sessions
-          .map(
-            (session, sessionIndex) => `
+    const dayBlocks = groupedProgramRows
+      .map(
+        (group) => `
+        <div class="day-block">
+          <div class="day-header">${escapeHtml(group.dateLabel)}</div>
+          <table>
+            <thead>
               <tr>
-                ${
-                  sessionIndex === 0
-                    ? `<td class="date-group" rowspan="${group.sessions.length}">${escapeHtml(
-                        group.dateLabel
-                      )}</td>`
-                    : ""
-                }
-                <td>${escapeHtml(
-                  normalizeTimeValue(session.start_time) ||
-                    session.start_time ||
-                    "-"
-                )}</td>
-                <td>${escapeHtml(
-                  normalizeTimeValue(session.end_time) ||
-                    session.end_time ||
-                    "-"
-                )}</td>
-                <td>${escapeHtml(session.title || "-")}</td>
-                <td>${escapeHtml(session.speaker_name || "-")}</td>
+                <th class="col-time">Início</th>
+                <th class="col-time">Fim</th>
+                <th>Tema / Atividade</th>
+                <th class="col-speaker">Palestrante</th>
               </tr>
-            `
-          )
-          .join("")
+            </thead>
+            <tbody>
+              ${group.sessions
+                .map(
+                  (session) => `
+                  <tr>
+                    <td>${escapeHtml(normalizeTimeValue(session.start_time) || session.start_time || "-")}</td>
+                    <td>${escapeHtml(normalizeTimeValue(session.end_time) || session.end_time || "-")}</td>
+                    <td>${escapeHtml(session.title || "-")}</td>
+                    <td>${escapeHtml(session.speaker_name || "-")}</td>
+                  </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>`
       )
       .join("");
 
@@ -505,32 +505,11 @@ export default function EventProgramSection({ training }) {
               color: #111827;
               margin: 0;
             }
-            h1 {
-              margin: 0 0 8pt 0;
-              text-align: center;
-              text-transform: uppercase;
-              font-size: 12pt;
-            }
-            .brand {
-              text-align: center;
-              font-size: 10pt;
-              font-weight: 700;
-              color: #475569;
-              margin-bottom: 10pt;
-              text-transform: uppercase;
-            }
-            .meta {
-              margin-bottom: 10pt;
-            }
-            .meta p {
-              margin: 0 0 4pt 0;
-              font-size: 11pt;
-            }
             .hero {
               border: 1px solid #cbd5e1;
               border-top: 5px solid #1d4ed8;
               padding: 12px 14px;
-              margin-bottom: 10pt;
+              margin-bottom: 14pt;
               background: #f8fafc;
             }
             .hero p {
@@ -559,7 +538,7 @@ export default function EventProgramSection({ training }) {
             .meta-table {
               width: 100%;
               border-collapse: collapse;
-              margin-bottom: 10pt;
+              margin-bottom: 18pt;
               font-size: 10.5pt;
             }
             .meta-table td {
@@ -569,21 +548,27 @@ export default function EventProgramSection({ training }) {
               width: 50%;
               background: #ffffff;
             }
-            td.date-group {
-              background: #eff6ff;
+            .day-block {
+              margin-bottom: 22pt;
+              page-break-inside: avoid;
+            }
+            .day-header {
+              background: #1d4ed8;
+              color: #ffffff;
               font-weight: 700;
-              text-align: center;
-              vertical-align: middle;
+              font-size: 11pt;
+              padding: 7px 10px;
+              text-transform: uppercase;
+              letter-spacing: 0.3px;
             }
             table {
               width: 100%;
               border-collapse: collapse;
-              margin-top: 8pt;
               font-size: 11pt;
             }
             th, td {
               border: 1px solid #9ca3af;
-              padding: 7px;
+              padding: 7px 8px;
               vertical-align: top;
             }
             th {
@@ -592,6 +577,9 @@ export default function EventProgramSection({ training }) {
               font-weight: 700;
               text-align: left;
             }
+            .col-time { width: 70px; white-space: nowrap; }
+            .col-speaker { width: 28%; }
+            tr:nth-child(even) td { background: #f8fafc; }
           </style>
         </head>
         <body>
@@ -619,20 +607,7 @@ export default function EventProgramSection({ training }) {
             </tr>
           </table>
 
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Início</th>
-                <th>Fim</th>
-                <th>Tema</th>
-                <th>Palestrante</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRows}
-            </tbody>
-          </table>
+          ${dayBlocks}
         </body>
       </html>
     `;
