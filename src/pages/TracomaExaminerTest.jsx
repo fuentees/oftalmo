@@ -33,10 +33,6 @@ import {
   isMissingSupabaseTableError,
 } from "@/lib/supabaseErrors";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
-import {
-  buildParticipantIdentity,
-  resolveTrainingParticipantMatch,
-} from "@/lib/trainingParticipantMatch";
 
 const formatNumber = (value, digits = 3) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
@@ -50,8 +46,6 @@ export default function TracomaExaminerTest() {
   const trainingId = String(urlParams.get("training") || "").trim();
   const initialKeyCode = normalizeAnswerKeyCode(urlParams.get("key"));
 
-  const [participantName, setParticipantName] = useState("");
-  const [participantEmail, setParticipantEmail] = useState("");
   const [participantRg, setParticipantRg] = useState("");
   const [selectedKeyCode, setSelectedKeyCode] = useState("");
   const [answers, setAnswers] = useState({});
@@ -127,9 +121,9 @@ export default function TracomaExaminerTest() {
     mutationFn: async () => {
       setFormError("");
 
-      const cleanName = String(participantName || "").trim();
-      if (!cleanName) {
-        throw new Error("Informe o nome do formando.");
+      const rgDigits = String(participantRg || "").replace(/\D/g, "");
+      if (rgDigits.length < 4) {
+        throw new Error("Informe pelo menos os 4 primeiros dígitos do RG.");
       }
       if (!trainingId) {
         throw new Error("Treinamento nao identificado no link.");
@@ -161,21 +155,26 @@ export default function TracomaExaminerTest() {
         );
       }
 
-      const linkedParticipant = resolveTrainingParticipantMatch(enrolledParticipants, {
-        name: cleanName,
-        email: participantEmail,
-        rg: participantRg,
+      const rgMatches = enrolledParticipants.filter((p) => {
+        const pRg = String(p.professional_rg || p.professional_cpf || "").replace(/\D/g, "");
+        return pRg.startsWith(rgDigits) || rgDigits.startsWith(pRg);
       });
-      if (!linkedParticipant) {
+      if (rgMatches.length === 0) {
         throw new Error(
-          "Formando nao encontrado entre os inscritos deste treinamento. Use o nome/RG/e-mail cadastrado na inscricao."
+          "Nenhum inscrito encontrado com este RG. Verifique os dígitos e tente novamente."
         );
       }
-      const linkedIdentity = buildParticipantIdentity(linkedParticipant, {
-        name: cleanName,
-        email: participantEmail,
-        rg: participantRg,
-      });
+      if (rgMatches.length > 1) {
+        throw new Error(
+          `RG ambíguo: ${rgMatches.length} inscritos com este prefixo. Informe mais dígitos.`
+        );
+      }
+      const linkedParticipant = rgMatches[0];
+      const linkedIdentity = {
+        name: linkedParticipant.professional_name || "",
+        email: linkedParticipant.professional_email || "",
+        rg: linkedParticipant.professional_rg || linkedParticipant.professional_cpf || "",
+      };
 
       const candidateAnswers = [];
       for (let question = 1; question <= TRACOMA_TOTAL_QUESTIONS; question += 1) {
@@ -404,6 +403,7 @@ export default function TracomaExaminerTest() {
               setSubmissionResult(null);
               setAnswers({});
               setFormError("");
+              setParticipantRg("");
             }}
           >
             Realizar novo envio
@@ -431,7 +431,7 @@ export default function TracomaExaminerTest() {
             </div>
             <CardTitle className="text-2xl">{training.title}</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="answer-key-code">Tipo de teste *</Label>
               <Select value={selectedKeyCode} onValueChange={setSelectedKeyCode}>
@@ -448,32 +448,17 @@ export default function TracomaExaminerTest() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="participant-name">Nome do formando *</Label>
-              <Input
-                id="participant-name"
-                value={participantName}
-                onChange={(event) => setParticipantName(event.target.value)}
-                placeholder="Nome completo"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="participant-email">E-mail (opcional)</Label>
-              <Input
-                id="participant-email"
-                type="email"
-                value={participantEmail}
-                onChange={(event) => setParticipantEmail(event.target.value)}
-                placeholder="email@dominio.com"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="participant-rg">RG (opcional)</Label>
+              <Label htmlFor="participant-rg">RG *</Label>
               <Input
                 id="participant-rg"
                 value={participantRg}
                 onChange={(event) => setParticipantRg(event.target.value)}
-                placeholder="RG do inscrito"
+                placeholder="Pelo menos os 4 primeiros dígitos"
+                inputMode="numeric"
               />
+              <p className="text-xs text-slate-500">
+                Informe os primeiros dígitos do RG cadastrado na inscrição.
+              </p>
             </div>
           </CardContent>
         </Card>
