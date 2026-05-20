@@ -580,12 +580,27 @@ export default function EventProgramSection({ training }) {
 
     const html = `
       <!doctype html>
-      <html lang="pt-BR">
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:w="urn:schemas-microsoft-com:office:word"
+            xmlns="http://www.w3.org/TR/REC-html40"
+            lang="pt-BR">
         <head>
           <meta charset="utf-8" />
           <title>Programação do evento - ${escapeHtml(training?.title || "-")}</title>
+          <xml>
+            <w:WordDocument>
+              <w:View>Print</w:View>
+              <w:Zoom>100</w:Zoom>
+            </w:WordDocument>
+          </xml>
           <style>
-            @page { margin: 2.5cm 1.5cm 2.5cm 1.5cm; }
+            @page WordSection1 {
+              mso-page-margin-top: 2.5cm;
+              mso-page-margin-bottom: 2.5cm;
+              mso-page-margin-left: 1.5cm;
+              mso-page-margin-right: 1.5cm;
+            }
+            div.WordSection1 { page: WordSection1; }
             * { box-sizing: border-box; }
             body {
               font-family: Arial, Helvetica, sans-serif;
@@ -676,6 +691,7 @@ export default function EventProgramSection({ training }) {
           </style>
         </head>
         <body>
+          <div class="WordSection1">
           <div class="hero">
             <p class="org">Secretaria de Estado da Saúde • CVE • CCD • São Paulo</p>
             <p class="doc-title">Programação do treinamento</p>
@@ -701,6 +717,7 @@ export default function EventProgramSection({ training }) {
           </table>
 
           ${dayBlocks}
+          </div>
         </body>
       </html>
     `;
