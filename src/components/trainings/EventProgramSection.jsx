@@ -229,18 +229,51 @@ export default function EventProgramSection({ training }) {
   );
 
   const syncSpeakersFromSessions = (existingSpeakers, dates) => {
-    const base = Array.isArray(existingSpeakers) ? [...existingSpeakers] : [];
+    const base = Array.isArray(existingSpeakers) ? existingSpeakers.map((s) => ({ ...s })) : [];
     const seenIds = new Set(base.map((s) => s.professional_id).filter(Boolean));
+
     dates.forEach((dateItem) => {
       (Array.isArray(dateItem?.sessions) ? dateItem.sessions : []).forEach((session) => {
-        if (session.professional_id && !seenIds.has(session.professional_id)) {
+        const name = String(session.speaker_name || "").trim();
+        if (!name) return;
+        const nameLower = name.toLowerCase();
+
+        if (session.professional_id) {
+          if (seenIds.has(session.professional_id)) return;
           seenIds.add(session.professional_id);
-          base.push({
-            name: String(session.speaker_name || "").trim(),
-            professional_id: session.professional_id,
-            email: String(session.professional_email || "").trim(),
-            lecture: String(session.title || "").trim(),
-          });
+          // Se já existe entrada sem vínculo com o mesmo nome, atualiza em vez de duplicar
+          const existingIdx = base.findIndex(
+            (s) => !s.professional_id && String(s.name || "").trim().toLowerCase() === nameLower
+          );
+          if (existingIdx >= 0) {
+            base[existingIdx] = {
+              ...base[existingIdx],
+              name,
+              professional_id: session.professional_id,
+              email: String(session.professional_email || "").trim() || base[existingIdx].email,
+              lecture: String(session.title || "").trim() || base[existingIdx].lecture,
+            };
+          } else {
+            base.push({
+              name,
+              professional_id: session.professional_id,
+              email: String(session.professional_email || "").trim(),
+              lecture: String(session.title || "").trim(),
+            });
+          }
+        } else {
+          // Sem vínculo: deduplica por nome (ignora se já há entrada vinculada com o mesmo nome)
+          const alreadyExists = base.some(
+            (s) => String(s.name || "").trim().toLowerCase() === nameLower
+          );
+          if (!alreadyExists) {
+            base.push({
+              name,
+              professional_id: "",
+              email: "",
+              lecture: String(session.title || "").trim(),
+            });
+          }
         }
       });
     });
