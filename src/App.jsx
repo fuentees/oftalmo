@@ -7,6 +7,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'r
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import Login from './pages/Login';
 import TrainingFeedback from './pages/TrainingFeedback';
 import TracomaExaminerTest from './pages/TracomaExaminerTest';
@@ -77,21 +78,23 @@ const AuthenticatedApp = () => {
   };
 
   return (
-    <Routes>
-      <Route path="/" element={
-        <LayoutWrapper currentPageName={mainPageKey}>
-          <MainPage />
-        </LayoutWrapper>
-      } />
-      {Object.entries(Pages).map(([path, Page]) => (
-        <Route
-          key={path}
-          path={`/${path}`}
-          element={renderPageWithOptionalLayout(path, Page)}
-        />
-      ))}
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+    <ErrorBoundary>
+      <Routes>
+        <Route path="/" element={
+          <LayoutWrapper currentPageName={mainPageKey}>
+            <MainPage />
+          </LayoutWrapper>
+        } />
+        {Object.entries(Pages).map(([path, Page]) => (
+          <Route
+            key={path}
+            path={`/${path}`}
+            element={renderPageWithOptionalLayout(path, Page)}
+          />
+        ))}
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    </ErrorBoundary>
   );
 };
 

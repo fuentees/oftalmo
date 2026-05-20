@@ -10,7 +10,8 @@ import {
   CheckCircle,
   AlertCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +46,7 @@ export default function Participants() {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [uploadStep, setUploadStep] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
 
@@ -420,11 +422,15 @@ export default function Participants() {
 
   const uploadExcel = useMutation({
     mutationFn: async (file) => {
-      setUploadStatus({ type: "loading", message: "Processando planilha..." });
-      
+      setUploadStep(1);
+      setUploadStatus({ type: "loading", message: "Enviando arquivo..." });
+
       // Upload file
       const { file_url } = await dataClient.integrations.Core.UploadFile({ file });
-      
+
+      setUploadStep(2);
+      setUploadStatus({ type: "loading", message: "Extraindo dados da planilha..." });
+
       // Extract data from Excel
       const result = await dataClient.integrations.Core.ExtractDataFromUploadedFile({
         file_url,
@@ -469,14 +475,18 @@ export default function Participants() {
         };
       });
       
+      setUploadStep(3);
+      setUploadStatus({ type: "loading", message: "Salvando participantes..." });
+
       // Create participants
       await dataClient.entities.TrainingParticipant.bulkCreate(
         normalizedParticipants
       );
-      
-      setUploadStatus({ 
-        type: "success", 
-        message: `${normalizedParticipants.length} participante(s) importado(s) com sucesso!` 
+
+      setUploadStep(4);
+      setUploadStatus({
+        type: "success",
+        message: `${normalizedParticipants.length} participante(s) importado(s) com sucesso!`,
       });
       
       return normalizedParticipants;
@@ -488,12 +498,14 @@ export default function Participants() {
         setShowUpload(false);
         setUploadFile(null);
         setUploadStatus(null);
+        setUploadStep(0);
       }, 2000);
     },
     onError: (error) => {
-      setUploadStatus({ 
-        type: "error", 
-        message: error.message || "Erro ao importar participantes" 
+      setUploadStep(0);
+      setUploadStatus({
+        type: "error",
+        message: error.message || "Erro ao importar participantes",
       });
     },
   });
@@ -1155,19 +1167,43 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
               )}
             </div>
 
-            {uploadStatus && (
+            {uploadExcel.isPending && uploadStep > 0 && (
+              <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <p className="text-sm font-medium text-blue-800">Importando planilha...</p>
+                <div className="space-y-2">
+                  {[
+                    { step: 1, label: "Enviando arquivo" },
+                    { step: 2, label: "Extraindo dados" },
+                    { step: 3, label: "Salvando participantes" },
+                    { step: 4, label: "Concluído" },
+                  ].map(({ step, label }) => (
+                    <div key={step} className="flex items-center gap-2">
+                      {uploadStep > step ? (
+                        <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+                      ) : uploadStep === step ? (
+                        <Loader2 className="h-4 w-4 text-blue-600 animate-spin shrink-0" />
+                      ) : (
+                        <div className="h-4 w-4 rounded-full border-2 border-slate-300 shrink-0" />
+                      )}
+                      <span className={`text-sm ${uploadStep === step ? "text-blue-800 font-medium" : uploadStep > step ? "text-green-700" : "text-slate-400"}`}>
+                        {label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {uploadStatus && !uploadExcel.isPending && (
               <Alert className={
                 uploadStatus.type === "error" ? "border-red-200 bg-red-50" :
-                uploadStatus.type === "success" ? "border-green-200 bg-green-50" :
-                "border-blue-200 bg-blue-50"
+                "border-green-200 bg-green-50"
               }>
-                {uploadStatus.type === "error" && <AlertCircle className="h-4 w-4 text-red-600" />}
-                {uploadStatus.type === "success" && <CheckCircle className="h-4 w-4 text-green-600" />}
-                {uploadStatus.type === "loading" && <AlertCircle className="h-4 w-4 text-blue-600" />}
+                {uploadStatus.type === "error"
+                  ? <AlertCircle className="h-4 w-4 text-red-600" />
+                  : <CheckCircle className="h-4 w-4 text-green-600" />}
                 <AlertDescription className={
-                  uploadStatus.type === "error" ? "text-red-800" :
-                  uploadStatus.type === "success" ? "text-green-800" :
-                  "text-blue-800"
+                  uploadStatus.type === "error" ? "text-red-800" : "text-green-800"
                 }>
                   {uploadStatus.message}
                 </AlertDescription>

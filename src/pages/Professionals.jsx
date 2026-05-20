@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import {
@@ -29,7 +29,9 @@ import { Label } from "@/components/ui/label";
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
+import QueryError from "@/components/common/QueryError";
 import { useNavigate } from "react-router-dom";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import {
   loadProfessionalGoogleEmailStore,
   resolveProfessionalGoogleEmail,
@@ -42,6 +44,7 @@ export default function Professionals() {
   const [editingProfessional, setEditingProfessional] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [editStatus, setEditStatus] = useState(null);
+  const [editFieldErrors, setEditFieldErrors] = useState({});
   const [pageStatus, setPageStatus] = useState(null);
   const [editForm, setEditForm] = useState({
     name: "",
@@ -54,12 +57,19 @@ export default function Professionals() {
     registration: "",
     sector: "",
   });
+  const initialEditFormRef = useRef(null);
+  const isEditDirty =
+    isEditOpen &&
+    initialEditFormRef.current !== null &&
+    JSON.stringify(editForm) !== JSON.stringify(initialEditFormRef.current);
+  useUnsavedChanges(isEditDirty);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const {
     data: professionals = [],
     isLoading,
+    isError: isProfessionalsError,
     isFetching: isFetchingProfessionals,
     refetch: refetchProfessionals,
   } = useQuery({
@@ -121,7 +131,7 @@ export default function Professionals() {
     setPageStatus(null);
     setEditStatus(null);
     setEditingProfessional(professional);
-    setEditForm({
+    const initialForm = {
       name: String(professional?.name || ""),
       email: String(professional?.email || ""),
       google_email: resolveProfessionalGoogleEmail(googleEmailStore, {
@@ -134,14 +144,18 @@ export default function Professionals() {
       cpf: String(professional?.cpf || ""),
       registration: String(professional?.registration || ""),
       sector: String(professional?.sector || ""),
-    });
+    };
+    setEditForm(initialForm);
+    initialEditFormRef.current = initialForm;
     setIsEditOpen(true);
   };
 
   const handleCloseEdit = () => {
     setIsEditOpen(false);
     setEditStatus(null);
+    setEditFieldErrors({});
     setEditingProfessional(null);
+    initialEditFormRef.current = null;
   };
 
   const updateProfessional = useMutation({
@@ -198,6 +212,13 @@ export default function Professionals() {
   const handleSubmitEdit = (event) => {
     event.preventDefault();
     setEditStatus(null);
+    setEditFieldErrors({});
+    const name = String(editForm.name || "").trim();
+    if (!name) {
+      setEditFieldErrors({ name: "O nome é obrigatório." });
+      setEditStatus({ type: "error", message: "Informe o nome do profissional." });
+      return;
+    }
     updateProfessional.mutate();
   };
 
@@ -380,6 +401,10 @@ export default function Professionals() {
         </AlertDescription>
       </Alert>
 
+      {isProfessionalsError && (
+        <QueryError onRetry={refetchProfessionals} />
+      )}
+
       {pageStatus && (
         <Alert
           className={
@@ -422,16 +447,23 @@ export default function Professionals() {
           <form onSubmit={handleSubmitEdit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="professional-name">Nome *</Label>
+                <Label htmlFor="professional-name" className={editFieldErrors.name ? "text-red-600" : ""}>
+                  Nome *
+                </Label>
                 <Input
                   id="professional-name"
                   value={editForm.name}
-                  onChange={(event) =>
-                    setEditForm((prev) => ({ ...prev, name: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setEditForm((prev) => ({ ...prev, name: event.target.value }));
+                    if (editFieldErrors.name) setEditFieldErrors((prev) => ({ ...prev, name: undefined }));
+                  }}
                   placeholder="Nome completo"
-                  required
+                  className={editFieldErrors.name ? "border-red-400 focus-visible:ring-red-400" : ""}
+                  aria-invalid={!!editFieldErrors.name}
                 />
+                {editFieldErrors.name && (
+                  <p className="text-xs text-red-600">{editFieldErrors.name}</p>
+                )}
               </div>
 
               <div className="space-y-2">

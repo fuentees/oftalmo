@@ -9,30 +9,44 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Search, FileText, User, Calendar, Activity } from "lucide-react";
+import QueryError from "@/components/common/QueryError";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 export default function AuditLogs() {
   const [searchTerm, setSearchTerm] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [entityFilter, setEntityFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
-  const { data: logs = [], isLoading } = useQuery({
+  const { data: logs = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["audit-logs"],
     queryFn: () => dataClient.entities.AuditLog.list("-created_date", 500),
   });
 
   const filteredLogs = logs.filter(log => {
-    const matchesSearch = 
+    const matchesSearch =
       log.entity_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.user_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.user_email?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesAction = actionFilter === "all" || log.action === actionFilter;
     const matchesEntity = entityFilter === "all" || log.entity_type === entityFilter;
-    
+
     return matchesSearch && matchesAction && matchesEntity;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pagedLogs = filteredLogs.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const handleFilterChange = (setter) => (value) => {
+    setter(value);
+    setPage(1);
+  };
 
   const getActionBadge = (action) => {
     const badges = {
@@ -120,6 +134,15 @@ export default function AuditLogs() {
     },
   ];
 
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Logs de Auditoria" subtitle="Histórico de ações no sistema" />
+        <QueryError onRetry={refetch} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -181,12 +204,12 @@ export default function AuditLogs() {
               <Input
                 placeholder="Buscar..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                 className="pl-10"
               />
             </div>
 
-            <Select value={actionFilter} onValueChange={setActionFilter}>
+            <Select value={actionFilter} onValueChange={handleFilterChange(setActionFilter)}>
               <SelectTrigger>
                 <SelectValue placeholder="Todas as ações" />
               </SelectTrigger>
@@ -198,7 +221,7 @@ export default function AuditLogs() {
               </SelectContent>
             </Select>
 
-            <Select value={entityFilter} onValueChange={setEntityFilter}>
+            <Select value={entityFilter} onValueChange={handleFilterChange(setEntityFilter)}>
               <SelectTrigger>
                 <SelectValue placeholder="Todas as entidades" />
               </SelectTrigger>
@@ -216,10 +239,57 @@ export default function AuditLogs() {
       {/* Tabela */}
       <DataTable
         columns={columns}
-        data={filteredLogs}
+        data={pagedLogs}
         isLoading={isLoading}
         emptyMessage="Nenhum log encontrado"
       />
+
+      {/* Paginação */}
+      {filteredLogs.length > 0 && (
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <span>Linhas por página:</span>
+            <Select
+              value={String(pageSize)}
+              onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}
+            >
+              <SelectTrigger className="w-20 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((s) => (
+                  <SelectItem key={s} value={String(s)}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span>
+              {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filteredLogs.length)} de{" "}
+              {filteredLogs.length}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={safePage <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Anterior
+            </Button>
+            <span className="px-3 text-sm text-slate-600">
+              {safePage} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={safePage >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

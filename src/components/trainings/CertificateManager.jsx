@@ -28,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Mail, CheckCircle, Award, Printer, Eye, Loader2 } from "lucide-react";
+import { Mail, CheckCircle, Award, Printer, Eye, Loader2, ArrowUpDown, ArrowUp, ArrowDown, FileDown } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
@@ -182,6 +182,7 @@ const normalizeStaffEntries = (value) => {
 export default function CertificateManager({ training, participants = [], onClose }) {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [previewParticipantId, setPreviewParticipantId] = useState("");
+  const [sortConfig, setSortConfig] = useState({ field: null, direction: "asc" });
   const [previewTeamRecipientId, setPreviewTeamRecipientId] = useState("");
   const [selectedTemplateScope, setSelectedTemplateScope] = useState(
     CERT_TEMPLATE_SCOPE_GLOBAL
@@ -913,6 +914,7 @@ export default function CertificateManager({ training, participants = [], onClos
           });
         } catch (error) {
           results.push({
+            id: participant.id,
             name: participant.professional_name,
             success: false,
             error: error.message,
@@ -925,7 +927,8 @@ export default function CertificateManager({ training, participants = [], onClos
     onSuccess: (results) => {
       setProcessing(false);
       const successCount = results.filter((r) => r.success).length;
-      const failCount = results.filter((r) => !r.success).length;
+      const failedResults = results.filter((r) => !r.success);
+      const failCount = failedResults.length;
       const warningCount = results.reduce(
         (acc, r) => acc + (r.warnings?.length || 0),
         0
@@ -939,6 +942,7 @@ export default function CertificateManager({ training, participants = [], onClos
           (failCount > 0 ? `, ${failCount} falha(s)` : "!") +
           warningMessage,
         details: results,
+        failedIds: failedResults.map((r) => r.id).filter(Boolean),
       });
 
       queryClient.invalidateQueries({ queryKey: ["participants"] });
@@ -1010,6 +1014,32 @@ export default function CertificateManager({ training, participants = [], onClos
       ),
     [eligibleParticipants]
   );
+  const sortedEligibleParticipants = useMemo(() => {
+    const { field: sortField, direction: sortDir } = sortConfig;
+    if (!sortField) return eligibleParticipants;
+    return [...eligibleParticipants].sort((a, b) => {
+      const valA = String(a[sortField] || "");
+      const valB = String(b[sortField] || "");
+      const cmp = valA.localeCompare(valB, "pt-BR", { sensitivity: "base" });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [eligibleParticipants, sortConfig]);
+
+  const handleSort = (field) => {
+    setSortConfig((prev) =>
+      prev.field === field
+        ? { field, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { field, direction: "asc" }
+    );
+  };
+
+  const SortIcon = ({ field }) => {
+    if (sortConfig.field !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40 inline" />;
+    return sortConfig.direction === "asc"
+      ? <ArrowUp className="h-3 w-3 ml-1 inline" />
+      : <ArrowDown className="h-3 w-3 ml-1 inline" />;
+  };
+
   const previewParticipantOptions = useMemo(
     () =>
       printableEligibleParticipants.map((participant) => ({
@@ -1238,6 +1268,32 @@ export default function CertificateManager({ training, participants = [], onClos
     printWindow.document.close();
   };
 
+  const handleExportApprovedCSV = () => {
+    if (printableEligibleParticipants.length === 0) return;
+    const headers = ["Nome", "RG/CPF", "Município", "GVE", "Email", "Certificado emitido", "Data de envio"];
+    const rows = printableEligibleParticipants.map((p) => [
+      p.professional_name || "",
+      p.professional_rg || p.professional_cpf || "",
+      p.municipality || "",
+      p.health_region || "",
+      p.professional_email || "",
+      p.certificate_issued ? "Sim" : "Não",
+      p.certificate_sent_date ? format(new Date(p.certificate_sent_date), "dd/MM/yyyy") : "",
+    ]);
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";"))
+      .join("\n");
+    const bom = "﻿";
+    const blob = new Blob([bom + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const trainingTitle = String(training?.title || "treinamento").replace(/[^a-z0-9]/gi, "_");
+    link.download = `aprovados_${trainingTitle}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (!training) {
     return (
       <div className="space-y-4">
@@ -1299,8 +1355,21 @@ export default function CertificateManager({ training, participants = [], onClos
       {result && (
         <Alert className={result.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
           <CheckCircle className={`h-4 w-4 ${result.success ? "text-green-600" : "text-red-600"}`} />
-          <AlertDescription className={result.success ? "text-green-800" : "text-red-800"}>
-            {result.message}
+          <AlertDescription className={`flex items-center justify-between gap-4 ${result.success ? "text-green-800" : "text-red-800"}`}>
+            <span>{result.message}</span>
+            {Array.isArray(result.failedIds) && result.failedIds.length > 0 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="shrink-0 border-red-300 text-red-700 hover:bg-red-100"
+                disabled={processing}
+                onClick={() => issueCertificates.mutate(result.failedIds)}
+              >
+                <Loader2 className="h-3 w-3 mr-1" />
+                Tentar novamente ({result.failedIds.length})
+              </Button>
+            )}
           </AlertDescription>
         </Alert>
       )}
@@ -1452,6 +1521,15 @@ export default function CertificateManager({ training, participants = [], onClos
             <Button
               type="button"
               variant="outline"
+              onClick={handleExportApprovedCSV}
+              disabled={printableEligibleParticipants.length === 0 || processing}
+            >
+              <FileDown className="h-4 w-4 mr-2" />
+              Exportar CSV
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
               onClick={toggleAll}
               disabled={eligibleParticipants.length === 0 || processing}
             >
@@ -1485,10 +1563,25 @@ export default function CertificateManager({ training, participants = [], onClos
                       onCheckedChange={toggleAll}
                     />
                   </TableHead>
-                  <TableHead>Nome</TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none hover:bg-slate-100"
+                    onClick={() => handleSort("professional_name")}
+                  >
+                    Nome <SortIcon field="professional_name" />
+                  </TableHead>
                   <TableHead>RG</TableHead>
-                  <TableHead>Município</TableHead>
-                  <TableHead>GVE</TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none hover:bg-slate-100"
+                    onClick={() => handleSort("municipality")}
+                  >
+                    Município <SortIcon field="municipality" />
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none hover:bg-slate-100"
+                    onClick={() => handleSort("health_region")}
+                  >
+                    GVE <SortIcon field="health_region" />
+                  </TableHead>
                   <TableHead>Email</TableHead>
                   {useRepadScoreCriteria && <TableHead>Nota (Kappa x100)</TableHead>}
                   <TableHead>Status</TableHead>
@@ -1496,7 +1589,7 @@ export default function CertificateManager({ training, participants = [], onClos
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {eligibleParticipants.length === 0 ? (
+                {sortedEligibleParticipants.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={useRepadScoreCriteria ? 9 : 8}
@@ -1506,7 +1599,7 @@ export default function CertificateManager({ training, participants = [], onClos
                     </TableCell>
                   </TableRow>
                 ) : (
-                  eligibleParticipants.map((participant) => (
+                  sortedEligibleParticipants.map((participant) => (
                     <TableRow key={participant.id}>
                       <TableCell>
                         <Checkbox
