@@ -2844,45 +2844,6 @@ export default function TracomaExaminerEvaluationPage({
 
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Matriz 2x2</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="overflow-x-auto">
-                        <table className="w-full border text-sm">
-                          <thead>
-                            <tr className="bg-slate-50">
-                              <th className="border px-3 py-2"></th>
-                              <th className="border px-3 py-2">Formando = 1</th>
-                              <th className="border px-3 py-2">Formando = 0</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr>
-                              <td className="border px-3 py-2 font-medium">Padrao = 1</td>
-                              <td className="border px-3 py-2">
-                                {selectedResult.matrix_a || 0}
-                              </td>
-                              <td className="border px-3 py-2">
-                                {selectedResult.matrix_c || 0}
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="border px-3 py-2 font-medium">Padrao = 0</td>
-                              <td className="border px-3 py-2">
-                                {selectedResult.matrix_b || 0}
-                              </td>
-                              <td className="border px-3 py-2">
-                                {selectedResult.matrix_d || 0}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
                       <CardTitle className="text-base">
                         Resposta por questao (certa/errada)
                       </CardTitle>
