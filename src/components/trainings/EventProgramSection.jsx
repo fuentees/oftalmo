@@ -18,6 +18,7 @@ import {
   ClipboardPaste,
   Copy,
   Download,
+  GripVertical,
   Plus,
   Save,
   Trash2,
@@ -73,6 +74,8 @@ export default function EventProgramSection({ training }) {
   const queryClient = useQueryClient();
   const [programDates, setProgramDates] = useState([]);
   const [programStatus, setProgramStatus] = useState(null);
+  const [dragState, setDragState] = useState(null);
+  const [dragOverState, setDragOverState] = useState(null);
   const trainingProgramSignature = useMemo(() => {
     const normalizedDates = Array.isArray(training?.dates)
       ? training.dates.map((dateItem) => ({
@@ -296,6 +299,43 @@ export default function EventProgramSection({ training }) {
     upsertDateSessions(dateIndex, (sessions) =>
       sessions.filter((session) => session.id !== sessionId)
     );
+  };
+
+  const handleDragStart = (e, dateIndex, sessionId) => {
+    setDragState({ dateIndex, sessionId });
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e, dateIndex, sessionIndex) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverState({ dateIndex, sessionIndex });
+  };
+
+  const handleDrop = (e, targetDateIndex, targetSessionIndex) => {
+    e.preventDefault();
+    if (!dragState) return;
+    const { dateIndex: srcDateIndex, sessionId } = dragState;
+    setDragState(null);
+    setDragOverState(null);
+    setProgramDates((prev) => {
+      const next = prev.map((dateItem) => ({
+        ...dateItem,
+        sessions: [...(Array.isArray(dateItem.sessions) ? dateItem.sessions : [])],
+      }));
+      const srcSession = next[srcDateIndex]?.sessions.find((s) => s.id === sessionId);
+      if (!srcSession) return prev;
+      next[srcDateIndex].sessions = next[srcDateIndex].sessions.filter((s) => s.id !== sessionId);
+      if (!next[targetDateIndex]) return next;
+      const insertAt = Math.min(targetSessionIndex, next[targetDateIndex].sessions.length);
+      next[targetDateIndex].sessions.splice(insertAt, 0, srcSession);
+      return next;
+    });
+  };
+
+  const handleDragEnd = () => {
+    setDragState(null);
+    setDragOverState(null);
   };
 
   const handleCopyProgram = async () => {
@@ -782,6 +822,7 @@ export default function EventProgramSection({ training }) {
                         <Table>
                           <TableHeader>
                             <TableRow className="bg-slate-100/70">
+                              <TableHead className="w-8 p-2"></TableHead>
                               <TableHead className="min-w-[110px]">Data</TableHead>
                               <TableHead className="min-w-[120px]">Hora início</TableHead>
                               <TableHead className="min-w-[120px]">Hora fim</TableHead>
@@ -793,13 +834,31 @@ export default function EventProgramSection({ training }) {
                           <TableBody>
                             {sessions.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={6} className="py-6 text-center text-sm text-slate-500">
+                                <TableCell colSpan={7} className="py-6 text-center text-sm text-slate-500">
                                   Nenhuma aula digitada para esta data.
                                 </TableCell>
                               </TableRow>
                             ) : (
                               sessions.map((session, sessionIndex) => (
-                                <TableRow key={session.id} className="align-top">
+                                <TableRow
+                                  key={session.id}
+                                  draggable
+                                  onDragStart={(e) => handleDragStart(e, dateIndex, session.id)}
+                                  onDragOver={(e) => handleDragOver(e, dateIndex, sessionIndex)}
+                                  onDrop={(e) => handleDrop(e, dateIndex, sessionIndex)}
+                                  onDragEnd={handleDragEnd}
+                                  className={`align-top transition-opacity ${
+                                    dragState?.sessionId === session.id ? "opacity-40" : ""
+                                  } ${
+                                    dragOverState?.dateIndex === dateIndex &&
+                                    dragOverState?.sessionIndex === sessionIndex
+                                      ? "border-t-2 border-blue-400 bg-blue-50/40"
+                                      : ""
+                                  }`}
+                                >
+                                  <TableCell className="p-2 text-slate-400 cursor-grab active:cursor-grabbing">
+                                    <GripVertical className="h-4 w-4" />
+                                  </TableCell>
                                   {sessionIndex === 0 ? (
                                     <TableCell
                                       rowSpan={sessions.length}
@@ -900,6 +959,25 @@ export default function EventProgramSection({ training }) {
                                   </TableCell>
                                 </TableRow>
                               ))
+                            )}
+                            {dragState && dragState.dateIndex !== dateIndex && (
+                              <TableRow
+                                onDragOver={(e) => handleDragOver(e, dateIndex, sessions.length)}
+                                onDrop={(e) => handleDrop(e, dateIndex, sessions.length)}
+                                className={`h-8 border-dashed border-2 ${
+                                  dragOverState?.dateIndex === dateIndex &&
+                                  dragOverState?.sessionIndex === sessions.length
+                                    ? "border-blue-400 bg-blue-50"
+                                    : "border-slate-200"
+                                }`}
+                              >
+                                <TableCell
+                                  colSpan={7}
+                                  className="text-center text-xs text-slate-400"
+                                >
+                                  Solte aqui para mover para este dia
+                                </TableCell>
+                              </TableRow>
                             )}
                           </TableBody>
                         </Table>
