@@ -2878,17 +2878,6 @@ export default function TracomaExaminerEvaluationPage({
                           </tbody>
                         </table>
                       </div>
-                      <div className="h-[220px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={matrixChartFromResult(selectedResult)}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="label" />
-                            <YAxis allowDecimals={false} />
-                            <Tooltip />
-                            <Bar dataKey="total" fill="#2563eb" radius={[6, 6, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
                     </CardContent>
                   </Card>
 

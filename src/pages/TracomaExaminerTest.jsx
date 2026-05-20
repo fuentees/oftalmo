@@ -231,11 +231,19 @@ export default function TracomaExaminerTest() {
           : linkedParticipant?.grade || null,
       });
 
+      const wrongQuestions = [];
+      for (let i = 0; i < TRACOMA_TOTAL_QUESTIONS; i += 1) {
+        if (selectedAnswerKey.answers[i] !== candidateAnswers[i]) {
+          wrongQuestions.push(i + 1);
+        }
+      }
+
       return {
         computed,
         created,
         answerKeyCode: selectedAnswerKey.code,
         participantName: linkedIdentity.name,
+        wrongQuestions,
       };
     },
     onSuccess: (data) => {
@@ -245,6 +253,7 @@ export default function TracomaExaminerTest() {
         participantName:
           data.participantName || data.created?.participant_name || participantName,
         answerKeyCode: data.answerKeyCode || selectedAnswerKey?.code || "-",
+        wrongQuestions: data.wrongQuestions || [],
       });
     },
     onError: (error) => {
@@ -396,6 +405,39 @@ export default function TracomaExaminerTest() {
               </div>
             </CardContent>
           </Card>
+
+          {submissionResult.wrongQuestions?.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base text-red-700">
+                  Questões com discordância ({submissionResult.wrongQuestions.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-slate-500 mb-3">
+                  Estas questões tiveram resposta diferente do gabarito padrão:
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {submissionResult.wrongQuestions.map((q) => (
+                    <Badge
+                      key={q}
+                      className="bg-red-100 text-red-700 border border-red-200 font-mono"
+                    >
+                      {String(q).padStart(2, "0")}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {submissionResult.wrongQuestions?.length === 0 && (
+            <Card>
+              <CardContent className="pt-4 text-center text-green-700 font-medium">
+                Nenhuma discordância — gabarito 100% concordante!
+              </CardContent>
+            </Card>
+          )}
 
           <Button
             variant="outline"
