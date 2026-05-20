@@ -960,17 +960,6 @@ export default function CertificateManager({ training, participants = [], onClos
     );
   };
 
-  const toggleAll = () => {
-    const pendingIds = pendingEligibleParticipants.map(p => p.id);
-    const allPendingSelected = pendingIds.length > 0 &&
-      pendingIds.every(id => selectedParticipants.includes(id));
-    if (allPendingSelected) {
-      setSelectedParticipants([]);
-    } else {
-      setSelectedParticipants(pendingIds);
-    }
-  };
-
   const handleIssueSelected = () => {
     if (selectedParticipants.length > 0) {
       issueCertificates.mutate(selectedParticipants);
@@ -1007,6 +996,17 @@ export default function CertificateManager({ training, participants = [], onClos
 
   const alreadySentCount = eligibleParticipants.filter(p => p.certificate_issued).length;
   const pendingEligibleParticipants = eligibleParticipants.filter(p => !p.certificate_issued);
+
+  const toggleAll = () => {
+    const pendingIds = pendingEligibleParticipants.map(p => p.id);
+    const allPendingSelected = pendingIds.length > 0 &&
+      pendingIds.every(id => selectedParticipants.some(sid => sid === id));
+    if (allPendingSelected) {
+      setSelectedParticipants([]);
+    } else {
+      setSelectedParticipants(pendingIds);
+    }
+  };
   const printableEligibleParticipants = useMemo(
     () =>
       [...eligibleParticipants].sort((a, b) =>
