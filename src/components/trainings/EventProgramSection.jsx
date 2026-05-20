@@ -498,6 +498,7 @@ export default function EventProgramSection({ training }) {
           <title>Programação do evento - ${escapeHtml(training?.title || "-")}</title>
           <style>
             @page { margin: 2.5cm 2cm 2.5cm 3cm; }
+            * { box-sizing: border-box; }
             body {
               font-family: Arial, Helvetica, sans-serif;
               font-size: 12pt;
@@ -506,6 +507,7 @@ export default function EventProgramSection({ training }) {
               margin: 0;
             }
             .hero {
+              width: 100%;
               border: 1px solid #cbd5e1;
               border-top: 5px solid #1d4ed8;
               padding: 12px 14px;
@@ -538,7 +540,7 @@ export default function EventProgramSection({ training }) {
             .meta-table {
               width: 100%;
               border-collapse: collapse;
-              margin-bottom: 18pt;
+              margin-bottom: 14pt;
               font-size: 10.5pt;
             }
             .meta-table td {
@@ -549,7 +551,8 @@ export default function EventProgramSection({ training }) {
               background: #ffffff;
             }
             .day-block {
-              margin-bottom: 22pt;
+              width: 100%;
+              margin-bottom: 12pt;
               page-break-inside: avoid;
             }
             .day-header {
@@ -557,9 +560,10 @@ export default function EventProgramSection({ training }) {
               color: #ffffff;
               font-weight: 700;
               font-size: 11pt;
-              padding: 7px 10px;
+              padding: 5px 8px;
               text-transform: uppercase;
               letter-spacing: 0.3px;
+              line-height: 1.3;
             }
             table {
               width: 100%;
@@ -568,7 +572,7 @@ export default function EventProgramSection({ training }) {
             }
             th, td {
               border: 1px solid #9ca3af;
-              padding: 7px 8px;
+              padding: 6px 8px;
               vertical-align: top;
             }
             th {
@@ -576,8 +580,9 @@ export default function EventProgramSection({ training }) {
               color: #1e3a8a;
               font-weight: 700;
               text-align: left;
+              border-top: none;
             }
-            .col-time { width: 70px; white-space: nowrap; }
+            .col-time { width: 64px; white-space: nowrap; }
             .col-speaker { width: 28%; }
             tr:nth-child(even) td { background: #f8fafc; }
           </style>
