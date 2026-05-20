@@ -213,6 +213,7 @@ export default function EventProgramSection({ training }) {
       programDates
         .map((dateItem) => ({
           dateLabel: formatDateSafe(dateItem?.date, "dd/MM/yyyy") || "-",
+          rawDate: dateItem?.date,
           sessions: sortSessionsByStartTime(getTypedSessions(dateItem?.sessions)),
         }))
         .filter((group) => group.sessions.length > 0),
@@ -533,11 +534,22 @@ export default function EventProgramSection({ training }) {
       return;
     }
 
+    const WEEKDAYS_PT = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+    const getWeekdayLabel = (rawDate) => {
+      const dt = parseDateSafe(rawDate);
+      return dt && !Number.isNaN(dt.getTime()) ? WEEKDAYS_PT[dt.getDay()] : "";
+    };
+
     const dayBlocks = groupedProgramRows
       .map(
-        (group) => `
+        (group) => {
+          const weekday = getWeekdayLabel(group.rawDate);
+          const dayHeaderText = weekday
+            ? `${escapeHtml(group.dateLabel)} — ${escapeHtml(weekday)}`
+            : escapeHtml(group.dateLabel);
+          return `
         <div class="day-block">
-          <div class="day-header">${escapeHtml(group.dateLabel)}</div>
+          <div class="day-header">${dayHeaderText}</div>
           <table>
             <thead>
               <tr>
@@ -561,7 +573,8 @@ export default function EventProgramSection({ training }) {
                 .join("")}
             </tbody>
           </table>
-        </div>`
+        </div>`;
+        }
       )
       .join("");
 
@@ -572,7 +585,7 @@ export default function EventProgramSection({ training }) {
           <meta charset="utf-8" />
           <title>Programação do evento - ${escapeHtml(training?.title || "-")}</title>
           <style>
-            @page { margin: 2.5cm 2cm 2.5cm 3cm; }
+            @page { margin: 2.5cm 1.5cm 2.5cm 1.5cm; }
             * { box-sizing: border-box; }
             body {
               font-family: Arial, Helvetica, sans-serif;
