@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
   Plus,
   Save,
   Trash2,
+  UserCheck,
 } from "lucide-react";
 import { formatDateSafe, parseDateSafe } from "@/lib/date";
 
@@ -72,6 +73,12 @@ const formatTimeDraft = (value) => {
 
 export default function EventProgramSection({ training }) {
   const queryClient = useQueryClient();
+
+  const { data: professionals = [] } = useQuery({
+    queryKey: ["professionals"],
+    queryFn: () => dataClient.entities.Professional.list("name"),
+  });
+
   const [programDates, setProgramDates] = useState([]);
   const [programStatus, setProgramStatus] = useState(null);
   const [dragState, setDragState] = useState(null);
@@ -132,6 +139,8 @@ export default function EventProgramSection({ training }) {
     speaker_name: String(
       session?.speaker_name || session?.responsible || session?.speaker || ""
     ).trim(),
+    professional_id: String(session?.professional_id || "").trim(),
+    professional_email: String(session?.professional_email || "").trim(),
   });
 
   const normalizeImportedSessions = (sessions = [], dateIndex = 0) =>
@@ -219,6 +228,25 @@ export default function EventProgramSection({ training }) {
     [groupedProgramRows]
   );
 
+  const syncSpeakersFromSessions = (existingSpeakers, dates) => {
+    const base = Array.isArray(existingSpeakers) ? [...existingSpeakers] : [];
+    const seenIds = new Set(base.map((s) => s.professional_id).filter(Boolean));
+    dates.forEach((dateItem) => {
+      (Array.isArray(dateItem?.sessions) ? dateItem.sessions : []).forEach((session) => {
+        if (session.professional_id && !seenIds.has(session.professional_id)) {
+          seenIds.add(session.professional_id);
+          base.push({
+            name: String(session.speaker_name || "").trim(),
+            professional_id: session.professional_id,
+            email: String(session.professional_email || "").trim(),
+            lecture: String(session.title || "").trim(),
+          });
+        }
+      });
+    });
+    return base;
+  };
+
   const saveProgram = useMutation({
     mutationFn: async () => {
       if (!training?.id) throw new Error("Treinamento inválido.");
@@ -234,11 +262,15 @@ export default function EventProgramSection({ training }) {
               String(session?.end_time || "").trim(),
             title: String(session?.title || "").trim(),
             speaker_name: String(session?.speaker_name || "").trim(),
+            professional_id: String(session?.professional_id || "").trim(),
+            professional_email: String(session?.professional_email || "").trim(),
           })
         ),
       }));
+      const syncedSpeakers = syncSpeakersFromSessions(training?.speakers, payloadDates);
       await dataClient.entities.Training.update(training.id, {
         dates: payloadDates,
+        speakers: syncedSpeakers,
       });
     },
     onSuccess: () => {
@@ -298,6 +330,16 @@ export default function EventProgramSection({ training }) {
   const handleRemoveSession = (dateIndex, sessionId) => {
     upsertDateSessions(dateIndex, (sessions) =>
       sessions.filter((session) => session.id !== sessionId)
+    );
+  };
+
+  const handleUpdateSessionSpeaker = (dateIndex, sessionId, name, professionalId, professionalEmail) => {
+    upsertDateSessions(dateIndex, (sessions) =>
+      sessions.map((session) =>
+        session.id === sessionId
+          ? { ...session, speaker_name: name, professional_id: professionalId, professional_email: professionalEmail }
+          : session
+      )
     );
   };
 
@@ -766,6 +808,11 @@ export default function EventProgramSection({ training }) {
             </div>
           ) : (
             <div className="space-y-4">
+              <datalist id="professionals-datalist">
+                {professionals.map((p) => (
+                  <option key={p.id} value={p.name} />
+                ))}
+              </datalist>
               {programDates.map((dateItem, dateIndex) => {
                 const sessions = Array.isArray(dateItem?.sessions)
                   ? dateItem.sessions
@@ -912,18 +959,30 @@ export default function EventProgramSection({ training }) {
                                     />
                                   </TableCell>
                                   <TableCell>
-                                    <Input
-                                      value={session.speaker_name}
-                                      onChange={(event) =>
-                                        handleUpdateSessionField(
-                                          dateIndex,
-                                          session.id,
-                                          "speaker_name",
-                                          event.target.value
-                                        )
-                                      }
-                                      placeholder="Nome do palestrante"
-                                    />
+                                    <div className="relative">
+                                      <Input
+                                        value={session.speaker_name}
+                                        list="professionals-datalist"
+                                        onChange={(event) => {
+                                          const name = event.target.value;
+                                          const matched = professionals.find(
+                                            (p) => p.name === name
+                                          );
+                                          handleUpdateSessionSpeaker(
+                                            dateIndex,
+                                            session.id,
+                                            name,
+                                            matched?.id || "",
+                                            matched?.email || ""
+                                          );
+                                        }}
+                                        placeholder="Nome do palestrante"
+                                        className={session.professional_id ? "pr-7 border-green-400 focus-visible:ring-green-400" : ""}
+                                      />
+                                      {session.professional_id && (
+                                        <UserCheck className="h-3.5 w-3.5 text-green-600 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                      )}
+                                    </div>
                                   </TableCell>
                                   <TableCell className="text-right">
                                     <Button
