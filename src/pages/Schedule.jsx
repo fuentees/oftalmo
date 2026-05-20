@@ -286,9 +286,9 @@ export default function Schedule() {
   const typeColors = {
     viagem: "#10b981",
     trabalho_campo: "#f59e0b",
-    treinamento: "#6366f1",
+    treinamento: "#3b82f6",
     ferias: "#ec4899",
-    reuniao: "#8b5cf6",
+    reuniao: "#9333ea",
     outro: "#64748b",
   };
 
