@@ -595,10 +595,13 @@ export default function EventProgramSection({ training }) {
           </xml>
           <style>
             @page WordSection1 {
+              size: 21.0cm 29.7cm;
+              margin: 2.5cm 1.5cm 2.5cm 1.5cm;
               mso-page-margin-top: 2.5cm;
               mso-page-margin-bottom: 2.5cm;
               mso-page-margin-left: 1.5cm;
               mso-page-margin-right: 1.5cm;
+              mso-paper-source: 0;
             }
             div.WordSection1 { page: WordSection1; }
             * { box-sizing: border-box; }
