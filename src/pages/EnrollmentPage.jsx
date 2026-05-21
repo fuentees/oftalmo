@@ -1389,6 +1389,34 @@ export default function EnrollmentPage({
         )
       );
 
+    // Monta equipe (coordenador, monitores, palestrantes) para aparecer no final da lista
+    const normalizeStaffList = (value) => {
+      if (!value) return [];
+      if (typeof value === "string") {
+        const name = value.trim();
+        return name ? [{ name, rg: "", email: "" }] : [];
+      }
+      if (Array.isArray(value)) {
+        return value
+          .map((item) => {
+            if (typeof item === "string") return { name: item.trim(), rg: "", email: "" };
+            if (item && typeof item === "object") {
+              const name = String(item.name || "").trim();
+              return name ? { name, rg: String(item.rg || "").trim(), email: String(item.email || "").trim() } : null;
+            }
+            return null;
+          })
+          .filter(Boolean)
+          .filter((e) => e.name);
+      }
+      return [];
+    };
+    const staffEntries = [
+      ...normalizeStaffList(training.coordinator).map((e) => ({ ...e, role: "Coordenador" })),
+      ...normalizeStaffList(training.monitors).map((e) => ({ ...e, role: "Monitor" })),
+      ...normalizeStaffList(training.speakers).map((e) => ({ ...e, role: "Palestrante" })),
+    ];
+
     const parsedExtraRows = Math.max(
       0,
       Math.trunc(Number(extraBlankRows || 0)) || 0
@@ -1426,6 +1454,27 @@ export default function EnrollmentPage({
         `
       )
       .join("");
+
+    const staffRowsHtml = staffEntries.length > 0
+      ? `
+        <tr class="staff-separator">
+          <td colspan="${selectedColumns.length + 2}">EQUIPE</td>
+        </tr>
+        ${staffEntries.map((staff, i) => `
+          <tr class="staff-row">
+            <td class="idx">${activeParticipants.length + i + 1}.</td>
+            ${selectedColumns.map((col) => {
+              if (col.key === "name") return `<td>${escapeHtml(staff.name)}</td>`;
+              if (col.key === "rg") return `<td>${escapeHtml(staff.rg)}</td>`;
+              if (col.key === "email") return `<td>${escapeHtml(staff.email)}</td>`;
+              if (col.key === "formation") return `<td><em>${escapeHtml(staff.role)}</em></td>`;
+              return `<td></td>`;
+            }).join("")}
+            <td></td>
+          </tr>
+        `).join("")}
+      `
+      : "";
 
     const tableHeadersHtml = selectedColumns
       .map((column) => `<th>${escapeHtml(column.label)}</th>`)
@@ -1508,6 +1557,7 @@ export default function EnrollmentPage({
               </thead>
               <tbody>
                 ${rowsHtml}
+                ${staffRowsHtml}
               </tbody>
             </table>
             <div class="signature">
@@ -1643,6 +1693,24 @@ export default function EnrollmentPage({
             }
             tbody tr:nth-child(even) td {
               background: #f8fafc;
+            }
+            tr.staff-separator td {
+              background: #1e40af;
+              color: #ffffff;
+              font-weight: 700;
+              font-size: 9pt;
+              letter-spacing: 0.08em;
+              padding: 4px 8px;
+              text-align: left;
+            }
+            tr.staff-row td {
+              background: #eff6ff;
+            }
+            tr.staff-row em {
+              font-style: normal;
+              font-size: 8pt;
+              color: #1e40af;
+              font-weight: 600;
             }
             td:last-child {
               width: 190px;
