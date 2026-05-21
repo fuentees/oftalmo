@@ -1389,52 +1389,64 @@ export default function EnrollmentPage({
         )
       );
 
-    // Monta equipe (coordenador, monitores, palestrantes) para aparecer no final da lista
+    // Normaliza membros da equipe para o mesmo formato de linha
     const normalizeStaffList = (value) => {
       if (!value) return [];
       if (typeof value === "string") {
         const name = value.trim();
-        return name ? [{ name, rg: "", email: "" }] : [];
+        return name ? [{ professional_name: name, professional_rg: "", professional_email: "" }] : [];
       }
       if (Array.isArray(value)) {
         return value
           .map((item) => {
-            if (typeof item === "string") return { name: item.trim(), rg: "", email: "" };
+            if (typeof item === "string") {
+              const name = item.trim();
+              return name ? { professional_name: name, professional_rg: "", professional_email: "" } : null;
+            }
             if (item && typeof item === "object") {
               const name = String(item.name || "").trim();
-              return name ? { name, rg: String(item.rg || "").trim(), email: String(item.email || "").trim() } : null;
+              return name ? {
+                professional_name: name,
+                professional_rg: String(item.rg || "").trim(),
+                professional_email: String(item.email || "").trim(),
+              } : null;
             }
             return null;
           })
-          .filter(Boolean)
-          .filter((e) => e.name);
+          .filter(Boolean);
       }
       return [];
     };
-    const staffEntries = [
-      ...normalizeStaffList(training.coordinator).map((e) => ({ ...e, role: "Coordenador" })),
-      ...normalizeStaffList(training.monitors).map((e) => ({ ...e, role: "Monitor" })),
-      ...normalizeStaffList(training.speakers).map((e) => ({ ...e, role: "Palestrante" })),
+
+    const staffParticipants = [
+      ...normalizeStaffList(training.coordinator),
+      ...normalizeStaffList(training.monitors),
+      ...normalizeStaffList(training.speakers),
     ];
+
+    // Deduplica equipe por nome (evita duplicatas se alguém está em múltiplas funções)
+    const staffNames = new Set(activeParticipants.map((p) => String(p.professional_name || "").trim().toLowerCase()));
+    const uniqueStaff = staffParticipants.filter((s) => {
+      const name = String(s.professional_name || "").trim().toLowerCase();
+      if (!name || staffNames.has(name)) return false;
+      staffNames.add(name);
+      return true;
+    });
+
+    // Lista completa em ordem alfabética
+    const allPrintableParticipants = [...activeParticipants, ...uniqueStaff].sort((a, b) =>
+      String(a.professional_name || "").localeCompare(String(b.professional_name || ""), "pt-BR", { sensitivity: "base" })
+    );
 
     const parsedExtraRows = Math.max(
       0,
       Math.trunc(Number(extraBlankRows || 0)) || 0
     );
-    const minimumRows = Math.max(20, activeParticipants.length + parsedExtraRows);
-    const printableRows = Array.from({ length: minimumRows }).map((_, index) => {
-      const participant = activeParticipants[index];
-      if (!participant) {
-        return {
-          position: index + 1,
-          participant: null,
-        };
-      }
-      return {
-        position: index + 1,
-        participant,
-      };
-    });
+    const minimumRows = Math.max(20, allPrintableParticipants.length + parsedExtraRows);
+    const printableRows = Array.from({ length: minimumRows }).map((_, index) => ({
+      position: index + 1,
+      participant: allPrintableParticipants[index] || null,
+    }));
 
     const rowsHtml = printableRows
       .map(
@@ -1454,27 +1466,6 @@ export default function EnrollmentPage({
         `
       )
       .join("");
-
-    const staffRowsHtml = staffEntries.length > 0
-      ? `
-        <tr class="staff-separator">
-          <td colspan="${selectedColumns.length + 2}">EQUIPE</td>
-        </tr>
-        ${staffEntries.map((staff, i) => `
-          <tr class="staff-row">
-            <td class="idx">${activeParticipants.length + i + 1}.</td>
-            ${selectedColumns.map((col) => {
-              if (col.key === "name") return `<td>${escapeHtml(staff.name)}</td>`;
-              if (col.key === "rg") return `<td>${escapeHtml(staff.rg)}</td>`;
-              if (col.key === "email") return `<td>${escapeHtml(staff.email)}</td>`;
-              if (col.key === "formation") return `<td><em>${escapeHtml(staff.role)}</em></td>`;
-              return `<td></td>`;
-            }).join("")}
-            <td></td>
-          </tr>
-        `).join("")}
-      `
-      : "";
 
     const tableHeadersHtml = selectedColumns
       .map((column) => `<th>${escapeHtml(column.label)}</th>`)
@@ -1557,7 +1548,6 @@ export default function EnrollmentPage({
               </thead>
               <tbody>
                 ${rowsHtml}
-                ${staffRowsHtml}
               </tbody>
             </table>
             <div class="signature">
@@ -1693,24 +1683,6 @@ export default function EnrollmentPage({
             }
             tbody tr:nth-child(even) td {
               background: #f8fafc;
-            }
-            tr.staff-separator td {
-              background: #1e40af;
-              color: #ffffff;
-              font-weight: 700;
-              font-size: 9pt;
-              letter-spacing: 0.08em;
-              padding: 4px 8px;
-              text-align: left;
-            }
-            tr.staff-row td {
-              background: #eff6ff;
-            }
-            tr.staff-row em {
-              font-style: normal;
-              font-size: 8pt;
-              color: #1e40af;
-              font-weight: 600;
             }
             td:last-child {
               width: 190px;
