@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import QRCode from "qrcode";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { toast } from "@/components/ui/use-toast";
@@ -42,7 +43,8 @@ import {
   Edit,
   MapPin,
   Link2,
-  Printer
+  Printer,
+  QrCode
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -1145,6 +1147,10 @@ export default function EnrollmentPage({
     enrollMutation.mutate(normalizedFormData);
   };
 
+  const [showQrDialog, setShowQrDialog] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const qrCanvasRef = useRef(null);
+
   const handleCopyEnrollmentLink = () => {
     if (!trainingId) return;
     const link = buildPublicEnrollmentUrl(
@@ -1154,6 +1160,30 @@ export default function EnrollmentPage({
     );
     navigator.clipboard.writeText(link);
     toast({ title: "Link copiado!", description: "Link de inscrição copiado para a área de transferência." });
+  };
+
+  const handleShowQrCode = async () => {
+    if (!trainingId) return;
+    const link = buildPublicEnrollmentUrl(
+      window.location.origin,
+      trainingId,
+      training?.code
+    );
+    try {
+      const dataUrl = await QRCode.toDataURL(link, { width: 400, margin: 2 });
+      setQrDataUrl(dataUrl);
+      setShowQrDialog(true);
+    } catch {
+      toast({ title: "Erro ao gerar QR Code", variant: "destructive" });
+    }
+  };
+
+  const handleDownloadQr = () => {
+    if (!qrDataUrl) return;
+    const a = document.createElement("a");
+    a.href = qrDataUrl;
+    a.download = `qrcode-inscricao-${training?.title || trainingId}.png`;
+    a.click();
   };
 
   const resolveCalendarInviteEmail = (participant) => {
@@ -1999,7 +2029,16 @@ export default function EnrollmentPage({
     const data = {};
     orderedTemplateFields.forEach((field) => {
       const participantKey = resolveParticipantFieldFromEnrollmentField(field);
-      const rawValue = participantKey ? participant[participantKey] : participant[field.field_key];
+      const fieldKey = String(field?.field_key || "").trim();
+      let rawValue;
+      if (participantKey) {
+        rawValue = participant[participantKey];
+      } else {
+        rawValue =
+          participant?.custom_fields?.[fieldKey] !== undefined
+            ? participant.custom_fields[fieldKey]
+            : participant[fieldKey];
+      }
       if (rawValue !== undefined && rawValue !== null) {
         data[field.field_key] = normalizeImportedValue(rawValue);
       }
@@ -2016,18 +2055,30 @@ export default function EnrollmentPage({
     setEditFormErrors({});
 
     const payload = {};
+    const customFields = {};
     orderedTemplateFields.forEach((field) => {
       const participantKey = resolveParticipantFieldFromEnrollmentField(field);
-      if (!participantKey) return;
-      const rawValue = editFormData[field.field_key];
+      const fieldKey = String(field?.field_key || "").trim();
+      const rawValue = editFormData[fieldKey];
       const cleanedValue = normalizeImportedValue(rawValue);
       const formattedValue =
         cleanedValue !== null && cleanedValue !== undefined && cleanedValue !== ""
           ? formatEnrollmentFieldValue(field, cleanedValue)
           : cleanedValue;
-      payload[participantKey] =
-        formattedValue !== undefined && formattedValue !== "" ? formattedValue : null;
+      if (participantKey) {
+        payload[participantKey] =
+          formattedValue !== undefined && formattedValue !== "" ? formattedValue : null;
+      } else if (fieldKey) {
+        customFields[fieldKey] =
+          formattedValue !== undefined && formattedValue !== "" ? formattedValue : null;
+      }
     });
+    if (Object.keys(customFields).length > 0) {
+      payload.custom_fields = {
+        ...(editParticipant?.custom_fields || {}),
+        ...customFields,
+      };
+    }
 
     const hasRegionField = ["state", "health_region", "municipality"].some((key) =>
       Object.prototype.hasOwnProperty.call(payload, key)
@@ -2538,6 +2589,10 @@ export default function EnrollmentPage({
                     <Button variant="outline" onClick={handleCopyEnrollmentLink}>
                       <Link2 className="h-4 w-4 mr-2" />
                       Copiar Link de Inscrição
+                    </Button>
+                    <Button variant="outline" onClick={handleShowQrCode}>
+                      <QrCode className="h-4 w-4 mr-2" />
+                      QR Code
                     </Button>
                     <Button variant="outline" onClick={handleAddDefaultFields}>
                       <Plus className="h-4 w-4 mr-2" />
@@ -3471,65 +3526,72 @@ export default function EnrollmentPage({
                               ? resolvedGve
                               : editFormData[fieldKey] || "";
 
+                          const handleEditFieldChange = (nextValue) => {
+                            if (isMunicipalityField) {
+                              const gveValue = getGveByMunicipio(nextValue);
+                              setEditFormData((prev) => {
+                                const next = { ...prev, [fieldKey]: nextValue };
+                                if (gveFieldKey) next[gveFieldKey] = gveValue || prev[gveFieldKey];
+                                return next;
+                              });
+                              if (editFormErrors[fieldKey]) setEditFormErrors((prev) => ({ ...prev, [fieldKey]: null }));
+                              if (gveValue && gveFieldKey && editFormErrors[gveFieldKey]) setEditFormErrors((prev) => ({ ...prev, [gveFieldKey]: null }));
+                              return;
+                            }
+                            setEditFormData((prev) => ({ ...prev, [fieldKey]: nextValue }));
+                            if (editFormErrors[fieldKey]) setEditFormErrors((prev) => ({ ...prev, [fieldKey]: null }));
+                          };
+
                           return (
                             <div key={field.id} className="space-y-2">
                               <Label htmlFor={`edit-${fieldKey}`}>
                                 {field.label}
                               </Label>
-                              <Input
-                                id={`edit-${fieldKey}`}
-                                type={field.type}
-                                value={fieldValue}
-                                list={
-                                  isMunicipalityField && municipalityOptions.length > 0
-                                    ? "municipios-list-edit"
-                                    : undefined
-                                }
-                                readOnly={isGveField && Boolean(resolvedGve)}
-                                onChange={(e) => {
-                                  const nextValue = formatEnrollmentFieldValue(field, e.target.value, {
-                                    liveInput: true,
-                                  });
-                                  if (isMunicipalityField) {
-                                    const gveValue = getGveByMunicipio(nextValue);
-                                    setEditFormData((prev) => {
-                                      const next = {
-                                        ...prev,
-                                        [fieldKey]: nextValue,
-                                      };
-                                      if (gveFieldKey) {
-                                        next[gveFieldKey] = gveValue || prev[gveFieldKey];
-                                      }
-                                      return next;
-                                    });
-                                    if (editFormErrors[fieldKey]) {
-                                      setEditFormErrors((prev) => ({
-                                        ...prev,
-                                        [fieldKey]: null,
-                                      }));
-                                    }
-                                    if (gveValue && gveFieldKey && editFormErrors[gveFieldKey]) {
-                                      setEditFormErrors((prev) => ({
-                                        ...prev,
-                                        [gveFieldKey]: null,
-                                      }));
-                                    }
-                                    return;
+                              {field.type === "boolean" ? (
+                                <div className="flex gap-6 pt-1">
+                                  {["Sim", "Não"].map((option) => (
+                                    <label key={option} className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                                      <input
+                                        type="radio"
+                                        name={`edit-${fieldKey}`}
+                                        value={option}
+                                        checked={fieldValue === option}
+                                        onChange={() => handleEditFieldChange(option)}
+                                        className="accent-blue-600"
+                                      />
+                                      {option}
+                                    </label>
+                                  ))}
+                                </div>
+                              ) : field.type === "select" && Array.isArray(field.options) && field.options.length > 0 ? (
+                                <select
+                                  id={`edit-${fieldKey}`}
+                                  value={fieldValue}
+                                  onChange={(e) => handleEditFieldChange(e.target.value)}
+                                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                  <option value="">{field.placeholder || "Selecione..."}</option>
+                                  {field.options.map((opt) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <Input
+                                  id={`edit-${fieldKey}`}
+                                  type={field.type}
+                                  value={fieldValue}
+                                  list={
+                                    isMunicipalityField && municipalityOptions.length > 0
+                                      ? "municipios-list-edit"
+                                      : undefined
                                   }
-
-                                  setEditFormData((prev) => ({
-                                    ...prev,
-                                    [fieldKey]: nextValue,
-                                  }));
-                                  if (editFormErrors[fieldKey]) {
-                                    setEditFormErrors((prev) => ({
-                                      ...prev,
-                                      [fieldKey]: null,
-                                    }));
-                                  }
-                                }}
-                                placeholder={field.placeholder}
-                              />
+                                  readOnly={isGveField && Boolean(resolvedGve)}
+                                  onChange={(e) => handleEditFieldChange(
+                                    formatEnrollmentFieldValue(field, e.target.value, { liveInput: true })
+                                  )}
+                                  placeholder={field.placeholder}
+                                />
+                              )}
                               {editFormErrors[fieldKey] && (
                                 <p className="text-xs text-red-600">
                                   {editFormErrors[fieldKey]}
@@ -3752,6 +3814,33 @@ export default function EnrollmentPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* QR Code Dialog */}
+      <Dialog open={showQrDialog} onOpenChange={setShowQrDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>QR Code — Link de Inscrição</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4">
+            {qrDataUrl && (
+              <img src={qrDataUrl} alt="QR Code de inscrição" className="w-64 h-64 rounded-lg border" />
+            )}
+            <p className="text-xs text-slate-500 text-center">
+              Aponte a câmera do celular para o código para acessar o formulário de inscrição.
+            </p>
+            <div className="flex gap-3 w-full">
+              <Button variant="outline" className="flex-1" onClick={handleDownloadQr}>
+                <Download className="h-4 w-4 mr-2" />
+                Baixar PNG
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={handleCopyEnrollmentLink}>
+                <Link2 className="h-4 w-4 mr-2" />
+                Copiar Link
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

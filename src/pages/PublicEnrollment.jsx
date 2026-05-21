@@ -391,6 +391,17 @@ export default function PublicEnrollment() {
 
       const mapped = mapEnrollmentDataToParticipantFields(data);
 
+      const customFields = {};
+      orderedTemplateFields.forEach((field) => {
+        const participantKey = resolveParticipantFieldFromEnrollmentField(field);
+        const fieldKey = String(field?.field_key || "").trim();
+        if (participantKey || !fieldKey) return;
+        const value = data[fieldKey];
+        if (value !== undefined && value !== null && value !== "") {
+          customFields[fieldKey] = value;
+        }
+      });
+
       const participantPayload = {
         training_id: trainingId,
         training_title: training.title,
@@ -415,6 +426,7 @@ export default function PublicEnrollment() {
           mapped.residential_address || data.residential_address || "",
         commercial_phone: mapped.commercial_phone || data.commercial_phone || "",
         mobile_phone: mapped.mobile_phone || data.mobile_phone || "",
+        custom_fields: Object.keys(customFields).length > 0 ? customFields : null,
         enrollment_status: "inscrito",
         enrollment_date: new Date().toISOString(),
         attendance_records: [],
@@ -440,6 +452,38 @@ export default function PublicEnrollment() {
       }
 
       let warningMessage = null;
+
+      // E-mail de confirmação — silencioso, não bloqueia o fluxo
+      const recipientEmail = String(participantPayload.professional_email || "").trim();
+      if (recipientEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+        try {
+          const trainingDatesText = trainingDates.length > 0
+            ? trainingDates.map(d => formatDateSafe(d.date)).filter(Boolean).join(", ")
+            : formatDateSafe(training.date) || "";
+          const locationText = [training.location, training.address].filter(Boolean).join(" — ");
+          await dataClient.integrations.Core.SendEmail({
+            to: recipientEmail,
+            subject: `Confirmação de inscrição — ${training.title}`,
+            body: `
+              <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+                <h2 style="color:#1e40af">Inscrição confirmada!</h2>
+                <p>Olá, <strong>${participantPayload.professional_name || "participante"}</strong>!</p>
+                <p>Sua inscrição no treinamento abaixo foi registrada com sucesso.</p>
+                <div style="background:#f1f5f9;border-radius:8px;padding:16px;margin:16px 0">
+                  <p style="margin:4px 0"><strong>Treinamento:</strong> ${training.title}</p>
+                  ${trainingDatesText ? `<p style="margin:4px 0"><strong>Data(s):</strong> ${trainingDatesText}</p>` : ""}
+                  ${training.time ? `<p style="margin:4px 0"><strong>Horário:</strong> ${training.time}</p>` : ""}
+                  ${locationText ? `<p style="margin:4px 0"><strong>Local:</strong> ${locationText}</p>` : ""}
+                </div>
+                <p style="color:#64748b;font-size:14px">Guarde este e-mail como comprovante de inscrição.</p>
+              </div>
+            `,
+          });
+        } catch {
+          // Silencioso — erro no e-mail não cancela a inscrição
+        }
+      }
+
       // Erros de sincronização com o Google não são expostos ao público
       await syncParticipantWithGoogleCalendar(createdParticipant);
       try {
@@ -957,70 +1001,76 @@ export default function PublicEnrollment() {
                                 ? resolvedGve
                                 : formData[fieldKey] || "";
 
+                            const handleFieldChange = (nextValue) => {
+                              if (isMunicipalityField) {
+                                const gveValue = getGveByMunicipio(nextValue);
+                                setFormData((prev) => {
+                                  const next = { ...prev, [fieldKey]: nextValue };
+                                  if (gveFieldKey) next[gveFieldKey] = gveValue || prev[gveFieldKey];
+                                  return next;
+                                });
+                                if (formErrors[fieldKey]) setFormErrors((prev) => ({ ...prev, [fieldKey]: null }));
+                                if (gveValue && gveFieldKey && formErrors[gveFieldKey]) setFormErrors((prev) => ({ ...prev, [gveFieldKey]: null }));
+                                return;
+                              }
+                              setFormData((prev) => ({ ...prev, [fieldKey]: nextValue }));
+                              if (formErrors[fieldKey]) setFormErrors((prev) => ({ ...prev, [fieldKey]: null }));
+                            };
+
                             return (
                               <div key={fieldKey} className="space-y-2">
                                 <Label htmlFor={fieldKey}>
                                   {field.label || fieldKey}
                                   {field.required ? " *" : ""}
                                 </Label>
-                                <Input
-                                  id={fieldKey}
-                                  type={field.type || "text"}
-                                  value={fieldValue}
-                                  list={
-                                    isMunicipalityField && municipalityOptions.length > 0
-                                      ? "municipios-list"
-                                      : undefined
-                                  }
-                                  readOnly={isGveField && Boolean(resolvedGve)}
-                                  onChange={(e) => {
-                                    const nextValue = formatEnrollmentFieldValue(
-                                      field,
-                                      e.target.value,
-                                      { liveInput: true }
-                                    );
-
-                                    if (isMunicipalityField) {
-                                      const gveValue = getGveByMunicipio(nextValue);
-                                      setFormData((prev) => {
-                                        const next = {
-                                          ...prev,
-                                          [fieldKey]: nextValue,
-                                        };
-                                        if (gveFieldKey) {
-                                          next[gveFieldKey] = gveValue || prev[gveFieldKey];
-                                        }
-                                        return next;
-                                      });
-                                      if (formErrors[fieldKey]) {
-                                        setFormErrors((prev) => ({
-                                          ...prev,
-                                          [fieldKey]: null,
-                                        }));
-                                      }
-                                      if (gveValue && gveFieldKey && formErrors[gveFieldKey]) {
-                                        setFormErrors((prev) => ({
-                                          ...prev,
-                                          [gveFieldKey]: null,
-                                        }));
-                                      }
-                                      return;
+                                {field.type === "boolean" ? (
+                                  <div className="flex gap-6 pt-1">
+                                    {["Sim", "Não"].map((option) => (
+                                      <label key={option} className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                                        <input
+                                          type="radio"
+                                          name={fieldKey}
+                                          value={option}
+                                          checked={fieldValue === option}
+                                          onChange={() => handleFieldChange(option)}
+                                          required={Boolean(field.required) && !fieldValue}
+                                          className="accent-blue-600"
+                                        />
+                                        {option}
+                                      </label>
+                                    ))}
+                                  </div>
+                                ) : field.type === "select" && Array.isArray(field.options) && field.options.length > 0 ? (
+                                  <select
+                                    id={fieldKey}
+                                    value={fieldValue}
+                                    onChange={(e) => handleFieldChange(e.target.value)}
+                                    required={Boolean(field.required)}
+                                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  >
+                                    <option value="">{field.placeholder || "Selecione..."}</option>
+                                    {field.options.map((opt) => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <Input
+                                    id={fieldKey}
+                                    type={field.type || "text"}
+                                    value={fieldValue}
+                                    list={
+                                      isMunicipalityField && municipalityOptions.length > 0
+                                        ? "municipios-list"
+                                        : undefined
                                     }
-
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      [fieldKey]: nextValue,
-                                    }));
-                                    if (formErrors[fieldKey]) {
-                                      setFormErrors((prev) => ({
-                                        ...prev,
-                                        [fieldKey]: null,
-                                      }));
-                                    }
-                                  }}
-                                  placeholder={field.placeholder || ""}
-                                  required={Boolean(field.required)}
-                                />
+                                    readOnly={isGveField && Boolean(resolvedGve)}
+                                    onChange={(e) => handleFieldChange(
+                                      formatEnrollmentFieldValue(field, e.target.value, { liveInput: true })
+                                    )}
+                                    placeholder={field.placeholder || ""}
+                                    required={Boolean(field.required)}
+                                  />
+                                )}
                                 {formErrors[fieldKey] && (
                                   <p className="text-xs text-red-600">
                                     {formErrors[fieldKey]}

@@ -35,7 +35,8 @@ import {
   Download,
   FileSpreadsheet,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Copy
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -121,6 +122,7 @@ export default function Trainings() {
   const [importFile, setImportFile] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
   const [deleteStatus, setDeleteStatus] = useState(null);
+  const [duplicateStatus, setDuplicateStatus] = useState(/** @type {{ type: string; message: string } | null} */ (null));
   const [, forceStatusClockTick] = useState(0);
 
   const navigate = useNavigate();
@@ -386,6 +388,41 @@ export default function Trainings() {
       }
     })();
   }, [isLoading, participants, trainings, queryClient]);
+
+  const duplicateTraining = useMutation({
+    mutationFn: async (trainingToDuplicate) => {
+      const {
+        id: _id,
+        created_at: _created_at,
+        participants_count: _participants_count,
+        enrolled_count: _enrolled_count,
+        approved_count: _approved_count,
+        ...rest
+      } = trainingToDuplicate;
+
+      const newTraining = {
+        ...rest,
+        title: `[CÓPIA] ${trainingToDuplicate.title}`,
+        status: "agendado",
+        participants_count: 0,
+      };
+
+      return dataClient.entities.Training.create(newTraining);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      setDuplicateStatus({
+        type: "success",
+        message: "Treinamento duplicado com sucesso.",
+      });
+    },
+    onError: (error) => {
+      setDuplicateStatus({
+        type: "error",
+        message: error?.message || "Não foi possível duplicar o treinamento.",
+      });
+    },
+  });
 
   const deleteTraining = useMutation({
     mutationFn: async (trainingToDelete) => {
@@ -1471,6 +1508,16 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
+                  setDuplicateStatus(null);
+                  duplicateTraining.mutate(row);
+                }}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Duplicar
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
                   setDeleteStatus(null);
                   setDeleteConfirm(row);
                 }}
@@ -1566,6 +1613,26 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
             }
           >
             {deleteStatus.message}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {duplicateStatus && (
+        <Alert
+          className={
+            duplicateStatus.type === "error"
+              ? "border-red-200 bg-red-50"
+              : "border-green-200 bg-green-50"
+          }
+        >
+          <AlertDescription
+            className={
+              duplicateStatus.type === "error"
+                ? "text-red-800"
+                : "text-green-800"
+            }
+          >
+            {duplicateStatus.message}
           </AlertDescription>
         </Alert>
       )}

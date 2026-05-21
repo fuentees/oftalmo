@@ -31,7 +31,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
-import { Edit, Trash2, Plus } from "lucide-react";
+import { Edit, Trash2, Plus, X } from "lucide-react";
 
 export default function EnrollmentFieldsManager() {
   const [showForm, setShowForm] = useState(false);
@@ -47,7 +47,9 @@ export default function EnrollmentFieldsManager() {
     section: "pessoais",
     order: 0,
     is_active: true,
+    options: null,
   });
+  const [newOption, setNewOption] = useState("");
 
   const queryClient = useQueryClient();
 
@@ -99,9 +101,25 @@ export default function EnrollmentFieldsManager() {
       section: "pessoais",
       order: 0,
       is_active: true,
+      options: null,
     });
+    setNewOption("");
     setEditingField(null);
     setShowForm(false);
+  };
+
+  const addOption = () => {
+    const trimmed = newOption.trim();
+    if (!trimmed) return;
+    const current = Array.isArray(formData.options) ? formData.options : [];
+    if (current.includes(trimmed)) return;
+    setFormData((prev) => ({ ...prev, options: [...current, trimmed] }));
+    setNewOption("");
+  };
+
+  const removeOption = (index) => {
+    const current = Array.isArray(formData.options) ? formData.options : [];
+    setFormData((prev) => ({ ...prev, options: current.filter((_, i) => i !== index) }));
   };
 
   const handleEdit = (field) => {
@@ -132,6 +150,8 @@ export default function EnrollmentFieldsManager() {
     tel: "Telefone",
     number: "Número",
     date: "Data",
+    boolean: "Sim / Não",
+    select: "Seleção (lista)",
   };
 
   const columns = [
@@ -315,10 +335,43 @@ export default function EnrollmentFieldsManager() {
                     <SelectItem value="tel">Telefone</SelectItem>
                     <SelectItem value="number">Número</SelectItem>
                     <SelectItem value="date">Data</SelectItem>
+                    <SelectItem value="boolean">Sim / Não</SelectItem>
+                    <SelectItem value="select">Seleção (lista)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
+
+            {formData.type === "select" && (
+              <div className="space-y-2">
+                <Label>Opções da lista *</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={newOption}
+                    onChange={(e) => setNewOption(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addOption(); } }}
+                    placeholder="Digite uma opção e pressione Enter"
+                  />
+                  <Button type="button" variant="outline" onClick={addOption}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {Array.isArray(formData.options) && formData.options.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {formData.options.map((opt, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">
+                        {opt}
+                        <button type="button" onClick={() => removeOption(i)} className="text-slate-400 hover:text-red-500">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">Nenhuma opção adicionada ainda.</p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="placeholder">Texto de Ajuda</Label>

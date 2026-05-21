@@ -903,6 +903,18 @@ export default function ParticipantProfile() {
                   <p className="font-semibold break-words">{item.value}</p>
                 </div>
               ))}
+            {mergedParticipant.custom_fields &&
+              typeof mergedParticipant.custom_fields === "object" &&
+              Object.entries(mergedParticipant.custom_fields)
+                .filter(([, v]) => v !== null && v !== undefined && v !== "")
+                .map(([key, value]) => (
+                  <div key={key}>
+                    <p className="text-sm text-slate-500">
+                      {key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </p>
+                    <p className="font-semibold break-words">{String(value)}</p>
+                  </div>
+                ))}
           </div>
         </CardContent>
       </Card>

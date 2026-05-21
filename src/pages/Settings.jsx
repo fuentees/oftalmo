@@ -22,6 +22,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import {
   Palette,
   Check,
   Copy,
@@ -36,6 +43,7 @@ import {
   Plus,
   RefreshCw,
   Users,
+  History,
 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import DataExport from "@/components/settings/DataExport";
@@ -171,6 +179,55 @@ export default function Settings() {
   const [isCertificatePreviewOpen, setIsCertificatePreviewOpen] = useState(true);
   const [isEmailSettingsOpen, setIsEmailSettingsOpen] = useState(false);
   const queryClient = useQueryClient();
+
+  // Histórico de alterações
+  const [auditEntityFilter, setAuditEntityFilter] = useState("all");
+  const [auditDateFilter, setAuditDateFilter] = useState("");
+  const [auditDetailsLog, setAuditDetailsLog] = useState(null);
+
+  const { data: auditLogs = [], isLoading: isAuditLoading } = useQuery({
+    queryKey: ["audit-logs"],
+    queryFn: () => dataClient.entities.AuditLog.list("-created_date", 200),
+  });
+
+  const auditEntityTypes = useMemo(() => {
+    const types = new Set((auditLogs || []).map((log) => log.entity_type).filter(Boolean));
+    return Array.from(types).sort();
+  }, [auditLogs]);
+
+  const filteredAuditLogs = useMemo(() => {
+    let logs = auditLogs || [];
+    if (auditEntityFilter && auditEntityFilter !== "all") {
+      logs = logs.filter((log) => log.entity_type === auditEntityFilter);
+    }
+    if (auditDateFilter) {
+      logs = logs.filter((log) => {
+        if (!log.created_date) return false;
+        return String(log.created_date).startsWith(auditDateFilter);
+      });
+    }
+    return logs.slice(0, 50);
+  }, [auditLogs, auditEntityFilter, auditDateFilter]);
+
+  const formatAuditDate = (value) => {
+    if (!value) return "-";
+    try {
+      return format(new Date(value), "dd/MM/yyyy HH:mm");
+    } catch {
+      return String(value);
+    }
+  };
+
+  const auditActionLabel = (action) => {
+    const map = {
+      create: { label: "Criação", variant: "default" },
+      update: { label: "Atualização", variant: "secondary" },
+      delete: { label: "Exclusão", variant: "destructive" },
+    };
+    const entry = map[String(action || "").toLowerCase()];
+    return entry || { label: action || "-", variant: "outline" };
+  };
+
   const { gveMapping, isLoading: isGveMappingLoading } = useGveMapping();
   const { data: trainings = [] } = useQuery({
     queryKey: ["trainings"],
@@ -1507,7 +1564,7 @@ export default function Settings() {
       />
 
       <Tabs defaultValue="tema" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 gap-2 lg:grid-cols-6">
+        <TabsList className="grid w-full grid-cols-2 gap-2 lg:grid-cols-7">
           <TabsTrigger value="tema" className="gap-2">
             <Palette className="h-4 w-4" />
             Tema
@@ -1527,6 +1584,10 @@ export default function Settings() {
           <TabsTrigger value="usuarios" className="gap-2">
             <Users className="h-4 w-4" />
             Usuários
+          </TabsTrigger>
+          <TabsTrigger value="historico" className="gap-2">
+            <History className="h-4 w-4" />
+            Histórico
           </TabsTrigger>
           <TabsTrigger value="sobre" className="gap-2">
             <Info className="h-4 w-4" />
@@ -2950,6 +3011,188 @@ export default function Settings() {
 
         <TabsContent value="usuarios" className="mt-6">
           <UserManagementPanel />
+        </TabsContent>
+
+        <TabsContent value="historico" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5 text-slate-600" />
+                Histórico de Alterações
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600">
+                    Tipo de entidade
+                  </label>
+                  <Select
+                    value={auditEntityFilter}
+                    onValueChange={setAuditEntityFilter}
+                  >
+                    <SelectTrigger className="w-52">
+                      <SelectValue placeholder="Todos os tipos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os tipos</SelectItem>
+                      {auditEntityTypes.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600">
+                    Data
+                  </label>
+                  <Input
+                    type="date"
+                    value={auditDateFilter}
+                    onChange={(e) => setAuditDateFilter(e.target.value)}
+                    className="w-44"
+                  />
+                </div>
+                {(auditEntityFilter !== "all" || auditDateFilter) && (
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setAuditEntityFilter("all");
+                        setAuditDateFilter("");
+                      }}
+                    >
+                      Limpar filtros
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {isAuditLoading ? (
+                <p className="text-sm text-slate-500">Carregando histórico...</p>
+              ) : filteredAuditLogs.length === 0 ? (
+                <p className="text-sm text-slate-500">Nenhum registro encontrado.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-slate-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                          Data/Hora
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                          Usuário
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                          Ação
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                          Entidade
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium">
+                          Nome do registro
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                          Detalhes
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredAuditLogs.map((log) => {
+                        const actionInfo = auditActionLabel(log.action);
+                        return (
+                          <tr key={log.id} className="hover:bg-slate-50/60">
+                            <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+                              {formatAuditDate(log.created_date)}
+                            </td>
+                            <td className="px-3 py-2 max-w-[160px] truncate" title={log.user_email || log.user_name}>
+                              <span>{log.user_name || log.user_email || "-"}</span>
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <Badge variant={actionInfo.variant}>
+                                {actionInfo.label}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+                              {log.entity_type || "-"}
+                            </td>
+                            <td className="px-3 py-2 max-w-[220px] truncate text-slate-700" title={log.entity_name}>
+                              {log.entity_name || "-"}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {log.changes != null ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setAuditDetailsLog(log)}
+                                >
+                                  Ver detalhes
+                                </Button>
+                              ) : (
+                                <span className="text-slate-400 text-xs">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <p className="text-xs text-slate-400">
+                Exibindo os últimos {filteredAuditLogs.length} registro(s)
+                {auditLogs.length > 50 ? ` de ${auditLogs.length} carregados` : ""}.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Dialog
+            open={auditDetailsLog != null}
+            onOpenChange={(open) => { if (!open) setAuditDetailsLog(null); }}
+          >
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  Detalhes da alteração
+                  {auditDetailsLog?.entity_name
+                    ? ` — ${auditDetailsLog.entity_name}`
+                    : ""}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-2 text-sm text-slate-600">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="font-medium">Data:</span>{" "}
+                    {formatAuditDate(auditDetailsLog?.created_date)}
+                  </div>
+                  <div>
+                    <span className="font-medium">Usuário:</span>{" "}
+                    {auditDetailsLog?.user_name || auditDetailsLog?.user_email || "-"}
+                  </div>
+                  <div>
+                    <span className="font-medium">Ação:</span>{" "}
+                    {auditDetailsLog?.action || "-"}
+                  </div>
+                  <div>
+                    <span className="font-medium">Entidade:</span>{" "}
+                    {auditDetailsLog?.entity_type || "-"}
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <p className="font-medium mb-1">Alterações (JSON):</p>
+                  <pre className="rounded-md bg-slate-100 p-3 text-xs overflow-x-auto whitespace-pre-wrap break-words">
+                    {JSON.stringify(auditDetailsLog?.changes, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="sobre" className="mt-6">
