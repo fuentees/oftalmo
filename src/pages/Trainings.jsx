@@ -1153,21 +1153,36 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       };
     });
 
-  const statusColors = {
-    agendado: "bg-blue-100 text-blue-700",
-    confirmado: "bg-green-100 text-green-700",
-    em_andamento: "bg-amber-100 text-amber-700",
-    concluido: "bg-slate-100 text-slate-700",
-    cancelado: "bg-red-100 text-red-700",
-  };
+  const statusColors = /** @type {Record<string,string>} */ ({
+    agendado:    "bg-blue-600 text-white",
+    confirmado:  "bg-emerald-600 text-white",
+    em_andamento:"bg-amber-500 text-white",
+    concluido:   "bg-slate-500 text-white",
+    cancelado:   "bg-red-500 text-white",
+  });
 
-  const statusLabels = {
+  const statusRowClass = /** @type {Record<string,string>} */ ({
+    agendado:    "border-l-[3px] border-l-blue-500",
+    confirmado:  "border-l-[3px] border-l-emerald-500",
+    em_andamento:"border-l-[3px] border-l-amber-400 bg-amber-50/40",
+    concluido:   "border-l-[3px] border-l-slate-300",
+    cancelado:   "border-l-[3px] border-l-red-300 opacity-60",
+  });
+
+  const statusLabels = /** @type {Record<string,string>} */ ({
     agendado: "Agendado",
     confirmado: "Confirmado",
     em_andamento: "Em andamento",
     concluido: "Concluído",
     cancelado: "Cancelado",
-  };
+  });
+
+  const typeColors = /** @type {Record<string,string>} */ ({
+    teorico:           "bg-blue-100 text-blue-700 border-blue-200",
+    pratico:           "bg-green-100 text-green-700 border-green-200",
+    teorico_pratico:   "bg-purple-100 text-purple-700 border-purple-200",
+    repadronizacao:    "bg-orange-100 text-orange-700 border-orange-200",
+  });
 
   const formatDate = (value) => {
     if (!value) return "-";
@@ -1226,15 +1241,14 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
         return "-";
       },
     },
-    { 
-      header: "Treinamento", 
+    {
+      header: "Treinamento",
       accessor: "title",
-      cellClassName: "font-medium",
       render: (row) => (
         <div>
           <button
             type="button"
-            className="font-medium text-left text-slate-900 hover:text-blue-700 hover:underline"
+            className="font-semibold text-left text-slate-900 hover:text-blue-700 hover:underline leading-tight"
             onClick={(event) => {
               event.stopPropagation();
               navigate(`/TrainingWorkspace?training=${encodeURIComponent(row.id)}`);
@@ -1243,17 +1257,22 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
             {row.title}
           </button>
           <div className="mt-1 flex flex-wrap items-center gap-2">
+            {row.coordinator && (
+              <span className="text-xs text-slate-500 flex items-center gap-1">
+                <Users className="h-3 w-3" />{row.coordinator}
+              </span>
+            )}
             {row.online_link && (
               <button
                 type="button"
                 title="Abrir sala online"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 transition-colors hover:bg-blue-100"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 transition-colors hover:bg-blue-100"
                 onClick={(event) => {
                   event.stopPropagation();
                   window.open(row.online_link, "_blank", "noopener,noreferrer");
                 }}
               >
-                <Video className="h-3.5 w-3.5" />
+                <Video className="h-3 w-3" />
               </button>
             )}
           </div>
@@ -1262,13 +1281,15 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     },
     {
       header: "Tipo",
-      render: (row) => (
-        <Badge variant="outline">{formatTrainingTypeLabel(row.type)}</Badge>
-      ),
-    },
-    {
-      header: "Coordenador",
-      accessor: "coordinator",
+      render: (row) => {
+        const typeKey = normalizeTrainingTypeValue(row.type);
+        const colorClass = typeColors[typeKey] || "bg-slate-100 text-slate-600 border-slate-200";
+        return (
+          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${colorClass}`}>
+            {formatTrainingTypeLabel(row.type)}
+          </span>
+        );
+      },
     },
     {
       header: "Local",
@@ -1302,16 +1323,21 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
         const count = isConcluded
           ? row.approved_count ?? row.participants_count ?? 0
           : row.enrolled_count ?? row.participants_count ?? 0;
+        const max = Number(row.max_participants) || 0;
+        const pct = max > 0 ? Math.min(100, Math.round((count / max) * 100)) : 0;
+        const barColor = pct >= 100 ? "bg-red-400" : pct >= 75 ? "bg-amber-400" : "bg-emerald-400";
         return (
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-1">
-              <Users className="h-4 w-4 text-slate-400" />
-              {count}
-              {!isConcluded && row.max_participants && (
-                <span className="text-slate-400">/{row.max_participants}</span>
-              )}
+          <div className="min-w-[72px]">
+            <div className="flex items-center gap-1 text-sm font-medium text-slate-700">
+              <Users className="h-3.5 w-3.5 text-slate-400" />
+              {count}{max > 0 && !isConcluded && <span className="text-slate-400 font-normal">/{max}</span>}
             </div>
-            <p className="text-[11px] text-slate-500">
+            {max > 0 && !isConcluded && (
+              <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100">
+                <div className={`h-1.5 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+              </div>
+            )}
+            <p className="text-[10px] text-slate-400 mt-0.5">
               {isConcluded ? "aprovados" : "inscritos"}
             </p>
           </div>
@@ -1323,7 +1349,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       render: (row) => {
         const effectiveStatus = getTrainingStatus(row);
         return (
-          <Badge className={statusColors[effectiveStatus]}>
+          <Badge className={`${statusColors[effectiveStatus]} text-xs font-medium shadow-sm`}>
             {statusLabels[effectiveStatus]}
           </Badge>
         );
@@ -1549,6 +1575,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
         data={filteredTrainings}
         isLoading={isLoading}
         emptyMessage="Nenhum treinamento cadastrado"
+        rowClassName={(row) => statusRowClass[getTrainingStatus(row)] || ""}
       />
 
       {/* Import Dialog */}

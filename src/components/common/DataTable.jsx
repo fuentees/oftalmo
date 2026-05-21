@@ -10,12 +10,16 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
+/**
+ * @param {{ columns: any[], data?: any[], isLoading?: boolean, onRowClick?: ((row: any) => void) | null, emptyMessage?: string, rowClassName?: ((row: any) => string) | string }} props
+ */
 export default function DataTable({
   columns,
   data = [],
   isLoading = false,
   onRowClick = null,
   emptyMessage = "Nenhum registro encontrado",
+  rowClassName,
 }) {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
 
@@ -144,7 +148,10 @@ export default function DataTable({
             {sortedData.map((row, rowIndex) => (
               <TableRow
                 key={row.id || rowIndex}
-                className={onRowClick ? "cursor-pointer hover:bg-slate-50" : ""}
+                className={[
+                  onRowClick ? "cursor-pointer hover:bg-slate-50" : "",
+                  typeof rowClassName === "function" ? rowClassName(row) : (rowClassName || ""),
+                ].filter(Boolean).join(" ")}
                 onClick={() => onRowClick && onRowClick(row)}
               >
                 {columns.map((col, colIndex) => (
