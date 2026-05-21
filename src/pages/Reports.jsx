@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
-import { format, addMonths, differenceInDays, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
+import { format, addMonths, differenceInDays, startOfMonth, endOfMonth, isWithinInterval, subMonths } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import jsPDF from "jspdf";
 import {
   FileText,
@@ -10,8 +11,11 @@ import {
   TrendingUp,
   Users,
   Award,
-  Calendar
+  Calendar,
+  MapPin,
+  GraduationCap,
 } from "lucide-react";
+import { getEffectiveTrainingStatus } from "@/lib/statusRules";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +24,7 @@ import DataTable from "@/components/common/DataTable";
 import QueryError from "@/components/common/QueryError";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -478,13 +482,142 @@ export default function Reports() {
         </Card>
       </div>
 
-      <Tabs defaultValue="expired" className="space-y-4">
+      <Tabs defaultValue="evolucao" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="evolucao">Evolução</TabsTrigger>
           <TabsTrigger value="expired">Vencimentos</TabsTrigger>
           <TabsTrigger value="sector">Por Setor</TabsTrigger>
           <TabsTrigger value="trends">Tendências</TabsTrigger>
           <TabsTrigger value="compliance">Compliance</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="evolucao" className="space-y-6">
+          {(() => {
+            const today = new Date();
+            const months = Array.from({ length: 6 }, (_, i) => {
+              const date = startOfMonth(subMonths(today, 5 - i));
+              return { key: format(date, "yyyy-MM"), label: format(date, "MMM/yy", { locale: ptBR }), count: 0 };
+            });
+            const keySet = new Set(months.map((m) => m.key));
+            participants.forEach((p) => {
+              if (!p?.enrollment_date) return;
+              const match = String(p.enrollment_date).match(/^(\d{4})-(\d{2})/);
+              if (!match) return;
+              const key = `${match[1]}-${match[2]}`;
+              if (!keySet.has(key)) return;
+              const entry = months.find((m) => m.key === key);
+              if (entry) entry.count += 1;
+            });
+
+            const statusLabels = { agendado: "Agendado", confirmado: "Confirmado", em_andamento: "Em andamento", concluido: "Concluído", cancelado: "Cancelado" };
+            const statusCounts = {};
+            trainings.forEach((t) => {
+              const s = getEffectiveTrainingStatus(t);
+              statusCounts[s] = (statusCounts[s] || 0) + 1;
+            });
+            const byStatus = Object.entries(statusCounts)
+              .map(([status, count]) => ({ status, label: statusLabels[status] || status, count }))
+              .sort((a, b) => b.count - a.count);
+            const PIE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#6366f1", "#ef4444"];
+
+            const munCounts = {};
+            participants.forEach((p) => {
+              const mun = String(p?.municipality || "").trim();
+              if (!mun) return;
+              munCounts[mun] = (munCounts[mun] || 0) + 1;
+            });
+            const topMun = Object.entries(munCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([municipality, count]) => ({ municipality, count }));
+
+            return (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <Card className="col-span-1 lg:col-span-2">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Users className="h-4 w-4 text-blue-600" />
+                        Inscrições por Mês (últimos 6 meses)
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={months} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                          <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                          <Tooltip formatter={(v) => [v, "Inscrições"]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                          <Bar dataKey="count" name="Inscrições" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <GraduationCap className="h-4 w-4 text-purple-600" />
+                        Treinamentos por Status
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-col items-center">
+                      {byStatus.length === 0 ? (
+                        <p className="text-sm text-slate-400 mt-8">Nenhum dado</p>
+                      ) : (
+                        <>
+                          <ResponsiveContainer width="100%" height={160}>
+                            <PieChart>
+                              <Pie data={byStatus} dataKey="count" nameKey="label" cx="50%" cy="50%" outerRadius={65} innerRadius={32}>
+                                {byStatus.map((entry, i) => <Cell key={entry.status} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                              </Pie>
+                              <Tooltip formatter={(v, n) => [v, n]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <ul className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-2">
+                            {byStatus.map((entry, i) => (
+                              <li key={entry.status} className="flex items-center gap-1 text-xs text-slate-600">
+                                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                                {entry.label} ({entry.count})
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-emerald-600" />
+                      Top 5 Municípios com Mais Inscritos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {topMun.length === 0 ? (
+                      <p className="text-sm text-slate-400">Nenhum dado disponível</p>
+                    ) : (
+                      <ol className="space-y-3">
+                        {topMun.map((item, index) => {
+                          const pct = Math.round((item.count / topMun[0].count) * 100);
+                          return (
+                            <li key={item.municipality} className="flex items-center gap-3">
+                              <span className="text-xs font-bold text-slate-400 w-4 text-right">{index + 1}</span>
+                              <span className="text-sm text-slate-700 w-48 truncate">{item.municipality}</span>
+                              <div className="flex-1 bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                <div className="h-2.5 rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
+                              </div>
+                              <span className="text-xs font-medium text-slate-600 w-10 text-right">{item.count}</span>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            );
+          })()}
+        </TabsContent>
 
         <TabsContent value="expired" className="space-y-4">
           <Card>

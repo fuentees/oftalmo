@@ -3,25 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { format, subMonths, startOfMonth } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   getEffectiveEventStatus as resolveEffectiveEventStatus,
-  getEffectiveTrainingStatus,
   getEventDateBounds,
 } from "@/lib/statusRules";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
 import {
   Package,
   GraduationCap,
@@ -367,76 +354,6 @@ export default function Dashboard() {
     return `${startLabel} a ${endLabel}`;
   };
 
-  // ── Dados para os gráficos de evolução ──────────────────────────────────
-
-  // 1. Inscrições por mês (últimos 6 meses)
-  const last6Months = useMemo(() => {
-    const today = new Date();
-    const months = Array.from({ length: 6 }, (_, i) => {
-      const date = startOfMonth(subMonths(today, 5 - i));
-      return {
-        key: format(date, "yyyy-MM"),
-        label: format(date, "MMM/yy", { locale: ptBR }),
-        count: 0,
-      };
-    });
-
-    const keySet = new Set(months.map((m) => m.key));
-    participants.forEach((p) => {
-      if (!p?.enrollment_date) return;
-      const text = String(p.enrollment_date).trim();
-      const match = text.match(/^(\d{4})-(\d{2})/);
-      if (!match) return;
-      const key = `${match[1]}-${match[2]}`;
-      if (!keySet.has(key)) return;
-      const entry = months.find((m) => m.key === key);
-      if (entry) entry.count += 1;
-    });
-
-    return months;
-  }, [participants]);
-
-  // 2. Treinamentos por status efetivo
-  const trainingsByStatus = useMemo(() => {
-    const statusLabels = {
-      agendado: "Agendado",
-      confirmado: "Confirmado",
-      em_andamento: "Em andamento",
-      concluido: "Concluído",
-      cancelado: "Cancelado",
-    };
-    const counts = {};
-    trainings.forEach((t) => {
-      const status = getEffectiveTrainingStatus(t);
-      counts[status] = (counts[status] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .map(([status, count]) => ({
-        status,
-        label: statusLabels[status] || status,
-        count,
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [trainings]);
-
-  const PIE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#6366f1", "#ef4444"];
-
-  // 3. Top 5 municípios com mais inscritos
-  const topMunicipalities = useMemo(() => {
-    const counts = {};
-    participants.forEach((p) => {
-      const mun = String(p?.municipality || "").trim();
-      if (!mun) return;
-      counts[mun] = (counts[mun] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([municipality, count]) => ({ municipality, count }));
-  }, [participants]);
-
-  // ────────────────────────────────────────────────────────────────────────
-
   const eventColumns = [
     {
       header: "Evento",
@@ -604,131 +521,6 @@ export default function Dashboard() {
           icon={MapPin}
           color="amber"
         />
-      </div>
-
-      {/* Seção Evolução */}
-      <div>
-        <h2 className="text-lg font-semibold text-slate-700 mb-4">Evolução</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-          {/* Gráfico: Inscrições por mês */}
-          <Card className="border-slate-200 shadow-md col-span-1 lg:col-span-2">
-            <CardHeader className="pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <div className="p-1.5 bg-blue-100 rounded-lg">
-                  <Users className="h-3.5 w-3.5 text-blue-600" />
-                </div>
-                Inscrições por Mês (últimos 6 meses)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 pb-2">
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={last6Months} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                  <Tooltip
-                    formatter={(value) => [value, "Inscrições"]}
-                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                  />
-                  <Bar dataKey="count" name="Inscrições" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Gráfico: Treinamentos por status */}
-          <Card className="border-slate-200 shadow-md">
-            <CardHeader className="pb-2 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-t-xl">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <div className="p-1.5 bg-purple-100 rounded-lg">
-                  <GraduationCap className="h-3.5 w-3.5 text-purple-600" />
-                </div>
-                Treinamentos por Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 pb-2 flex flex-col items-center">
-              {trainingsByStatus.length === 0 ? (
-                <p className="text-sm text-slate-400 mt-8">Nenhum dado</p>
-              ) : (
-                <>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <PieChart>
-                      <Pie
-                        data={trainingsByStatus}
-                        dataKey="count"
-                        nameKey="label"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={65}
-                        innerRadius={32}
-                      >
-                        {trainingsByStatus.map((entry, index) => (
-                          <Cell key={entry.status} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value, name) => [value, name]}
-                        contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <ul className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-1">
-                    {trainingsByStatus.map((entry, index) => (
-                      <li key={entry.status} className="flex items-center gap-1 text-xs text-slate-600">
-                        <span
-                          className="inline-block h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
-                        />
-                        {entry.label} ({entry.count})
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Top 5 municípios */}
-          <Card className="border-slate-200 shadow-md col-span-1 lg:col-span-3">
-            <CardHeader className="pb-2 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-t-xl">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <div className="p-1.5 bg-emerald-100 rounded-lg">
-                  <MapPin className="h-3.5 w-3.5 text-emerald-600" />
-                </div>
-                Top 5 Municípios com Mais Inscritos
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 pb-3">
-              {topMunicipalities.length === 0 ? (
-                <p className="text-sm text-slate-400">Nenhum dado disponível</p>
-              ) : (
-                <ol className="space-y-2">
-                  {topMunicipalities.map((item, index) => {
-                    const maxCount = topMunicipalities[0].count;
-                    const pct = Math.round((item.count / maxCount) * 100);
-                    return (
-                      <li key={item.municipality} className="flex items-center gap-3">
-                        <span className="text-xs font-bold text-slate-400 w-4 text-right">{index + 1}</span>
-                        <span className="text-sm text-slate-700 w-40 truncate">{item.municipality}</span>
-                        <div className="flex-1 bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                          <div
-                            className="h-2.5 rounded-full bg-emerald-500"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-medium text-slate-600 w-10 text-right">
-                          {item.count}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </CardContent>
-          </Card>
-
-        </div>
       </div>
 
       {/* Tables */}
