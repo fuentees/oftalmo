@@ -289,15 +289,8 @@ export default function MaterialRequests() {
       <PageHeader
         title="Solicitações de Material"
         subtitle="Gerencie pedidos de materiais do almoxarifado"
-        action={
-          <Button
-            onClick={openNew}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Nova Solicitação
-          </Button>
-        }
+        onActionClick={openNew}
+        actionLabel="Nova Solicitação"
       />
 
       {/* KPIs */}
