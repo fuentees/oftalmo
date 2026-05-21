@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 import { dataClient } from "@/api/dataClient";
+import { toast } from "@/components/ui/use-toast";
 import {
   format,
   addMonths,
@@ -28,6 +31,10 @@ import {
   Activity,
   ShieldCheck,
   Building2,
+  Send,
+  Loader2,
+  Star,
+  RefreshCw,
 } from "lucide-react";
 import { getEffectiveTrainingStatus } from "@/lib/statusRules";
 import { Button } from "@/components/ui/button";
@@ -87,11 +94,14 @@ const StatCard = ({ title, value, icon: Icon, iconColor, valueColor }) => (
 );
 
 export default function Reports() {
+  const navigate = useNavigate();
   const [periodFilter, setPeriodFilter] = useState("all");
   const [sectorFilter, setSectorFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
+  const [materialSearch, setMaterialSearch] = useState("");
+  const [sendingReminders, setSendingReminders] = useState(false);
 
   const toValidDate = (value) => {
     if (!value) return null;
@@ -132,6 +142,11 @@ export default function Reports() {
   const { data: events = [] } = useQuery({
     queryKey: ["events"],
     queryFn: () => dataClient.entities.Event.list(),
+  });
+
+  const { data: feedbacks = [] } = useQuery({
+    queryKey: ["trainingFeedback"],
+    queryFn: () => dataClient.entities.TrainingFeedback.list(),
   });
 
   // === Date range ===
@@ -269,6 +284,57 @@ export default function Reports() {
         )
       : 0;
 
+  // === Certificate computed ===
+  const certifiedParticipants = useMemo(
+    () => filteredParticipants.filter((p) => p.certificate_issued || p.certificate_url),
+    [filteredParticipants]
+  );
+
+  const pendingCertificates = useMemo(
+    () => filteredParticipants.filter((p) => p.approved && !p.certificate_issued),
+    [filteredParticipants]
+  );
+
+  // === Feedback computed ===
+  const feedbackByTraining = useMemo(() => {
+    const map = {};
+    feedbacks.forEach((fb) => {
+      const tid = String(fb.training_id ?? "");
+      if (!tid) return;
+      if (!map[tid]) map[tid] = { training_id: tid, ratings: [], count: 0, title: "" };
+      map[tid].count += 1;
+      const direct = Number(fb.rating);
+      if (direct >= 1 && direct <= 5) map[tid].ratings.push(direct);
+      if (Array.isArray(fb.answers)) {
+        fb.answers.forEach((a) => {
+          if (String(a?.type ?? "").includes("rating")) {
+            const v = Number(a?.value);
+            if (v >= 1 && v <= 5) map[tid].ratings.push(v);
+          }
+        });
+      }
+    });
+    return Object.values(map).map((entry) => ({
+      ...entry,
+      avg: entry.ratings.length
+        ? Math.round((entry.ratings.reduce((s, v) => s + v, 0) / entry.ratings.length) * 10) / 10
+        : null,
+      title:
+        trainings.find((t) => String(t.id) === entry.training_id)?.title ??
+        entry.training_id,
+    })).sort((a, b) => (b.avg ?? 0) - (a.avg ?? 0));
+  }, [feedbacks, trainings]);
+
+  const overallAvgRating = useMemo(() => {
+    const rated = feedbackByTraining.filter((f) => f.avg !== null);
+    if (!rated.length) return null;
+    return (
+      Math.round(
+        (rated.reduce((s, f) => s + f.avg, 0) / rated.length) * 10
+      ) / 10
+    );
+  }, [feedbackByTraining]);
+
   // === Material computed ===
   const getMatStock = (m) => Number(m.current_stock ?? 0);
   const getMatMin = (m) => Number(m.minimum_stock ?? 0);
@@ -340,6 +406,53 @@ export default function Reports() {
   // === Misc ===
   const sectors = [...new Set(professionals.map((p) => p.sector).filter(Boolean))];
   const categories = ["NR", "tecnico", "comportamental", "integracao", "reciclagem", "outros"];
+
+  const filteredMaterials = useMemo(() => {
+    const q = materialSearch.trim().toLowerCase();
+    if (!q) return materials;
+    return materials.filter((m) =>
+      String(m.name ?? "").toLowerCase().includes(q) ||
+      String(m.category ?? "").toLowerCase().includes(q)
+    );
+  }, [materials, materialSearch]);
+
+  const handleSendReminders = async () => {
+    const toSend = expiredTrainings.filter((p) => p.professional_email);
+    if (!toSend.length) {
+      toast({ title: "Nenhum e-mail disponível nos registros de vencimento." });
+      return;
+    }
+    setSendingReminders(true);
+    let sent = 0;
+    for (const p of toSend) {
+      const days = differenceInDays(new Date(p.validity_date), new Date());
+      const subject =
+        days < 0
+          ? `⚠️ Treinamento vencido: ${p.training_title ?? "Treinamento"}`
+          : `⏰ Treinamento vence em ${days} dia(s): ${p.training_title ?? "Treinamento"}`;
+      const body = `<p>Olá, <strong>${p.professional_name ?? "profissional"}</strong>.</p>
+<p>${days < 0
+  ? `O treinamento <strong>${p.training_title ?? ""}</strong> venceu em <strong>${format(new Date(p.validity_date), "dd/MM/yyyy")}</strong>.`
+  : `O treinamento <strong>${p.training_title ?? ""}</strong> vence em <strong>${format(new Date(p.validity_date), "dd/MM/yyyy")}</strong> (${days} dia(s) restantes).`
+}</p>
+<p>Por favor, entre em contato para agendar a renovação.</p>`;
+      try {
+        await dataClient.integrations.Core.SendEmail({
+          to: p.professional_email,
+          subject,
+          body,
+        });
+        sent++;
+      } catch {
+        // silencioso
+      }
+    }
+    setSendingReminders(false);
+    toast({
+      title: `${sent} lembrete(s) enviado(s)`,
+      description: toSend.length > sent ? `${toSend.length - sent} falharam.` : undefined,
+    });
+  };
 
   // === Exports ===
   const exportToPDF = () => {
@@ -418,7 +531,8 @@ export default function Reports() {
   };
 
   const exportToCSV = () => {
-    const rows = [
+    // Compliance sheet
+    const compRows = [
       ["Profissional", "Setor", "Total Treinamentos", "Válidos", "Vencidos", "Compliance %"],
       ...complianceData.map((item) => [
         item.professional_name,
@@ -429,12 +543,60 @@ export default function Reports() {
         item.compliance,
       ]),
     ];
-    const csv = rows.map((r) => r.join(",")).join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+
+    // Custom fields — collect all unique keys across all participants
+    const customKeys = Array.from(
+      new Set(
+        filteredParticipants
+          .flatMap((p) => Object.keys(p.custom_fields && typeof p.custom_fields === "object" ? p.custom_fields : {}))
+      )
+    );
+
+    const participantRows = [
+      [
+        "Profissional",
+        "Treinamento",
+        "Data de Inscrição",
+        "Aprovado",
+        "Certificado",
+        "Validade",
+        "Setor",
+        "Município",
+        ...customKeys,
+      ],
+      ...filteredParticipants.map((p) => [
+        p.professional_name ?? "",
+        p.training_title ?? "",
+        p.enrollment_date ? format(new Date(p.enrollment_date), "dd/MM/yyyy") : "",
+        p.approved ? "Sim" : "Não",
+        p.certificate_issued ? "Sim" : "Não",
+        p.validity_date ? format(new Date(p.validity_date), "dd/MM/yyyy") : "",
+        p.professional_sector ?? "",
+        p.municipality ?? "",
+        ...customKeys.map((k) =>
+          p.custom_fields && typeof p.custom_fields === "object"
+            ? String(p.custom_fields[k] ?? "")
+            : ""
+        ),
+      ]),
+    ];
+
+    const escape = (v) => {
+      const s = String(v ?? "");
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+
+    const compCSV = compRows.map((r) => r.map(escape).join(",")).join("\n");
+    const partCSV = participantRows.map((r) => r.map(escape).join(",")).join("\n");
+    const combined = `COMPLIANCE POR PROFISSIONAL\n${compCSV}\n\nPARTICIPAÇÕES DETALHADAS\n${partCSV}`;
+
+    const blob = new Blob(["﻿" + combined], { type: "text/csv;charset=utf-8;" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `compliance-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.download = `relatorio-${format(new Date(), "yyyy-MM-dd")}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -460,6 +622,23 @@ export default function Reports() {
       },
     },
     { header: "Setor", accessor: "professional_sector" },
+    {
+      header: "",
+      render: (row) =>
+        row.training_id ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs"
+            onClick={() =>
+              navigate(createPageUrl(`EnrollmentPage?trainingId=${row.training_id}`))
+            }
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Renovar
+          </Button>
+        ) : null,
+    },
   ];
 
   const complianceColumns = [
@@ -563,6 +742,67 @@ export default function Reports() {
     },
     { header: "Responsável", render: (row) => row.responsible ?? "—" },
     { header: "Obs.", render: (row) => row.notes ?? "—" },
+  ];
+
+  const certificateColumns = [
+    { header: "Profissional", accessor: "professional_name", cellClassName: "font-medium" },
+    { header: "Treinamento", accessor: "training_title" },
+    {
+      header: "Certificado",
+      render: (row) =>
+        row.certificate_issued ? (
+          <Badge className="bg-green-100 text-green-700">Emitido</Badge>
+        ) : (
+          <Badge className="bg-amber-100 text-amber-700">Pendente</Badge>
+        ),
+    },
+    {
+      header: "Link",
+      render: (row) =>
+        row.certificate_url ? (
+          <a
+            href={row.certificate_url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-blue-600 hover:underline text-xs"
+          >
+            Abrir
+          </a>
+        ) : (
+          "—"
+        ),
+    },
+    { header: "Setor", accessor: "professional_sector" },
+    {
+      header: "Validade",
+      render: (row) =>
+        row.validity_date
+          ? format(new Date(row.validity_date), "dd/MM/yyyy")
+          : "—",
+    },
+  ];
+
+  const feedbackColumns = [
+    { header: "Treinamento", accessor: "title", cellClassName: "font-medium" },
+    { header: "Respostas", accessor: "count" },
+    {
+      header: "Nota Média",
+      render: (row) => {
+        if (row.avg === null) return <span className="text-slate-400">—</span>;
+        const color =
+          row.avg >= 4
+            ? "text-green-600"
+            : row.avg >= 3
+            ? "text-amber-600"
+            : "text-red-600";
+        return (
+          <span className={`font-bold ${color} flex items-center gap-1`}>
+            <Star className="h-3.5 w-3.5 fill-current" />
+            {row.avg}
+          </span>
+        );
+      },
+    },
   ];
 
   return (
@@ -698,6 +938,8 @@ export default function Reports() {
           <TabsTrigger value="geral">Visão Geral</TabsTrigger>
           <TabsTrigger value="treinamentos">Treinamentos</TabsTrigger>
           <TabsTrigger value="profissionais">Profissionais</TabsTrigger>
+          <TabsTrigger value="certificados">Certificados</TabsTrigger>
+          <TabsTrigger value="feedback">Feedback</TabsTrigger>
           <TabsTrigger value="estoque">Estoque</TabsTrigger>
           <TabsTrigger value="agenda">Agenda</TabsTrigger>
         </TabsList>
@@ -1126,15 +1368,32 @@ export default function Reports() {
           {/* Vencimentos */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Vencidos ou Próximos ao Vencimento
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Vencidos ou Próximos ao Vencimento
+                  {expiredTrainings.length > 0 && (
+                    <Badge className="bg-amber-100 text-amber-700 ml-2">
+                      {expiredTrainings.length}
+                    </Badge>
+                  )}
+                </CardTitle>
                 {expiredTrainings.length > 0 && (
-                  <Badge className="bg-amber-100 text-amber-700 ml-2">
-                    {expiredTrainings.length}
-                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={sendingReminders}
+                    onClick={handleSendReminders}
+                  >
+                    {sendingReminders ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5 mr-2" />
+                    )}
+                    Enviar Lembretes
+                  </Button>
                 )}
-              </CardTitle>
+              </div>
             </CardHeader>
             <CardContent>
               <DataTable
@@ -1216,6 +1475,205 @@ export default function Reports() {
           </Card>
         </TabsContent>
 
+        {/* ===================== CERTIFICADOS ===================== */}
+        <TabsContent value="certificados" className="space-y-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <StatCard
+              title="Certificados Emitidos"
+              value={certifiedParticipants.length}
+              icon={Award}
+              iconColor="text-green-500"
+            />
+            <StatCard
+              title="Pendentes"
+              value={pendingCertificates.length}
+              icon={AlertTriangle}
+              iconColor="text-amber-500"
+              valueColor={pendingCertificates.length > 0 ? "text-amber-600" : ""}
+            />
+            <StatCard
+              title="Taxa de Emissão"
+              value={
+                approvedCount > 0
+                  ? `${Math.round((certifiedParticipants.length / approvedCount) * 100)}%`
+                  : "—"
+              }
+              icon={ShieldCheck}
+              iconColor="text-purple-500"
+            />
+            <StatCard
+              title="Total Aprovados"
+              value={approvedCount}
+              icon={Users}
+              iconColor="text-blue-500"
+            />
+          </div>
+
+          {pendingCertificates.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-amber-700">
+                  <AlertTriangle className="h-5 w-5" />
+                  Aprovados sem Certificado ({pendingCertificates.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DataTable
+                  columns={certificateColumns}
+                  data={pendingCertificates}
+                  emptyMessage="Todos os aprovados têm certificado"
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="h-5 w-5" />
+                Certificados Emitidos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DataTable
+                columns={certificateColumns}
+                data={certifiedParticipants}
+                emptyMessage="Nenhum certificado emitido"
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ===================== FEEDBACK ===================== */}
+        <TabsContent value="feedback" className="space-y-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <StatCard
+              title="Avaliações Recebidas"
+              value={feedbacks.length}
+              icon={Star}
+              iconColor="text-amber-500"
+            />
+            <StatCard
+              title="Treinamentos Avaliados"
+              value={feedbackByTraining.length}
+              icon={FileText}
+              iconColor="text-blue-500"
+            />
+            <StatCard
+              title="Nota Média Geral"
+              value={overallAvgRating !== null ? `${overallAvgRating} ★` : "—"}
+              icon={Award}
+              iconColor="text-green-500"
+            />
+          </div>
+
+          {feedbackByTraining.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Star className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-500">Nenhuma avaliação registrada</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Star className="h-4 w-4 text-amber-500" />
+                      Nota Média por Treinamento
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart
+                        data={feedbackByTraining.filter((f) => f.avg !== null).slice(0, 10)}
+                        layout="vertical"
+                        margin={{ top: 4, right: 16, left: 8, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis type="number" domain={[0, 5]} tick={{ fontSize: 11 }} />
+                        <YAxis
+                          type="category"
+                          dataKey="title"
+                          tick={{ fontSize: 10 }}
+                          width={120}
+                        />
+                        <Tooltip
+                          formatter={(v) => [`${v} ★`, "Nota"]}
+                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                        />
+                        <Bar dataKey="avg" name="Nota" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Activity className="h-4 w-4 text-blue-600" />
+                      Distribuição de Avaliações
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {(() => {
+                      const allRatings = feedbacks.flatMap((fb) => {
+                        const r = [];
+                        const direct = Number(fb.rating);
+                        if (direct >= 1 && direct <= 5) r.push(direct);
+                        if (Array.isArray(fb.answers)) {
+                          fb.answers.forEach((a) => {
+                            if (String(a?.type ?? "").includes("rating")) {
+                              const v = Number(a?.value);
+                              if (v >= 1 && v <= 5) r.push(v);
+                            }
+                          });
+                        }
+                        return r;
+                      });
+                      const dist = [1, 2, 3, 4, 5].map((score) => ({
+                        score: `${score}★`,
+                        total: allRatings.filter((v) => v === score).length,
+                      }));
+                      return (
+                        <ResponsiveContainer width="100%" height={200}>
+                          <BarChart data={dist} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                            <XAxis dataKey="score" tick={{ fontSize: 12 }} />
+                            <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                            <Tooltip
+                              formatter={(v) => [v, "Respostas"]}
+                              contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                            />
+                            <Bar dataKey="total" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Resultados por Treinamento
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DataTable
+                    columns={feedbackColumns}
+                    data={feedbackByTraining}
+                    emptyMessage="Nenhuma avaliação disponível"
+                  />
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </TabsContent>
+
         {/* ===================== ESTOQUE ===================== */}
         <TabsContent value="estoque" className="space-y-6">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -1267,16 +1725,24 @@ export default function Reports() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Inventário de Materiais
-              </CardTitle>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Inventário de Materiais
+                </CardTitle>
+                <Input
+                  placeholder="Buscar material..."
+                  value={materialSearch}
+                  onChange={(e) => setMaterialSearch(e.target.value)}
+                  className="w-56"
+                />
+              </div>
             </CardHeader>
             <CardContent>
               <DataTable
                 columns={materialColumns}
-                data={materials}
-                emptyMessage="Nenhum material cadastrado"
+                data={filteredMaterials}
+                emptyMessage="Nenhum material encontrado"
               />
             </CardContent>
           </Card>

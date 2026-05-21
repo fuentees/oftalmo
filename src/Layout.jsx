@@ -145,6 +145,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "Dashboard", page: "Dashboard", icon: LayoutDashboard },
     { name: "Agenda", page: "Schedule", icon: Calendar },
     { name: "Estoque", page: "Stock", icon: Package },
+    { name: "Solicitações", page: "MaterialRequests", icon: Package },
     { name: "Treinamentos", page: "Trainings", icon: GraduationCap },
     { name: "Profissionais", page: "Professionals", icon: Users },
     { name: "Participantes", page: "Participants", icon: Users },

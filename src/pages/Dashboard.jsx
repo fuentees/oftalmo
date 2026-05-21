@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { format } from "date-fns";
+import { format, differenceInDays, isToday, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   getEffectiveEventStatus as resolveEffectiveEventStatus,
@@ -183,6 +183,28 @@ export default function Dashboard() {
   const trainingsInCurrentYearCount = useMemo(
     () => trainings.filter(isTrainingInCurrentYear).length,
     [trainings]
+  );
+
+  // === HOJE ===
+  const todayEvents = useMemo(() => {
+    const todayStart = startOfDay(new Date());
+    const todayEnd = endOfDay(new Date());
+    return events.filter((event) => {
+      if (resolveEffectiveEventStatus(event) === "cancelado") return false;
+      const start = parseLocalDate(event.start_date);
+      const end = parseLocalDate(event.end_date || event.start_date) || start;
+      if (!start) return false;
+      return start <= todayEnd && end >= todayStart;
+    });
+  }, [events]);
+
+  const weekExpiring = useMemo(() =>
+    participants.filter((p) => {
+      if (!p.validity_date || !p.approved) return false;
+      const days = differenceInDays(new Date(p.validity_date), new Date());
+      return days >= 0 && days <= 7;
+    }),
+    [participants]
   );
 
   const currentYearFieldWorkCount = useMemo(() => {
@@ -522,6 +544,60 @@ export default function Dashboard() {
           color="amber"
         />
       </div>
+
+      {/* Resumo do Dia */}
+      {(todayEvents.length > 0 || weekExpiring.length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {todayEvents.length > 0 && (
+            <Card className="border-blue-200 bg-blue-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-blue-700">
+                  <Calendar className="h-4 w-4" />
+                  Acontecendo Hoje ({todayEvents.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {todayEvents.slice(0, 5).map((event, idx) => (
+                    <li key={event.id ?? idx} className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-slate-800 truncate">{event.title}</span>
+                      <span className="text-slate-500 text-xs shrink-0 ml-2">
+                        {event.start_time || typeLabels[event.type] || "Outro"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          {weekExpiring.length > 0 && (
+            <Card className="border-amber-200 bg-amber-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-700">
+                  <AlertTriangle className="h-4 w-4" />
+                  Vencendo Esta Semana ({weekExpiring.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {weekExpiring.slice(0, 5).map((p, idx) => {
+                    const days = differenceInDays(new Date(p.validity_date), new Date());
+                    return (
+                      <li key={p.id ?? idx} className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-slate-800 truncate">{p.professional_name}</span>
+                        <span className={`text-xs font-semibold shrink-0 ml-2 ${days === 0 ? "text-red-600" : "text-amber-700"}`}>
+                          {days === 0 ? "Hoje" : `${days}d`}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Tables */}
       <div className="grid grid-cols-1 gap-6">

@@ -68,6 +68,7 @@ import EnrollmentPage from './pages/EnrollmentPage';
 import TrainingFeedbackPage from './pages/TrainingFeedbackPage';
 import Communication from './pages/Communication';
 import TracomaExaminerEvaluationPage from './pages/TracomaExaminerEvaluationPage';
+import MaterialRequests from './pages/MaterialRequests';
 import __Layout from './Layout.jsx';
 
 
@@ -93,6 +94,7 @@ export const PAGES = {
     "TrainingFeedbackPage": TrainingFeedbackPage,
     "Communication": Communication,
     "TracomaExaminerEvaluationPage": TracomaExaminerEvaluationPage,
+    "MaterialRequests": MaterialRequests,
 }
 
 export const pagesConfig = {
