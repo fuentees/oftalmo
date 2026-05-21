@@ -712,15 +712,15 @@ export default function Reports() {
               iconColor="text-blue-500"
             />
             <StatCard
-              title="Participações"
-              value={filteredParticipants.length}
-              icon={Users}
+              title="Aprovados"
+              value={approvedCount}
+              icon={Award}
               iconColor="text-green-500"
             />
             <StatCard
               title="Taxa de Aprovação"
               value={`${approvalRate}%`}
-              icon={Award}
+              icon={ShieldCheck}
               iconColor="text-purple-500"
             />
             <StatCard
@@ -765,8 +765,8 @@ export default function Reports() {
               return {
                 key: format(date, "yyyy-MM"),
                 label: format(date, "MMM/yy", { locale: ptBR }),
-                inscricoes: 0,
-                treinamentos: 0,
+                aprovados: 0,
+                inscritos: 0,
               };
             });
             participants.forEach((p) => {
@@ -775,15 +775,9 @@ export default function Reports() {
               if (!match) return;
               const key = `${match[1]}-${match[2]}`;
               const entry = months.find((m) => m.key === key);
-              if (entry) entry.inscricoes += 1;
-            });
-            trainings.forEach((t) => {
-              if (!Array.isArray(t.dates) || t.dates.length === 0) return;
-              const d = toValidDate(t.dates[0]?.date);
-              if (!d) return;
-              const key = format(d, "yyyy-MM");
-              const entry = months.find((m) => m.key === key);
-              if (entry) entry.treinamentos += 1;
+              if (!entry) return;
+              entry.inscritos += 1;
+              if (p.approved) entry.aprovados += 1;
             });
 
             return (
@@ -792,7 +786,7 @@ export default function Reports() {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-blue-600" />
-                      Evolução — Últimos 6 Meses
+                      Aprovados por Mês (últimos 6 meses)
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -801,17 +795,20 @@ export default function Reports() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                         <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                         <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                        <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                        <Tooltip
+                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                          formatter={(v, name) => [v, name]}
+                        />
                         <Legend wrapperStyle={{ fontSize: 11 }} />
                         <Bar
-                          dataKey="inscricoes"
-                          name="Inscrições"
-                          fill="#3b82f6"
+                          dataKey="inscritos"
+                          name="Inscritos"
+                          fill="#cbd5e1"
                           radius={[3, 3, 0, 0]}
                         />
                         <Bar
-                          dataKey="treinamentos"
-                          name="Treinamentos"
+                          dataKey="aprovados"
+                          name="Aprovados"
                           fill="#10b981"
                           radius={[3, 3, 0, 0]}
                         />
@@ -910,15 +907,15 @@ export default function Reports() {
               iconColor="text-blue-500"
             />
             <StatCard
-              title="Participações"
-              value={filteredParticipants.length}
-              icon={Users}
-              iconColor="text-green-500"
-            />
-            <StatCard
               title="Aprovados"
               value={approvedCount}
               icon={Award}
+              iconColor="text-green-500"
+            />
+            <StatCard
+              title="Taxa de Aprovação"
+              value={`${approvalRate}%`}
+              icon={ShieldCheck}
               iconColor="text-purple-500"
             />
             <StatCard
@@ -938,8 +935,8 @@ export default function Reports() {
               return {
                 key: format(date, "yyyy-MM"),
                 label: format(date, "MMM/yy", { locale: ptBR }),
-                inscricoes: 0,
-                treinamentos: 0,
+                aprovados: 0,
+                inscritos: 0,
               };
             });
             participants.forEach((p) => {
@@ -948,7 +945,9 @@ export default function Reports() {
               if (!match) return;
               const key = `${match[1]}-${match[2]}`;
               const entry = months.find((m) => m.key === key);
-              if (entry) entry.inscricoes += 1;
+              if (!entry) return;
+              entry.inscritos += 1;
+              if (p.approved) entry.aprovados += 1;
             });
             trainings.forEach((t) => {
               if (!Array.isArray(t.dates) || t.dates.length === 0) return;
@@ -956,7 +955,7 @@ export default function Reports() {
               if (!d) return;
               const key = format(d, "yyyy-MM");
               const entry = months.find((m) => m.key === key);
-              if (entry) entry.treinamentos += 1;
+              if (entry) entry.treinamentos = (entry.treinamentos || 0) + 1;
             });
 
             const statusLabels = {
@@ -981,6 +980,7 @@ export default function Reports() {
 
             const munCounts = {};
             participants.forEach((p) => {
+              if (!p.approved) return;
               const mun = String(p?.municipality || "").trim();
               if (!mun) return;
               munCounts[mun] = (munCounts[mun] || 0) + 1;
@@ -997,7 +997,7 @@ export default function Reports() {
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2">
                         <TrendingUp className="h-4 w-4 text-blue-600" />
-                        Inscrições e Treinamentos (6 meses)
+                        Aprovados por Mês (6 meses)
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -1009,14 +1009,14 @@ export default function Reports() {
                           <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                           <Legend wrapperStyle={{ fontSize: 11 }} />
                           <Bar
-                            dataKey="inscricoes"
-                            name="Inscrições"
-                            fill="#3b82f6"
+                            dataKey="inscritos"
+                            name="Inscritos"
+                            fill="#cbd5e1"
                             radius={[3, 3, 0, 0]}
                           />
                           <Bar
-                            dataKey="treinamentos"
-                            name="Treinamentos"
+                            dataKey="aprovados"
+                            name="Aprovados"
                             fill="#10b981"
                             radius={[3, 3, 0, 0]}
                           />
@@ -1085,7 +1085,7 @@ export default function Reports() {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2">
                       <MapPin className="h-4 w-4 text-emerald-600" />
-                      Top 5 Municípios com Mais Inscritos
+                      Top 5 Municípios com Mais Aprovados
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
