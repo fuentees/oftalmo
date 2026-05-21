@@ -185,6 +185,22 @@ export default function Dashboard() {
     [trainings]
   );
 
+  const parseLocalDate = (value) => {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    const text = String(value);
+    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      const [, year, month, day] = match;
+      return new Date(Number(year), Number(month) - 1, Number(day));
+    }
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  };
+
   // === HOJE ===
   const todayEvents = useMemo(() => {
     const todayStart = startOfDay(new Date());
@@ -216,22 +232,6 @@ export default function Dashboard() {
       return startYear === currentYear || endYear === currentYear;
     }).length;
   }, [events]);
-
-  const parseLocalDate = (value) => {
-    if (!value) return null;
-    if (value instanceof Date && !Number.isNaN(value.getTime())) {
-      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-    }
-    const text = String(value);
-    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (match) {
-      const [, year, month, day] = match;
-      return new Date(Number(year), Number(month) - 1, Number(day));
-    }
-    const parsed = new Date(text);
-    if (Number.isNaN(parsed.getTime())) return null;
-    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-  };
 
   const eventStatusLabels = {
     agendado: "Agendado",
