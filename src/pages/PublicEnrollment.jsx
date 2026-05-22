@@ -42,6 +42,13 @@ export default function PublicEnrollment() {
   const resolveTrainingIdFromToken = async (rawToken) => {
     const token = String(rawToken || "").trim();
     if (!token) return "";
+    // /s/:code — short code direto no banco
+    if (token.startsWith("s-")) {
+      const shortCode = token.slice(2).trim();
+      if (!shortCode) return "";
+      const trainings = await dataClient.entities.Training.filter({ short_code: shortCode });
+      return String(trainings?.[0]?.id || "").trim();
+    }
     if (token.startsWith("c-")) {
       const encoded = token.slice(2).trim();
       if (!encoded) return "";
@@ -69,6 +76,11 @@ export default function PublicEnrollment() {
     const shortLinkMatch = path.match(/^\/i\/([^/?#]+)/i);
     if (shortLinkMatch?.[1]) {
       return decodeURIComponent(shortLinkMatch[1]);
+    }
+    // /s/:code — sem redirecionamento, resolve direto aqui
+    const shortCodeMatch = path.match(/^\/s\/([^/?#]+)/i);
+    if (shortCodeMatch?.[1]) {
+      return `s-${decodeURIComponent(shortCodeMatch[1])}`;
     }
     return "";
   };
