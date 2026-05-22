@@ -55,9 +55,9 @@ function toDateTime(date, time, tz = "America/Sao_Paulo") {
   return { dateTime: `${date}T${t}:00`, timeZone: tz };
 }
 
-function toDate(date, tz = "America/Sao_Paulo") {
+function toDate(date) {
   if (!date) return null;
-  return { date, timeZone: tz };
+  return { date }; // all-day events: sem timeZone (exigência da Calendar API)
 }
 
 export function buildTrainingGCalEvent(training) {
