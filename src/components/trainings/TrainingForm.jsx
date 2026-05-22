@@ -756,9 +756,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       }
       return created;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["trainings"] });
-      queryClient.invalidateQueries({ queryKey: ["events"] });
+    onSuccess: async () => {
+      queryClient.removeQueries({ queryKey: ["training-form-complete", trainingId] });
+      await queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      await queryClient.invalidateQueries({ queryKey: ["events"] });
       onClose();
     },
     onError: (error) => {
