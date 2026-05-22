@@ -52,12 +52,17 @@ import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import QueryError from "@/components/common/QueryError";
 
-const STATUS_COLORS = {
-  pendente: "border-amber-200 bg-amber-50/30",
-  aprovado: "border-green-200 bg-green-50/30",
-  rejeitado: "border-red-200 bg-red-50/30",
-  entregue: "border-blue-200 bg-blue-50/30",
-};
+const GVE_COLORS = [
+  "#3b82f6", "#8b5cf6", "#10b981", "#f97316", "#ec4899",
+  "#06b6d4", "#f59e0b", "#f43f5e", "#14b8a6", "#6366f1",
+];
+
+function getGveColor(name) {
+  if (!name) return GVE_COLORS[0];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return GVE_COLORS[Math.abs(h) % GVE_COLORS.length];
+}
 
 const STATUS_BADGE = {
   pendente: "bg-amber-100 text-amber-700",
@@ -88,6 +93,8 @@ export default function MaterialRequests() {
   const [formError, setFormError] = useState(null);
   const [showPublicManager, setShowPublicManager] = useState(false);
   const [materialSearch, setMaterialSearch] = useState("");
+  const [editingItem, setEditingItem] = useState(null);
+  const [editItemData, setEditItemData] = useState({ quantity: "", unit: "" });
 
   const { data: requests = [], isError, refetch } = useQuery({
     queryKey: ["materialRequests"],
@@ -206,7 +213,6 @@ export default function MaterialRequests() {
             material_name: material.name,
             type: "saida",
             quantity: qty,
-            unit: item.unit ?? material.unit ?? null,
             responsible: item.gves_name ?? item.requested_by ?? "Solicitação GVE",
             notes: `Pedido aprovado — ${item.gves_name ?? item.requested_by ?? ""}`.trim(),
             date: new Date().toISOString().split("T")[0],
@@ -260,6 +266,11 @@ export default function MaterialRequests() {
   });
 
   // ── Handlers ──────────────────────────────────────────────────────────────
+  const openEditItem = (item) => {
+    setEditingItem(item);
+    setEditItemData({ quantity: String(item.quantity ?? ""), unit: item.unit ?? "" });
+  };
+
   const openNew = () => {
     setEditingRequest(null);
     setFormData(EMPTY_FORM);
@@ -449,13 +460,18 @@ export default function MaterialRequests() {
         ) : (
           groupedOrders.map((order) => {
             const groupStatus = order.items[0]?.status ?? "pendente";
-            const cardClass = STATUS_COLORS[groupStatus] ?? "border-slate-200";
+            const gveLabel = order.gves_name ?? order.requested_by ?? "";
+            const gveColor = getGveColor(gveLabel);
             return (
-              <Card key={order.groupId} className={`border-l-4 ${cardClass}`}>
+              <Card key={order.groupId} className="border-l-4" style={{ borderLeftColor: gveColor }}>
                 <CardHeader className="pb-3">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-bold text-slate-800 truncate">
+                      <p className="font-bold text-slate-800 truncate flex items-center gap-2">
+                        <span
+                          className="inline-block h-3 w-3 rounded-full shrink-0"
+                          style={{ backgroundColor: gveColor }}
+                        />
                         {order.gves_name ?? order.requested_by ?? "Solicitação interna"}
                       </p>
                       {order.gves_name && order.requested_by && (
@@ -533,7 +549,7 @@ export default function MaterialRequests() {
                           <th className="text-right py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">
                             Quantidade
                           </th>
-                          {order.isGroup && <th className="w-10" />}
+                          <th className="w-16" />
                         </tr>
                       </thead>
                       <tbody>
@@ -550,8 +566,16 @@ export default function MaterialRequests() {
                             <td className="py-2.5 px-3 text-right text-slate-600 tabular-nums">
                               {item.quantity} {item.unit ?? ""}
                             </td>
-                            {order.isGroup && (
-                              <td className="py-2 px-2 text-right">
+                            <td className="py-2 px-2 text-right">
+                              <div className="flex gap-1 justify-end">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 text-slate-400 hover:text-blue-600"
+                                  onClick={() => openEditItem(item)}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -560,8 +584,8 @@ export default function MaterialRequests() {
                                 >
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
-                              </td>
-                            )}
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -650,6 +674,68 @@ export default function MaterialRequests() {
             >
               <Copy className="h-4 w-4 mr-2" />
               Copiar Link para GVEs
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Editar item de pedido */}
+      <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Editar item do pedido</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs text-slate-500">Material</Label>
+              <p className="font-semibold text-slate-800 mt-0.5">{editingItem?.item_name}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Quantidade *</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={editItemData.quantity}
+                  onChange={(e) =>
+                    setEditItemData((p) => ({ ...p, quantity: e.target.value }))
+                  }
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Unidade</Label>
+                <Input
+                  value={editItemData.unit}
+                  onChange={(e) =>
+                    setEditItemData((p) => ({ ...p, unit: e.target.value }))
+                  }
+                  placeholder="unid, kg, cx..."
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-3">
+            <Button variant="outline" onClick={() => setEditingItem(null)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={updateMutation.isPending}
+              onClick={() => {
+                if (!editItemData.quantity || isNaN(Number(editItemData.quantity))) return;
+                updateMutation.mutate({
+                  id: editingItem.id,
+                  payload: {
+                    quantity: Number(editItemData.quantity),
+                    unit: editItemData.unit.trim() || null,
+                  },
+                });
+                setEditingItem(null);
+              }}
+            >
+              Salvar
             </Button>
           </div>
         </DialogContent>
