@@ -242,25 +242,54 @@ export default function ProfessionalDetails({
 
     for (const engagement of trainingEngagements) {
       const trainingId = engagement.training_id;
-      if (!trainingId || synced[`training_${trainingId}`]) continue; // já sincronizado
+      if (!trainingId) continue;
       const training = (trainings || []).find((t) => t.id === trainingId);
       if (!training) continue;
       const gcEvent = buildTrainingGCalEvent(training);
       if (!gcEvent) continue;
       await delay();
-      const res = await createCalendarEvent(accessToken, gcEvent);
-      synced[`training_${trainingId}`] = res.id;
-      created++;
+      const key = `training_${trainingId}`;
+      const existingId = synced[key];
+      if (existingId) {
+        try {
+          await updateCalendarEvent(accessToken, existingId, gcEvent);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (/404|410|not found/i.test(msg)) {
+            const res = await createCalendarEvent(accessToken, gcEvent);
+            synced[key] = res.id;
+            created++;
+          }
+        }
+      } else {
+        const res = await createCalendarEvent(accessToken, gcEvent);
+        synced[key] = res.id;
+        created++;
+      }
     }
 
     for (const event of eventsRows) {
-      if (synced[`event_${event.id}`]) continue; // já sincronizado
+      const key = `event_${event.id}`;
+      const existingId = synced[key];
       const gcEvent = buildEventGCalEvent(event);
       if (!gcEvent) continue;
       await delay();
-      const res = await createCalendarEvent(accessToken, gcEvent);
-      synced[`event_${event.id}`] = res.id;
-      created++;
+      if (existingId) {
+        try {
+          await updateCalendarEvent(accessToken, existingId, gcEvent);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (/404|410|not found/i.test(msg)) {
+            const res = await createCalendarEvent(accessToken, gcEvent);
+            synced[key] = res.id;
+            created++;
+          }
+        }
+      } else {
+        const res = await createCalendarEvent(accessToken, gcEvent);
+        synced[key] = res.id;
+        created++;
+      }
     }
 
     await dataClient.entities.Professional.update(professional.id, {
@@ -271,7 +300,7 @@ export default function ProfessionalDetails({
     toast({
       title: "Agenda sincronizada!",
       description: created > 0
-        ? `${created} novo${created > 1 ? "s evento adicionado" : " evento adicionado"}s ao Google Calendar.`
+        ? `${created} novo${created > 1 ? "s eventos criados" : " evento criado"} no Google Calendar.`
         : "Tudo já estava atualizado.",
     });
   }, [professional, trainingEngagements, eventsRows, trainings, queryClient]);
