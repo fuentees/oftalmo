@@ -268,7 +268,13 @@ export default function EnrollmentPage({
 
   const formatDateSafe = (value, pattern = "dd/MM/yyyy") => {
     if (!value) return null;
-    const parsed = new Date(value);
+    const str = String(value).trim();
+    const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      return format(parsed, pattern);
+    }
+    const parsed = new Date(str);
     if (Number.isNaN(parsed.getTime())) return null;
     return format(parsed, pattern);
   };
@@ -1482,9 +1488,7 @@ export default function EnrollmentPage({
     };
 
     const staffParticipants = [
-      ...normalizeAndEnrichStaff(training.coordinator),
       ...normalizeAndEnrichStaff(training.monitors),
-      ...normalizeAndEnrichStaff(training.speakers),
     ];
 
     // Deduplica por nome (não adiciona quem já está inscrito)
