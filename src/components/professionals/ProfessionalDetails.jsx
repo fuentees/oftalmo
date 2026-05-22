@@ -221,52 +221,46 @@ export default function ProfessionalDetails({
   const isSyncingRef = useRef(false);
   const hasSynced = useRef(false);
 
+  // Conta quantos itens ainda não foram sincronizados
+  const gcalPendingCount = useMemo(() => {
+    if (!professional?.google_calendar_refresh_token) return 0;
+    const synced = professional.google_calendar_synced_events || {};
+    let count = 0;
+    for (const engagement of trainingEngagements) {
+      if (engagement.training_id && !synced[`training_${engagement.training_id}`]) count++;
+    }
+    for (const event of eventsRows) {
+      if (!synced[`event_${event.id}`]) count++;
+    }
+    return count;
+  }, [professional, trainingEngagements, eventsRows]);
+
   const doSync = useCallback(async (accessToken, initialSynced) => {
     const synced = { ...(initialSynced || {}) };
     const delay = () => new Promise((r) => setTimeout(r, 400));
     let created = 0;
-    let updated = 0;
 
     for (const engagement of trainingEngagements) {
       const trainingId = engagement.training_id;
-      if (!trainingId) continue;
+      if (!trainingId || synced[`training_${trainingId}`]) continue; // já sincronizado
       const training = (trainings || []).find((t) => t.id === trainingId);
       if (!training) continue;
       const gcEvent = buildTrainingGCalEvent(training);
       if (!gcEvent) continue;
-      const key = `training_${trainingId}`;
       await delay();
-      if (synced[key]) {
-        try { await updateCalendarEvent(accessToken, synced[key], gcEvent); updated++; }
-        catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          if (/404|410|not found/i.test(msg)) {
-            const res = await createCalendarEvent(accessToken, gcEvent); synced[key] = res.id; created++;
-          }
-        }
-      } else {
-        const res = await createCalendarEvent(accessToken, gcEvent);
-        synced[key] = res.id; created++;
-      }
+      const res = await createCalendarEvent(accessToken, gcEvent);
+      synced[`training_${trainingId}`] = res.id;
+      created++;
     }
 
     for (const event of eventsRows) {
+      if (synced[`event_${event.id}`]) continue; // já sincronizado
       const gcEvent = buildEventGCalEvent(event);
       if (!gcEvent) continue;
-      const key = `event_${event.id}`;
       await delay();
-      if (synced[key]) {
-        try { await updateCalendarEvent(accessToken, synced[key], gcEvent); updated++; }
-        catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          if (/404|410|not found/i.test(msg)) {
-            const res = await createCalendarEvent(accessToken, gcEvent); synced[key] = res.id; created++;
-          }
-        }
-      } else {
-        const res = await createCalendarEvent(accessToken, gcEvent);
-        synced[key] = res.id; created++;
-      }
+      const res = await createCalendarEvent(accessToken, gcEvent);
+      synced[`event_${event.id}`] = res.id;
+      created++;
     }
 
     await dataClient.entities.Professional.update(professional.id, {
@@ -274,12 +268,11 @@ export default function ProfessionalDetails({
     });
     queryClient.invalidateQueries({ queryKey: ["professionals"] });
 
-    const parts = [];
-    if (created > 0) parts.push(`${created} criado${created > 1 ? "s" : ""}`);
-    if (updated > 0) parts.push(`${updated} atualizado${updated > 1 ? "s" : ""}`);
     toast({
       title: "Agenda sincronizada!",
-      description: parts.length ? parts.join(", ") : "Tudo já estava atualizado.",
+      description: created > 0
+        ? `${created} novo${created > 1 ? "s evento adicionado" : " evento adicionado"}s ao Google Calendar.`
+        : "Tudo já estava atualizado.",
     });
   }, [professional, trainingEngagements, eventsRows, trainings, queryClient]);
 
@@ -464,7 +457,7 @@ export default function ProfessionalDetails({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 text-xs"
+                      className="h-7 text-xs gap-1.5"
                       onClick={handleSyncGoogle}
                       disabled={gcalSyncing}
                     >
@@ -473,7 +466,11 @@ export default function ProfessionalDetails({
                       ) : (
                         <RefreshCw className="h-3 w-3" />
                       )}
-                      {gcalSyncing ? "Sincronizando..." : "Sincronizar"}
+                      {gcalSyncing
+                        ? "Sincronizando..."
+                        : gcalPendingCount > 0
+                          ? `Sincronizar (${gcalPendingCount})`
+                          : "Sincronizar"}
                     </Button>
                     <Button
                       variant="ghost"
