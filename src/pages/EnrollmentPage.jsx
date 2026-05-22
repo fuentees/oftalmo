@@ -1607,7 +1607,6 @@ export default function EnrollmentPage({
               <div class="meta-item"><span>Local</span><strong>${escapeHtml(training.location || "-")}</strong></div>
               <div class="meta-item"><span>Data</span><strong>${escapeHtml(session.dateLabel)}</strong></div>
               <div class="meta-item"><span>Horário</span><strong>${escapeHtml(sessionTimeLabel)}</strong></div>
-              <div class="meta-item"><span>Inscritos ativos</span><strong>${activeParticipants.length}</strong></div>
             </div>
             <table>
               <thead>
