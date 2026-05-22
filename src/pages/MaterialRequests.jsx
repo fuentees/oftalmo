@@ -87,7 +87,6 @@ export default function MaterialRequests() {
   const [formError, setFormError] = useState(null);
   const [showPublicManager, setShowPublicManager] = useState(false);
   const [materialSearch, setMaterialSearch] = useState("");
-  const [savingPublic, setSavingPublic] = useState(false);
 
   const { data: requests = [], isError, refetch } = useQuery({
     queryKey: ["materialRequests"],
