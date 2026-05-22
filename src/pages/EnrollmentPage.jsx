@@ -24,12 +24,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { 
+import {
   ArrowLeft,
   BarChart3,
   Building2,
   CalendarPlus,
-  GraduationCap, 
+  GraduationCap,
   CheckCircle,
   AlertCircle,
   Loader2,
@@ -44,7 +44,9 @@ import {
   MapPin,
   Link2,
   Printer,
-  QrCode
+  QrCode,
+  Copy,
+  Check,
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -213,6 +215,7 @@ export default function EnrollmentPage({
   const [printSelectedColumns, setPrintSelectedColumns] = useState(
     DEFAULT_ATTENDANCE_PRINT_COLUMNS
   );
+  const [emailsCopied, setEmailsCopied] = useState(false);
 
   const handleGoBack = () => {
     if (window.history.length > 1) {
@@ -2109,11 +2112,24 @@ export default function EnrollmentPage({
     updateParticipant.mutate({ id: editParticipant.id, data: payload });
   };
 
-  const filteredParticipants = allParticipants.filter(p => 
+  const filteredParticipants = allParticipants.filter(p =>
     p.professional_name?.toLowerCase().includes(search.toLowerCase()) ||
     p.professional_cpf?.toLowerCase().includes(search.toLowerCase()) ||
     p.professional_email?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const handleCopyEmails = () => {
+    const emails = allParticipants
+      .filter((p) => p.enrollment_status !== "cancelado")
+      .map((p) => p.professional_email)
+      .filter(Boolean)
+      .join("; ");
+    if (!emails) return;
+    navigator.clipboard.writeText(emails).then(() => {
+      setEmailsCopied(true);
+      setTimeout(() => setEmailsCopied(false), 2000);
+    });
+  };
 
   const summaryMunicipalityOptions = React.useMemo(() => {
     const values = Array.from(
@@ -2884,6 +2900,16 @@ export default function EnrollmentPage({
                     <Download className="h-4 w-4 mr-2" />
                     Exportar Excel
                   </Button>
+                  {allParticipants.some((p) => p.enrollment_status !== "cancelado" && p.professional_email) && (
+                    <Button onClick={handleCopyEmails} variant="outline">
+                      {emailsCopied ? (
+                        <Check className="h-4 w-4 mr-2 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4 mr-2" />
+                      )}
+                      {emailsCopied ? "Copiado!" : "Copiar e-mails"}
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
