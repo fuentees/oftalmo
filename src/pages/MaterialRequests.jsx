@@ -14,6 +14,7 @@ import {
   Globe,
   Copy,
   Settings2,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,18 +49,17 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/use-toast";
 import PageHeader from "@/components/common/PageHeader";
-import DataTable from "@/components/common/DataTable";
 import SearchFilter from "@/components/common/SearchFilter";
 import QueryError from "@/components/common/QueryError";
 
-const STATUS_LABELS = {
-  pendente: "Pendente",
-  aprovado: "Aprovado",
-  rejeitado: "Rejeitado",
-  entregue: "Entregue",
+const STATUS_COLORS = {
+  pendente: "border-amber-200 bg-amber-50/30",
+  aprovado: "border-green-200 bg-green-50/30",
+  rejeitado: "border-red-200 bg-red-50/30",
+  entregue: "border-blue-200 bg-blue-50/30",
 };
 
-const STATUS_COLORS = {
+const STATUS_BADGE = {
   pendente: "bg-amber-100 text-amber-700",
   aprovado: "bg-green-100 text-green-700",
   rejeitado: "bg-red-100 text-red-700",
@@ -71,6 +71,7 @@ const EMPTY_FORM = {
   quantity: "",
   unit: "",
   reason: "",
+  gves_name: "",
   requested_by: "",
   status: "pendente",
   notes: "",
@@ -98,8 +99,8 @@ export default function MaterialRequests() {
     queryFn: () => dataClient.entities.Material.list(),
   });
 
+  // ── Link público ─────────────────────────────────────────────────────────
   const publicLink = `${window.location.origin}${createPageUrl("PublicMaterialRequest")}`;
-
   const availableCount = materials.filter((m) => m.available_for_request).length;
 
   const filteredManagerMaterials = useMemo(() => {
@@ -124,6 +125,109 @@ export default function MaterialRequests() {
       toast({ title: "Link copiado!", description: publicLink });
     });
   };
+
+  // ── Agrupamento de pedidos ────────────────────────────────────────────────
+  const filteredRequests = useMemo(() => {
+    return requests.filter((r) => {
+      if (statusFilter !== "all" && r.status !== statusFilter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return (
+          String(r.item_name ?? "").toLowerCase().includes(q) ||
+          String(r.gves_name ?? "").toLowerCase().includes(q) ||
+          String(r.requested_by ?? "").toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [requests, search, statusFilter]);
+
+  const groupedOrders = useMemo(() => {
+    const map = new Map();
+    filteredRequests.forEach((r) => {
+      const key = r.request_group_id ?? `single_${r.id}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          groupId: key,
+          isGroup: !!r.request_group_id,
+          gves_name: r.gves_name ?? null,
+          requested_by: r.requested_by ?? null,
+          date: r.request_date ?? r.created_at,
+          items: [],
+        });
+      }
+      map.get(key).items.push(r);
+    });
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0)
+    );
+  }, [filteredRequests]);
+
+  const counts = useMemo(() => ({
+    pendente: requests.filter((r) => r.status === "pendente").length,
+    aprovado: requests.filter((r) => r.status === "aprovado").length,
+    entregue: requests.filter((r) => r.status === "entregue").length,
+    rejeitado: requests.filter((r) => r.status === "rejeitado").length,
+  }), [requests]);
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+  const groupStatusMutation = useMutation({
+    mutationFn: async ({ groupItems, newStatus, currentMaterials }) => {
+      // 1. Atualiza status de todos os itens do pedido
+      for (const item of groupItems) {
+        await dataClient.entities.MaterialRequest.update(item.id, { status: newStatus });
+      }
+
+      // 2. Baixa de estoque ao aprovar (só se ainda não estava aprovado/entregue)
+      if (newStatus === "aprovado") {
+        for (const item of groupItems) {
+          const alreadyDeducted =
+            item.status === "aprovado" || item.status === "entregue";
+          if (alreadyDeducted) continue;
+
+          const material = currentMaterials.find(
+            (m) =>
+              String(m.name ?? "").toLowerCase().trim() ===
+              String(item.item_name ?? "").toLowerCase().trim()
+          );
+          if (!material) continue;
+
+          const qty = Number(item.quantity ?? 0);
+          const newStock = Math.max(
+            0,
+            Number(material.current_stock ?? 0) - qty
+          );
+
+          await dataClient.entities.Material.update(material.id, {
+            current_stock: newStock,
+          });
+
+          await dataClient.entities.StockMovement.create({
+            material_name: material.name,
+            type: "saida",
+            quantity: qty,
+            unit: item.unit ?? material.unit ?? null,
+            responsible: item.gves_name ?? item.requested_by ?? "Solicitação GVE",
+            notes: `Pedido aprovado — ${item.gves_name ?? item.requested_by ?? ""}`.trim(),
+            date: new Date().toISOString().split("T")[0],
+          });
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["materialRequests"] });
+      queryClient.invalidateQueries({ queryKey: ["materials"] });
+      queryClient.invalidateQueries({ queryKey: ["stockMovements"] });
+      toast({ title: "Pedido atualizado." });
+    },
+    onError: (err) => {
+      toast({
+        title: "Erro ao atualizar pedido.",
+        description: err?.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: (payload) => dataClient.entities.MaterialRequest.create(payload),
@@ -150,11 +254,12 @@ export default function MaterialRequests() {
     mutationFn: (id) => dataClient.entities.MaterialRequest.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["materialRequests"] });
-      toast({ title: "Solicitação excluída." });
+      toast({ title: "Item excluído." });
       setDeleteTarget(null);
     },
   });
 
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const openNew = () => {
     setEditingRequest(null);
     setFormData(EMPTY_FORM);
@@ -165,10 +270,11 @@ export default function MaterialRequests() {
   const openEdit = (request) => {
     setEditingRequest(request);
     setFormData({
-      item_name: request.item_name ?? request.material_name ?? "",
+      item_name: request.item_name ?? "",
       quantity: String(request.quantity ?? ""),
       unit: request.unit ?? "",
       reason: request.reason ?? "",
+      gves_name: request.gves_name ?? "",
       requested_by: request.requested_by ?? "",
       status: request.status ?? "pendente",
       notes: request.notes ?? "",
@@ -188,7 +294,7 @@ export default function MaterialRequests() {
     e.preventDefault();
     setFormError(null);
     if (!formData.item_name.trim()) {
-      setFormError("Informe o nome do item solicitado.");
+      setFormError("Informe o nome do item.");
       return;
     }
     if (!formData.quantity || isNaN(Number(formData.quantity))) {
@@ -200,119 +306,18 @@ export default function MaterialRequests() {
       quantity: Number(formData.quantity),
       unit: formData.unit.trim() || null,
       reason: formData.reason.trim() || null,
+      gves_name: formData.gves_name.trim() || null,
       requested_by: formData.requested_by.trim() || null,
       status: formData.status,
       notes: formData.notes.trim() || null,
       request_date: new Date().toISOString().split("T")[0],
     };
-
     if (editingRequest) {
       updateMutation.mutate({ id: editingRequest.id, payload });
     } else {
       createMutation.mutate(payload);
     }
   };
-
-  const handleStatusChange = (request, newStatus) => {
-    updateMutation.mutate({
-      id: request.id,
-      payload: { status: newStatus },
-    });
-  };
-
-  const filteredRequests = requests.filter((r) => {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return (
-        String(r.item_name ?? r.material_name ?? "").toLowerCase().includes(q) ||
-        String(r.requested_by ?? "").toLowerCase().includes(q) ||
-        String(r.reason ?? "").toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
-
-  const counts = {
-    pendente: requests.filter((r) => r.status === "pendente").length,
-    aprovado: requests.filter((r) => r.status === "aprovado").length,
-    entregue: requests.filter((r) => r.status === "entregue").length,
-    rejeitado: requests.filter((r) => r.status === "rejeitado").length,
-  };
-
-  const columns = [
-    {
-      header: "Item Solicitado",
-      render: (row) => (
-        <div>
-          <p className="font-medium text-slate-800">
-            {row.item_name ?? row.material_name ?? "—"}
-          </p>
-          {row.reason && (
-            <p className="text-xs text-slate-500 truncate max-w-[220px]">{row.reason}</p>
-          )}
-        </div>
-      ),
-    },
-    {
-      header: "Qtd",
-      render: (row) =>
-        `${row.quantity ?? "—"} ${row.unit ?? ""}`.trim(),
-    },
-    {
-      header: "Solicitante",
-      render: (row) => row.requested_by ?? "—",
-    },
-    {
-      header: "Data",
-      render: (row) => {
-        const d = row.request_date ?? row.created_at;
-        return d ? format(new Date(d), "dd/MM/yyyy") : "—";
-      },
-    },
-    {
-      header: "Status",
-      render: (row) => (
-        <Select
-          value={row.status ?? "pendente"}
-          onValueChange={(val) => handleStatusChange(row, val)}
-        >
-          <SelectTrigger className="h-7 w-32 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="pendente">Pendente</SelectItem>
-            <SelectItem value="aprovado">Aprovado</SelectItem>
-            <SelectItem value="entregue">Entregue</SelectItem>
-            <SelectItem value="rejeitado">Rejeitado</SelectItem>
-          </SelectContent>
-        </Select>
-      ),
-    },
-    {
-      header: "",
-      render: (row) => (
-        <div className="flex gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 w-7 p-0"
-            onClick={() => openEdit(row)}
-          >
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-            onClick={() => setDeleteTarget(row)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      ),
-    },
-  ];
 
   return (
     <div className="space-y-6">
@@ -411,12 +416,12 @@ export default function MaterialRequests() {
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Filtros */}
       <div className="flex flex-wrap gap-3 items-center">
         <SearchFilter
           value={search}
           onChange={setSearch}
-          placeholder="Buscar por item, solicitante..."
+          placeholder="Buscar por item, GVE, solicitante..."
         />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-40">
@@ -432,16 +437,160 @@ export default function MaterialRequests() {
         </Select>
       </div>
 
-      {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={filteredRequests}
-            emptyMessage="Nenhuma solicitação encontrada"
-          />
-        </CardContent>
-      </Card>
+      {/* Lista de pedidos agrupados */}
+      <div className="space-y-4">
+        {groupedOrders.length === 0 ? (
+          <Card>
+            <CardContent className="py-14 text-center text-slate-400">
+              <Package className="h-12 w-12 mx-auto mb-3 text-slate-200" />
+              <p>Nenhuma solicitação encontrada</p>
+            </CardContent>
+          </Card>
+        ) : (
+          groupedOrders.map((order) => {
+            const groupStatus = order.items[0]?.status ?? "pendente";
+            const cardClass = STATUS_COLORS[groupStatus] ?? "border-slate-200";
+            return (
+              <Card key={order.groupId} className={`border-l-4 ${cardClass}`}>
+                <CardHeader className="pb-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-800 truncate">
+                        {order.gves_name ?? order.requested_by ?? "Solicitação interna"}
+                      </p>
+                      {order.gves_name && order.requested_by && (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Responsável: {order.requested_by}
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {order.date
+                          ? format(new Date(order.date), "dd/MM/yyyy")
+                          : "—"}{" "}
+                        ·{" "}
+                        <span className="font-medium">{order.items.length}</span>{" "}
+                        {order.items.length === 1 ? "item" : "itens"}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge className={STATUS_BADGE[groupStatus] ?? ""}>
+                        {groupStatus.charAt(0).toUpperCase() + groupStatus.slice(1)}
+                      </Badge>
+                      <Select
+                        value={groupStatus}
+                        onValueChange={(val) =>
+                          groupStatusMutation.mutate({
+                            groupItems: order.items,
+                            newStatus: val,
+                            currentMaterials: materials,
+                          })
+                        }
+                        disabled={groupStatusMutation.isPending}
+                      >
+                        <SelectTrigger className="w-36 h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pendente">Pendente</SelectItem>
+                          <SelectItem value="aprovado">✓ Aprovar</SelectItem>
+                          <SelectItem value="entregue">Entregue</SelectItem>
+                          <SelectItem value="rejeitado">Rejeitar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {!order.isGroup && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            onClick={() => openEdit(order.items[0])}
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => setDeleteTarget(order.items[0])}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="pt-0">
+                  <div className="rounded-lg border border-slate-100 overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100">
+                          <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                            Material
+                          </th>
+                          <th className="text-right py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">
+                            Quantidade
+                          </th>
+                          {order.isGroup && <th className="w-10" />}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {order.items.map((item, i) => (
+                          <tr
+                            key={item.id}
+                            className={
+                              i % 2 === 0 ? "bg-white" : "bg-slate-50/40"
+                            }
+                          >
+                            <td className="py-2.5 px-3 font-medium text-slate-800">
+                              {item.item_name}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-600 tabular-nums">
+                              {item.quantity} {item.unit ?? ""}
+                            </td>
+                            {order.isGroup && (
+                              <td className="py-2 px-2 text-right">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 text-red-400 hover:text-red-600"
+                                  onClick={() => setDeleteTarget(item)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {(order.items[0]?.reason || order.items[0]?.notes) && (
+                    <div className="mt-2 text-xs text-slate-500 space-y-0.5 pl-1">
+                      {order.items[0].reason && (
+                        <p><span className="font-medium">Motivo:</span> {order.items[0].reason}</p>
+                      )}
+                      {order.items[0].notes && (
+                        <p className="text-slate-400">{order.items[0].notes}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {groupStatus === "aprovado" && (
+                    <p className="mt-2 text-xs text-green-600 font-medium flex items-center gap-1 pl-1">
+                      <CheckCircle className="h-3 w-3" />
+                      Baixa de estoque realizada automaticamente
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
+      </div>
 
       {/* Dialog: Configurar materiais públicos */}
       <Dialog open={showPublicManager} onOpenChange={setShowPublicManager}>
@@ -493,9 +642,7 @@ export default function MaterialRequests() {
           </div>
 
           <div className="pt-3 flex items-center justify-between gap-2">
-            <p className="text-xs text-slate-400">
-              {availableCount} material(is) ativo(s)
-            </p>
+            <p className="text-xs text-slate-400">{availableCount} material(is) ativo(s)</p>
             <Button
               onClick={copyLink}
               disabled={availableCount === 0}
@@ -508,7 +655,7 @@ export default function MaterialRequests() {
         </DialogContent>
       </Dialog>
 
-      {/* Form Dialog */}
+      {/* Dialog: Formulário manual */}
       <Dialog open={showForm} onOpenChange={(open) => !open && closeForm()}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -523,9 +670,7 @@ export default function MaterialRequests() {
                 <Label>Item Solicitado *</Label>
                 <Input
                   value={formData.item_name}
-                  onChange={(e) =>
-                    setFormData((p) => ({ ...p, item_name: e.target.value }))
-                  }
+                  onChange={(e) => setFormData((p) => ({ ...p, item_name: e.target.value }))}
                   placeholder="Nome do material ou item"
                   list="material-suggestions"
                 />
@@ -542,9 +687,7 @@ export default function MaterialRequests() {
                   type="number"
                   min="1"
                   value={formData.quantity}
-                  onChange={(e) =>
-                    setFormData((p) => ({ ...p, quantity: e.target.value }))
-                  }
+                  onChange={(e) => setFormData((p) => ({ ...p, quantity: e.target.value }))}
                   placeholder="Ex: 10"
                 />
               </div>
@@ -553,21 +696,26 @@ export default function MaterialRequests() {
                 <Label>Unidade</Label>
                 <Input
                   value={formData.unit}
-                  onChange={(e) =>
-                    setFormData((p) => ({ ...p, unit: e.target.value }))
-                  }
+                  onChange={(e) => setFormData((p) => ({ ...p, unit: e.target.value }))}
                   placeholder="Ex: caixa, unid, kg"
                 />
               </div>
 
-              <div className="col-span-2">
-                <Label>Solicitante</Label>
+              <div>
+                <Label>GVES / Município</Label>
+                <Input
+                  value={formData.gves_name}
+                  onChange={(e) => setFormData((p) => ({ ...p, gves_name: e.target.value }))}
+                  placeholder="Nome do GVE ou município"
+                />
+              </div>
+
+              <div>
+                <Label>Responsável</Label>
                 <Input
                   value={formData.requested_by}
-                  onChange={(e) =>
-                    setFormData((p) => ({ ...p, requested_by: e.target.value }))
-                  }
-                  placeholder="Nome do responsável pela solicitação"
+                  onChange={(e) => setFormData((p) => ({ ...p, requested_by: e.target.value }))}
+                  placeholder="Nome do responsável"
                 />
               </div>
 
@@ -575,9 +723,7 @@ export default function MaterialRequests() {
                 <Label>Motivo / Justificativa</Label>
                 <Textarea
                   value={formData.reason}
-                  onChange={(e) =>
-                    setFormData((p) => ({ ...p, reason: e.target.value }))
-                  }
+                  onChange={(e) => setFormData((p) => ({ ...p, reason: e.target.value }))}
                   placeholder="Descreva o motivo da solicitação"
                   rows={2}
                 />
@@ -607,9 +753,7 @@ export default function MaterialRequests() {
                 <Label>Observações</Label>
                 <Textarea
                   value={formData.notes}
-                  onChange={(e) =>
-                    setFormData((p) => ({ ...p, notes: e.target.value }))
-                  }
+                  onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))}
                   placeholder="Informações adicionais"
                   rows={2}
                 />
@@ -638,20 +782,18 @@ export default function MaterialRequests() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirm */}
+      {/* AlertDialog: Excluir item */}
       <AlertDialog
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir solicitação?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir item?</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir a solicitação de{" "}
-              <strong>
-                {deleteTarget?.item_name ?? deleteTarget?.material_name ?? "item"}
-              </strong>
-              ? Esta ação não pode ser desfeita.
+              Tem certeza que deseja excluir{" "}
+              <strong>{deleteTarget?.item_name ?? "este item"}</strong>?
+              Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

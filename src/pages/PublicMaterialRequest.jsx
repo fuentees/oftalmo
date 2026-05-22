@@ -54,15 +54,16 @@ export default function PublicMaterialRequest() {
 
     setSubmitting(true);
     try {
+      const groupId = crypto.randomUUID();
       const records = items.map((m) => ({
         item_name: m.name,
         quantity: Number(quantities[m.id]),
         unit: m.unit || null,
-        requested_by: responsible.trim()
-          ? `${gvesName.trim()} — ${responsible.trim()}`
-          : gvesName.trim(),
+        gves_name: gvesName.trim(),
+        requested_by: responsible.trim() || null,
         status: "pendente",
         request_date: new Date().toISOString().split("T")[0],
+        request_group_id: groupId,
       }));
 
       const { error: insertError } = await supabase
