@@ -218,40 +218,12 @@ export default function ProfessionalDetails({
   const queryClient = useQueryClient();
   const [gcalSyncing, setGcalSyncing] = useState(false);
   const [gcalConnecting, setGcalConnecting] = useState(false);
+  const isSyncingRef = useRef(false);
+  const hasSynced = useRef(false);
 
-  const handleConnectGoogle = async () => {
-    setGcalConnecting(true);
-    try {
-      // GIS abre popup gerenciado pelo Google — sem redirect, sem client_secret
-      const accessToken = await connectGoogleCalendar();
-      await dataClient.entities.Professional.update(professional.id, {
-        google_calendar_refresh_token: "gis_connected",
-        google_calendar_synced_events: {},
-      });
-      queryClient.invalidateQueries({ queryKey: ["professionals"] });
-      toast({ title: "Google Calendar conectado! Sincronizando eventos..." });
-      // Sincroniza imediatamente com o token obtido
-      await runSync(accessToken);
-    } catch (err) {
-      if (err.message !== "access_denied" && err.message !== "popup_closed_by_user") {
-        toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
-      }
-    } finally {
-      setGcalConnecting(false);
-    }
-  };
-
-  const handleDisconnectGoogle = async () => {
-    await dataClient.entities.Professional.update(professional.id, {
-      google_calendar_refresh_token: null,
-      google_calendar_synced_events: {},
-    });
-    queryClient.invalidateQueries({ queryKey: ["professionals"] });
-    toast({ title: "Google Calendar desconectado." });
-  };
-
-  const runSync = useCallback(async (accessToken) => {
-    const synced = { ...(professional.google_calendar_synced_events || {}) };
+  const doSync = useCallback(async (accessToken, initialSynced) => {
+    const synced = { ...(initialSynced || {}) };
+    const delay = () => new Promise((r) => setTimeout(r, 120));
     let created = 0;
     let updated = 0;
 
@@ -263,6 +235,7 @@ export default function ProfessionalDetails({
       const gcEvent = buildTrainingGCalEvent(training);
       if (!gcEvent) continue;
       const key = `training_${trainingId}`;
+      await delay();
       if (synced[key]) {
         try { await updateCalendarEvent(accessToken, synced[key], gcEvent); updated++; }
         catch { const res = await createCalendarEvent(accessToken, gcEvent); synced[key] = res.id; created++; }
@@ -276,6 +249,7 @@ export default function ProfessionalDetails({
       const gcEvent = buildEventGCalEvent(event);
       if (!gcEvent) continue;
       const key = `event_${event.id}`;
+      await delay();
       if (synced[key]) {
         try { await updateCalendarEvent(accessToken, synced[key], gcEvent); updated++; }
         catch { const res = await createCalendarEvent(accessToken, gcEvent); synced[key] = res.id; created++; }
@@ -299,21 +273,54 @@ export default function ProfessionalDetails({
     });
   }, [professional, trainingEngagements, eventsRows, trainings, queryClient]);
 
+  const handleConnectGoogle = async () => {
+    setGcalConnecting(true);
+    try {
+      const accessToken = await connectGoogleCalendar();
+      hasSynced.current = true; // evita que o auto-sync dispare em paralelo
+      await dataClient.entities.Professional.update(professional.id, {
+        google_calendar_refresh_token: "gis_connected",
+        google_calendar_synced_events: {},
+      });
+      queryClient.invalidateQueries({ queryKey: ["professionals"] });
+      toast({ title: "Google Calendar conectado! Sincronizando eventos..." });
+      await doSync(accessToken, {});
+    } catch (err) {
+      if (err.message !== "access_denied" && err.message !== "popup_closed_by_user") {
+        toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
+      }
+    } finally {
+      setGcalConnecting(false);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    await dataClient.entities.Professional.update(professional.id, {
+      google_calendar_refresh_token: null,
+      google_calendar_synced_events: {},
+    });
+    hasSynced.current = false;
+    queryClient.invalidateQueries({ queryKey: ["professionals"] });
+    toast({ title: "Google Calendar desconectado." });
+  };
+
   const handleSyncGoogle = useCallback(async () => {
     if (!professional.google_calendar_refresh_token) return;
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
     setGcalSyncing(true);
     try {
       const accessToken = await silentGoogleToken();
-      await runSync(accessToken);
+      await doSync(accessToken, professional.google_calendar_synced_events || {});
     } catch (err) {
       toast({ title: "Erro na sincronização", description: err.message, variant: "destructive" });
     } finally {
+      isSyncingRef.current = false;
       setGcalSyncing(false);
     }
-  }, [professional, runSync]);
+  }, [professional, doSync]);
 
-  // Auto-sync when profile loads if already connected
-  const hasSynced = useRef(false);
+  // Auto-sync ao abrir o perfil (apenas uma vez por montagem)
   React.useEffect(() => {
     if (!hasSynced.current && professional?.google_calendar_refresh_token) {
       hasSynced.current = true;

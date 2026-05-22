@@ -86,10 +86,17 @@ export function buildTrainingGCalEvent(training) {
   };
 }
 
+function nextDay(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+
 export function buildEventGCalEvent(event) {
   const startDate = event.start_date;
-  const endDate = event.end_date || startDate;
   if (!startDate) return null;
+  // Google Calendar API: end date for all-day events is exclusive (must be next day)
+  const endDate = nextDay(event.end_date || startDate);
 
   const desc = [event.description, event.online_link && `Link: ${event.online_link}`]
     .filter(Boolean)
