@@ -1,6 +1,8 @@
 const API = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 
-async function apiFetch(url, method, accessToken, body) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function apiFetch(url, method, accessToken, body, attempt = 0) {
   const res = await fetch(url, {
     method,
     headers: {
@@ -9,6 +11,18 @@ async function apiFetch(url, method, accessToken, body) {
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+
+  // Rate limit: retry up to 3x with exponential backoff
+  if (res.status === 403 || res.status === 429) {
+    const err = await res.json().catch(() => ({}));
+    const reason = err.error?.errors?.[0]?.reason || "";
+    if ((reason === "rateLimitExceeded" || reason === "userRateLimitExceeded") && attempt < 3) {
+      await sleep(1000 * (attempt + 1));
+      return apiFetch(url, method, accessToken, body, attempt + 1);
+    }
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `HTTP ${res.status}`);

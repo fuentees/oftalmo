@@ -223,7 +223,7 @@ export default function ProfessionalDetails({
 
   const doSync = useCallback(async (accessToken, initialSynced) => {
     const synced = { ...(initialSynced || {}) };
-    const delay = () => new Promise((r) => setTimeout(r, 120));
+    const delay = () => new Promise((r) => setTimeout(r, 400));
     let created = 0;
     let updated = 0;
 
