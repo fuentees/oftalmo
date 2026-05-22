@@ -671,6 +671,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     });
   };
 
+  const [saveError, setSaveError] = useState(null);
+
   const saveTraining = useMutation({
     mutationFn: async (/** @type {any} */ data) => {
       if (training) {
@@ -759,10 +761,14 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       queryClient.invalidateQueries({ queryKey: ["events"] });
       onClose();
     },
+    onError: (error) => {
+      setSaveError(error?.message || "Erro ao salvar treinamento. Tente novamente.");
+    },
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setSaveError(null);
 
     // Auto-calculate status based on dates and times.
     const dateRange = getTrainingDateRange(formData.dates || []);
@@ -1589,6 +1595,11 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         />
       </div>
 
+      {saveError && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+          {saveError}
+        </div>
+      )}
       <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-white pb-2 border-t mt-4">
         <Button type="button" variant="outline" onClick={onClose}>
           Cancelar
