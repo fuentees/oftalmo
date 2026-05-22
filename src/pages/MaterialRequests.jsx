@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
 import {
   Plus,
@@ -10,6 +11,9 @@ import {
   Clock,
   Trash2,
   Edit,
+  Globe,
+  Copy,
+  Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/use-toast";
 import PageHeader from "@/components/common/PageHeader";
 import DataTable from "@/components/common/DataTable";
@@ -80,6 +85,9 @@ export default function MaterialRequests() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState(null);
+  const [showPublicManager, setShowPublicManager] = useState(false);
+  const [materialSearch, setMaterialSearch] = useState("");
+  const [savingPublic, setSavingPublic] = useState(false);
 
   const { data: requests = [], isError, refetch } = useQuery({
     queryKey: ["materialRequests"],
@@ -90,6 +98,33 @@ export default function MaterialRequests() {
     queryKey: ["materials"],
     queryFn: () => dataClient.entities.Material.list(),
   });
+
+  const publicLink = `${window.location.origin}${createPageUrl("PublicMaterialRequest")}`;
+
+  const availableCount = materials.filter((m) => m.available_for_request).length;
+
+  const filteredManagerMaterials = useMemo(() => {
+    const q = materialSearch.trim().toLowerCase();
+    if (!q) return materials;
+    return materials.filter(
+      (m) =>
+        String(m.name ?? "").toLowerCase().includes(q) ||
+        String(m.category ?? "").toLowerCase().includes(q)
+    );
+  }, [materials, materialSearch]);
+
+  const toggleMaterialPublic = async (material) => {
+    await dataClient.entities.Material.update(material.id, {
+      available_for_request: !material.available_for_request,
+    });
+    queryClient.invalidateQueries({ queryKey: ["materials"] });
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(publicLink).then(() => {
+      toast({ title: "Link copiado!", description: publicLink });
+    });
+  };
 
   const createMutation = useMutation({
     mutationFn: (payload) => dataClient.entities.MaterialRequest.create(payload),
@@ -293,6 +328,42 @@ export default function MaterialRequests() {
         actionLabel="Nova Solicitação"
       />
 
+      {/* Formulário Público */}
+      <Card className="border-indigo-200 bg-indigo-50/50">
+        <CardContent className="py-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                <Globe className="h-5 w-5 text-indigo-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-800">Formulário Público para GVEs</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {availableCount > 0
+                    ? `${availableCount} material(is) disponível(is) para solicitação`
+                    : "Nenhum material configurado — clique em Configurar"}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button size="sm" variant="outline" onClick={() => setShowPublicManager(true)}>
+                <Settings2 className="h-3.5 w-3.5 mr-1.5" />
+                Configurar Materiais
+              </Button>
+              <Button
+                size="sm"
+                onClick={copyLink}
+                disabled={availableCount === 0}
+                className="bg-indigo-600 hover:bg-indigo-700"
+              >
+                <Copy className="h-3.5 w-3.5 mr-1.5" />
+                Copiar Link
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card>
@@ -372,6 +443,71 @@ export default function MaterialRequests() {
           />
         </CardContent>
       </Card>
+
+      {/* Dialog: Configurar materiais públicos */}
+      <Dialog open={showPublicManager} onOpenChange={setShowPublicManager}>
+        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-indigo-600" />
+              Materiais disponíveis para GVEs
+            </DialogTitle>
+            <p className="text-sm text-slate-500">
+              Marque os materiais que os GVEs poderão solicitar pelo link público.
+            </p>
+          </DialogHeader>
+
+          <div className="my-2">
+            <Input
+              placeholder="Buscar material..."
+              value={materialSearch}
+              onChange={(e) => setMaterialSearch(e.target.value)}
+              className="h-9"
+            />
+          </div>
+
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 border rounded-lg">
+            {filteredManagerMaterials.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">Nenhum material encontrado</p>
+            ) : (
+              filteredManagerMaterials.map((m) => (
+                <label
+                  key={m.id}
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
+                >
+                  <Checkbox
+                    checked={!!m.available_for_request}
+                    onCheckedChange={() => toggleMaterialPublic(m)}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-800 truncate">{m.name}</p>
+                    <p className="text-xs text-slate-400">
+                      {m.category || "Sem categoria"} · {m.unit || "—"}
+                    </p>
+                  </div>
+                  {m.available_for_request && (
+                    <span className="text-xs text-indigo-600 font-semibold shrink-0">Ativo</span>
+                  )}
+                </label>
+              ))
+            )}
+          </div>
+
+          <div className="pt-3 flex items-center justify-between gap-2">
+            <p className="text-xs text-slate-400">
+              {availableCount} material(is) ativo(s)
+            </p>
+            <Button
+              onClick={copyLink}
+              disabled={availableCount === 0}
+              className="bg-indigo-600 hover:bg-indigo-700"
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Copiar Link para GVEs
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Form Dialog */}
       <Dialog open={showForm} onOpenChange={(open) => !open && closeForm()}>

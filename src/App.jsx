@@ -17,7 +17,7 @@ import { ADMIN_ONLY_PAGES } from "@/lib/accessControl";
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
-const NO_LAYOUT_PAGES = new Set(["PublicEnrollment", "CheckIn"]);
+const NO_LAYOUT_PAGES = new Set(["PublicEnrollment", "CheckIn", "PublicMaterialRequest"]);
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
@@ -28,6 +28,7 @@ const PUBLIC_ROUTES = [
   "/checkin",
   "/trainingfeedback",
   "/tracomaexaminertest",
+  "/publicmaterialrequest",
 ];
 
 const AuthenticatedApp = () => {
