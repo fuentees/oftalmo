@@ -42,6 +42,7 @@ import {
   normalizeBinaryAnswer,
 } from "@/lib/tracomaExamKappa";
 import { buildPublicEnrollmentUrl } from "@/lib/enrollmentLinks";
+import { generateShortCode } from "@/lib/shortCode";
 import * as QRCodeLib from "qrcode";
 
 const parseStoredAnswers = (
@@ -410,6 +411,31 @@ export default function TrainingDetails({
         message: `Não foi possível copiar o link de ${label}.`,
       });
     }
+  };
+
+  const handleCopyShortLink = async () => {
+    if (!trainingId) return;
+    let shortCode = training?.short_code;
+    if (!shortCode) {
+      // Gera um código único — tenta até 5x em caso de colisão
+      for (let i = 0; i < 5; i++) {
+        const candidate = generateShortCode();
+        try {
+          await dataClient.entities.Training.update(trainingId, { short_code: candidate });
+          shortCode = candidate;
+          queryClient.invalidateQueries({ queryKey: ["trainings"] });
+          break;
+        } catch {
+          // colisão de unique constraint → tenta outro código
+        }
+      }
+    }
+    if (!shortCode) {
+      setLinkActionStatus({ type: "error", message: "Não foi possível gerar o link curto." });
+      return;
+    }
+    const shortLink = `${appOrigin}/s/${shortCode}`;
+    await copyLinkToClipboard("inscrição (curto)", shortLink);
   };
 
   const createAttendanceLinkForDate = async (dateValue) => {
@@ -1542,6 +1568,15 @@ export default function TrainingDetails({
             >
               <Copy className="h-3.5 w-3.5 mr-1" />
               Gerar link de inscrição
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleCopyShortLink}
+            >
+              <Copy className="h-3.5 w-3.5 mr-1" />
+              Link curto de inscrição
             </Button>
             <Button
               type="button"

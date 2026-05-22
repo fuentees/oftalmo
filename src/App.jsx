@@ -12,6 +12,7 @@ import Login from './pages/Login';
 import TrainingFeedback from './pages/TrainingFeedback';
 import TracomaExaminerTest from './pages/TracomaExaminerTest';
 import PublicEnrollment from './pages/PublicEnrollment';
+import ShortEnrollment from './pages/ShortEnrollment';
 import { ADMIN_ONLY_PAGES } from "@/lib/accessControl";
 import { useEffect } from 'react';
 
@@ -139,6 +140,7 @@ function App() {
             <Route path="/TrainingFeedback" element={<TrainingFeedback />} />
             <Route path="/TracomaExaminerTest" element={<TracomaExaminerTest />} />
             <Route path="/i/:trainingId" element={<PublicEnrollment />} />
+            <Route path="/s/:code" element={<ShortEnrollment />} />
             <Route path="/*" element={<AuthenticatedApp />} />
           </Routes>
         </Router>
