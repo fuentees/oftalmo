@@ -1488,6 +1488,7 @@ export default function EnrollmentPage({
     };
 
     const staffParticipants = [
+      ...normalizeAndEnrichStaff(training.coordinator),
       ...normalizeAndEnrichStaff(training.monitors),
     ];
 
