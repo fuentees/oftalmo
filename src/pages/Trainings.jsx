@@ -397,6 +397,7 @@ export default function Trainings() {
         participants_count: _participants_count,
         enrolled_count: _enrolled_count,
         approved_count: _approved_count,
+        short_code: _short_code,
         ...rest
       } = trainingToDuplicate;
 
