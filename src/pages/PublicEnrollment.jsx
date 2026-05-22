@@ -127,8 +127,12 @@ export default function PublicEnrollment() {
         if (active) setResolvedTrainingId("");
         return;
       }
-      const nextId = await resolveTrainingIdFromToken(shortPathToken);
-      if (active) setResolvedTrainingId(nextId);
+      try {
+        const nextId = await resolveTrainingIdFromToken(shortPathToken);
+        if (active) setResolvedTrainingId(nextId || "not_found");
+      } catch {
+        if (active) setResolvedTrainingId("not_found");
+      }
     };
     resolveId();
     return () => {
