@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { UserPlus, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { UserPlus, CheckCircle, XCircle, Loader2, Copy, Check } from "lucide-react";
 import { addMonths, format } from "date-fns";
 import { parseDateSafe } from "@/lib/date";
 import {
@@ -21,6 +21,19 @@ import {
 
 export default function EnrollmentManager({ training, professionals, existingParticipants, onClose }) {
   const [selectedProfessional, setSelectedProfessional] = useState("");
+  const [emailsCopied, setEmailsCopied] = useState(false);
+
+  const handleCopyEmails = () => {
+    const emails = existingParticipants
+      .map((p) => p.professional_email)
+      .filter(Boolean)
+      .join("; ");
+    if (!emails) return;
+    navigator.clipboard.writeText(emails).then(() => {
+      setEmailsCopied(true);
+      setTimeout(() => setEmailsCopied(false), 2000);
+    });
+  };
   
   const queryClient = useQueryClient();
   const { data: professionalGoogleEmailStore = { byProfessionalId: {}, byProfessionalEmail: {} } } =
@@ -201,9 +214,24 @@ export default function EnrollmentManager({ training, professionals, existingPar
 
       {/* Enrolled Participants */}
       <div>
-        <h3 className="font-semibold mb-3">
-          Inscritos ({existingParticipants.length})
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold">Inscritos ({existingParticipants.length})</h3>
+          {existingParticipants.some((p) => p.professional_email) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              onClick={handleCopyEmails}
+            >
+              {emailsCopied ? (
+                <Check className="h-3.5 w-3.5 text-green-600" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+              {emailsCopied ? "Copiado!" : "Copiar e-mails"}
+            </Button>
+          )}
+        </div>
         
         {existingParticipants.length > 0 ? (
           <div className="border rounded-lg overflow-x-auto">
