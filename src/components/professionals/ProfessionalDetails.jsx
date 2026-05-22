@@ -330,13 +330,6 @@ export default function ProfessionalDetails({
     }
   }, [professional, doSync]);
 
-  // Auto-sync ao abrir o perfil (apenas uma vez por montagem)
-  React.useEffect(() => {
-    if (!hasSynced.current && professional?.google_calendar_refresh_token) {
-      hasSynced.current = true;
-      handleSyncGoogle();
-    }
-  }, [professional?.google_calendar_refresh_token]);
   // ────────────────────────────────────────────────────────────────────────────
 
   const eventColumns = [
