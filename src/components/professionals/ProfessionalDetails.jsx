@@ -238,7 +238,12 @@ export default function ProfessionalDetails({
       await delay();
       if (synced[key]) {
         try { await updateCalendarEvent(accessToken, synced[key], gcEvent); updated++; }
-        catch { const res = await createCalendarEvent(accessToken, gcEvent); synced[key] = res.id; created++; }
+        catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (/404|410|not found/i.test(msg)) {
+            const res = await createCalendarEvent(accessToken, gcEvent); synced[key] = res.id; created++;
+          }
+        }
       } else {
         const res = await createCalendarEvent(accessToken, gcEvent);
         synced[key] = res.id; created++;
@@ -252,7 +257,12 @@ export default function ProfessionalDetails({
       await delay();
       if (synced[key]) {
         try { await updateCalendarEvent(accessToken, synced[key], gcEvent); updated++; }
-        catch { const res = await createCalendarEvent(accessToken, gcEvent); synced[key] = res.id; created++; }
+        catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (/404|410|not found/i.test(msg)) {
+            const res = await createCalendarEvent(accessToken, gcEvent); synced[key] = res.id; created++;
+          }
+        }
       } else {
         const res = await createCalendarEvent(accessToken, gcEvent);
         synced[key] = res.id; created++;
