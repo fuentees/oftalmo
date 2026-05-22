@@ -87,7 +87,8 @@ export default function PublicEnrollment() {
   const shortPathToken = resolveTrainingTokenFromPath();
   const queryTrainingId = String(urlParams.get("training") || "").trim();
   const [resolvedTrainingId, setResolvedTrainingId] = useState("");
-  const trainingId = resolvedTrainingId || queryTrainingId;
+  const isResolvingToken = !!shortPathToken && !resolvedTrainingId;
+  const trainingId = resolvedTrainingId === "not_found" ? "" : (resolvedTrainingId || queryTrainingId);
 
   const [formData, setFormData] = useState(
     /** @type {Record<string, any>} */ ({})
@@ -617,6 +618,14 @@ export default function PublicEnrollment() {
 
     enrollMutation.mutate(normalizedFormData);
   };
+
+  if (isResolvingToken) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   if (!trainingId) {
     return (
