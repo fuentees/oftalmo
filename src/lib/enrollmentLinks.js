@@ -1,15 +1,5 @@
-const normalizeTrainingCode = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9_-]/g, "");
-
-const buildEnrollmentToken = ({ trainingId, trainingCode }) => {
-  const code = normalizeTrainingCode(trainingCode);
-  const id = String(trainingId || "").trim();
-  if (code && id) return `c-${code}__${id}`;
-  if (code) return `c-${code}`;
-  return id;
+const buildEnrollmentToken = ({ trainingId }) => {
+  return String(trainingId || "").trim();
 };
 
 export const buildPublicEnrollmentPath = (trainingId, trainingCode = "") => {
