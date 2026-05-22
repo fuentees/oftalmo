@@ -1,6 +1,8 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useRef, useCallback } from "react";
 import { format } from "date-fns";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,10 +16,23 @@ import {
   Briefcase,
   CheckCircle2,
   Route,
+  Calendar,
+  RefreshCw,
+  Loader2,
+  Link2Off,
 } from "lucide-react";
 import DataTable from "@/components/common/DataTable";
 import TrainingHistory from "./TrainingHistory";
 import CertificatesPanel from "./CertificatesPanel";
+import { dataClient } from "@/api/dataClient";
+import { connectGoogleCalendar, refreshGoogleToken } from "@/lib/googleAuth";
+import {
+  createCalendarEvent,
+  updateCalendarEvent,
+  buildTrainingGCalEvent,
+  buildEventGCalEvent,
+} from "@/lib/googleCalendarSync";
+import { toast } from "@/components/ui/use-toast";
 
 const EVENT_TYPE_LABELS = {
   viagem: "Viagem",
@@ -199,6 +214,135 @@ export default function ProfessionalDetails({
   const recentEngagements = trainingEngagements.slice(0, 8);
   const recentEvents = eventsRows.slice(0, 8);
 
+  // ── Google Calendar integration ─────────────────────────────────────────────
+  const queryClient = useQueryClient();
+  const accessTokenRef = useRef(null);
+  const [gcalSyncing, setGcalSyncing] = useState(false);
+  const [gcalConnecting, setGcalConnecting] = useState(false);
+
+  const getAccessToken = useCallback(async () => {
+    if (accessTokenRef.current) return accessTokenRef.current;
+    const token = await refreshGoogleToken(professional.google_calendar_refresh_token);
+    accessTokenRef.current = token;
+    setTimeout(() => { accessTokenRef.current = null; }, 55 * 60 * 1000);
+    return token;
+  }, [professional?.google_calendar_refresh_token]);
+
+  const handleConnectGoogle = async () => {
+    setGcalConnecting(true);
+    try {
+      const tokens = await connectGoogleCalendar();
+      await dataClient.entities.Professional.update(professional.id, {
+        google_calendar_refresh_token: tokens.refresh_token,
+        google_calendar_synced_events: {},
+      });
+      accessTokenRef.current = tokens.access_token;
+      queryClient.invalidateQueries({ queryKey: ["professionals"] });
+      toast({ title: "Google Calendar conectado! Sincronizando eventos..." });
+    } catch (err) {
+      if (err.message !== "cancelled") {
+        toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
+      }
+    } finally {
+      setGcalConnecting(false);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    await dataClient.entities.Professional.update(professional.id, {
+      google_calendar_refresh_token: null,
+      google_calendar_synced_events: {},
+    });
+    accessTokenRef.current = null;
+    queryClient.invalidateQueries({ queryKey: ["professionals"] });
+    toast({ title: "Google Calendar desconectado." });
+  };
+
+  const handleSyncGoogle = useCallback(async () => {
+    if (!professional.google_calendar_refresh_token) return;
+    setGcalSyncing(true);
+    try {
+      const accessToken = await getAccessToken();
+      const synced = { ...(professional.google_calendar_synced_events || {}) };
+      let created = 0;
+      let updated = 0;
+
+      // Sync trainings
+      for (const engagement of trainingEngagements) {
+        const trainingId = engagement.training_id;
+        if (!trainingId) continue;
+        const training = (trainings || []).find((t) => t.id === trainingId);
+        if (!training) continue;
+        const gcEvent = buildTrainingGCalEvent(training);
+        if (!gcEvent) continue;
+        const key = `training_${trainingId}`;
+        if (synced[key]) {
+          try {
+            await updateCalendarEvent(accessToken, synced[key], gcEvent);
+            updated++;
+          } catch {
+            // Event may have been deleted by user — recreate
+            const res = await createCalendarEvent(accessToken, gcEvent);
+            synced[key] = res.id;
+            created++;
+          }
+        } else {
+          const res = await createCalendarEvent(accessToken, gcEvent);
+          synced[key] = res.id;
+          created++;
+        }
+      }
+
+      // Sync events (reuniões, viagens, etc.)
+      for (const event of eventsRows) {
+        const gcEvent = buildEventGCalEvent(event);
+        if (!gcEvent) continue;
+        const key = `event_${event.id}`;
+        if (synced[key]) {
+          try {
+            await updateCalendarEvent(accessToken, synced[key], gcEvent);
+            updated++;
+          } catch {
+            const res = await createCalendarEvent(accessToken, gcEvent);
+            synced[key] = res.id;
+            created++;
+          }
+        } else {
+          const res = await createCalendarEvent(accessToken, gcEvent);
+          synced[key] = res.id;
+          created++;
+        }
+      }
+
+      await dataClient.entities.Professional.update(professional.id, {
+        google_calendar_synced_events: synced,
+      });
+      queryClient.invalidateQueries({ queryKey: ["professionals"] });
+
+      const parts = [];
+      if (created > 0) parts.push(`${created} criado${created > 1 ? "s" : ""}`);
+      if (updated > 0) parts.push(`${updated} atualizado${updated > 1 ? "s" : ""}`);
+      toast({
+        title: "Agenda sincronizada!",
+        description: parts.length ? parts.join(", ") : "Tudo já estava atualizado.",
+      });
+    } catch (err) {
+      toast({ title: "Erro na sincronização", description: err.message, variant: "destructive" });
+    } finally {
+      setGcalSyncing(false);
+    }
+  }, [professional, trainingEngagements, eventsRows, trainings, getAccessToken, queryClient]);
+
+  // Auto-sync when profile loads if already connected
+  const hasSynced = useRef(false);
+  React.useEffect(() => {
+    if (!hasSynced.current && professional?.google_calendar_refresh_token) {
+      hasSynced.current = true;
+      handleSyncGoogle();
+    }
+  }, [professional?.google_calendar_refresh_token]);
+  // ────────────────────────────────────────────────────────────────────────────
+
   const eventColumns = [
     {
       header: "Data",
@@ -314,6 +458,65 @@ export default function ProfessionalDetails({
             <div className="flex items-center gap-2 text-slate-700">
               <Briefcase className="h-4 w-4 text-slate-400" />
               {professional.position || professional.sector || "-"}
+            </div>
+
+            <div className="border-t pt-3 mt-1 space-y-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" />
+                Google Calendar
+              </p>
+              {professional.google_calendar_refresh_token ? (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                    <span className="text-xs text-slate-500">Conectado</span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={handleSyncGoogle}
+                      disabled={gcalSyncing}
+                    >
+                      {gcalSyncing ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3" />
+                      )}
+                      {gcalSyncing ? "Sincronizando..." : "Sincronizar"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-slate-400 hover:text-red-500"
+                      onClick={handleDisconnectGoogle}
+                    >
+                      <Link2Off className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full h-8 text-xs gap-2"
+                  onClick={handleConnectGoogle}
+                  disabled={gcalConnecting}
+                >
+                  {gcalConnecting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                  )}
+                  {gcalConnecting ? "Aguardando autorização..." : "Conectar Google Calendar"}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

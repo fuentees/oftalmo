@@ -13,6 +13,32 @@ import TrainingFeedback from './pages/TrainingFeedback';
 import TracomaExaminerTest from './pages/TracomaExaminerTest';
 import PublicEnrollment from './pages/PublicEnrollment';
 import { ADMIN_ONLY_PAGES } from "@/lib/accessControl";
+import { useEffect } from 'react';
+
+// Componente para lidar com o callback do OAuth do Google (abre em popup)
+function GoogleOAuthCallback() {
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const error = params.get("error");
+    if (window.opener) {
+      window.opener.postMessage(
+        { type: "google_oauth", code, error },
+        window.location.origin
+      );
+      window.close();
+    }
+  }, []);
+  return (
+    <div className="fixed inset-0 flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+    </div>
+  );
+}
+
+const isGoogleOAuthCallback =
+  new URLSearchParams(window.location.search).has("code") &&
+  Boolean(window.opener);
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -101,6 +127,7 @@ const AuthenticatedApp = () => {
 
 
 function App() {
+  if (isGoogleOAuthCallback) return <GoogleOAuthCallback />;
 
   return (
     <AuthProvider>
