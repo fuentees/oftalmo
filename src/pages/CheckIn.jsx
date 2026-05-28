@@ -204,24 +204,27 @@ export default function CheckIn() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardHeader>
-            <CardTitle className="text-center flex items-center justify-center gap-2 text-green-600">
-              <CheckCircle className="h-6 w-6" />
-              Presença Registrada!
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-center space-y-4">
-            <div className="text-4xl">✅</div>
-            <p className="text-slate-700">
-              Sua presença foi registrada com sucesso no treinamento.
-            </p>
-            <div className="p-4 bg-slate-50 rounded-lg text-sm text-left">
-              <p><strong>Treinamento:</strong> {linkData.training_title}</p>
-              <p><strong>Data:</strong> {formatTrainingDate(linkData.date)}</p>
-              <p><strong>Horário:</strong> {format(new Date(), "HH:mm")}</p>
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 50%, #d1fae5 100%)' }}>
+        <Card className="max-w-md w-full shadow-xl border-green-200">
+          <CardContent className="pt-8 pb-8 text-center space-y-5">
+            <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-lg">
+              <CheckCircle className="h-14 w-14 text-white" />
             </div>
+            <div className="space-y-1">
+              <h2 className="text-3xl font-bold text-green-700">Presença Confirmada!</h2>
+              <p className="text-slate-600 text-base">
+                Sua presença foi registrada com sucesso.
+              </p>
+            </div>
+            <div className="bg-white border border-green-100 rounded-xl p-5 text-left space-y-3 shadow-sm">
+              <p className="text-sm font-semibold text-green-700 uppercase tracking-wide mb-2">Detalhes</p>
+              <p className="text-sm text-slate-700"><strong>Treinamento:</strong> {linkData.training_title}</p>
+              <p className="text-sm text-slate-700"><strong>Data:</strong> {formatTrainingDate(linkData.date)}</p>
+              <p className="text-sm text-slate-700"><strong>Horário de entrada:</strong> {format(new Date(), "HH:mm")}</p>
+            </div>
+            <p className="text-sm font-medium text-green-600">
+              ✅ Guarde esta tela como comprovante de presença.
+            </p>
           </CardContent>
         </Card>
       </div>

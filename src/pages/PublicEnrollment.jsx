@@ -539,15 +539,10 @@ export default function PublicEnrollment() {
         });
         return;
       }
-      let message;
-      if (result?.emailSent && result?.recipientEmail) {
-        message = `Inscrição confirmada! E-mail de confirmação enviado para ${result.recipientEmail}.`;
-      } else if (result?.recipientEmail) {
-        message = "Inscrição confirmada! Não foi possível enviar o e-mail de confirmação — verifique com o organizador.";
-      } else {
-        message = "Inscrição confirmada com sucesso.";
-      }
-      setSubmissionFeedback({ type: "success", message });
+      setSubmissionFeedback({
+        type: "success",
+        message: "Inscrição confirmada com sucesso!",
+      });
     },
   });
 
@@ -679,47 +674,60 @@ export default function PublicEnrollment() {
   }
 
   if (submitted) {
+    const isAlreadyEnrolled = submissionFeedback?.type === "info";
+    const hasWarning = submissionFeedback?.type === "warning";
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="pt-6 text-center space-y-4">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle className="h-8 w-8 text-green-600" />
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 50%, #d1fae5 100%)' }}>
+        <Card className="max-w-lg w-full shadow-xl border-green-200">
+          <CardContent className="pt-8 pb-8 text-center space-y-5">
+            <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-lg">
+              <CheckCircle className="h-14 w-14 text-white" />
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900">Inscrição Realizada!</h2>
-              <p className="text-slate-600 mt-2">
-                {submissionFeedback?.message || "Sua inscrição foi confirmada com sucesso."}
+            <div className="space-y-1">
+              <h2 className="text-3xl font-bold text-green-700">
+                {isAlreadyEnrolled ? "Já Inscrito!" : "Inscrição Confirmada!"}
+              </h2>
+              <p className="text-slate-600 text-base">
+                {submissionFeedback?.message || "Sua inscrição foi registrada com sucesso."}
               </p>
             </div>
-            <div className="bg-slate-50 rounded-lg p-4 text-left space-y-2">
-              <p className="text-sm text-slate-600">
+            <div className="bg-white border border-green-100 rounded-xl p-5 text-left space-y-3 shadow-sm">
+              <p className="text-sm font-semibold text-green-700 uppercase tracking-wide mb-2">Detalhes do Treinamento</p>
+              <p className="text-sm text-slate-700">
                 <strong>Treinamento:</strong> {training.title}
               </p>
               {trainingDates.length > 0 && (
                 <div>
-                  <p className="text-sm text-slate-600 font-semibold mb-1">Datas:</p>
+                  <p className="text-sm text-slate-700 font-semibold mb-1">Datas:</p>
                   {trainingDates.map((dateItem, index) => (
                     <p key={index} className="text-sm text-slate-600 pl-3">
                       • {formatDateSafe(dateItem.date)}
                       {dateItem.start_time && dateItem.end_time
-                        ? ` - ${dateItem.start_time} às ${dateItem.end_time}`
+                        ? ` — ${dateItem.start_time} às ${dateItem.end_time}`
                         : ""}
                     </p>
                   ))}
                 </div>
               )}
               {training.online_link ? (
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-slate-700">
                   <strong>Modalidade:</strong> Treinamento on-line
                 </p>
               ) : (
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-slate-700">
                   <strong>Local:</strong> {eventMunicipalityLabel}
                 </p>
               )}
             </div>
-            <p className="text-sm text-slate-500">
+            {hasWarning && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
+                {submissionFeedback.message}
+              </p>
+            )}
+            <p className="text-sm font-medium text-green-600">
+              ✅ Guarde esta tela como comprovante de inscrição.
+            </p>
+            <p className="text-xs text-slate-400">
               Compareça 15 minutos antes do horário previsto.
             </p>
           </CardContent>
