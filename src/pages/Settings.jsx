@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { applyThemeColor, THEME_STORAGE_KEY } from "@/lib/themeColors";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -153,7 +154,7 @@ const buildPreviewBodyHtml = (value, paragraphSpacingMm = 0) => {
 };
 
 export default function Settings() {
-  const [selectedColor, setSelectedColor] = useState("blue");
+  const [selectedColor, setSelectedColor] = useState(() => localStorage.getItem(THEME_STORAGE_KEY) || "blue");
   const [mappingStatus, setMappingStatus] = useState(null);
   const [orphanCleanupStatus, setOrphanCleanupStatus] = useState(null);
   const [isRunningOrphanCleanup, setIsRunningOrphanCleanup] = useState(false);
@@ -185,7 +186,7 @@ export default function Settings() {
   const [auditDateFilter, setAuditDateFilter] = useState("");
   const [auditDetailsLog, setAuditDetailsLog] = useState(null);
 
-  const { data: auditLogs = [], isLoading: isAuditLoading } = useQuery({
+  const { data: auditLogs = [], isLoading: isAuditLoading, isError: isAuditError } = useQuery({
     queryKey: ["audit-logs"],
     queryFn: () => dataClient.entities.AuditLog.list("-created_date", 200),
   });
@@ -239,7 +240,7 @@ export default function Settings() {
   });
 
   useEffect(() => {
-    applyColor(selectedColor);
+    applyThemeColor(selectedColor);
   }, [selectedColor]);
 
   useEffect(() => {
@@ -344,13 +345,9 @@ export default function Settings() {
     };
   }, [certificateModelId]);
 
-  const applyColor = (colorValue) => {
-    return colorValue;
-  };
-
   const handleColorChange = (colorValue) => {
     setSelectedColor(colorValue);
-    applyColor(colorValue);
+    applyThemeColor(colorValue);
   };
 
   const handleCertificateHeaderChange = (value) => {
@@ -3074,8 +3071,18 @@ export default function Settings() {
 
               {isAuditLoading ? (
                 <p className="text-sm text-slate-500">Carregando histórico...</p>
+              ) : isAuditError ? (
+                <Alert className="border-red-200 bg-red-50">
+                  <AlertDescription className="text-red-800">
+                    Não foi possível carregar o histórico. Verifique se a tabela{" "}
+                    <code className="font-mono text-xs">audit_logs</code> existe no banco e se as permissões estão corretas.
+                  </AlertDescription>
+                </Alert>
               ) : filteredAuditLogs.length === 0 ? (
-                <p className="text-sm text-slate-500">Nenhum registro encontrado.</p>
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Nenhum registro encontrado. O histórico é preenchido automaticamente por triggers no banco de dados.
+                  Execute a migration <code className="font-mono text-xs">add_audit_log_triggers.sql</code> no Supabase para ativar o rastreamento.
+                </div>
               ) : (
                 <div className="overflow-x-auto rounded-md border">
                   <table className="w-full text-sm">

@@ -36,33 +36,27 @@ const formatDateTime = (value) => {
   return parsed.toLocaleString("pt-BR");
 };
 
-const getReadableErrorMessage = (error, fallback) => {
+const classifyError = (error) => {
   const message = String(error?.message || "").trim();
   const lowered = message.toLowerCase();
-  if (
-    lowered.includes("invalid jwt") ||
-    lowered.includes("jwt expired") ||
-    lowered.includes("token inválido")
-  ) {
-    return "Não foi possível validar sua sessão no serviço de usuários. Atualize a página e tente novamente. Se persistir, entre novamente no sistema.";
-  }
-  if (
-    lowered.includes("edge function returned a non-2xx status code") ||
-    lowered.includes("failed to send a request to the edge function") ||
-    lowered.includes("failed to fetch") ||
-    lowered.includes("fetch failed")
-  ) {
-    return "Não foi possível conectar ao serviço de usuários agora. Atualize a página e tente novamente em alguns segundos.";
-  }
-  if (
-    lowered.includes("user-admin") &&
-    (lowered.includes("not found") || lowered.includes("404"))
-  ) {
-    return "A função de gestão de usuários não foi encontrada no Supabase. Verifique o deploy da função user-admin.";
-  }
-  if (lowered.includes("não tem permissão") || lowered.includes("forbidden")) {
-    return "Você não tem permissão para gerenciar usuários.";
-  }
+  if (lowered.includes("invalid jwt") || lowered.includes("jwt expired") || lowered.includes("token inválido"))
+    return "session";
+  if (lowered.includes("not found") || lowered.includes("404") || lowered.includes("failed to send a request to the edge function"))
+    return "not_deployed";
+  if (lowered.includes("failed to fetch") || lowered.includes("fetch failed") || lowered.includes("edge function returned a non-2xx"))
+    return "network";
+  if (lowered.includes("only admin") || lowered.includes("forbidden") || lowered.includes("não tem permissão") || String(error?.status) === "403")
+    return "forbidden";
+  return "unknown";
+};
+
+const getReadableErrorMessage = (error, fallback) => {
+  const message = String(error?.message || "").trim();
+  const type = classifyError(error);
+  if (type === "session") return "Não foi possível validar sua sessão. Atualize a página e tente novamente.";
+  if (type === "not_deployed") return "A função user-admin não está disponível no Supabase. Veja as instruções de configuração abaixo.";
+  if (type === "network") return "Não foi possível conectar ao serviço de usuários. Tente novamente em alguns segundos.";
+  if (type === "forbidden") return "Seu usuário não tem perfil de admin no Supabase. Veja as instruções abaixo.";
   return message || fallback;
 };
 
@@ -275,8 +269,42 @@ export default function UserManagementPanel() {
     }
   };
 
+  const errorType = status?.type === "error" ? classifyError({ message: status.message }) : null;
+  const showSetupGuide = errorType === "not_deployed" || errorType === "forbidden";
+
   return (
     <div className="space-y-6">
+      {showSetupGuide && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardHeader>
+            <CardTitle className="text-amber-900 text-base">Configuração necessária</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-amber-800 space-y-2">
+            {errorType === "not_deployed" && (
+              <>
+                <p>A Edge Function <code className="font-mono text-xs bg-amber-100 px-1 rounded">user-admin</code> precisa ser deployada no seu projeto Supabase.</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>Instale a CLI do Supabase: <code className="font-mono bg-amber-100 px-1 rounded">npm i -g supabase</code></li>
+                  <li>Faça login: <code className="font-mono bg-amber-100 px-1 rounded">supabase login</code></li>
+                  <li>Deploy: <code className="font-mono bg-amber-100 px-1 rounded">supabase functions deploy user-admin</code></li>
+                  <li>Configure os secrets: <code className="font-mono bg-amber-100 px-1 rounded">SUPABASE_SERVICE_ROLE_KEY</code> e <code className="font-mono bg-amber-100 px-1 rounded">ADMIN_EMAILS</code></li>
+                </ol>
+              </>
+            )}
+            {errorType === "forbidden" && (
+              <>
+                <p>Seu usuário não tem perfil de admin. Para liberar acesso, no painel do Supabase:</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>Vá em <strong>Authentication → Users</strong></li>
+                  <li>Clique no seu usuário → <strong>Edit</strong></li>
+                  <li>Em <strong>app_metadata</strong>, adicione: <code className="font-mono bg-amber-100 px-1 rounded">{`{"role": "admin"}`}</code></li>
+                  <li>Ou adicione seu e-mail na variável de ambiente <code className="font-mono bg-amber-100 px-1 rounded">ADMIN_EMAILS</code> da função</li>
+                </ol>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Convidar ou criar usuário</CardTitle>

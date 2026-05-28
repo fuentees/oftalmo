@@ -2,6 +2,9 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import '@/index.css'
+import { loadSavedTheme } from '@/lib/themeColors'
+
+loadSavedTheme()
 
 const HARD_REFRESH_PARAM = '__app_hard_refresh'
 
