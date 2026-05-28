@@ -113,9 +113,14 @@ export default function CheckIn() {
 
       await dataClient.entities.TrainingParticipant.update(participant.id, payload);
 
-      await dataClient.entities.AttendanceLink.update(linkData.id, {
-        check_ins_count: (linkData.check_ins_count || 0) + 1,
-      });
+      // Atualização do contador do link: não-crítica, não pode bloquear a confirmação
+      try {
+        await dataClient.entities.AttendanceLink.update(linkData.id, {
+          check_ins_count: (linkData.check_ins_count || 0) + 1,
+        });
+      } catch {
+        // Presença já registrada acima — falha no contador não impede a confirmação
+      }
 
       // Confirmação de presença por e-mail — não bloqueia o fluxo
       const participantEmail = String(participant.professional_email || "").trim();

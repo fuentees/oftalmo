@@ -503,8 +503,12 @@ export default function PublicEnrollment() {
         }
       }
 
-      // Erros de sincronização com o Google não são expostos ao público
-      await syncParticipantWithGoogleCalendar(createdParticipant);
+      // Sincronização com Google — não pode bloquear a confirmação de inscrição
+      try {
+        await syncParticipantWithGoogleCalendar(createdParticipant);
+      } catch {
+        // Inscrição já registrada — falha no Google não impede a confirmação
+      }
 
       return {
         alreadyEnrolled: false,
