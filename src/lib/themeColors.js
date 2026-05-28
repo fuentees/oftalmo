@@ -19,6 +19,6 @@ export const applyThemeColor = (colorValue) => {
 };
 
 export const loadSavedTheme = () => {
-  const saved = localStorage.getItem(THEME_STORAGE_KEY);
-  if (saved && COLOR_THEMES[saved]) applyThemeColor(saved);
+  const saved = localStorage.getItem(THEME_STORAGE_KEY) || "blue";
+  if (COLOR_THEMES[saved]) applyThemeColor(saved);
 };

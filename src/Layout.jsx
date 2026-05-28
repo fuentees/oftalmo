@@ -176,7 +176,7 @@ export default function Layout({ children, currentPageName }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-20 items-center justify-between px-6 border-b border-slate-100 bg-gradient-to-r from-blue-600 to-indigo-700">
+        <div className="flex h-20 items-center justify-between px-6 border-b border-slate-100" style={{ background: 'hsl(var(--primary))' }}>
           <div className="flex items-center gap-3">
             <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center ring-2 ring-white/30 shadow-lg">
               <svg viewBox="0 0 24 24" className="h-7 w-7 text-white" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -208,13 +208,14 @@ export default function Layout({ children, currentPageName }) {
                 key={item.page}
                 to={createPageUrl(item.page)}
                 onClick={() => setSidebarOpen(false)}
+                style={active ? { background: 'hsl(var(--primary))' } : undefined}
                 className={`group flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                   active
-                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30"
-                    : "text-slate-700 hover:bg-slate-100 hover:text-blue-600"
+                    ? "text-white shadow-lg"
+                    : "text-slate-700 hover:bg-slate-100 hover:text-primary-themed"
                 }`}
               >
-                <Icon className={`h-5 w-5 transition-transform group-hover:scale-110 ${active ? "text-white" : "text-slate-500 group-hover:text-blue-600"}`} />
+                <Icon className={`h-5 w-5 transition-transform group-hover:scale-110 ${active ? "text-white" : "text-slate-500 group-hover:text-primary-themed"}`} />
                 <span className="font-semibold">{item.name}</span>
                 {active && (
                   <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white shadow-lg"></div>
@@ -279,7 +280,7 @@ export default function Layout({ children, currentPageName }) {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="flex items-center gap-3 hover:bg-slate-100 rounded-xl px-3 py-2 h-auto">
-                      <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg ring-2 ring-blue-100">
+                      <div className="h-10 w-10 rounded-xl flex items-center justify-center shadow-lg ring-2 ring-white/20" style={{ background: 'hsl(var(--primary))' }}>
                         <User className="h-5 w-5 text-white" />
                       </div>
                       <div className="hidden sm:block text-left">
@@ -426,7 +427,6 @@ export default function Layout({ children, currentPageName }) {
               </Button>
               <Button
                 type="submit"
-                className="bg-blue-600 hover:bg-blue-700"
                 disabled={isSavingProfile}
               >
                 {isSavingProfile && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

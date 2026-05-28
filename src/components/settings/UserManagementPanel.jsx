@@ -39,13 +39,24 @@ const formatDateTime = (value) => {
 const classifyError = (error) => {
   const message = String(error?.message || "").trim();
   const lowered = message.toLowerCase();
-  if (lowered.includes("invalid jwt") || lowered.includes("jwt expired") || lowered.includes("token inválido"))
+  if (
+    lowered.includes("invalid jwt") ||
+    lowered.includes("jwt expired") ||
+    lowered.includes("token inválido") ||
+    lowered.includes("validar sua sessão")
+  )
     return "session";
   if (lowered.includes("not found") || lowered.includes("404") || lowered.includes("failed to send a request to the edge function"))
     return "not_deployed";
   if (lowered.includes("failed to fetch") || lowered.includes("fetch failed") || lowered.includes("edge function returned a non-2xx"))
     return "network";
-  if (lowered.includes("only admin") || lowered.includes("forbidden") || lowered.includes("não tem permissão") || String(error?.status) === "403")
+  if (
+    lowered.includes("only admin") ||
+    lowered.includes("forbidden") ||
+    lowered.includes("não tem permissão") ||
+    lowered.includes("não tem permissão para gerenciar") ||
+    String(error?.status) === "403"
+  )
     return "forbidden";
   return "unknown";
 };
@@ -53,7 +64,7 @@ const classifyError = (error) => {
 const getReadableErrorMessage = (error, fallback) => {
   const message = String(error?.message || "").trim();
   const type = classifyError(error);
-  if (type === "session") return "Não foi possível validar sua sessão. Atualize a página e tente novamente.";
+  if (type === "session") return "Erro de autenticação no serviço de usuários. Veja as instruções de configuração abaixo.";
   if (type === "not_deployed") return "A função user-admin não está disponível no Supabase. Veja as instruções de configuração abaixo.";
   if (type === "network") return "Não foi possível conectar ao serviço de usuários. Tente novamente em alguns segundos.";
   if (type === "forbidden") return "Seu usuário não tem perfil de admin no Supabase. Veja as instruções abaixo.";
@@ -270,7 +281,7 @@ export default function UserManagementPanel() {
   };
 
   const errorType = status?.type === "error" ? classifyError({ message: status.message }) : null;
-  const showSetupGuide = errorType === "not_deployed" || errorType === "forbidden";
+  const showSetupGuide = errorType === "not_deployed" || errorType === "forbidden" || errorType === "session";
 
   return (
     <div className="space-y-6">
@@ -280,6 +291,18 @@ export default function UserManagementPanel() {
             <CardTitle className="text-amber-900 text-base">Configuração necessária</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-amber-800 space-y-2">
+            {errorType === "session" && (
+              <>
+                <p>A função <code className="font-mono text-xs bg-amber-100 px-1 rounded">user-admin</code> retornou erro de autenticação (401). Isso quase sempre indica que o secret <code className="font-mono text-xs bg-amber-100 px-1 rounded">SUPABASE_SERVICE_ROLE_KEY</code> não está configurado.</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>No painel do Supabase, vá em <strong>Project Settings → API</strong></li>
+                  <li>Copie o valor de <strong>service_role secret</strong></li>
+                  <li>Vá em <strong>Edge Functions → user-admin → Secrets</strong></li>
+                  <li>Adicione o secret <code className="font-mono bg-amber-100 px-1 rounded">SUPABASE_SERVICE_ROLE_KEY</code> com esse valor</li>
+                  <li>Salve e tente novamente</li>
+                </ol>
+              </>
+            )}
             {errorType === "not_deployed" && (
               <>
                 <p>A Edge Function <code className="font-mono text-xs bg-amber-100 px-1 rounded">user-admin</code> precisa ser deployada no seu projeto Supabase.</p>
