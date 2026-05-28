@@ -122,11 +122,6 @@ export default function EnrollmentManager({ training, professionals, existingPar
         professional,
         operation: "upsert",
       });
-      
-      // Update training participant count
-      await dataClient.entities.Training.update(training.id, {
-        participants_count: (training.participants_count || 0) + 1,
-      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["participants"] });

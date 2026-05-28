@@ -862,9 +862,6 @@ export default function EnrollmentPage({
         console.warn("[calendar-sync]", calendarSyncError);
       }
 
-      await dataClient.entities.Training.update(trainingId, {
-        participants_count: (training.participants_count || 0) + 1,
-      });
     },
     onSuccess: () => {
       setSubmitted(true);
@@ -892,19 +889,6 @@ export default function EnrollmentPage({
       if (calendarSyncError) {
         warningMessage = calendarSyncError;
       }
-      try {
-        const remainingParticipants = await dataClient.entities.TrainingParticipant.filter(
-          { training_id: trainingId }
-        );
-        await dataClient.entities.Training.update(trainingId, {
-          participants_count: remainingParticipants.length,
-        });
-      } catch {
-        warningMessage = warningMessage
-          ? `${warningMessage} Inscrito removido, mas não foi possível atualizar o contador automaticamente.`
-          : "Inscrito removido, mas não foi possível atualizar o contador automaticamente.";
-      }
-
       return { warningMessage };
     },
     onSuccess: ({ warningMessage }) => {
@@ -1008,17 +992,7 @@ export default function EnrollmentPage({
         );
       }
 
-      let warningMessage = null;
-      try {
-        await dataClient.entities.Training.update(trainingId, {
-          participants_count: 0,
-        });
-      } catch {
-        warningMessage =
-          "Inscritos removidos, mas não foi possível atualizar o contador automaticamente.";
-      }
-
-      return { warningMessage, deletedCount: removedCount || expectedCount };
+      return { warningMessage: null, deletedCount: removedCount || expectedCount };
     },
     onSuccess: ({ warningMessage, deletedCount }) => {
       queryClient.setQueryData(["enrolled-participants", trainingId], []);
@@ -1987,9 +1961,6 @@ export default function EnrollmentPage({
       }
 
       await dataClient.entities.TrainingParticipant.bulkCreate(payloads);
-      await dataClient.entities.Training.update(trainingId, {
-        participants_count: (training.participants_count || 0) + payloads.length,
-      });
 
       setUploadStatus({
         type: "success",

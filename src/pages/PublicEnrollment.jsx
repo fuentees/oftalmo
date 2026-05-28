@@ -505,15 +505,6 @@ export default function PublicEnrollment() {
 
       // Erros de sincronização com o Google não são expostos ao público
       await syncParticipantWithGoogleCalendar(createdParticipant);
-      try {
-        await dataClient.entities.Training.update(trainingId, {
-          participants_count: (training.participants_count || 0) + 1,
-        });
-      } catch (error) {
-        warningMessage = warningMessage
-          ? `${warningMessage} Seu cadastro foi registrado, mas a atualização do contador não concluiu agora.`
-          : "Seu cadastro foi registrado, mas a atualização do contador não concluiu agora.";
-      }
 
       return {
         alreadyEnrolled: false,

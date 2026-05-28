@@ -71,11 +71,6 @@ export default function ParticipantsManager({ training, professionals, existingP
       });
 
       await dataClient.entities.TrainingParticipant.bulkCreate(newParticipants);
-      
-      // Update training participant count
-      await dataClient.entities.Training.update(training.id, {
-        participants_count: (training.participants_count || 0) + professionalIds.length,
-      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["participants"] });
@@ -95,11 +90,6 @@ export default function ParticipantsManager({ training, professionals, existingP
   const removeParticipant = useMutation({
     mutationFn: async (/** @type {any} */ participantId) => {
       await dataClient.entities.TrainingParticipant.delete(participantId);
-      
-      // Update training participant count
-      await dataClient.entities.Training.update(training.id, {
-        participants_count: Math.max(0, (training.participants_count || 1) - 1),
-      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["participants"] });
