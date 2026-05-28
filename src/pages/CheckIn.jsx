@@ -117,6 +117,35 @@ export default function CheckIn() {
         check_ins_count: (linkData.check_ins_count || 0) + 1,
       });
 
+      // Confirmação de presença por e-mail — não bloqueia o fluxo
+      const participantEmail = String(participant.professional_email || "").trim();
+      if (participantEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(participantEmail)) {
+        const checkInTime = format(new Date(), "HH:mm");
+        const dateFormatted = formatTrainingDate(linkData.date);
+        try {
+          await dataClient.integrations.Core.SendEmail({
+            to: participantEmail,
+            subject: `Presença confirmada — ${selectedTraining?.title || linkData.training_title}`,
+            body: `
+              <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+                <h2 style="color:#059669">✅ Presença registrada!</h2>
+                <p>Olá, <strong>${participant.professional_name || "participante"}</strong>!</p>
+                <p>Sua presença no treinamento abaixo foi registrada com sucesso.</p>
+                <div style="background:#f1f5f9;border-radius:8px;padding:16px;margin:16px 0">
+                  <p style="margin:4px 0"><strong>Treinamento:</strong> ${selectedTraining?.title || linkData.training_title}</p>
+                  <p style="margin:4px 0"><strong>Data:</strong> ${dateFormatted}</p>
+                  <p style="margin:4px 0"><strong>Horário de entrada:</strong> ${checkInTime}</p>
+                  <p style="margin:4px 0"><strong>Frequência acumulada:</strong> ${percentage}%</p>
+                </div>
+                <p style="color:#64748b;font-size:14px">Guarde este e-mail como comprovante de presença.</p>
+              </div>
+            `,
+          });
+        } catch {
+          // E-mail falhou, mas a presença já foi registrada
+        }
+      }
+
       return { participant, percentage };
     },
     onSuccess: () => {

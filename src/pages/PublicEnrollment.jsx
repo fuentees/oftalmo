@@ -469,8 +469,9 @@ export default function PublicEnrollment() {
       }
 
       let warningMessage = null;
+      let emailSent = false;
 
-      // E-mail de confirmação — silencioso, não bloqueia o fluxo
+      // E-mail de confirmação — não bloqueia o fluxo mas registra o resultado
       const recipientEmail = String(participantPayload.professional_email || "").trim();
       if (recipientEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
         try {
@@ -496,8 +497,9 @@ export default function PublicEnrollment() {
               </div>
             `,
           });
+          emailSent = true;
         } catch {
-          // Silencioso — erro no e-mail não cancela a inscrição
+          // E-mail falhou, mas a inscrição foi registrada
         }
       }
 
@@ -516,6 +518,8 @@ export default function PublicEnrollment() {
       return {
         alreadyEnrolled: false,
         warningMessage,
+        emailSent,
+        recipientEmail,
       };
     },
     onSuccess: (result) => {
@@ -535,10 +539,15 @@ export default function PublicEnrollment() {
         });
         return;
       }
-      setSubmissionFeedback({
-        type: "success",
-        message: "Sua inscrição foi confirmada com sucesso.",
-      });
+      let message;
+      if (result?.emailSent && result?.recipientEmail) {
+        message = `Inscrição confirmada! E-mail de confirmação enviado para ${result.recipientEmail}.`;
+      } else if (result?.recipientEmail) {
+        message = "Inscrição confirmada! Não foi possível enviar o e-mail de confirmação — verifique com o organizador.";
+      } else {
+        message = "Inscrição confirmada com sucesso.";
+      }
+      setSubmissionFeedback({ type: "success", message });
     },
   });
 
@@ -711,7 +720,7 @@ export default function PublicEnrollment() {
               )}
             </div>
             <p className="text-sm text-slate-500">
-              Aguarde confirmação por e-mail. Compareça 15 minutos antes do horário.
+              Compareça 15 minutos antes do horário previsto.
             </p>
           </CardContent>
         </Card>
