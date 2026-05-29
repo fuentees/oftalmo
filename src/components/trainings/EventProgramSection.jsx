@@ -21,6 +21,7 @@ import {
   Copy,
   CopyPlus,
   Download,
+  GripVertical,
   Plus,
   Save,
   Trash2,
@@ -133,6 +134,9 @@ export default function EventProgramSection({ training }) {
 
   const [programDates, setProgramDates] = useState([]);
   const [programStatus, setProgramStatus] = useState(null);
+  const [dragState, setDragState] = useState(null);
+  const [dragOverState, setDragOverState] = useState(null);
+  const dragFromGripRef = React.useRef(false);
   const trainingProgramSignature = useMemo(() => {
     const normalizedDates = Array.isArray(training?.dates)
       ? training.dates.map((dateItem) => ({
@@ -496,6 +500,40 @@ export default function EventProgramSection({ training }) {
       )
     );
   };
+
+  // Drag só funciona quando iniciado pelo grip handle
+  const handleDragStart = (e, dateIndex, sessionId) => {
+    if (!dragFromGripRef.current) { e.preventDefault(); return; }
+    dragFromGripRef.current = false;
+    setDragState({ dateIndex, sessionId });
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e, dateIndex, sessionIndex) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverState({ dateIndex, sessionIndex });
+  };
+
+  const handleDrop = (e, targetDateIndex, targetSessionIndex) => {
+    e.preventDefault();
+    if (!dragState) return;
+    const { dateIndex: srcDateIndex, sessionId } = dragState;
+    setDragState(null);
+    setDragOverState(null);
+    setProgramDates((prev) => {
+      const next = prev.map((d) => ({ ...d, sessions: [...(Array.isArray(d.sessions) ? d.sessions : [])] }));
+      const srcSession = next[srcDateIndex]?.sessions.find((s) => s.id === sessionId);
+      if (!srcSession) return prev;
+      next[srcDateIndex].sessions = next[srcDateIndex].sessions.filter((s) => s.id !== sessionId);
+      if (!next[targetDateIndex]) return next;
+      const insertAt = Math.min(targetSessionIndex, next[targetDateIndex].sessions.length);
+      next[targetDateIndex].sessions.splice(insertAt, 0, srcSession);
+      return next;
+    });
+  };
+
+  const handleDragEnd = () => { setDragState(null); setDragOverState(null); dragFromGripRef.current = false; };
 
   const handleUpdateSessionSpeaker = (dateIndex, sessionId, name, professionalId, professionalEmail) => {
     upsertDateSessions(dateIndex, (sessions) =>
@@ -1091,13 +1129,13 @@ export default function EventProgramSection({ training }) {
                             <Table>
                               <TableHeader>
                                 <TableRow className="bg-slate-100/70">
+                                  <TableHead className="w-8 p-2" />
                                   <TableHead className="w-28">Data</TableHead>
                                   <TableHead className="w-32">Duração</TableHead>
                                   <TableHead className="w-36">Horário</TableHead>
                                   <TableHead>Tema / atividade</TableHead>
                                   <TableHead className="min-w-[180px]">Palestrante</TableHead>
-                                  <TableHead className="w-24 text-center text-xs text-slate-400">mover</TableHead>
-                                  <TableHead className="w-16" />
+                                  <TableHead className="w-28" />
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -1106,13 +1144,28 @@ export default function EventProgramSection({ training }) {
                                   const isAbsoluteLast = sessionIndex === computed.length - 1 && dateIndex === programDates.length - 1;
                                   const crossUp = sessionIndex === 0 && dateIndex > 0;
                                   const crossDown = sessionIndex === computed.length - 1 && dateIndex < programDates.length - 1;
+                                  const isDragging = dragState?.sessionId === session.id;
+                                  const isDropTarget = dragOverState?.dateIndex === dateIndex && dragOverState?.sessionIndex === sessionIndex;
                                   return (
-                                  <TableRow key={session.id} className="align-middle group">
+                                  <TableRow
+                                    key={session.id}
+                                    draggable
+                                    onDragStart={(e) => handleDragStart(e, dateIndex, session.id)}
+                                    onDragOver={(e) => handleDragOver(e, dateIndex, sessionIndex)}
+                                    onDrop={(e) => handleDrop(e, dateIndex, sessionIndex)}
+                                    onDragEnd={handleDragEnd}
+                                    className={`align-middle transition-opacity ${isDragging ? "opacity-40" : ""} ${isDropTarget ? "border-t-2 border-blue-400 bg-blue-50/40" : ""}`}
+                                  >
+                                    {/* Grip — único ponto de início do drag */}
+                                    <TableCell
+                                      className="p-2 text-slate-300 cursor-grab active:cursor-grabbing select-none"
+                                      onMouseDown={() => { dragFromGripRef.current = true; }}
+                                      onMouseUp={() => { dragFromGripRef.current = false; }}
+                                    >
+                                      <GripVertical className="h-4 w-4" />
+                                    </TableCell>
                                     {sessionIndex === 0 ? (
-                                      <TableCell
-                                        rowSpan={computed.length}
-                                        className="font-semibold text-slate-700 align-middle text-center bg-slate-50 text-sm px-3 whitespace-nowrap"
-                                      >
+                                      <TableCell rowSpan={computed.length} className="font-semibold text-slate-700 align-middle text-center bg-slate-50 text-sm px-3 whitespace-nowrap">
                                         {dateLabel}
                                       </TableCell>
                                     ) : null}
@@ -1137,6 +1190,7 @@ export default function EventProgramSection({ training }) {
                                       <Input
                                         value={session.title}
                                         onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "title", e.target.value)}
+                                        onMouseDown={(e) => e.stopPropagation()}
                                         placeholder="Tema / atividade"
                                         className="h-8 text-sm"
                                       />
@@ -1151,9 +1205,8 @@ export default function EventProgramSection({ training }) {
                                             const matched = professionals.find((p) => p.name === name);
                                             handleUpdateSessionSpeaker(dateIndex, session.id, name, matched?.id || "", matched?.email || "");
                                           }}
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter") { e.preventDefault(); handleAddSession(dateIndex); }
-                                          }}
+                                          onMouseDown={(e) => e.stopPropagation()}
+                                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddSession(dateIndex); } }}
                                           placeholder="Palestrante"
                                           className={`h-8 text-sm ${session.professional_id ? "pr-7 border-green-400 focus-visible:ring-green-400" : ""}`}
                                         />
@@ -1162,32 +1215,20 @@ export default function EventProgramSection({ training }) {
                                         )}
                                       </div>
                                     </TableCell>
-                                    {/* Mover ↑↓ */}
-                                    <TableCell className="py-1 px-1 text-center">
-                                      <div className="flex items-center justify-center gap-0.5">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleMoveSession(dateIndex, session.id, "up")}
-                                          disabled={isAbsoluteFirst}
+                                    {/* ↑↓ + duplicar + remover */}
+                                    <TableCell className="py-1 px-1">
+                                      <div className="flex items-center gap-0.5">
+                                        <button type="button" onClick={() => handleMoveSession(dateIndex, session.id, "up")} disabled={isAbsoluteFirst}
                                           title={crossUp ? "Mover para o dia anterior" : "Subir"}
-                                          className={`p-1 rounded transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${crossUp ? "text-purple-400 hover:text-purple-600 hover:bg-purple-50" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50"}`}
-                                        >
+                                          className={`p-1 rounded transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${crossUp ? "text-purple-400 hover:text-purple-600 hover:bg-purple-50" : "text-slate-300 hover:text-blue-500 hover:bg-blue-50"}`}>
                                           <ArrowUp className="h-3.5 w-3.5" />
                                         </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleMoveSession(dateIndex, session.id, "down")}
-                                          disabled={isAbsoluteLast}
+                                        <button type="button" onClick={() => handleMoveSession(dateIndex, session.id, "down")} disabled={isAbsoluteLast}
                                           title={crossDown ? "Mover para o próximo dia" : "Descer"}
-                                          className={`p-1 rounded transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${crossDown ? "text-purple-400 hover:text-purple-600 hover:bg-purple-50" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50"}`}
-                                        >
+                                          className={`p-1 rounded transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${crossDown ? "text-purple-400 hover:text-purple-600 hover:bg-purple-50" : "text-slate-300 hover:text-blue-500 hover:bg-blue-50"}`}>
                                           <ArrowDown className="h-3.5 w-3.5" />
                                         </button>
-                                      </div>
-                                    </TableCell>
-                                    {/* Duplicar / Remover */}
-                                    <TableCell className="py-1.5 px-1">
-                                      <div className="flex items-center gap-0.5">
+                                        <div className="w-px h-4 bg-slate-200 mx-0.5" />
                                         <button type="button" onClick={() => handleDuplicateSession(dateIndex, session.id)} className="text-slate-300 hover:text-blue-500 transition-colors p-1 rounded" title="Duplicar">
                                           <CopyPlus className="h-4 w-4" />
                                         </button>
@@ -1199,6 +1240,17 @@ export default function EventProgramSection({ training }) {
                                   </TableRow>
                                   );
                                 })}
+                                {dragState && dragState.dateIndex !== dateIndex && (
+                                  <TableRow
+                                    onDragOver={(e) => handleDragOver(e, dateIndex, sessions.length)}
+                                    onDrop={(e) => handleDrop(e, dateIndex, sessions.length)}
+                                    className={`h-8 border-dashed border-2 ${dragOverState?.dateIndex === dateIndex && dragOverState?.sessionIndex === sessions.length ? "border-blue-400 bg-blue-50" : "border-slate-200"}`}
+                                  >
+                                    <TableCell colSpan={7} className="text-center text-xs text-slate-400">
+                                      Solte aqui para mover para este dia
+                                    </TableCell>
+                                  </TableRow>
+                                )}
                               </TableBody>
                             </Table>
                           </div>
