@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="100" fill="white"/>
+
+  <!-- Outer eye shape (almond) -->
+  <path
+    d="M20 100 C40 52, 80 36, 100 36 C120 36, 160 52, 180 100 C160 148, 120 164, 100 164 C80 164, 40 148, 20 100 Z"
+    fill="#EFF6FF"
+    stroke="#1D4ED8"
+    stroke-width="7"
+    stroke-linejoin="round"
+  />
+
+  <!-- Iris outer ring -->
+  <circle cx="100" cy="100" r="38" fill="#DBEAFE" stroke="#2563EB" stroke-width="5"/>
+
+  <!-- Iris inner gradient fill -->
+  <circle cx="100" cy="100" r="32" fill="#3B82F6"/>
+
+  <!-- Iris texture lines -->
+  <circle cx="100" cy="100" r="32" fill="url(#irisGrad)"/>
+
+  <!-- Pupil -->
+  <circle cx="100" cy="100" r="16" fill="#1E3A8A"/>
+
+  <!-- Main highlight -->
+  <circle cx="112" cy="86" r="8" fill="white" opacity="0.7"/>
+
+  <!-- Small secondary highlight -->
+  <circle cx="88" cy="96" r="3.5" fill="white" opacity="0.35"/>
+
+  <!-- Subtle eyelashes top (3 lines) -->
+  <line x1="100" y1="36" x2="100" y2="18" stroke="#1D4ED8" stroke-width="4" stroke-linecap="round"/>
+  <line x1="72"  y1="44" x2="63"  y2="28" stroke="#1D4ED8" stroke-width="3.5" stroke-linecap="round" opacity="0.7"/>
+  <line x1="128" y1="44" x2="137" y2="28" stroke="#1D4ED8" stroke-width="3.5" stroke-linecap="round" opacity="0.7"/>
+
+  <!-- Medical cross (small, bottom right) -->
+  <rect x="148" y="144" width="6" height="20" rx="3" fill="#2563EB"/>
+  <rect x="141" y="151" width="20" height="6" rx="3" fill="#2563EB"/>
+
+  <defs>
+    <radialGradient id="irisGrad" cx="45%" cy="40%" r="60%">
+      <stop offset="0%"  stop-color="#60A5FA" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#1D4ED8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

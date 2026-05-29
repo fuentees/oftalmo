@@ -198,11 +198,8 @@ export default function Layout({ children, currentPageName }) {
   const sidebarWidth = sidebarExpanded ? "w-56" : "w-16";
   const contentPadding = sidebarExpanded ? "lg:pl-56" : "lg:pl-16";
 
-  const LogoIcon = () => (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 text-white shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
-    </svg>
+  const LogoImg = ({ className = "h-9 w-9" }) => (
+    <img src="/logo.svg" alt="Logo" className={`${className} shrink-0 drop-shadow-md`} />
   );
 
   return (
@@ -224,10 +221,13 @@ export default function Layout({ children, currentPageName }) {
         >
           <div className="flex h-16 items-center justify-between px-5 shrink-0" style={{ background: "hsl(var(--primary))" }}>
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-                <LogoIcon />
+              <div className="h-9 w-9 rounded-xl bg-white flex items-center justify-center shrink-0 shadow overflow-hidden">
+                <LogoImg className="h-7 w-7" />
               </div>
-              <span className="text-sm font-bold text-white leading-tight">Centro de Oftalmologia</span>
+              <div>
+                <p className="text-xs font-semibold text-white/60 uppercase tracking-widest leading-none">Centro de</p>
+                <p className="text-sm font-extrabold text-white leading-tight">Oftalmologia</p>
+              </div>
             </div>
             <button onClick={() => setMobileSidebarOpen(false)} className="text-white/70 hover:text-white transition-colors">
               <X className="h-5 w-5" />
@@ -279,18 +279,18 @@ export default function Layout({ children, currentPageName }) {
         >
           {/* Logo */}
           <div
-            className="flex h-20 items-center shrink-0 px-3"
+            className="flex items-center shrink-0 px-3 py-4"
             style={{ background: "hsl(var(--primary))" }}
           >
             <div className={`flex items-center gap-3 min-w-0 ${sidebarExpanded ? "w-full" : "justify-center w-full"}`}>
-              <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 ring-1 ring-white/30 shadow-lg">
-                <LogoIcon />
+              <div className="h-11 w-11 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-lg overflow-hidden">
+                <LogoImg className="h-9 w-9" />
               </div>
               {sidebarExpanded && (
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-white/60 uppercase tracking-widest leading-none mb-0.5">Centro de</p>
-                  <p className="text-sm font-bold text-white leading-tight">Oftalmologia</p>
-                  <p className="text-xs text-white/70 leading-tight">Sanitária</p>
+                  <p className="text-[11px] font-semibold text-white/60 uppercase tracking-widest leading-none">Centro de</p>
+                  <p className="text-sm font-extrabold text-white leading-snug tracking-tight">Oftalmologia</p>
+                  <p className="text-[11px] font-medium text-white/70 leading-none">Sanitária</p>
                 </div>
               )}
             </div>
