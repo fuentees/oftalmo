@@ -928,6 +928,7 @@ export default function EventProgramSection({ training }) {
                               <TableHeader>
                                 <TableRow className="bg-slate-100/70">
                                   <TableHead className="w-8 p-2" />
+                                  <TableHead className="w-28">Data</TableHead>
                                   <TableHead className="w-28">Início</TableHead>
                                   <TableHead className="w-28">Fim</TableHead>
                                   <TableHead>Tema / atividade</TableHead>
@@ -956,6 +957,14 @@ export default function EventProgramSection({ training }) {
                                     <TableCell className="p-2 text-slate-300 cursor-grab active:cursor-grabbing">
                                       <GripVertical className="h-4 w-4" />
                                     </TableCell>
+                                    {sessionIndex === 0 ? (
+                                      <TableCell
+                                        rowSpan={sessions.length}
+                                        className="font-semibold text-slate-700 align-middle text-center bg-slate-50 text-sm px-3 whitespace-nowrap"
+                                      >
+                                        {dateLabel}
+                                      </TableCell>
+                                    ) : null}
                                     <TableCell className="py-1.5 px-2">
                                       <Input
                                         type="time"
@@ -1027,7 +1036,7 @@ export default function EventProgramSection({ training }) {
                                         : "border-slate-200"
                                     }`}
                                   >
-                                    <TableCell colSpan={6} className="text-center text-xs text-slate-400">
+                                    <TableCell colSpan={7} className="text-center text-xs text-slate-400">
                                       Solte aqui para mover para este dia
                                     </TableCell>
                                   </TableRow>
