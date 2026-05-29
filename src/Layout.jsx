@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "./utils";
 import { useAuth } from "@/lib/AuthContext";
@@ -286,13 +287,21 @@ export default function Layout({ children, currentPageName }) {
               <div className="h-11 w-11 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-lg overflow-hidden">
                 <LogoImg className="h-9 w-9" />
               </div>
-              {sidebarExpanded && (
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold text-white/60 uppercase tracking-widest leading-none">Centro de</p>
-                  <p className="text-sm font-extrabold text-white leading-snug tracking-tight">Oftalmologia</p>
-                  <p className="text-[11px] font-medium text-white/70 leading-none">Sanitária</p>
-                </div>
-              )}
+              <AnimatePresence>
+                {sidebarExpanded && (
+                  <motion.div
+                    className="min-w-0"
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                  >
+                    <p className="text-[11px] font-semibold text-white/60 uppercase tracking-widest leading-none">Centro de</p>
+                    <p className="text-sm font-extrabold text-white leading-snug tracking-tight">Oftalmologia</p>
+                    <p className="text-[11px] font-medium text-white/70 leading-none">Sanitária</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
@@ -328,12 +337,19 @@ export default function Layout({ children, currentPageName }) {
                   key={item.page}
                   to={createPageUrl(item.page)}
                   style={active ? { background: "hsl(var(--primary))" } : undefined}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors duration-150 ${
                     active ? "text-white shadow-md" : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
                   }`}
                 >
                   <Icon className={`h-4 w-4 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
-                  <span className="truncate">{item.name}</span>
+                  <motion.span
+                    className="truncate"
+                    initial={false}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
+                  >
+                    {item.name}
+                  </motion.span>
                   {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60 shrink-0" />}
                 </Link>
               );
@@ -472,7 +488,19 @@ export default function Layout({ children, currentPageName }) {
 
           {/* Page content */}
           <main className="p-5 lg:p-8 min-h-screen dark:bg-slate-950">
-            <div className="max-w-[1600px] mx-auto">{children}</div>
+            <div className="max-w-[1600px] mx-auto">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentPageName}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                >
+                  {children}
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </main>
         </div>
 
