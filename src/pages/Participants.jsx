@@ -833,53 +833,66 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
     {
       header: "Nome",
       render: (row) => (
-        <div className="font-medium">{row.profile.professional_name || "-"}</div>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-semibold text-sm shrink-0">
+            {(row.profile.professional_name || "?")[0].toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-slate-900 leading-tight truncate">{row.profile.professional_name || "-"}</p>
+            {row.profile.professional_rg && (
+              <p className="text-xs text-slate-400 leading-tight">RG {row.profile.professional_rg}</p>
+            )}
+          </div>
+        </div>
       ),
     },
     {
-      header: "Município",
-      render: (row) => row.profile.municipality || "-",
+      header: "Localização",
+      render: (row) => (
+        <div className="text-sm">
+          <p className="text-slate-800">{row.profile.municipality || "-"}</p>
+          {row.profile.health_region && (
+            <p className="text-xs text-slate-400">{row.profile.health_region}</p>
+          )}
+        </div>
+      ),
     },
     {
-      header: "GVE",
-      render: (row) => row.profile.health_region || "-",
+      header: "Contato",
+      render: (row) => (
+        <div className="text-xs space-y-0.5">
+          {row.profile.professional_email && (
+            <p className="text-slate-600 truncate max-w-[180px]">{row.profile.professional_email}</p>
+          )}
+          {row.profile.mobile_phone && (
+            <p className="text-slate-400">{row.profile.mobile_phone}</p>
+          )}
+        </div>
+      ),
     },
     {
-      header: "E-mail",
-      render: (row) => row.profile.professional_email || "-",
-    },
-    {
-      header: "Celular",
-      render: (row) => row.profile.mobile_phone || "-",
-    },
-    {
-      header: "Tipo de Curso",
+      header: "Cursos",
       render: (row) => {
-        if (!row.courseTypes.length) return "-";
+        if (!row.courseTypes.length) return <span className="text-slate-400 text-xs">-</span>;
         return (
           <div className="flex flex-wrap gap-1">
             {row.courseTypes.map((type) => (
-              <Badge key={type} variant="outline">
+              <span key={type} className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
                 {typeLabels[type] || type}
-              </Badge>
+              </span>
             ))}
           </div>
         );
       },
     },
     {
-      header: "Ações",
+      header: "",
       cellClassName: "text-right",
+      sortable: false,
       render: (row) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/ParticipantProfile?id=${row.id}`);
-          }}
-        >
-          Ver Perfil
+        <Button variant="ghost" size="sm" className="text-xs h-7"
+          onClick={(e) => { e.stopPropagation(); navigate(`/ParticipantProfile?id=${row.id}`); }}>
+          Ver perfil
         </Button>
       ),
     },
@@ -950,7 +963,8 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
           </Button>
           <Button
             onClick={() => setShowUpload(true)}
-            className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+            className="flex items-center gap-2 text-white"
+            style={{ background: "hsl(var(--primary))" }}
           >
             <Upload className="h-4 w-4" />
             Importar Planilha
@@ -958,15 +972,15 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm space-y-4">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-900 tracking-tight">
-            Comparar dois treinamentos
-          </h3>
-          <p className="text-xs text-slate-600">
-            Escolha ano/mês para reduzir a lista e depois selecione os 2
-            treinamentos com o modo de comparação.
-          </p>
+      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
+            <FileSpreadsheet className="h-4 w-4 text-slate-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Comparar dois treinamentos</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Filtre por ano/mês e selecione dois treinamentos para cruzar participantes.</p>
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1">
@@ -1217,7 +1231,7 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
               <Button
                 onClick={handleUpload}
                 disabled={!uploadFile || uploadExcel.isPending}
-                className="bg-green-600 hover:bg-green-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 {uploadExcel.isPending ? (
                   <>
