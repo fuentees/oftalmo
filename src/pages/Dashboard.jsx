@@ -489,7 +489,7 @@ export default function Dashboard() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Link to={createPageUrl("Schedule?action=create")}>
-            <Button className="gap-2 text-white" style={{ background: "hsl(var(--primary))" }}>
+            <Button className="gap-2 text-white hover:opacity-90 transition-opacity" style={{ background: "hsl(var(--primary))" }}>
               <Calendar className="h-4 w-4" />
               Adicionar na Agenda
             </Button>
@@ -547,22 +547,24 @@ export default function Dashboard() {
       {(todayEvents.length > 0 || weekExpiring.length > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {todayEvents.length > 0 && (
-            <Card className="border-blue-200 bg-blue-50/60">
-              <CardHeader className="pb-2 pt-4 px-4">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-blue-700">
+            <Card className="border-l-4 border-l-blue-500 shadow-sm">
+              <CardHeader className="pb-2 pt-3 px-4 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-slate-800">
                   <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                   Acontecendo Hoje
-                  <span className="ml-auto text-xs font-normal bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
-                    {todayEvents.length}
-                  </span>
                 </CardTitle>
+                <span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">
+                  {todayEvents.length}
+                </span>
               </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <ul className="space-y-2">
+              <CardContent className="px-4 pb-4 pt-1">
+                <ul className="space-y-1.5">
                   {todayEvents.slice(0, 5).map((event, idx) => (
-                    <li key={event.id ?? idx} className="flex items-center justify-between text-sm gap-2">
+                    <li key={event.id ?? idx} className="flex items-center justify-between text-sm gap-2 py-1 border-b border-slate-50 last:border-0">
                       <span className="font-medium text-slate-800 truncate">{event.title}</span>
-                      <span className="text-slate-500 text-xs shrink-0">{event.start_time || typeLabels[event.type] || "Outro"}</span>
+                      <span className="text-slate-500 text-xs shrink-0 bg-slate-50 px-2 py-0.5 rounded">
+                        {event.start_time || typeLabels[event.type] || "Outro"}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -571,24 +573,24 @@ export default function Dashboard() {
           )}
 
           {weekExpiring.length > 0 && (
-            <Card className="border-amber-200 bg-amber-50/60">
-              <CardHeader className="pb-2 pt-4 px-4">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-700">
-                  <AlertTriangle className="h-4 w-4" />
+            <Card className="border-l-4 border-l-amber-500 shadow-sm">
+              <CardHeader className="pb-2 pt-3 px-4 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-slate-800">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
                   Validades Vencendo
-                  <span className="ml-auto text-xs font-normal bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">
-                    {weekExpiring.length}
-                  </span>
                 </CardTitle>
+                <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full">
+                  {weekExpiring.length}
+                </span>
               </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <ul className="space-y-2">
+              <CardContent className="px-4 pb-4 pt-1">
+                <ul className="space-y-1.5">
                   {weekExpiring.slice(0, 5).map((p, idx) => {
                     const days = differenceInDays(new Date(p.validity_date), new Date());
                     return (
-                      <li key={p.id ?? idx} className="flex items-center justify-between text-sm gap-2">
+                      <li key={p.id ?? idx} className="flex items-center justify-between text-sm gap-2 py-1 border-b border-slate-50 last:border-0">
                         <span className="font-medium text-slate-800 truncate">{p.professional_name}</span>
-                        <span className={`text-xs font-bold shrink-0 px-2 py-0.5 rounded-full ${days === 0 ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"}`}>
+                        <span className={`text-xs font-bold shrink-0 px-2.5 py-0.5 rounded-full ${days === 0 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
                           {days === 0 ? "Hoje" : `${days}d`}
                         </span>
                       </li>
@@ -606,11 +608,11 @@ export default function Dashboard() {
         <Card className="border-slate-200 shadow-sm flex flex-col">
           <CardHeader className="flex flex-col gap-3 pb-3 border-b border-slate-100">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-slate-400" />
+              <CardTitle className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-blue-500" />
                 Próximos Eventos e Atividades
               </CardTitle>
-              <Link to={createPageUrl("Schedule")} className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-0.5 font-medium">
+              <Link to={createPageUrl("Schedule")} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 font-medium transition-colors">
                 Ver agenda <ChevronRight className="h-3.5 w-3.5" />
               </Link>
             </div>
@@ -639,11 +641,11 @@ export default function Dashboard() {
 
         <Card className="border-slate-200 shadow-sm flex flex-col">
           <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
-            <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-              <Package className="h-4 w-4 text-slate-400" />
+            <CardTitle className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+              <Package className="h-4 w-4 text-blue-500" />
               Últimas Movimentações de Estoque
             </CardTitle>
-            <Link to={createPageUrl("Stock")} className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-0.5 font-medium">
+            <Link to={createPageUrl("Stock")} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 font-medium transition-colors">
               Ver todas <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </CardHeader>
