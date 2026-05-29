@@ -482,30 +482,28 @@ export default function Dashboard() {
       {trainingsError && <QueryError message="Erro ao carregar dados dos treinamentos." onRetry={refetchTrainings} />}
 
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Dashboard</h1>
-          <p className="text-slate-600 mt-1">Visão geral do sistema</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
+          <p className="text-slate-500 mt-1 text-sm">Visão geral do sistema — {format(new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</p>
         </div>
-        
-        {/* Quick Actions */}
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2">
           <Link to={createPageUrl("Schedule?action=create")}>
-            <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/30">
-              <Calendar className="h-4 w-4 mr-2" />
+            <Button className="gap-2 text-white" style={{ background: "hsl(var(--primary))" }}>
+              <Calendar className="h-4 w-4" />
               Adicionar na Agenda
             </Button>
           </Link>
           <Link to={createPageUrl("Trainings?action=create")}>
-            <Button variant="outline" className="border-2 border-purple-200 text-purple-700 hover:bg-purple-50">
-              <GraduationCap className="h-4 w-4 mr-2" />
+            <Button variant="outline" className="gap-2">
+              <GraduationCap className="h-4 w-4" />
               Novo Treinamento
             </Button>
           </Link>
           <Link to={createPageUrl("Stock?action=create")}>
-            <Button variant="outline" className="border-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50">
-              <Package className="h-4 w-4 mr-2" />
-              Gerenciar Estoque
+            <Button variant="outline" className="gap-2">
+              <Package className="h-4 w-4" />
+              Estoque
             </Button>
           </Link>
         </div>
@@ -545,25 +543,26 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Resumo do Dia */}
+      {/* Alertas do dia */}
       {(todayEvents.length > 0 || weekExpiring.length > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {todayEvents.length > 0 && (
-            <Card className="border-blue-200 bg-blue-50/50">
-              <CardHeader className="pb-2">
+            <Card className="border-blue-200 bg-blue-50/60">
+              <CardHeader className="pb-2 pt-4 px-4">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2 text-blue-700">
-                  <Calendar className="h-4 w-4" />
-                  Acontecendo Hoje ({todayEvents.length})
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  Acontecendo Hoje
+                  <span className="ml-auto text-xs font-normal bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
+                    {todayEvents.length}
+                  </span>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-4 pb-4">
                 <ul className="space-y-2">
                   {todayEvents.slice(0, 5).map((event, idx) => (
-                    <li key={event.id ?? idx} className="flex items-center justify-between text-sm">
+                    <li key={event.id ?? idx} className="flex items-center justify-between text-sm gap-2">
                       <span className="font-medium text-slate-800 truncate">{event.title}</span>
-                      <span className="text-slate-500 text-xs shrink-0 ml-2">
-                        {event.start_time || typeLabels[event.type] || "Outro"}
-                      </span>
+                      <span className="text-slate-500 text-xs shrink-0">{event.start_time || typeLabels[event.type] || "Outro"}</span>
                     </li>
                   ))}
                 </ul>
@@ -572,21 +571,24 @@ export default function Dashboard() {
           )}
 
           {weekExpiring.length > 0 && (
-            <Card className="border-amber-200 bg-amber-50/50">
-              <CardHeader className="pb-2">
+            <Card className="border-amber-200 bg-amber-50/60">
+              <CardHeader className="pb-2 pt-4 px-4">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-700">
                   <AlertTriangle className="h-4 w-4" />
-                  Vencendo Esta Semana ({weekExpiring.length})
+                  Validades Vencendo
+                  <span className="ml-auto text-xs font-normal bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">
+                    {weekExpiring.length}
+                  </span>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-4 pb-4">
                 <ul className="space-y-2">
                   {weekExpiring.slice(0, 5).map((p, idx) => {
                     const days = differenceInDays(new Date(p.validity_date), new Date());
                     return (
-                      <li key={p.id ?? idx} className="flex items-center justify-between text-sm">
+                      <li key={p.id ?? idx} className="flex items-center justify-between text-sm gap-2">
                         <span className="font-medium text-slate-800 truncate">{p.professional_name}</span>
-                        <span className={`text-xs font-semibold shrink-0 ml-2 ${days === 0 ? "text-red-600" : "text-amber-700"}`}>
+                        <span className={`text-xs font-bold shrink-0 px-2 py-0.5 rounded-full ${days === 0 ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"}`}>
                           {days === 0 ? "Hoje" : `${days}d`}
                         </span>
                       </li>
@@ -600,76 +602,58 @@ export default function Dashboard() {
       )}
 
       {/* Tables */}
-      <div className="grid grid-cols-1 gap-6">
-        {/* Próximos eventos em destaque */}
-        <Card className="border-slate-200 shadow-lg hover:shadow-xl transition-shadow flex flex-col">
-          <CardHeader className="flex flex-col gap-3 pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
+      <div className="grid grid-cols-1 gap-5">
+        <Card className="border-slate-200 shadow-sm flex flex-col">
+          <CardHeader className="flex flex-col gap-3 pb-3 border-b border-slate-100">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Calendar className="h-4 w-4 text-blue-600" />
-                </div>
+              <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-slate-400" />
                 Próximos Eventos e Atividades
               </CardTitle>
-              <Link
-                to={createPageUrl("Schedule")}
-                className="text-sm text-blue-600 hover:text-blue-700 flex items-center font-medium"
-              >
-                Ver agenda <ChevronRight className="h-4 w-4" />
+              <Link to={createPageUrl("Schedule")} className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-0.5 font-medium">
+                Ver agenda <ChevronRight className="h-3.5 w-3.5" />
               </Link>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-500">Filtrar por tipo:</span>
-              <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
-                <SelectTrigger className="h-8 w-[200px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {eventTypeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+              <SelectTrigger className="h-8 w-48 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {eventTypeOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value} className="text-xs">
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardHeader>
           <CardContent className="p-0 flex-1">
-            <div className="max-h-[32rem] overflow-y-auto">
-              <DataTable
-                columns={eventColumns}
-                data={upcomingEvents}
-                isLoading={loadingEvents}
-                emptyMessage="Nenhum evento próximo"
-              />
-            </div>
+            <DataTable
+              columns={eventColumns}
+              data={upcomingEvents}
+              isLoading={loadingEvents}
+              emptyMessage="Nenhum evento próximo"
+            />
           </CardContent>
         </Card>
-        {/* Recent Movements */}
-        <Card className="border-slate-200 shadow-lg hover:shadow-xl transition-shadow flex flex-col">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 bg-gradient-to-r from-slate-50 to-slate-100 rounded-t-xl">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Package className="h-4 w-4 text-blue-600" />
-              </div>
-              Últimas Movimentações
+
+        <Card className="border-slate-200 shadow-sm flex flex-col">
+          <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
+            <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              <Package className="h-4 w-4 text-slate-400" />
+              Últimas Movimentações de Estoque
             </CardTitle>
-            <Link
-              to={createPageUrl("Stock")}
-              className="text-sm text-blue-600 hover:text-blue-700 flex items-center font-medium"
-            >
-              Ver todas <ChevronRight className="h-4 w-4" />
+            <Link to={createPageUrl("Stock")} className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-0.5 font-medium">
+              Ver todas <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </CardHeader>
           <CardContent className="p-0 flex-1">
-            <div className="max-h-[32rem] overflow-y-auto">
-              <DataTable
-                columns={movementColumns}
-                data={movements.slice(0, 8)}
-                isLoading={loadingMovements}
-                emptyMessage="Nenhuma movimentação registrada"
-              />
-            </div>
+            <DataTable
+              columns={movementColumns}
+              data={movements.slice(0, 8)}
+              isLoading={loadingMovements}
+              emptyMessage="Nenhuma movimentação registrada"
+            />
           </CardContent>
         </Card>
       </div>
