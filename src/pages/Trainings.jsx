@@ -1590,7 +1590,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
           </Button>
           <Button
             onClick={handleOpenImport}
-            className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+            className="flex items-center gap-2 text-white" style={{ background: "hsl(var(--primary))" }}
           >
             <Upload className="h-4 w-4" />
             Importar Planilha
@@ -1742,7 +1742,7 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
               <Button
                 onClick={handleImport}
                 disabled={!importFile || importTrainings.isPending}
-                className="bg-green-600 hover:bg-green-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 {importTrainings.isPending ? (
                   <>

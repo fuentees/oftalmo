@@ -1270,7 +1270,7 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
               <>
                 <Button
                   onClick={() => handleOpenImport("materials")}
-                  className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+                  className="flex items-center gap-2 text-white" style={{ background: "hsl(var(--primary))" }}
                 >
                   <Upload className="h-4 w-4" />
                   Importar Planilha
@@ -1296,7 +1296,7 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
                     setSelectedMaterial(null);
                     setShowMaterialForm(true);
                   }}
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className="text-white" style={{ background: "hsl(var(--primary))" }}
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Novo Material
@@ -1306,7 +1306,7 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
               <>
                 <Button
                   onClick={() => handleOpenImport("movements")}
-                  className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+                  className="flex items-center gap-2 text-white" style={{ background: "hsl(var(--primary))" }}
                 >
                   <Upload className="h-4 w-4" />
                   Importar Planilha
@@ -1705,7 +1705,7 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
               <Button
                 onClick={handleImport}
                 disabled={!importFile || importStock.isPending}
-                className="bg-green-600 hover:bg-green-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 {importStock.isPending ? (
                   <>
