@@ -134,9 +134,11 @@ export default function EventProgramSection({ training }) {
 
   const [programDates, setProgramDates] = useState([]);
   const [programStatus, setProgramStatus] = useState(null);
+  const [isDirty, setIsDirty] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
-  const dragRef = React.useRef(null); // { sessionId, srcDateIndex } — usa ref para evitar closure stale no globalMouseUp
+  const dragRef = React.useRef(null);
+  const userChangedRef = React.useRef(false); // distingue mudança do usuário de reset vindo do servidor
   const trainingProgramSignature = useMemo(() => {
     const normalizedDates = Array.isArray(training?.dates)
       ? training.dates.map((dateItem) => ({
@@ -297,9 +299,21 @@ export default function EventProgramSection({ training }) {
   };
 
   useEffect(() => {
+    // Não sobrescreve se o usuário tem mudanças não salvas
+    if (userChangedRef.current) return;
     setProgramDates(buildProgramDatesFromTraining(training));
     setProgramStatus(null);
+    setIsDirty(false);
   }, [training?.id, trainingProgramSignature]);
+
+  // Auto-save: 2.5s após última mudança do usuário
+  useEffect(() => {
+    if (!isDirty) return;
+    const timer = setTimeout(() => {
+      saveProgram.mutate();
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [programDates, isDirty]);
 
   const groupedProgramRows = useMemo(
     () =>
@@ -401,11 +415,11 @@ export default function EventProgramSection({ training }) {
       });
     },
     onSuccess: () => {
+      userChangedRef.current = false;
+      setIsDirty(false);
       queryClient.invalidateQueries({ queryKey: ["trainings"] });
-      setProgramStatus({
-        type: "success",
-        message: "Programação salva com sucesso.",
-      });
+      setProgramStatus({ type: "success", message: "Programação salva." });
+      setTimeout(() => setProgramStatus(null), 3000);
     },
     onError: (error) => {
       setProgramStatus({
@@ -416,14 +430,13 @@ export default function EventProgramSection({ training }) {
   });
 
   const upsertDateSessions = (dateIndex, updater) => {
+    userChangedRef.current = true;
+    setIsDirty(true);
     setProgramDates((prev) =>
       prev.map((item, index) => {
         if (index !== dateIndex) return item;
         const current = Array.isArray(item?.sessions) ? item.sessions : [];
-        return {
-          ...item,
-          sessions: updater(current),
-        };
+        return { ...item, sessions: updater(current) };
       })
     );
   };
@@ -485,6 +498,8 @@ export default function EventProgramSection({ training }) {
 
   // Horário de início do dia mudou
   const handleDayStartTimeChange = (dateIndex, newStartTime) => {
+    userChangedRef.current = true;
+    setIsDirty(true);
     setProgramDates((prev) =>
       prev.map((item, i) =>
         i === dateIndex ? { ...item, start_time: newStartTime } : item
@@ -525,6 +540,8 @@ export default function EventProgramSection({ training }) {
       setDropTarget((tgt) => {
         if (!tgt) return null;
         const { sessionId, srcDateIndex } = drag;
+        userChangedRef.current = true;
+        setIsDirty(true);
         setProgramDates((prev) => {
           const next = prev.map((d) => ({ ...d, sessions: [...(Array.isArray(d.sessions) ? d.sessions : [])] }));
           const session = next[srcDateIndex]?.sessions?.find((s) => s.id === sessionId);
@@ -553,6 +570,8 @@ export default function EventProgramSection({ training }) {
   };
 
   const handleMoveSession = (dateIndex, sessionId, direction) => {
+    userChangedRef.current = true;
+    setIsDirty(true);
     setProgramDates((prev) => {
       const sessions = Array.isArray(prev[dateIndex]?.sessions) ? [...prev[dateIndex].sessions] : [];
       const idx = sessions.findIndex((s) => s.id === sessionId);
@@ -1003,17 +1022,6 @@ export default function EventProgramSection({ training }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <Button
-              type="button"
-              size="sm"
-              className="bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
-              onClick={() => saveProgram.mutate()}
-              disabled={saveProgram.isPending}
-            >
-              <Save className="mr-1 h-4 w-4" />
-              {saveProgram.isPending ? "Salvando..." : "Salvar programação"}
-            </Button>
-
             <Button type="button" variant="outline" size="sm" onClick={handleCopyProgram}>
               <Copy className="mr-1 h-4 w-4" />
               Copiar programação
@@ -1360,6 +1368,38 @@ export default function EventProgramSection({ training }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Botão flutuante de salvar */}
+      {(isDirty || saveProgram.isPending || programStatus?.type === "success") && (
+        <div className="fixed bottom-6 right-6 z-50">
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border transition-all ${
+            programStatus?.type === "success"
+              ? "bg-emerald-50 border-emerald-200"
+              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+          }`}>
+            {programStatus?.type === "success" ? (
+              <span className="text-sm font-medium text-emerald-700 flex items-center gap-2">
+                <Save className="h-4 w-4" /> Salvo
+              </span>
+            ) : (
+              <>
+                <span className="text-sm font-medium text-amber-600">
+                  {saveProgram.isPending ? "Salvando..." : "Alterações não salvas"}
+                </span>
+                <Button
+                  size="sm"
+                  onClick={() => saveProgram.mutate()}
+                  disabled={saveProgram.isPending}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  Salvar agora
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
