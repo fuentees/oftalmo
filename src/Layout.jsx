@@ -197,7 +197,8 @@ export default function Layout({ children, currentPageName }) {
   const shortcutModifier = isMacPlatform ? "⌘" : "Ctrl";
 
   const sidebarWidth = sidebarExpanded ? "w-56" : "w-16";
-  const contentPadding = sidebarExpanded ? "lg:pl-56" : "lg:pl-16";
+  // Sidebar flutuante: left-3 (0.75rem) + width + gap (0.75rem)
+  const contentPadding = sidebarExpanded ? "lg:pl-[15.5rem]" : "lg:pl-[5.5rem]";
 
   const LogoImg = ({ className = "h-9 w-9" }) => (
     <img src="/logo.svg" alt="Logo" className={`${className} shrink-0 drop-shadow-md`} />
@@ -205,7 +206,7 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <TooltipProvider delayDuration={250}>
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
+      <div className="min-h-screen bg-slate-100 dark:bg-[#0c0f16] transition-colors duration-200">
         {/* Mobile overlay */}
         {mobileSidebarOpen && (
           <div
@@ -269,14 +270,14 @@ export default function Layout({ children, currentPageName }) {
           onClick={toggleDesktopSidebar}
           title={sidebarExpanded ? "Recolher menu" : "Expandir menu"}
           className="hidden lg:flex fixed top-1/2 -translate-y-1/2 z-[60] w-6 h-6 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 shadow-md items-center justify-center text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:shadow-lg transition-all duration-300 ease-in-out"
-          style={{ left: sidebarExpanded ? "calc(14rem - 12px)" : "calc(4rem - 12px)" }}
+          style={{ left: sidebarExpanded ? "14rem" : "4rem" }}
         >
           {sidebarExpanded ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </button>
 
         {/* Desktop Sidebar */}
         <aside
-          className={`hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-700/80 transition-all duration-300 ease-in-out overflow-hidden ${sidebarWidth}`}
+          className={`hidden lg:flex fixed top-3 bottom-3 left-3 z-50 flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-slate-200/60 dark:border-slate-700/60 transition-all duration-300 ease-in-out overflow-hidden ${sidebarWidth}`}
         >
           {/* Logo */}
           <div
@@ -357,7 +358,7 @@ export default function Layout({ children, currentPageName }) {
           </nav>
 
           {/* Bottom: status */}
-          <div className={`shrink-0 pb-4 border-t border-slate-700/30 dark:border-slate-700 pt-3 px-3 ${sidebarExpanded ? "" : "flex justify-center"}`}>
+          <div className={`shrink-0 pb-4 border-t border-slate-200 dark:border-slate-700/80 pt-3 px-3 ${sidebarExpanded ? "" : "flex justify-center"}`}>
             {sidebarExpanded ? (
               <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
@@ -380,10 +381,10 @@ export default function Layout({ children, currentPageName }) {
         </aside>
 
         {/* Main */}
-        <div className={`transition-all duration-300 ease-in-out ${contentPadding}`}>
+        <div className={`transition-all duration-300 ease-in-out ${contentPadding} pr-3`}>
           {/* Header */}
-          <header className="sticky top-0 z-30 h-16 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-700/80">
-            <div className="flex h-full items-center gap-4 px-5 lg:px-8">
+          <header className="sticky top-3 z-30 mx-0 mb-4 h-14 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-sm border border-slate-200/60 dark:border-slate-700/60">
+            <div className="flex h-full items-center gap-4 px-5 lg:px-6">
               <button
                 onClick={() => setMobileSidebarOpen(true)}
                 className="lg:hidden p-2 -ml-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
@@ -487,7 +488,7 @@ export default function Layout({ children, currentPageName }) {
           </header>
 
           {/* Page content */}
-          <main className="p-5 lg:p-8 min-h-screen dark:bg-slate-950">
+          <main className="px-0 pb-6">
             <div className="max-w-[1600px] mx-auto">
               <AnimatePresence mode="wait">
                 <motion.div
