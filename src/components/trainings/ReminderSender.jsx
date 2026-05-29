@@ -75,11 +75,10 @@ export default function ReminderSender({ training, participants }) {
     let failed = 0;
     for (const p of activeParticipants) {
       try {
-        await dataClient.SendEmail({
+        await dataClient.integrations.Core.SendEmail({
           to: p.professional_email,
           subject: `Lembrete: ${training.title}`,
-          body: body.replace(/\*\*(.*?)\*\*/g, "$1"),
-          html: `<pre style="font-family:sans-serif;white-space:pre-wrap">${body.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")}</pre>`,
+          body: `<pre style="font-family:sans-serif;white-space:pre-wrap">${body.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")}</pre>`,
         });
         sent++;
       } catch {
