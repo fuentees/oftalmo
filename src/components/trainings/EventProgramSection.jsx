@@ -132,19 +132,45 @@ export default function EventProgramSection({ training }) {
     return hour * 60 + minute;
   };
 
-  const normalizeSession = (session, fallbackIndex = 0) => ({
-    id:
-      String(session?.id || "").trim() ||
-      `session-${Date.now()}-${Math.random().toString(36).slice(2)}-${fallbackIndex}`,
-    start_time: String(session?.start_time || "").trim(),
-    end_time: String(session?.end_time || "").trim(),
-    title: String(session?.title || session?.activity || "").trim(),
-    speaker_name: String(
-      session?.speaker_name || session?.responsible || session?.speaker || ""
-    ).trim(),
-    professional_id: String(session?.professional_id || "").trim(),
-    professional_email: String(session?.professional_email || "").trim(),
-  });
+  const minutesToTimeString = (totalMinutes) => {
+    const h = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
+    const m = String(totalMinutes % 60).padStart(2, "0");
+    return `${h}:${m}`;
+  };
+
+  const deriveDuration = (start, end) => {
+    const s = parseTimeToMinutes(start);
+    const e = parseTimeToMinutes(end);
+    if (s === null || e === null || e <= s) return null;
+    return e - s;
+  };
+
+  const normalizeSession = (session, fallbackIndex = 0) => {
+    const start = String(session?.start_time || "").trim();
+    const end = String(session?.end_time || "").trim();
+    // Lê duration_minutes salvo ou deriva de start/end
+    let durationMinutes = null;
+    const saved = Number(session?.duration_minutes);
+    if (Number.isFinite(saved) && saved > 0) {
+      durationMinutes = saved;
+    } else {
+      durationMinutes = deriveDuration(start, end);
+    }
+    return {
+      id:
+        String(session?.id || "").trim() ||
+        `session-${Date.now()}-${Math.random().toString(36).slice(2)}-${fallbackIndex}`,
+      start_time: start,
+      end_time: end,
+      duration_minutes: durationMinutes,
+      title: String(session?.title || session?.activity || "").trim(),
+      speaker_name: String(
+        session?.speaker_name || session?.responsible || session?.speaker || ""
+      ).trim(),
+      professional_id: String(session?.professional_id || "").trim(),
+      professional_email: String(session?.professional_email || "").trim(),
+    };
+  };
 
   const normalizeImportedSessions = (sessions = [], dateIndex = 0) =>
     (Array.isArray(sessions) ? sessions : [])
@@ -297,6 +323,7 @@ export default function EventProgramSection({ training }) {
             end_time:
               normalizeTimeValue(session?.end_time) ||
               String(session?.end_time || "").trim(),
+            duration_minutes: session?.duration_minutes ?? null,
             title: String(session?.title || "").trim(),
             speaker_name: String(session?.speaker_name || "").trim(),
             professional_id: String(session?.professional_id || "").trim(),
@@ -352,16 +379,23 @@ export default function EventProgramSection({ training }) {
   };
 
   const handleAddSession = (dateIndex) => {
-    upsertDateSessions(dateIndex, (sessions) => [
-      ...sessions,
-      normalizeSession(
-        {
-          title: "",
-          speaker_name: "",
-        },
-        sessions.length + dateIndex * 1000
-      ),
-    ]);
+    upsertDateSessions(dateIndex, (sessions) => {
+      const prev = sessions[sessions.length - 1];
+      // Início = fim da sessão anterior; duração = mesma da anterior
+      const newStart = prev?.end_time || "";
+      const newDuration = prev?.duration_minutes ?? null;
+      const newEnd =
+        newStart && newDuration
+          ? minutesToTimeString(parseTimeToMinutes(newStart) + newDuration)
+          : "";
+      return [
+        ...sessions,
+        normalizeSession(
+          { start_time: newStart, end_time: newEnd, duration_minutes: newDuration },
+          sessions.length + dateIndex * 1000
+        ),
+      ];
+    });
   };
 
   const handleRemoveSession = (dateIndex, sessionId) => {
@@ -392,41 +426,17 @@ export default function EventProgramSection({ training }) {
     });
   };
 
-  // Calcula fim = início + duração (prioridade: sessão anterior > duração padrão do dia > 60min)
+  // Início mudou → recalcula fim se a sessão já tem duração definida
   const handleStartTimeChange = (dateIndex, sessionId, newStart) => {
-    handleUpdateSessionField(dateIndex, sessionId, "start_time", newStart);
-
     setProgramDates((prev) => {
-      const dateItem = prev[dateIndex];
-      const sessions = Array.isArray(dateItem?.sessions) ? dateItem.sessions : [];
-      const idx = sessions.findIndex((s) => s.id === sessionId);
-      if (idx < 0) return prev;
-      const session = sessions[idx];
-
-      if (session.end_time) return prev; // não sobrescreve fim já preenchido
-      if (!newStart) return prev;
-
-      // 1. Duração da sessão anterior
-      let durationMinutes = null;
-      const prevSession = sessions[idx - 1];
-      if (prevSession?.start_time && prevSession?.end_time) {
-        const s = parseTimeToMinutes(prevSession.start_time);
-        const e = parseTimeToMinutes(prevSession.end_time);
-        if (s !== null && e !== null && e > s) durationMinutes = e - s;
-      }
-      // 2. Duração padrão configurada para este dia
-      if (durationMinutes === null) {
-        const configured = Number(defaultDurations[dateIndex]);
-        if (Number.isFinite(configured) && configured > 0) durationMinutes = configured;
-      }
-      // 3. Fallback: 60 min
-      if (durationMinutes === null) durationMinutes = 60;
+      const sessions = prev[dateIndex]?.sessions ?? [];
+      const session = sessions.find((s) => s.id === sessionId);
+      if (!session) return prev;
 
       const startMin = parseTimeToMinutes(newStart);
-      if (startMin === null) return prev;
-      const endMin = startMin + durationMinutes;
-      const endH = String(Math.floor(endMin / 60) % 24).padStart(2, "0");
-      const endM = String(endMin % 60).padStart(2, "0");
+      const duration = session.duration_minutes;
+      const newEnd =
+        startMin !== null && duration ? minutesToTimeString(startMin + duration) : session.end_time;
 
       return prev.map((item, i) =>
         i !== dateIndex
@@ -434,7 +444,57 @@ export default function EventProgramSection({ training }) {
           : {
               ...item,
               sessions: item.sessions.map((s) =>
-                s.id === sessionId ? { ...s, end_time: `${endH}:${endM}` } : s
+                s.id === sessionId ? { ...s, start_time: newStart, end_time: newEnd } : s
+              ),
+            }
+      );
+    });
+  };
+
+  // Duração mudou → recalcula fim (e guarda a duração na sessão)
+  const handleDurationChange = (dateIndex, sessionId, newDurationMinutes) => {
+    setProgramDates((prev) => {
+      const sessions = prev[dateIndex]?.sessions ?? [];
+      const session = sessions.find((s) => s.id === sessionId);
+      if (!session) return prev;
+
+      const startMin = parseTimeToMinutes(session.start_time);
+      const newEnd =
+        startMin !== null && newDurationMinutes
+          ? minutesToTimeString(startMin + newDurationMinutes)
+          : session.end_time;
+
+      return prev.map((item, i) =>
+        i !== dateIndex
+          ? item
+          : {
+              ...item,
+              sessions: item.sessions.map((s) =>
+                s.id === sessionId
+                  ? { ...s, duration_minutes: newDurationMinutes, end_time: newEnd }
+                  : s
+              ),
+            }
+      );
+    });
+  };
+
+  // Fim editado manualmente → deriva e atualiza duração
+  const handleEndTimeChange = (dateIndex, sessionId, newEnd) => {
+    setProgramDates((prev) => {
+      const sessions = prev[dateIndex]?.sessions ?? [];
+      const session = sessions.find((s) => s.id === sessionId);
+      if (!session) return prev;
+      const derived = deriveDuration(session.start_time, newEnd);
+      return prev.map((item, i) =>
+        i !== dateIndex
+          ? item
+          : {
+              ...item,
+              sessions: item.sessions.map((s) =>
+                s.id === sessionId
+                  ? { ...s, end_time: newEnd, duration_minutes: derived ?? s.duration_minutes }
+                  : s
               ),
             }
       );
@@ -1028,7 +1088,8 @@ export default function EventProgramSection({ training }) {
                                   <TableHead className="w-8 p-2" />
                                   <TableHead className="w-28">Data</TableHead>
                                   <TableHead className="w-28">Início</TableHead>
-                                  <TableHead className="w-28">Fim</TableHead>
+                                  <TableHead className="w-28">Duração</TableHead>
+                                  <TableHead className="w-24">Fim</TableHead>
                                   <TableHead>Tema / atividade</TableHead>
                                   <TableHead className="min-w-[200px]">Palestrante</TableHead>
                                   <TableHead className="w-10" />
@@ -1072,10 +1133,36 @@ export default function EventProgramSection({ training }) {
                                       />
                                     </TableCell>
                                     <TableCell className="py-1.5 px-2">
+                                      <select
+                                        value={session.duration_minutes ?? ""}
+                                        onChange={(e) =>
+                                          handleDurationChange(
+                                            dateIndex,
+                                            session.id,
+                                            e.target.value ? Number(e.target.value) : null
+                                          )
+                                        }
+                                        className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                      >
+                                        <option value="">—</option>
+                                        <option value="15">15 min</option>
+                                        <option value="30">30 min</option>
+                                        <option value="45">45 min</option>
+                                        <option value="60">1h</option>
+                                        <option value="75">1h15</option>
+                                        <option value="90">1h30</option>
+                                        <option value="105">1h45</option>
+                                        <option value="120">2h</option>
+                                        <option value="150">2h30</option>
+                                        <option value="180">3h</option>
+                                        <option value="240">4h</option>
+                                      </select>
+                                    </TableCell>
+                                    <TableCell className="py-1.5 px-2">
                                       <Input
                                         type="time"
                                         value={session.end_time}
-                                        onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "end_time", e.target.value)}
+                                        onChange={(e) => handleEndTimeChange(dateIndex, session.id, e.target.value)}
                                         className="h-8 text-sm px-2"
                                       />
                                     </TableCell>
@@ -1144,7 +1231,7 @@ export default function EventProgramSection({ training }) {
                                         : "border-slate-200"
                                     }`}
                                   >
-                                    <TableCell colSpan={7} className="text-center text-xs text-slate-400">
+                                    <TableCell colSpan={8} className="text-center text-xs text-slate-400">
                                       Solte aqui para mover para este dia
                                     </TableCell>
                                   </TableRow>
@@ -1195,11 +1282,38 @@ export default function EventProgramSection({ training }) {
                                     />
                                   </div>
                                   <div className="flex-1 space-y-1">
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Duração</label>
+                                    <select
+                                      value={session.duration_minutes ?? ""}
+                                      onChange={(e) =>
+                                        handleDurationChange(
+                                          dateIndex,
+                                          session.id,
+                                          e.target.value ? Number(e.target.value) : null
+                                        )
+                                      }
+                                      className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                    >
+                                      <option value="">—</option>
+                                      <option value="15">15 min</option>
+                                      <option value="30">30 min</option>
+                                      <option value="45">45 min</option>
+                                      <option value="60">1h</option>
+                                      <option value="75">1h15</option>
+                                      <option value="90">1h30</option>
+                                      <option value="105">1h45</option>
+                                      <option value="120">2h</option>
+                                      <option value="150">2h30</option>
+                                      <option value="180">3h</option>
+                                      <option value="240">4h</option>
+                                    </select>
+                                  </div>
+                                  <div className="flex-1 space-y-1">
                                     <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Fim</label>
                                     <Input
                                       type="time"
                                       value={session.end_time}
-                                      onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "end_time", e.target.value)}
+                                      onChange={(e) => handleEndTimeChange(dateIndex, session.id, e.target.value)}
                                       className="h-9 text-sm"
                                     />
                                   </div>
