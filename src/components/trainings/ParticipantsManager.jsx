@@ -177,7 +177,7 @@ export default function ParticipantsManager({ training, professionals, existingP
           <Button
             onClick={() => addParticipants.mutate(selectedProfessionals)}
             disabled={addParticipants.isPending}
-            className="mt-3 bg-blue-600 hover:bg-blue-700"
+            className="mt-3 text-white" style={{ background: "hsl(var(--primary))" }}
           >
             {addParticipants.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />

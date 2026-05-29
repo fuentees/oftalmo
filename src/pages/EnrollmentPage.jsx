@@ -2514,7 +2514,7 @@ export default function EnrollmentPage({
       />
 
       <Card>
-        <CardHeader className="bg-blue-600 text-white">
+        <CardHeader className="text-white" style={{ background: "hsl(var(--primary))" }}>
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
               <GraduationCap className="h-6 w-6" />
@@ -2821,7 +2821,7 @@ export default function EnrollmentPage({
                     <Button
                       type="submit"
                       disabled={enrollMutation.isPending}
-                      className="bg-blue-600 hover:bg-blue-700"
+                      className="text-white" style={{ background: "hsl(var(--primary))" }}
                     >
                       {enrollMutation.isPending ? (
                         <>
@@ -2852,7 +2852,7 @@ export default function EnrollmentPage({
                   {isPastTraining && (
                     <Button
                       onClick={() => setShowUploadList(true)}
-                      className="bg-green-600 hover:bg-green-700"
+                      className="text-white" style={{ background: "hsl(var(--primary))" }}
                     >
                       <Upload className="h-4 w-4 mr-2" />
                       Importar Lista
@@ -3231,7 +3231,7 @@ export default function EnrollmentPage({
                     setShowPrintAttendanceDialog(false);
                   }
                 }}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 <Printer className="h-4 w-4 mr-2" />
                 Gerar e imprimir
@@ -3313,7 +3313,7 @@ export default function EnrollmentPage({
               </Button>
               <Button
                 onClick={handleCreateGoogleCalendarLink}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 <CalendarPlus className="h-4 w-4 mr-2" />
                 Abrir Google Agenda
@@ -3450,7 +3450,7 @@ export default function EnrollmentPage({
               <Button
                 onClick={handleUploadParticipants}
                 disabled={!uploadFile || importParticipants.isPending}
-                className="bg-green-600 hover:bg-green-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 {importParticipants.isPending ? (
                   <>
@@ -3638,7 +3638,7 @@ export default function EnrollmentPage({
               <Button
                 onClick={handleSaveParticipant}
                 disabled={updateParticipant.isPending}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 {updateParticipant.isPending ? "Salvando..." : "Salvar alterações"}
               </Button>
@@ -3787,7 +3787,7 @@ export default function EnrollmentPage({
               <Button
                 type="submit"
                 disabled={createField.isPending || updateField.isPending}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 {editingField ? "Salvar Alterações" : "Criar Campo"}
               </Button>

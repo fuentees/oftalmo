@@ -90,3 +90,58 @@
     background-color: hsl(var(--primary));
   }
 }
+
+/* ─── Dark mode global overrides ───────────────────────────────────────────
+   Converte as classes Tailwind mais comuns usadas nas páginas para que
+   respondam automaticamente ao modo escuro, sem precisar adicionar dark:
+   em cada componente individualmente.
+   Os componentes shadcn/ui já usam CSS variables (bg-background, bg-card,
+   text-foreground, border-border) e funcionam automaticamente.
+   Aqui cobrimos os casos com classes diretas (bg-white, bg-slate-*, etc.)
+──────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  /* Backgrounds */
+  .dark .bg-white          { background-color: hsl(var(--card)); }
+  .dark .bg-slate-50       { background-color: hsl(222 47% 9%); }
+  .dark .bg-slate-100      { background-color: hsl(222 47% 13%); }
+  .dark .bg-slate-200      { background-color: hsl(222 47% 16%); }
+
+  /* Text */
+  .dark .text-slate-900    { color: hsl(var(--foreground)); }
+  .dark .text-slate-800    { color: hsl(213 31% 85%); }
+  .dark .text-slate-700    { color: hsl(213 31% 78%); }
+  .dark .text-slate-600    { color: hsl(var(--muted-foreground)); }
+  .dark .text-slate-500    { color: hsl(215 20% 50%); }
+  .dark .text-slate-400    { color: hsl(215 20% 45%); }
+
+  /* Borders */
+  .dark .border-slate-200  { border-color: hsl(var(--border)); }
+  .dark .border-slate-100  { border-color: hsl(222 47% 14%); }
+  .dark .border-slate-300  { border-color: hsl(222 47% 22%); }
+
+  /* Hover states */
+  .dark .hover\:bg-slate-50:hover  { background-color: hsl(222 47% 11%); }
+  .dark .hover\:bg-slate-100:hover { background-color: hsl(222 47% 14%); }
+  .dark .hover\:bg-white:hover     { background-color: hsl(var(--card)); }
+
+  /* Specific bg variants used in tables/cards */
+  .dark .bg-green-50   { background-color: hsl(160 30% 10%); }
+  .dark .bg-red-50     { background-color: hsl(0 30% 12%); }
+  .dark .bg-amber-50   { background-color: hsl(38 30% 10%); }
+  .dark .bg-blue-50    { background-color: hsl(221 30% 12%); }
+  .dark .bg-indigo-50  { background-color: hsl(240 30% 12%); }
+  .dark .bg-purple-50  { background-color: hsl(270 30% 12%); }
+
+  /* Text on colored backgrounds */
+  .dark .text-green-700   { color: hsl(160 60% 55%); }
+  .dark .text-red-700     { color: hsl(0 70% 65%); }
+  .dark .text-amber-700   { color: hsl(38 70% 60%); }
+  .dark .text-blue-700    { color: hsl(221 80% 70%); }
+  .dark .text-indigo-700  { color: hsl(240 70% 72%); }
+
+  /* Border colors on semantic backgrounds */
+  .dark .border-green-200  { border-color: hsl(160 30% 22%); }
+  .dark .border-red-200    { border-color: hsl(0 30% 22%); }
+  .dark .border-amber-200  { border-color: hsl(38 30% 22%); }
+  .dark .border-blue-200   { border-color: hsl(221 30% 22%); }
+}

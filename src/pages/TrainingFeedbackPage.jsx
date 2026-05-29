@@ -1551,7 +1551,7 @@ export default function TrainingFeedbackPage({
               </Button>
               <Button
                 type="submit"
-                className="bg-blue-600 hover:bg-blue-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
                 disabled={
                   createQuestion.isPending ||
                   updateQuestion.isPending ||

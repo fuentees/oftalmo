@@ -183,7 +183,7 @@ export default function Login() {
 
             <Button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700"
+              className="w-full text-white" style={{ background: "hsl(var(--primary))" }}
               disabled={loading}
             >
               {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

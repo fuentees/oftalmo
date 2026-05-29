@@ -790,7 +790,7 @@ export default function PublicEnrollment() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 py-8 px-4">
       <div className="max-w-3xl mx-auto">
         <Card>
-          <CardHeader className="bg-blue-600 text-white">
+          <CardHeader className="text-white" style={{ background: "hsl(var(--primary))" }}>
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
                 <GraduationCap className="h-6 w-6" />
@@ -1133,7 +1133,7 @@ export default function PublicEnrollment() {
                   <Button
                     type="submit"
                     disabled={enrollMutation.isPending}
-                    className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
+                    className="w-full sm:w-auto text-white" style={{ background: "hsl(var(--primary))" }}
                   >
                     {enrollMutation.isPending ? (
                       <>

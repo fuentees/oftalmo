@@ -1495,7 +1495,7 @@ export default function CertificateManager({ training, participants = [], onClos
                   previewCertificate.isPending ||
                   previewParticipantOptions.length === 0
                 }
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 {previewCertificate.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1545,7 +1545,7 @@ export default function CertificateManager({ training, participants = [], onClos
             <Button
               onClick={handleIssueSelected}
               disabled={selectedParticipants.length === 0 || processing}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="text-white" style={{ background: "hsl(var(--primary))" }}
             >
               <Award className="h-4 w-4 mr-2" />
               {processing
@@ -1752,7 +1752,7 @@ export default function CertificateManager({ training, participants = [], onClos
                   previewTeamCertificate.isPending ||
                   previewTeamRecipientOptions.length === 0
                 }
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 {previewTeamCertificate.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1773,7 +1773,7 @@ export default function CertificateManager({ training, participants = [], onClos
             <Button
               onClick={() => issueCoordinatorCertificates.mutate()}
               disabled={!coordinatorRecipient || processing}
-              className="bg-indigo-600 hover:bg-indigo-700"
+              className="text-white" style={{ background: "hsl(var(--primary))" }}
             >
               <Award className="h-4 w-4 mr-2" />
               Emitir certificado do coordenador
