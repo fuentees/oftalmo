@@ -238,20 +238,20 @@ export default function Layout({ children, currentPageName }) {
           </div>
         </aside>
 
+        {/* Botão toggle — fora do aside para não ser clipado pelo overflow-hidden */}
+        <button
+          onClick={toggleDesktopSidebar}
+          title={sidebarExpanded ? "Recolher menu" : "Expandir menu"}
+          className="hidden lg:flex fixed top-1/2 -translate-y-1/2 z-[60] w-6 h-6 rounded-full bg-white border border-slate-200 shadow-md items-center justify-center text-slate-400 hover:text-slate-700 hover:shadow-lg transition-all duration-300 ease-in-out"
+          style={{ left: sidebarExpanded ? "calc(14rem - 12px)" : "calc(4rem - 12px)" }}
+        >
+          {sidebarExpanded ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        </button>
+
         {/* Desktop Sidebar */}
         <aside
-          className={`hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-white border-r border-slate-200/80 transition-all duration-300 ease-in-out overflow-hidden relative ${sidebarWidth}`}
+          className={`hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-white border-r border-slate-200/80 transition-all duration-300 ease-in-out overflow-hidden ${sidebarWidth}`}
         >
-          {/* Toggle centralizado na borda direita */}
-          <button
-            onClick={toggleDesktopSidebar}
-            title={sidebarExpanded ? "Recolher menu" : "Expandir menu"}
-            className="absolute top-1/2 -translate-y-1/2 -right-3 z-20 w-6 h-6 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:shadow-lg transition-all"
-          >
-            {sidebarExpanded
-              ? <ChevronLeft className="h-3 w-3" />
-              : <ChevronRight className="h-3 w-3" />}
-          </button>
           {/* Logo */}
           <div
             className="flex h-16 items-center shrink-0 px-3"
