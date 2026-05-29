@@ -842,9 +842,8 @@ export default function EventProgramSection({ training }) {
               Baixar programação (.doc)
             </Button>
 
-            <div className="ml-auto text-xs font-medium text-slate-600 flex items-center gap-3">
-              <span>{totalSessions} aula(s) na grade</span>
-              <span>{totalTypedSessions} aula(s) com conteúdo</span>
+            <div className="ml-auto text-xs font-medium text-slate-500">
+              {totalTypedSessions} aula{totalTypedSessions !== 1 ? "s" : ""} com conteúdo
             </div>
           </div>
 
@@ -892,201 +891,224 @@ export default function EventProgramSection({ training }) {
                   >
                     <CardHeader className="border-b border-slate-100 bg-slate-50/70 pb-3">
                       <CardTitle className="text-sm flex items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <span className="block font-semibold text-slate-800">{dateLabel}</span>
-                          <span className="block text-xs font-normal text-slate-500">
-                            Preencha Data, Hora início, Hora fim, Tema e Palestrante.
+                        <div className="flex items-center gap-2">
+                          <CalendarDays className="h-4 w-4 text-blue-500 shrink-0" />
+                          <span className="font-semibold text-slate-800">{dateLabel}</span>
+                          <span className="hidden sm:inline text-xs font-normal text-slate-400">
+                            · {sessions.filter(hasSessionTypedContent).length} aula{sessions.filter(hasSessionTypedContent).length !== 1 ? "s" : ""}
                           </span>
                         </div>
                         <Button
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                          className="border-blue-200 text-blue-700 hover:bg-blue-50 shrink-0"
                           onClick={() => handleAddSession(dateIndex)}
                         >
-                          <Plus className="mr-1 h-4 w-4" />
-                          Adicionar aula
+                          <Plus className="mr-1 h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Adicionar aula</span>
+                          <span className="sm:hidden">Adicionar</span>
                         </Button>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="pt-4">
-                      <div className="overflow-x-auto rounded-lg border border-slate-200">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-slate-100/70">
-                              <TableHead className="w-8 p-2"></TableHead>
-                              <TableHead className="min-w-[110px]">Data</TableHead>
-                              <TableHead className="min-w-[120px]">Hora início</TableHead>
-                              <TableHead className="min-w-[120px]">Hora fim</TableHead>
-                              <TableHead className="min-w-[260px]">Tema</TableHead>
-                              <TableHead className="min-w-[220px]">Palestrante</TableHead>
-                              <TableHead className="min-w-[120px] text-right">Ações</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {sessions.length === 0 ? (
-                              <TableRow>
-                                <TableCell colSpan={7} className="py-6 text-center text-sm text-slate-500">
-                                  Nenhuma aula digitada para esta data.
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              sessions.map((session, sessionIndex) => (
-                                <TableRow
-                                  key={session.id}
-                                  draggable
-                                  onDragStart={(e) => handleDragStart(e, dateIndex, session.id)}
-                                  onDragOver={(e) => handleDragOver(e, dateIndex, sessionIndex)}
-                                  onDrop={(e) => handleDrop(e, dateIndex, sessionIndex)}
-                                  onDragEnd={handleDragEnd}
-                                  className={`align-top transition-opacity ${
-                                    dragState?.sessionId === session.id ? "opacity-40" : ""
-                                  } ${
-                                    dragOverState?.dateIndex === dateIndex &&
-                                    dragOverState?.sessionIndex === sessionIndex
-                                      ? "border-t-2 border-blue-400 bg-blue-50/40"
-                                      : ""
-                                  }`}
-                                >
-                                  <TableCell className="p-2 text-slate-400 cursor-grab active:cursor-grabbing">
-                                    <GripVertical className="h-4 w-4" />
-                                  </TableCell>
-                                  {sessionIndex === 0 ? (
-                                    <TableCell
-                                      rowSpan={sessions.length}
-                                      className="font-semibold text-slate-700 align-middle text-center bg-slate-50"
-                                    >
-                                      {dateLabel}
-                                    </TableCell>
-                                  ) : null}
-                                  <TableCell>
-                                    <Input
-                                      type="text"
-                                      inputMode="numeric"
-                                      value={session.start_time}
-                                      onChange={(event) =>
-                                        handleUpdateSessionField(
-                                          dateIndex,
-                                          session.id,
-                                          "start_time",
-                                          formatTimeDraft(event.target.value)
-                                        )
-                                      }
-                                      onBlur={(event) =>
-                                        handleUpdateSessionField(
-                                          dateIndex,
-                                          session.id,
-                                          "start_time",
-                                          normalizeTimeValue(event.target.value) ||
-                                            event.target.value
-                                        )
-                                      }
-                                      placeholder="HH:MM"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="text"
-                                      inputMode="numeric"
-                                      value={session.end_time}
-                                      onChange={(event) =>
-                                        handleUpdateSessionField(
-                                          dateIndex,
-                                          session.id,
-                                          "end_time",
-                                          formatTimeDraft(event.target.value)
-                                        )
-                                      }
-                                      onBlur={(event) =>
-                                        handleUpdateSessionField(
-                                          dateIndex,
-                                          session.id,
-                                          "end_time",
-                                          normalizeTimeValue(event.target.value) ||
-                                            event.target.value
-                                        )
-                                      }
-                                      placeholder="HH:MM"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      value={session.title}
-                                      onChange={(event) =>
-                                        handleUpdateSessionField(
-                                          dateIndex,
-                                          session.id,
-                                          "title",
-                                          event.target.value
-                                        )
-                                      }
-                                      placeholder="Tema / atividade"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="relative">
-                                      <Input
-                                        value={session.speaker_name}
-                                        list="professionals-datalist"
-                                        onChange={(event) => {
-                                          const name = event.target.value;
-                                          const matched = professionals.find(
-                                            (p) => p.name === name
-                                          );
-                                          handleUpdateSessionSpeaker(
-                                            dateIndex,
-                                            session.id,
-                                            name,
-                                            matched?.id || "",
-                                            matched?.email || ""
-                                          );
-                                        }}
-                                        placeholder="Nome do palestrante"
-                                        className={session.professional_id ? "pr-7 border-green-400 focus-visible:ring-green-400" : ""}
-                                      />
-                                      {session.professional_id && (
-                                        <UserCheck className="h-3.5 w-3.5 text-green-600 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                      onClick={() => handleRemoveSession(dateIndex, session.id)}
-                                    >
-                                      <Trash2 className="mr-1 h-4 w-4" />
-                                      Remover
-                                    </Button>
-                                  </TableCell>
+                    <CardContent className="pt-3 px-3 pb-3">
+                      {sessions.length === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => handleAddSession(dateIndex)}
+                          className="w-full rounded-xl border-2 border-dashed border-slate-200 py-6 text-sm text-slate-400 hover:border-blue-300 hover:text-blue-500 transition-colors text-center"
+                        >
+                          + Clique para adicionar a primeira aula
+                        </button>
+                      ) : (
+                        <>
+                          {/* ── DESKTOP: tabela ── */}
+                          <div className="hidden md:block overflow-x-auto rounded-lg border border-slate-200">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="bg-slate-100/70">
+                                  <TableHead className="w-8 p-2" />
+                                  <TableHead className="w-28">Início</TableHead>
+                                  <TableHead className="w-28">Fim</TableHead>
+                                  <TableHead>Tema / atividade</TableHead>
+                                  <TableHead className="min-w-[200px]">Palestrante</TableHead>
+                                  <TableHead className="w-10" />
                                 </TableRow>
-                              ))
-                            )}
-                            {dragState && dragState.dateIndex !== dateIndex && (
-                              <TableRow
-                                onDragOver={(e) => handleDragOver(e, dateIndex, sessions.length)}
-                                onDrop={(e) => handleDrop(e, dateIndex, sessions.length)}
-                                className={`h-8 border-dashed border-2 ${
-                                  dragOverState?.dateIndex === dateIndex &&
-                                  dragOverState?.sessionIndex === sessions.length
-                                    ? "border-blue-400 bg-blue-50"
-                                    : "border-slate-200"
-                                }`}
+                              </TableHeader>
+                              <TableBody>
+                                {sessions.map((session, sessionIndex) => (
+                                  <TableRow
+                                    key={session.id}
+                                    draggable
+                                    onDragStart={(e) => handleDragStart(e, dateIndex, session.id)}
+                                    onDragOver={(e) => handleDragOver(e, dateIndex, sessionIndex)}
+                                    onDrop={(e) => handleDrop(e, dateIndex, sessionIndex)}
+                                    onDragEnd={handleDragEnd}
+                                    className={`align-middle transition-opacity ${
+                                      dragState?.sessionId === session.id ? "opacity-40" : ""
+                                    } ${
+                                      dragOverState?.dateIndex === dateIndex &&
+                                      dragOverState?.sessionIndex === sessionIndex
+                                        ? "border-t-2 border-blue-400 bg-blue-50/40"
+                                        : ""
+                                    }`}
+                                  >
+                                    <TableCell className="p-2 text-slate-300 cursor-grab active:cursor-grabbing">
+                                      <GripVertical className="h-4 w-4" />
+                                    </TableCell>
+                                    <TableCell className="py-1.5 px-2">
+                                      <Input
+                                        type="time"
+                                        value={session.start_time}
+                                        onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "start_time", e.target.value)}
+                                        className="h-8 text-sm px-2"
+                                      />
+                                    </TableCell>
+                                    <TableCell className="py-1.5 px-2">
+                                      <Input
+                                        type="time"
+                                        value={session.end_time}
+                                        onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "end_time", e.target.value)}
+                                        className="h-8 text-sm px-2"
+                                      />
+                                    </TableCell>
+                                    <TableCell className="py-1.5 px-2">
+                                      <Input
+                                        value={session.title}
+                                        onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "title", e.target.value)}
+                                        placeholder="Tema / atividade"
+                                        className="h-8 text-sm"
+                                      />
+                                    </TableCell>
+                                    <TableCell className="py-1.5 px-2">
+                                      <div className="relative">
+                                        <Input
+                                          value={session.speaker_name}
+                                          list="professionals-datalist"
+                                          onChange={(e) => {
+                                            const name = e.target.value;
+                                            const matched = professionals.find((p) => p.name === name);
+                                            handleUpdateSessionSpeaker(dateIndex, session.id, name, matched?.id || "", matched?.email || "");
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.preventDefault();
+                                              handleAddSession(dateIndex);
+                                            }
+                                          }}
+                                          placeholder="Nome do palestrante"
+                                          className={`h-8 text-sm ${session.professional_id ? "pr-7 border-green-400 focus-visible:ring-green-400" : ""}`}
+                                        />
+                                        {session.professional_id && (
+                                          <UserCheck className="h-3.5 w-3.5 text-green-600 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                        )}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="py-1.5 px-1 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveSession(dateIndex, session.id)}
+                                        className="text-slate-300 hover:text-red-500 transition-colors p-1 rounded"
+                                        title="Remover"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                                {dragState && dragState.dateIndex !== dateIndex && (
+                                  <TableRow
+                                    onDragOver={(e) => handleDragOver(e, dateIndex, sessions.length)}
+                                    onDrop={(e) => handleDrop(e, dateIndex, sessions.length)}
+                                    className={`h-8 border-dashed border-2 ${
+                                      dragOverState?.dateIndex === dateIndex &&
+                                      dragOverState?.sessionIndex === sessions.length
+                                        ? "border-blue-400 bg-blue-50"
+                                        : "border-slate-200"
+                                    }`}
+                                  >
+                                    <TableCell colSpan={6} className="text-center text-xs text-slate-400">
+                                      Solte aqui para mover para este dia
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </TableBody>
+                            </Table>
+                          </div>
+
+                          {/* ── MOBILE: cards ── */}
+                          <div className="md:hidden space-y-2">
+                            {sessions.map((session, sessionIndex) => (
+                              <div
+                                key={session.id}
+                                className="rounded-xl border border-slate-200 bg-white p-3 space-y-2.5"
                               >
-                                <TableCell
-                                  colSpan={7}
-                                  className="text-center text-xs text-slate-400"
-                                >
-                                  Solte aqui para mover para este dia
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </TableBody>
-                        </Table>
-                      </div>
+                                <div className="flex items-center gap-2">
+                                  <GripVertical className="h-4 w-4 text-slate-300 shrink-0" />
+                                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                                    Aula {sessionIndex + 1}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveSession(dateIndex, session.id)}
+                                    className="ml-auto text-slate-300 hover:text-red-500 transition-colors"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                                <div className="flex gap-2">
+                                  <div className="flex-1 space-y-1">
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Início</label>
+                                    <Input
+                                      type="time"
+                                      value={session.start_time}
+                                      onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "start_time", e.target.value)}
+                                      className="h-9 text-sm"
+                                    />
+                                  </div>
+                                  <div className="flex-1 space-y-1">
+                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Fim</label>
+                                    <Input
+                                      type="time"
+                                      value={session.end_time}
+                                      onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "end_time", e.target.value)}
+                                      className="h-9 text-sm"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Tema / atividade</label>
+                                  <Input
+                                    value={session.title}
+                                    onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "title", e.target.value)}
+                                    placeholder="Ex: Introdução ao diagnóstico"
+                                    className="h-9 text-sm"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Palestrante</label>
+                                  <div className="relative">
+                                    <Input
+                                      value={session.speaker_name}
+                                      list="professionals-datalist"
+                                      onChange={(e) => {
+                                        const name = e.target.value;
+                                        const matched = professionals.find((p) => p.name === name);
+                                        handleUpdateSessionSpeaker(dateIndex, session.id, name, matched?.id || "", matched?.email || "");
+                                      }}
+                                      placeholder="Nome do palestrante"
+                                      className={`h-9 text-sm ${session.professional_id ? "pr-8 border-green-400 focus-visible:ring-green-400" : ""}`}
+                                    />
+                                    {session.professional_id && (
+                                      <UserCheck className="h-3.5 w-3.5 text-green-600 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
                 );
