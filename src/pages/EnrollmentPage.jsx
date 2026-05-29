@@ -2234,7 +2234,9 @@ export default function EnrollmentPage({
       accessor: "enrollment_date",
       sortType: "date",
       render: (row) =>
-        formatDateSafe(row.enrollment_date, "dd/MM/yyyy HH:mm") || "-",
+        row.enrollment_date
+          ? format(new Date(row.enrollment_date), "dd/MM/yyyy HH:mm")
+          : "-",
     },
     {
       header: "Nome",
