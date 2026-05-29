@@ -395,7 +395,7 @@ export default function CommunicationChatWidget({ currentUser }) {
         <Button
           type="button"
           size="icon"
-          className="h-14 w-14 rounded-full bg-blue-600 hover:bg-blue-700 shadow-xl"
+          className="h-14 w-14 rounded-full shadow-xl text-white" style={{ background: "hsl(var(--primary))" }}
           onClick={() => setOpen((prev) => !prev)}
         >
           {unreadCount > 0 ? (
@@ -733,7 +733,7 @@ export default function CommunicationChatWidget({ currentUser }) {
                 <Button
                   type="submit"
                   size="icon"
-                  className="h-9 w-9 shrink-0 bg-blue-600 hover:bg-blue-700"
+                  className="h-9 w-9 shrink-0 text-white" style={{ background: "hsl(var(--primary))" }}
                   disabled={createMessage.isPending || messagesQuery.isError}
                 >
                   {createMessage.isPending ? (

@@ -181,7 +181,7 @@ export default function SendLinkButton({ training, participants }) {
               <Button
                 onClick={handleSend}
                 disabled={sendLink.isPending || enrolledCount === 0}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 {sendLink.isPending ? (
                   <>

@@ -49,7 +49,7 @@ export class ErrorBoundary extends React.Component {
               Tentar novamente
             </Button>
             <Button
-              className="bg-blue-600 hover:bg-blue-700"
+              className="text-white" style={{ background: "hsl(var(--primary))" }}
               onClick={() => window.location.reload()}
             >
               Recarregar página

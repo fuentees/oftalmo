@@ -345,7 +345,7 @@ export default function Communication() {
               <Button
                 type="submit"
                 disabled={createMessage.isPending || messagesQuery.isError}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 {createMessage.isPending ? (
                   <>

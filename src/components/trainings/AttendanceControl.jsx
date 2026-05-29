@@ -855,7 +855,7 @@ export default function AttendanceControl({ training, participants, onClose }) {
                 setConfirmAllOpen(false);
                 markAllPresent.mutate();
               }}
-              className="bg-green-600 hover:bg-green-700"
+              className="text-white" style={{ background: "hsl(var(--primary))" }}
             >
               Confirmar
             </AlertDialogAction>

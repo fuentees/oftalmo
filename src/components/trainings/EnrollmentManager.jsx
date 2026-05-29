@@ -195,7 +195,7 @@ export default function EnrollmentManager({ training, professionals, existingPar
           <Button
             onClick={() => enrollParticipant.mutate(selectedProfessional)}
             disabled={!selectedProfessional || enrollParticipant.isPending}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="text-white" style={{ background: "hsl(var(--primary))" }}
           >
             {enrollParticipant.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />

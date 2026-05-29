@@ -1605,7 +1605,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         <Button type="button" variant="outline" onClick={onClose}>
           Cancelar
         </Button>
-        <Button type="submit" disabled={saveTraining.isPending} className="bg-blue-600 hover:bg-blue-700">
+        <Button type="submit" disabled={saveTraining.isPending} className="text-white" style={{ background: "hsl(var(--primary))" }}>
           {saveTraining.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           {training ? "Salvar Alterações" : "Cadastrar Treinamento"}
         </Button>

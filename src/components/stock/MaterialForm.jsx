@@ -345,7 +345,7 @@ export default function MaterialForm({
         <Button type="button" variant="outline" onClick={onClose}>
           Cancelar
         </Button>
-        <Button type="submit" disabled={saveMaterial.isPending} className="bg-blue-600 hover:bg-blue-700">
+        <Button type="submit" disabled={saveMaterial.isPending} className="text-white" style={{ background: "hsl(var(--primary))" }}>
           {saveMaterial.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           {material ? "Salvar Alterações" : "Cadastrar Material"}
         </Button>
