@@ -749,8 +749,8 @@ export default function PublicEnrollment() {
     )
   );
 
-  const WEEKDAY_SHORT = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
-  const WEEKDAY_PLURAL = ["domingos", "segundas", "terças", "quartas", "quintas", "sextas", "sábados"];
+  const WEEKDAY_SHORT = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+  const WEEKDAY_PLURAL = ["domingos", "segundas-feiras", "terças-feiras", "quartas-feiras", "quintas-feiras", "sextas-feiras", "sábados"];
 
   const weekdayPattern = (() => {
     if (trainingDates.length < 3) return null;
