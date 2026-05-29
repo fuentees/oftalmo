@@ -17,6 +17,7 @@ import {
   CalendarDays,
   ClipboardPaste,
   Copy,
+  CopyPlus,
   Download,
   GripVertical,
   Plus,
@@ -365,6 +366,73 @@ export default function EventProgramSection({ training }) {
     upsertDateSessions(dateIndex, (sessions) =>
       sessions.filter((session) => session.id !== sessionId)
     );
+  };
+
+  const handleDuplicateSession = (dateIndex, sessionId) => {
+    upsertDateSessions(dateIndex, (sessions) => {
+      const idx = sessions.findIndex((s) => s.id === sessionId);
+      if (idx < 0) return sessions;
+      const original = sessions[idx];
+      const copy = normalizeSession(
+        {
+          start_time: original.start_time,
+          end_time: original.end_time,
+          title: original.title,
+          speaker_name: original.speaker_name,
+          professional_id: original.professional_id,
+          professional_email: original.professional_email,
+        },
+        idx + dateIndex * 1000 + Date.now()
+      );
+      const next = [...sessions];
+      next.splice(idx + 1, 0, copy);
+      return next;
+    });
+  };
+
+  // Quando o usuário preenche o início, sugere fim = início + duração da sessão
+  // anterior (ou 1h se não há padrão).
+  const handleStartTimeChange = (dateIndex, sessionId, newStart) => {
+    handleUpdateSessionField(dateIndex, sessionId, "start_time", newStart);
+
+    setProgramDates((prev) => {
+      const dateItem = prev[dateIndex];
+      const sessions = Array.isArray(dateItem?.sessions) ? dateItem.sessions : [];
+      const idx = sessions.findIndex((s) => s.id === sessionId);
+      if (idx < 0) return prev;
+      const session = sessions[idx];
+
+      // Só sugere se o fim estiver vazio
+      if (session.end_time) return prev;
+      if (!newStart) return prev;
+
+      // Calcula duração da sessão anterior para reutilizar
+      let durationMinutes = 60; // padrão: 1h
+      const prev1 = sessions[idx - 1];
+      if (prev1?.start_time && prev1?.end_time) {
+        const s = parseTimeToMinutes(prev1.start_time);
+        const e = parseTimeToMinutes(prev1.end_time);
+        if (s !== null && e !== null && e > s) durationMinutes = e - s;
+      }
+
+      const startMin = parseTimeToMinutes(newStart);
+      if (startMin === null) return prev;
+      const endMin = startMin + durationMinutes;
+      const endH = String(Math.floor(endMin / 60) % 24).padStart(2, "0");
+      const endM = String(endMin % 60).padStart(2, "0");
+      const suggestedEnd = `${endH}:${endM}`;
+
+      return prev.map((item, i) =>
+        i !== dateIndex
+          ? item
+          : {
+              ...item,
+              sessions: item.sessions.map((s) =>
+                s.id === sessionId ? { ...s, end_time: suggestedEnd } : s
+              ),
+            }
+      );
+    });
   };
 
   const handleUpdateSessionSpeaker = (dateIndex, sessionId, name, professionalId, professionalEmail) => {
@@ -969,7 +1037,7 @@ export default function EventProgramSection({ training }) {
                                       <Input
                                         type="time"
                                         value={session.start_time}
-                                        onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "start_time", e.target.value)}
+                                        onChange={(e) => handleStartTimeChange(dateIndex, session.id, e.target.value)}
                                         className="h-8 text-sm px-2"
                                       />
                                     </TableCell>
@@ -1013,15 +1081,25 @@ export default function EventProgramSection({ training }) {
                                         )}
                                       </div>
                                     </TableCell>
-                                    <TableCell className="py-1.5 px-1 text-center">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemoveSession(dateIndex, session.id)}
-                                        className="text-slate-300 hover:text-red-500 transition-colors p-1 rounded"
-                                        title="Remover"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
+                                    <TableCell className="py-1.5 px-1">
+                                      <div className="flex items-center gap-0.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDuplicateSession(dateIndex, session.id)}
+                                          className="text-slate-300 hover:text-blue-500 transition-colors p-1 rounded"
+                                          title="Duplicar aula"
+                                        >
+                                          <CopyPlus className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveSession(dateIndex, session.id)}
+                                          className="text-slate-300 hover:text-red-500 transition-colors p-1 rounded"
+                                          title="Remover"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
                                     </TableCell>
                                   </TableRow>
                                 ))}
@@ -1057,13 +1135,24 @@ export default function EventProgramSection({ training }) {
                                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                                     Aula {sessionIndex + 1}
                                   </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveSession(dateIndex, session.id)}
-                                    className="ml-auto text-slate-300 hover:text-red-500 transition-colors"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
+                                  <div className="ml-auto flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDuplicateSession(dateIndex, session.id)}
+                                      className="text-slate-300 hover:text-blue-500 transition-colors p-0.5"
+                                      title="Duplicar"
+                                    >
+                                      <CopyPlus className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveSession(dateIndex, session.id)}
+                                      className="text-slate-300 hover:text-red-500 transition-colors p-0.5"
+                                      title="Remover"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
                                 </div>
                                 <div className="flex gap-2">
                                   <div className="flex-1 space-y-1">
@@ -1071,7 +1160,7 @@ export default function EventProgramSection({ training }) {
                                     <Input
                                       type="time"
                                       value={session.start_time}
-                                      onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "start_time", e.target.value)}
+                                      onChange={(e) => handleStartTimeChange(dateIndex, session.id, e.target.value)}
                                       className="h-9 text-sm"
                                     />
                                   </div>
