@@ -509,7 +509,7 @@ export default function Schedule() {
                       <div
                         className={`text-sm font-medium mb-1 ${
                           isTodayDate
-                            ? "w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center"
+                            ? "w-6 h-6 text-white rounded-full flex items-center justify-center [background:hsl(var(--primary))]"
                             : ""
                         }`}
                       >
@@ -760,7 +760,8 @@ export default function Schedule() {
       {/* Floating Action Button */}
       <Button
         onClick={handleNewEvent}
-        className="fixed bottom-8 right-8 h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700"
+        className="fixed bottom-8 right-8 h-14 w-14 rounded-full shadow-xl text-white"
+        style={{ background: "hsl(var(--primary))" }}
         size="icon"
       >
         <Plus className="h-6 w-6" />

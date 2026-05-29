@@ -369,7 +369,7 @@ export default function MaterialRequests() {
                 size="sm"
                 onClick={copyLink}
                 disabled={availableCount === 0}
-                className="bg-indigo-600 hover:bg-indigo-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
               >
                 <Copy className="h-3.5 w-3.5 mr-1.5" />
                 Copiar Link
@@ -670,7 +670,7 @@ export default function MaterialRequests() {
             <Button
               onClick={copyLink}
               disabled={availableCount === 0}
-              className="bg-indigo-600 hover:bg-indigo-700"
+              className="text-white" style={{ background: "hsl(var(--primary))" }}
             >
               <Copy className="h-4 w-4 mr-2" />
               Copiar Link para GVEs
@@ -721,7 +721,7 @@ export default function MaterialRequests() {
               Cancelar
             </Button>
             <Button
-              className="bg-blue-600 hover:bg-blue-700"
+              className="text-white" style={{ background: "hsl(var(--primary))" }}
               disabled={updateMutation.isPending}
               onClick={() => {
                 if (!editItemData.quantity || isNaN(Number(editItemData.quantity))) return;
@@ -858,7 +858,7 @@ export default function MaterialRequests() {
               </Button>
               <Button
                 type="submit"
-                className="bg-blue-600 hover:bg-blue-700"
+                className="text-white" style={{ background: "hsl(var(--primary))" }}
                 disabled={createMutation.isPending || updateMutation.isPending}
               >
                 {editingRequest ? "Salvar" : "Criar Solicitação"}
