@@ -84,8 +84,6 @@ export default function EventProgramSection({ training }) {
   const [programStatus, setProgramStatus] = useState(null);
   const [dragState, setDragState] = useState(null);
   const [dragOverState, setDragOverState] = useState(null);
-  // Duração padrão por dia (em minutos), indexada por dateIndex
-  const [defaultDurations, setDefaultDurations] = useState({});
   const trainingProgramSignature = useMemo(() => {
     const normalizedDates = Array.isArray(training?.dates)
       ? training.dates.map((dateItem) => ({
@@ -136,6 +134,19 @@ export default function EventProgramSection({ training }) {
     const h = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
     const m = String(totalMinutes % 60).padStart(2, "0");
     return `${h}:${m}`;
+  };
+
+  // Dado o horário de início do dia e a lista de sessões com duration_minutes,
+  // devolve as sessões com start_time e end_time calculados.
+  const computeSessionTimes = (sessions, dayStartTime) => {
+    let cursor = parseTimeToMinutes(dayStartTime) ?? 0;
+    return sessions.map((s) => {
+      const dur = s.duration_minutes ?? 0;
+      const start = minutesToTimeString(cursor);
+      cursor += dur;
+      const end = dur > 0 ? minutesToTimeString(cursor) : "";
+      return { ...s, start_time: start, end_time: end };
+    });
   };
 
   const deriveDuration = (start, end) => {
@@ -313,24 +324,23 @@ export default function EventProgramSection({ training }) {
   const saveProgram = useMutation({
     mutationFn: async () => {
       if (!training?.id) throw new Error("Treinamento inválido.");
-      const payloadDates = programDates.map((dateItem, dateIndex) => ({
-        ...dateItem,
-        sessions: getTypedSessions(dateItem?.sessions, dateIndex).map(
-          (session) => ({
-            start_time:
-              normalizeTimeValue(session?.start_time) ||
-              String(session?.start_time || "").trim(),
-            end_time:
-              normalizeTimeValue(session?.end_time) ||
-              String(session?.end_time || "").trim(),
-            duration_minutes: session?.duration_minutes ?? null,
-            title: String(session?.title || "").trim(),
-            speaker_name: String(session?.speaker_name || "").trim(),
-            professional_id: String(session?.professional_id || "").trim(),
-            professional_email: String(session?.professional_email || "").trim(),
-          })
-        ),
-      }));
+      const payloadDates = programDates.map((dateItem, dateIndex) => {
+        const typed = getTypedSessions(dateItem?.sessions, dateIndex);
+        // Computa start/end a partir do início do dia + durações encadeadas
+        const withTimes = computeSessionTimes(typed, dateItem?.start_time || "");
+        return {
+          ...dateItem,
+          sessions: withTimes.map((session) => ({
+            start_time: session.start_time,
+            end_time: session.end_time,
+            duration_minutes: session.duration_minutes ?? null,
+            title: String(session.title || "").trim(),
+            speaker_name: String(session.speaker_name || "").trim(),
+            professional_id: String(session.professional_id || "").trim(),
+            professional_email: String(session.professional_email || "").trim(),
+          })),
+        };
+      });
       const syncedSpeakers = syncSpeakersFromSessions(training?.speakers, payloadDates);
       await dataClient.entities.Training.update(training.id, {
         dates: payloadDates,
@@ -381,17 +391,11 @@ export default function EventProgramSection({ training }) {
   const handleAddSession = (dateIndex) => {
     upsertDateSessions(dateIndex, (sessions) => {
       const prev = sessions[sessions.length - 1];
-      // Início = fim da sessão anterior; duração = mesma da anterior
-      const newStart = prev?.end_time || "";
-      const newDuration = prev?.duration_minutes ?? null;
-      const newEnd =
-        newStart && newDuration
-          ? minutesToTimeString(parseTimeToMinutes(newStart) + newDuration)
-          : "";
+      const inheritedDuration = prev?.duration_minutes ?? null;
       return [
         ...sessions,
         normalizeSession(
-          { start_time: newStart, end_time: newEnd, duration_minutes: newDuration },
+          { duration_minutes: inheritedDuration },
           sessions.length + dateIndex * 1000
         ),
       ];
@@ -426,79 +430,22 @@ export default function EventProgramSection({ training }) {
     });
   };
 
-  // Início mudou → recalcula fim se a sessão já tem duração definida
-  const handleStartTimeChange = (dateIndex, sessionId, newStart) => {
-    setProgramDates((prev) => {
-      const sessions = prev[dateIndex]?.sessions ?? [];
-      const session = sessions.find((s) => s.id === sessionId);
-      if (!session) return prev;
-
-      const startMin = parseTimeToMinutes(newStart);
-      const duration = session.duration_minutes;
-      const newEnd =
-        startMin !== null && duration ? minutesToTimeString(startMin + duration) : session.end_time;
-
-      return prev.map((item, i) =>
-        i !== dateIndex
-          ? item
-          : {
-              ...item,
-              sessions: item.sessions.map((s) =>
-                s.id === sessionId ? { ...s, start_time: newStart, end_time: newEnd } : s
-              ),
-            }
-      );
-    });
+  // Horário de início do dia mudou
+  const handleDayStartTimeChange = (dateIndex, newStartTime) => {
+    setProgramDates((prev) =>
+      prev.map((item, i) =>
+        i === dateIndex ? { ...item, start_time: newStartTime } : item
+      )
+    );
   };
 
-  // Duração mudou → recalcula fim (e guarda a duração na sessão)
+  // Duração de uma sessão mudou — apenas guarda o valor; os horários são computados no render
   const handleDurationChange = (dateIndex, sessionId, newDurationMinutes) => {
-    setProgramDates((prev) => {
-      const sessions = prev[dateIndex]?.sessions ?? [];
-      const session = sessions.find((s) => s.id === sessionId);
-      if (!session) return prev;
-
-      const startMin = parseTimeToMinutes(session.start_time);
-      const newEnd =
-        startMin !== null && newDurationMinutes
-          ? minutesToTimeString(startMin + newDurationMinutes)
-          : session.end_time;
-
-      return prev.map((item, i) =>
-        i !== dateIndex
-          ? item
-          : {
-              ...item,
-              sessions: item.sessions.map((s) =>
-                s.id === sessionId
-                  ? { ...s, duration_minutes: newDurationMinutes, end_time: newEnd }
-                  : s
-              ),
-            }
-      );
-    });
-  };
-
-  // Fim editado manualmente → deriva e atualiza duração
-  const handleEndTimeChange = (dateIndex, sessionId, newEnd) => {
-    setProgramDates((prev) => {
-      const sessions = prev[dateIndex]?.sessions ?? [];
-      const session = sessions.find((s) => s.id === sessionId);
-      if (!session) return prev;
-      const derived = deriveDuration(session.start_time, newEnd);
-      return prev.map((item, i) =>
-        i !== dateIndex
-          ? item
-          : {
-              ...item,
-              sessions: item.sessions.map((s) =>
-                s.id === sessionId
-                  ? { ...s, end_time: newEnd, duration_minutes: derived ?? s.duration_minutes }
-                  : s
-              ),
-            }
-      );
-    });
+    upsertDateSessions(dateIndex, (sessions) =>
+      sessions.map((s) =>
+        s.id === sessionId ? { ...s, duration_minutes: newDurationMinutes } : s
+      )
+    );
   };
 
   const handleUpdateSessionSpeaker = (dateIndex, sessionId, name, professionalId, professionalEmail) => {
@@ -1033,27 +980,16 @@ export default function EventProgramSection({ training }) {
                           </span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {/* Duração padrão por dia */}
+                          {/* Início do dia */}
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-slate-400 hidden sm:inline whitespace-nowrap">Duração padrão:</span>
-                            <select
-                              value={defaultDurations[dateIndex] ?? "60"}
-                              onChange={(e) =>
-                                setDefaultDurations((prev) => ({
-                                  ...prev,
-                                  [dateIndex]: Number(e.target.value),
-                                }))
-                              }
-                              className="h-7 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
-                              title="Duração padrão das aulas deste dia"
-                            >
-                              <option value="30">30 min</option>
-                              <option value="45">45 min</option>
-                              <option value="60">1h</option>
-                              <option value="90">1h30</option>
-                              <option value="120">2h</option>
-                              <option value="180">3h</option>
-                            </select>
+                            <span className="text-xs text-slate-500 font-medium hidden sm:inline whitespace-nowrap">Início:</span>
+                            <Input
+                              type="time"
+                              value={dateItem?.start_time || ""}
+                              onChange={(e) => handleDayStartTimeChange(dateIndex, e.target.value)}
+                              className="h-7 w-28 text-xs px-2 border-slate-300 font-semibold"
+                              title="Horário de início do treinamento neste dia"
+                            />
                           </div>
                           <Button
                             type="button"
@@ -1081,22 +1017,24 @@ export default function EventProgramSection({ training }) {
                       ) : (
                         <>
                           {/* ── DESKTOP: tabela ── */}
+                          {(() => {
+                            const computed = computeSessionTimes(sessions, dateItem?.start_time || "");
+                            return (
                           <div className="hidden md:block overflow-x-auto rounded-lg border border-slate-200">
                             <Table>
                               <TableHeader>
                                 <TableRow className="bg-slate-100/70">
                                   <TableHead className="w-8 p-2" />
                                   <TableHead className="w-28">Data</TableHead>
-                                  <TableHead className="w-28">Início</TableHead>
-                                  <TableHead className="w-28">Duração</TableHead>
-                                  <TableHead className="w-24">Fim</TableHead>
+                                  <TableHead className="w-32">Duração</TableHead>
+                                  <TableHead className="w-36">Horário</TableHead>
                                   <TableHead>Tema / atividade</TableHead>
                                   <TableHead className="min-w-[200px]">Palestrante</TableHead>
-                                  <TableHead className="w-10" />
+                                  <TableHead className="w-16" />
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {sessions.map((session, sessionIndex) => (
+                                {computed.map((session, sessionIndex) => (
                                   <TableRow
                                     key={session.id}
                                     draggable
@@ -1118,20 +1056,13 @@ export default function EventProgramSection({ training }) {
                                     </TableCell>
                                     {sessionIndex === 0 ? (
                                       <TableCell
-                                        rowSpan={sessions.length}
+                                        rowSpan={computed.length}
                                         className="font-semibold text-slate-700 align-middle text-center bg-slate-50 text-sm px-3 whitespace-nowrap"
                                       >
                                         {dateLabel}
                                       </TableCell>
                                     ) : null}
-                                    <TableCell className="py-1.5 px-2">
-                                      <Input
-                                        type="time"
-                                        value={session.start_time}
-                                        onChange={(e) => handleStartTimeChange(dateIndex, session.id, e.target.value)}
-                                        className="h-8 text-sm px-2"
-                                      />
-                                    </TableCell>
+                                    {/* Duração — único campo editável de tempo */}
                                     <TableCell className="py-1.5 px-2">
                                       <select
                                         value={session.duration_minutes ?? ""}
@@ -1144,7 +1075,7 @@ export default function EventProgramSection({ training }) {
                                         }
                                         className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                                       >
-                                        <option value="">—</option>
+                                        <option value="">— duração —</option>
                                         <option value="15">15 min</option>
                                         <option value="30">30 min</option>
                                         <option value="45">45 min</option>
@@ -1158,13 +1089,19 @@ export default function EventProgramSection({ training }) {
                                         <option value="240">4h</option>
                                       </select>
                                     </TableCell>
-                                    <TableCell className="py-1.5 px-2">
-                                      <Input
-                                        type="time"
-                                        value={session.end_time}
-                                        onChange={(e) => handleEndTimeChange(dateIndex, session.id, e.target.value)}
-                                        className="h-8 text-sm px-2"
-                                      />
+                                    {/* Horário calculado automaticamente */}
+                                    <TableCell className="py-1.5 px-3">
+                                      {session.start_time && session.end_time ? (
+                                        <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg whitespace-nowrap">
+                                          {session.start_time}
+                                          <span className="text-slate-400 font-normal">→</span>
+                                          {session.end_time}
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs text-slate-400 italic">
+                                          {session.start_time || "—"}
+                                        </span>
+                                      )}
                                     </TableCell>
                                     <TableCell className="py-1.5 px-2">
                                       <Input
@@ -1231,7 +1168,7 @@ export default function EventProgramSection({ training }) {
                                         : "border-slate-200"
                                     }`}
                                   >
-                                    <TableCell colSpan={8} className="text-center text-xs text-slate-400">
+                                    <TableCell colSpan={7} className="text-center text-xs text-slate-400">
                                       Solte aqui para mover para este dia
                                     </TableCell>
                                   </TableRow>
@@ -1239,10 +1176,12 @@ export default function EventProgramSection({ training }) {
                               </TableBody>
                             </Table>
                           </div>
+                            );
+                          })()}
 
                           {/* ── MOBILE: cards ── */}
                           <div className="md:hidden space-y-2">
-                            {sessions.map((session, sessionIndex) => (
+                            {computeSessionTimes(sessions, dateItem?.start_time || "").map((session, sessionIndex) => (
                               <div
                                 key={session.id}
                                 className="rounded-xl border border-slate-200 bg-white p-3 space-y-2.5"
@@ -1252,6 +1191,11 @@ export default function EventProgramSection({ training }) {
                                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                                     Aula {sessionIndex + 1}
                                   </span>
+                                  {session.start_time && session.end_time && (
+                                    <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                                      {session.start_time} → {session.end_time}
+                                    </span>
+                                  )}
                                   <div className="ml-auto flex items-center gap-1">
                                     <button
                                       type="button"
@@ -1271,52 +1215,32 @@ export default function EventProgramSection({ training }) {
                                     </button>
                                   </div>
                                 </div>
-                                <div className="flex gap-2">
-                                  <div className="flex-1 space-y-1">
-                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Início</label>
-                                    <Input
-                                      type="time"
-                                      value={session.start_time}
-                                      onChange={(e) => handleStartTimeChange(dateIndex, session.id, e.target.value)}
-                                      className="h-9 text-sm"
-                                    />
-                                  </div>
-                                  <div className="flex-1 space-y-1">
-                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Duração</label>
-                                    <select
-                                      value={session.duration_minutes ?? ""}
-                                      onChange={(e) =>
-                                        handleDurationChange(
-                                          dateIndex,
-                                          session.id,
-                                          e.target.value ? Number(e.target.value) : null
-                                        )
-                                      }
-                                      className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                    >
-                                      <option value="">—</option>
-                                      <option value="15">15 min</option>
-                                      <option value="30">30 min</option>
-                                      <option value="45">45 min</option>
-                                      <option value="60">1h</option>
-                                      <option value="75">1h15</option>
-                                      <option value="90">1h30</option>
-                                      <option value="105">1h45</option>
-                                      <option value="120">2h</option>
-                                      <option value="150">2h30</option>
-                                      <option value="180">3h</option>
-                                      <option value="240">4h</option>
-                                    </select>
-                                  </div>
-                                  <div className="flex-1 space-y-1">
-                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Fim</label>
-                                    <Input
-                                      type="time"
-                                      value={session.end_time}
-                                      onChange={(e) => handleEndTimeChange(dateIndex, session.id, e.target.value)}
-                                      className="h-9 text-sm"
-                                    />
-                                  </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Duração</label>
+                                  <select
+                                    value={session.duration_minutes ?? ""}
+                                    onChange={(e) =>
+                                      handleDurationChange(
+                                        dateIndex,
+                                        session.id,
+                                        e.target.value ? Number(e.target.value) : null
+                                      )
+                                    }
+                                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                  >
+                                    <option value="">— duração —</option>
+                                    <option value="15">15 min</option>
+                                    <option value="30">30 min</option>
+                                    <option value="45">45 min</option>
+                                    <option value="60">1h</option>
+                                    <option value="75">1h15</option>
+                                    <option value="90">1h30</option>
+                                    <option value="105">1h45</option>
+                                    <option value="120">2h</option>
+                                    <option value="150">2h30</option>
+                                    <option value="180">3h</option>
+                                    <option value="240">4h</option>
+                                  </select>
                                 </div>
                                 <div className="space-y-1">
                                   <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Tema / atividade</label>
