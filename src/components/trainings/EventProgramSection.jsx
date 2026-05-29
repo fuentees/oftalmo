@@ -47,10 +47,11 @@ const sanitizeFileName = (value) =>
 
 const hasSessionTypedContent = (session) =>
   Boolean(
+    (session?.duration_minutes != null && Number(session.duration_minutes) > 0) ||
     String(session?.start_time || "").trim() ||
-      String(session?.end_time || "").trim() ||
-      String(session?.title || session?.activity || "").trim() ||
-      String(session?.speaker_name || session?.responsible || "").trim()
+    String(session?.end_time || "").trim() ||
+    String(session?.title || session?.activity || "").trim() ||
+    String(session?.speaker_name || session?.responsible || "").trim()
   );
 
 const normalizeTimeValue = (value) => {
