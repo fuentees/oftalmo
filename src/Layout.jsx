@@ -21,6 +21,8 @@ import {
   Pencil,
   Loader2,
   ClipboardList,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +54,13 @@ export default function Layout({ children, currentPageName }) {
       return true;
     }
   });
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return localStorage.getItem("dark-mode") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({
@@ -71,6 +80,22 @@ export default function Layout({ children, currentPageName }) {
       return next;
     });
   };
+
+  const toggleDarkMode = () => {
+    setDarkMode((v) => {
+      const next = !v;
+      try { localStorage.setItem("dark-mode", String(next)); } catch {}
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [darkMode]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -182,7 +207,7 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <TooltipProvider delayDuration={250}>
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
         {/* Mobile overlay */}
         {mobileSidebarOpen && (
           <div
@@ -242,7 +267,7 @@ export default function Layout({ children, currentPageName }) {
         <button
           onClick={toggleDesktopSidebar}
           title={sidebarExpanded ? "Recolher menu" : "Expandir menu"}
-          className="hidden lg:flex fixed top-1/2 -translate-y-1/2 z-[60] w-6 h-6 rounded-full bg-white border border-slate-200 shadow-md items-center justify-center text-slate-400 hover:text-slate-700 hover:shadow-lg transition-all duration-300 ease-in-out"
+          className="hidden lg:flex fixed top-1/2 -translate-y-1/2 z-[60] w-6 h-6 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 shadow-md items-center justify-center text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:shadow-lg transition-all duration-300 ease-in-out"
           style={{ left: sidebarExpanded ? "calc(14rem - 12px)" : "calc(4rem - 12px)" }}
         >
           {sidebarExpanded ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -250,21 +275,22 @@ export default function Layout({ children, currentPageName }) {
 
         {/* Desktop Sidebar */}
         <aside
-          className={`hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-white border-r border-slate-200/80 transition-all duration-300 ease-in-out overflow-hidden ${sidebarWidth}`}
+          className={`hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-700/80 transition-all duration-300 ease-in-out overflow-hidden ${sidebarWidth}`}
         >
           {/* Logo */}
           <div
-            className="flex h-16 items-center shrink-0 px-3"
+            className="flex h-20 items-center shrink-0 px-3"
             style={{ background: "hsl(var(--primary))" }}
           >
             <div className={`flex items-center gap-3 min-w-0 ${sidebarExpanded ? "w-full" : "justify-center w-full"}`}>
-              <div className="h-9 w-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0 ring-1 ring-white/20">
+              <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 ring-1 ring-white/30 shadow-lg">
                 <LogoIcon />
               </div>
               {sidebarExpanded && (
-                <div className="min-w-0 overflow-hidden">
-                  <p className="text-sm font-bold text-white leading-tight truncate">Centro de Oftalmologia</p>
-                  <p className="text-[11px] text-blue-100/80 leading-tight">Sanitária</p>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white/60 uppercase tracking-widest leading-none mb-0.5">Centro de</p>
+                  <p className="text-sm font-bold text-white leading-tight">Oftalmologia</p>
+                  <p className="text-xs text-white/70 leading-tight">Sanitária</p>
                 </div>
               )}
             </div>
@@ -284,7 +310,7 @@ export default function Layout({ children, currentPageName }) {
                         to={createPageUrl(item.page)}
                         style={active ? { background: "hsl(var(--primary))" } : undefined}
                         className={`flex items-center justify-center w-10 h-10 mx-auto rounded-xl transition-all duration-150 ${
-                          active ? "text-white shadow-md" : "text-slate-400 hover:bg-slate-100 hover:text-slate-800"
+                          active ? "text-white shadow-md" : "text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200"
                         }`}
                       >
                         <Icon className="h-5 w-5" />
@@ -303,7 +329,7 @@ export default function Layout({ children, currentPageName }) {
                   to={createPageUrl(item.page)}
                   style={active ? { background: "hsl(var(--primary))" } : undefined}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                    active ? "text-white shadow-md" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                    active ? "text-white shadow-md" : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
                   }`}
                 >
                   <Icon className={`h-4 w-4 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
@@ -315,9 +341,9 @@ export default function Layout({ children, currentPageName }) {
           </nav>
 
           {/* Bottom: status */}
-          <div className={`shrink-0 pb-4 border-t border-slate-100 pt-3 px-3 ${sidebarExpanded ? "" : "flex justify-center"}`}>
+          <div className={`shrink-0 pb-4 border-t border-slate-700/30 dark:border-slate-700 pt-3 px-3 ${sidebarExpanded ? "" : "flex justify-center"}`}>
             {sidebarExpanded ? (
-              <div className="flex items-center gap-2 text-xs text-slate-400">
+              <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
                 <span>Sistema ativo · v2.0</span>
               </div>
@@ -340,31 +366,31 @@ export default function Layout({ children, currentPageName }) {
         {/* Main */}
         <div className={`transition-all duration-300 ease-in-out ${contentPadding}`}>
           {/* Header */}
-          <header className="sticky top-0 z-30 h-16 bg-white/90 backdrop-blur-xl border-b border-slate-200/80">
+          <header className="sticky top-0 z-30 h-16 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-700/80">
             <div className="flex h-full items-center gap-4 px-5 lg:px-8">
               <button
                 onClick={() => setMobileSidebarOpen(true)}
-                className="lg:hidden p-2 -ml-1 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all"
+                className="lg:hidden p-2 -ml-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
               >
                 <Menu className="h-5 w-5" />
               </button>
 
-              <h1 className="text-base font-semibold text-slate-900 hidden sm:block shrink-0">
+              <h1 className="text-base font-semibold text-slate-900 dark:text-slate-100 hidden sm:block shrink-0">
                 {pageTitle}
               </h1>
 
               <div className="flex-1 flex justify-center">
                 <button
                   onClick={() => setSearchOpen(true)}
-                  className="hidden md:flex items-center gap-3 px-4 py-2 text-sm text-slate-400 bg-slate-100 border border-transparent rounded-xl hover:bg-slate-200/80 transition-all max-w-sm w-full"
+                  className="hidden md:flex items-center gap-3 px-4 py-2 text-sm text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 border border-transparent dark:border-slate-700 rounded-xl hover:bg-slate-200/80 dark:hover:bg-slate-700 transition-all max-w-sm w-full"
                 >
                   <Search className="h-4 w-4 shrink-0" />
                   <span>Buscar em tudo...</span>
                   <div className="ml-auto flex items-center gap-1 text-[11px] text-slate-400 whitespace-nowrap shrink-0">
-                    <kbd className="px-1.5 py-0.5 bg-white rounded border border-slate-300 font-semibold text-slate-500 text-[10px]">
+                    <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-700 rounded border border-slate-300 dark:border-slate-600 font-semibold text-slate-500 dark:text-slate-400 text-[10px]">
                       {shortcutModifier}
                     </kbd>
-                    <kbd className="px-1.5 py-0.5 bg-white rounded border border-slate-300 font-semibold text-slate-500 text-[10px]">K</kbd>
+                    <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-700 rounded border border-slate-300 dark:border-slate-600 font-semibold text-slate-500 dark:text-slate-400 text-[10px]">K</kbd>
                   </div>
                 </button>
               </div>
@@ -374,9 +400,20 @@ export default function Layout({ children, currentPageName }) {
                   variant="ghost"
                   size="icon"
                   onClick={() => setSearchOpen(true)}
-                  className="md:hidden hover:bg-slate-100 rounded-xl h-9 w-9"
+                  className="md:hidden hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl h-9 w-9"
                 >
                   <Search className="h-4 w-4" />
+                </Button>
+
+                {/* Dark mode toggle */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleDarkMode}
+                  className="h-9 w-9 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  title={darkMode ? "Modo claro" : "Modo escuro"}
+                >
+                  {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </Button>
 
                 {user && (
@@ -384,7 +421,7 @@ export default function Layout({ children, currentPageName }) {
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
-                        className="flex items-center gap-2.5 hover:bg-slate-100 rounded-xl px-2.5 py-2 h-auto"
+                        className="flex items-center gap-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl px-2.5 py-2 h-auto"
                       >
                         <div
                           className="h-8 w-8 rounded-lg flex items-center justify-center shadow-sm shrink-0"
@@ -393,10 +430,10 @@ export default function Layout({ children, currentPageName }) {
                           <User className="h-4 w-4 text-white" />
                         </div>
                         <div className="hidden sm:block text-left">
-                          <p className="text-sm font-semibold text-slate-900 leading-tight">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-tight">
                             {user.full_name || user.email}
                           </p>
-                          <p className="text-xs text-slate-400 capitalize leading-tight">{user.role}</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 capitalize leading-tight">{user.role}</p>
                         </div>
                         <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
                       </Button>
@@ -434,7 +471,7 @@ export default function Layout({ children, currentPageName }) {
           </header>
 
           {/* Page content */}
-          <main className="p-5 lg:p-8 min-h-screen">
+          <main className="p-5 lg:p-8 min-h-screen dark:bg-slate-950">
             <div className="max-w-[1600px] mx-auto">{children}</div>
           </main>
         </div>
