@@ -240,8 +240,18 @@ export default function Layout({ children, currentPageName }) {
 
         {/* Desktop Sidebar */}
         <aside
-          className={`hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-white border-r border-slate-200/80 transition-all duration-300 ease-in-out overflow-hidden ${sidebarWidth}`}
+          className={`hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-white border-r border-slate-200/80 transition-all duration-300 ease-in-out overflow-hidden relative ${sidebarWidth}`}
         >
+          {/* Toggle centralizado na borda direita */}
+          <button
+            onClick={toggleDesktopSidebar}
+            title={sidebarExpanded ? "Recolher menu" : "Expandir menu"}
+            className="absolute top-1/2 -translate-y-1/2 -right-3 z-20 w-6 h-6 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:shadow-lg transition-all"
+          >
+            {sidebarExpanded
+              ? <ChevronLeft className="h-3 w-3" />
+              : <ChevronRight className="h-3 w-3" />}
+          </button>
           {/* Logo */}
           <div
             className="flex h-16 items-center shrink-0 px-3"
@@ -304,49 +314,25 @@ export default function Layout({ children, currentPageName }) {
             })}
           </nav>
 
-          {/* Bottom: status + toggle */}
-          <div className={`shrink-0 pb-4 border-t border-slate-100 pt-3 px-2 flex flex-col gap-1 ${sidebarExpanded ? "" : "items-center"}`}>
+          {/* Bottom: status */}
+          <div className={`shrink-0 pb-4 border-t border-slate-100 pt-3 px-3 ${sidebarExpanded ? "" : "flex justify-center"}`}>
             {sidebarExpanded ? (
-              <div className="flex items-center justify-between px-2">
-                <div className="flex items-center gap-2 text-xs text-slate-400">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
-                  <span>Sistema ativo · v2.0</span>
-                </div>
-                <button
-                  onClick={toggleDesktopSidebar}
-                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all"
-                  title="Recolher menu"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
+                <span>Sistema ativo · v2.0</span>
               </div>
             ) : (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center justify-center w-10 h-6 cursor-default">
-                      <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={12}>
-                    <span className="font-medium">Sistema ativo</span>
-                    <span className="text-white/60 ml-1.5">v2.0</span>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={toggleDesktopSidebar}
-                      className="flex items-center justify-center w-10 h-10 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={12} className="font-medium">
-                    Expandir menu
-                  </TooltipContent>
-                </Tooltip>
-              </>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="w-8 h-5 flex items-center justify-center cursor-default">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={12}>
+                  <span className="font-medium">Sistema ativo</span>
+                  <span className="text-white/60 ml-1.5">v2.0</span>
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
         </aside>
