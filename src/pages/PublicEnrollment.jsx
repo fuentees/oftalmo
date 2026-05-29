@@ -749,7 +749,7 @@ export default function PublicEnrollment() {
     )
   );
 
-  const WEEKDAY_FULL = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+  const WEEKDAY_SHORT = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
   const WEEKDAY_PLURAL = ["domingos", "segundas", "terças", "quartas", "quintas", "sextas", "sábados"];
 
   const weekdayPattern = (() => {
@@ -763,12 +763,19 @@ export default function PublicEnrollment() {
     if (!days.every((d) => unique.includes(d))) return null;
     if (unique.length === 1) {
       const d = unique[0];
-      return (d === 0 || d === 6 ? "Todo " : "Toda ") + WEEKDAY_FULL[d];
+      const count = days.filter((x) => x === d).length;
+      if (count > 1) return (d === 0 || d === 6 ? "Todo " : "Toda ") + WEEKDAY_SHORT[d];
+      return (d === 0 || d === 6 ? "No " : "Na ") + WEEKDAY_SHORT[d];
     }
-    if (unique.length === 2 || unique.length === 3) {
-      const labels = unique.map((d) => WEEKDAY_PLURAL[d]);
+    if (unique.length >= 2 && unique.length <= 4) {
+      const labels = unique.map((d) => {
+        const count = days.filter((x) => x === d).length;
+        return count > 1 ? WEEKDAY_PLURAL[d] : WEEKDAY_SHORT[d];
+      });
+      const anyPlural = unique.some((d) => days.filter((x) => x === d).length > 1);
+      const prefix = anyPlural ? "Às " : "À ";
       const last = labels.pop();
-      return "Às " + (labels.join(", ")) + " e " + last;
+      return prefix + labels.join(", ") + " e " + last;
     }
     return null;
   })();
