@@ -342,6 +342,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     occurrences: 5,
   });
   const [initializedTrainingKey, setInitializedTrainingKey] = useState(null);
+  // Evita que o efeito de regeneração de datas sobrescreva as datas recém-carregadas do banco.
+  const skipNextDateRegenRef = React.useRef(false);
 
   const queryClient = useQueryClient();
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
@@ -393,6 +395,9 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         resolvedDates
       );
 
+      // Sinaliza que o próximo disparo do efeito de regeneração deve ser ignorado,
+      // pois as datas vêm do banco e não de uma mudança manual do usuário.
+      skipNextDateRegenRef.current = true;
       setFormData({
         title: sourceTraining.title || "",
         code: sourceTraining.code || "",
@@ -472,6 +477,12 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
 
   useEffect(() => {
     if (dateMode !== "range") return;
+    // Se as datas foram recém-carregadas do banco, ignora esta execução
+    // para não sobrescrever com datas recalculadas.
+    if (skipNextDateRegenRef.current) {
+      skipNextDateRegenRef.current = false;
+      return;
+    }
     const generatedDates = buildRangeDates(rangeConfig);
     if (!generatedDates.length) return;
     setFormData((prev) => {
