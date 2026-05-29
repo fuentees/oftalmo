@@ -1091,46 +1091,23 @@ export default function EventProgramSection({ training }) {
                             <Table>
                               <TableHeader>
                                 <TableRow className="bg-slate-100/70">
-                                  <TableHead className="w-14 p-2 text-center">Ordem</TableHead>
                                   <TableHead className="w-28">Data</TableHead>
                                   <TableHead className="w-32">Duração</TableHead>
                                   <TableHead className="w-36">Horário</TableHead>
                                   <TableHead>Tema / atividade</TableHead>
-                                  <TableHead className="min-w-[200px]">Palestrante</TableHead>
-                                  <TableHead className="w-20" />
+                                  <TableHead className="min-w-[180px]">Palestrante</TableHead>
+                                  <TableHead className="w-24 text-center text-xs text-slate-400">mover</TableHead>
+                                  <TableHead className="w-16" />
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {computed.map((session, sessionIndex) => (
-                                  <TableRow
-                                    key={session.id}
-                                    className="align-middle"
-                                  >
-                                    <TableCell className="p-1 text-center">
-                                      <div className="flex flex-col items-center gap-0.5">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleMoveSession(dateIndex, session.id, "up")}
-                                          disabled={sessionIndex === 0 && dateIndex === 0}
-                                          className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                          title={sessionIndex === 0 && dateIndex > 0 ? "Mover para o dia anterior" : "Mover para cima"}
-                                        >
-                                          <ArrowUp className="h-3.5 w-3.5" />
-                                        </button>
-                                        <span className="text-[10px] font-bold text-slate-400 leading-none">
-                                          {sessionIndex + 1}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleMoveSession(dateIndex, session.id, "down")}
-                                          disabled={sessionIndex === computed.length - 1 && dateIndex === programDates.length - 1}
-                                          className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                          title={sessionIndex === computed.length - 1 && dateIndex < programDates.length - 1 ? "Mover para o próximo dia" : "Mover para baixo"}
-                                        >
-                                          <ArrowDown className="h-3.5 w-3.5" />
-                                        </button>
-                                      </div>
-                                    </TableCell>
+                                {computed.map((session, sessionIndex) => {
+                                  const isAbsoluteFirst = sessionIndex === 0 && dateIndex === 0;
+                                  const isAbsoluteLast = sessionIndex === computed.length - 1 && dateIndex === programDates.length - 1;
+                                  const crossUp = sessionIndex === 0 && dateIndex > 0;
+                                  const crossDown = sessionIndex === computed.length - 1 && dateIndex < programDates.length - 1;
+                                  return (
+                                  <TableRow key={session.id} className="align-middle group">
                                     {sessionIndex === 0 ? (
                                       <TableCell
                                         rowSpan={computed.length}
@@ -1139,14 +1116,12 @@ export default function EventProgramSection({ training }) {
                                         {dateLabel}
                                       </TableCell>
                                     ) : null}
-                                    {/* Duração — único campo editável de tempo */}
                                     <TableCell className="py-1.5 px-2">
                                       <DurationInput
                                         value={session.duration_minutes}
                                         onChange={(v) => handleDurationChange(dateIndex, session.id, v)}
                                       />
                                     </TableCell>
-                                    {/* Horário calculado automaticamente */}
                                     <TableCell className="py-1.5 px-3">
                                       {session.start_time && session.end_time ? (
                                         <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg whitespace-nowrap">
@@ -1155,9 +1130,7 @@ export default function EventProgramSection({ training }) {
                                           {session.end_time}
                                         </span>
                                       ) : (
-                                        <span className="text-xs text-slate-400 italic">
-                                          {session.start_time || "—"}
-                                        </span>
+                                        <span className="text-xs text-slate-400 italic">—</span>
                                       )}
                                     </TableCell>
                                     <TableCell className="py-1.5 px-2">
@@ -1179,12 +1152,9 @@ export default function EventProgramSection({ training }) {
                                             handleUpdateSessionSpeaker(dateIndex, session.id, name, matched?.id || "", matched?.email || "");
                                           }}
                                           onKeyDown={(e) => {
-                                            if (e.key === "Enter") {
-                                              e.preventDefault();
-                                              handleAddSession(dateIndex);
-                                            }
+                                            if (e.key === "Enter") { e.preventDefault(); handleAddSession(dateIndex); }
                                           }}
-                                          placeholder="Nome do palestrante"
+                                          placeholder="Palestrante"
                                           className={`h-8 text-sm ${session.professional_id ? "pr-7 border-green-400 focus-visible:ring-green-400" : ""}`}
                                         />
                                         {session.professional_id && (
@@ -1192,28 +1162,43 @@ export default function EventProgramSection({ training }) {
                                         )}
                                       </div>
                                     </TableCell>
-                                    <TableCell className="py-1.5 px-1">
-                                      <div className="flex items-center gap-0.5">
+                                    {/* Mover ↑↓ */}
+                                    <TableCell className="py-1 px-1 text-center">
+                                      <div className="flex items-center justify-center gap-0.5">
                                         <button
                                           type="button"
-                                          onClick={() => handleDuplicateSession(dateIndex, session.id)}
-                                          className="text-slate-300 hover:text-blue-500 transition-colors p-1 rounded"
-                                          title="Duplicar aula"
+                                          onClick={() => handleMoveSession(dateIndex, session.id, "up")}
+                                          disabled={isAbsoluteFirst}
+                                          title={crossUp ? "Mover para o dia anterior" : "Subir"}
+                                          className={`p-1 rounded transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${crossUp ? "text-purple-400 hover:text-purple-600 hover:bg-purple-50" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50"}`}
                                         >
-                                          <CopyPlus className="h-4 w-4" />
+                                          <ArrowUp className="h-3.5 w-3.5" />
                                         </button>
                                         <button
                                           type="button"
-                                          onClick={() => handleRemoveSession(dateIndex, session.id)}
-                                          className="text-slate-300 hover:text-red-500 transition-colors p-1 rounded"
-                                          title="Remover"
+                                          onClick={() => handleMoveSession(dateIndex, session.id, "down")}
+                                          disabled={isAbsoluteLast}
+                                          title={crossDown ? "Mover para o próximo dia" : "Descer"}
+                                          className={`p-1 rounded transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${crossDown ? "text-purple-400 hover:text-purple-600 hover:bg-purple-50" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50"}`}
                                         >
+                                          <ArrowDown className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </TableCell>
+                                    {/* Duplicar / Remover */}
+                                    <TableCell className="py-1.5 px-1">
+                                      <div className="flex items-center gap-0.5">
+                                        <button type="button" onClick={() => handleDuplicateSession(dateIndex, session.id)} className="text-slate-300 hover:text-blue-500 transition-colors p-1 rounded" title="Duplicar">
+                                          <CopyPlus className="h-4 w-4" />
+                                        </button>
+                                        <button type="button" onClick={() => handleRemoveSession(dateIndex, session.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1 rounded" title="Remover">
                                           <Trash2 className="h-4 w-4" />
                                         </button>
                                       </div>
                                     </TableCell>
                                   </TableRow>
-                                ))}
+                                  );
+                                })}
                               </TableBody>
                             </Table>
                           </div>
@@ -1233,8 +1218,8 @@ export default function EventProgramSection({ training }) {
                                       type="button"
                                       onClick={() => handleMoveSession(dateIndex, session.id, "up")}
                                       disabled={sessionIndex === 0 && dateIndex === 0}
-                                      className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                      title={sessionIndex === 0 && dateIndex > 0 ? "Mover para o dia anterior" : "Mover para cima"}
+                                      className={`p-1 rounded transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${sessionIndex === 0 && dateIndex > 0 ? "text-purple-400 hover:text-purple-600 hover:bg-purple-50" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50"}`}
+                                      title={sessionIndex === 0 && dateIndex > 0 ? "Mover para o dia anterior" : "Subir"}
                                     >
                                       <ArrowUp className="h-3.5 w-3.5" />
                                     </button>
@@ -1242,8 +1227,8 @@ export default function EventProgramSection({ training }) {
                                       type="button"
                                       onClick={() => handleMoveSession(dateIndex, session.id, "down")}
                                       disabled={sessionIndex === sessions.length - 1 && dateIndex === programDates.length - 1}
-                                      className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                      title={sessionIndex === sessions.length - 1 && dateIndex < programDates.length - 1 ? "Mover para o próximo dia" : "Mover para baixo"}
+                                      className={`p-1 rounded transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${sessionIndex === sessions.length - 1 && dateIndex < programDates.length - 1 ? "text-purple-400 hover:text-purple-600 hover:bg-purple-50" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50"}`}
+                                      title={sessionIndex === sessions.length - 1 && dateIndex < programDates.length - 1 ? "Mover para o próximo dia" : "Descer"}
                                     >
                                       <ArrowDown className="h-3.5 w-3.5" />
                                     </button>
