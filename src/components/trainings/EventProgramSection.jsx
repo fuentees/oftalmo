@@ -1022,6 +1022,17 @@ export default function EventProgramSection({ training }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <Button
+              type="button"
+              size="sm"
+              className="bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+              onClick={() => saveProgram.mutate()}
+              disabled={saveProgram.isPending}
+            >
+              <Save className="mr-1 h-4 w-4" />
+              {saveProgram.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+
             <Button type="button" variant="outline" size="sm" onClick={handleCopyProgram}>
               <Copy className="mr-1 h-4 w-4" />
               Copiar programação
