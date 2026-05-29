@@ -20,17 +20,7 @@ import {
   Calendar,
   MapPin,
   Clock,
-  TrendingUp,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-} from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -746,46 +736,6 @@ export default function Dashboard() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Cobertura por Município */}
-      {municipalityCoverage.length > 0 && (
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
-            <CardTitle className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-teal-500" />
-              Cobertura por Município (Top 10)
-            </CardTitle>
-            <Link to={createPageUrl("Reports")} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 font-medium transition-colors">
-              Ver relatórios <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
-          </CardHeader>
-          <CardContent className="p-4 pb-2">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart
-                data={municipalityCoverage}
-                layout="vertical"
-                margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                <XAxis type="number" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={130}
-                  tick={{ fontSize: 11, fill: "#64748b" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <RechartsTooltip
-                  formatter={(value) => [`${value} participante${value !== 1 ? "s" : ""}`, ""]}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "0 4px 6px -1px rgba(0,0,0,.08)" }}
-                />
-                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
           </CardContent>
         </Card>
       )}
