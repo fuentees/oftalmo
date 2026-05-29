@@ -508,14 +508,57 @@ export default function EventProgramSection({ training }) {
   };
 
   const handleMoveSession = (dateIndex, sessionId, direction) => {
-    upsertDateSessions(dateIndex, (sessions) => {
+    setProgramDates((prev) => {
+      const sessions = Array.isArray(prev[dateIndex]?.sessions) ? [...prev[dateIndex].sessions] : [];
       const idx = sessions.findIndex((s) => s.id === sessionId);
-      if (idx < 0) return sessions;
-      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= sessions.length) return sessions;
-      const next = [...sessions];
-      [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
-      return next;
+      if (idx < 0) return prev;
+
+      const isFirst = idx === 0;
+      const isLast = idx === sessions.length - 1;
+
+      // Movimento dentro do mesmo dia
+      if (direction === "up" && !isFirst) {
+        const next = [...sessions];
+        [next[idx], next[idx - 1]] = [next[idx - 1], next[idx]];
+        return prev.map((item, i) => i === dateIndex ? { ...item, sessions: next } : item);
+      }
+      if (direction === "down" && !isLast) {
+        const next = [...sessions];
+        [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+        return prev.map((item, i) => i === dateIndex ? { ...item, sessions: next } : item);
+      }
+
+      // ↑ no primeiro item → move para o final do dia anterior
+      if (direction === "up" && isFirst && dateIndex > 0) {
+        const session = sessions[idx];
+        const daySessions = sessions.filter((_, i) => i !== idx);
+        const prevSessions = [
+          ...(Array.isArray(prev[dateIndex - 1]?.sessions) ? prev[dateIndex - 1].sessions : []),
+          session,
+        ];
+        return prev.map((item, i) => {
+          if (i === dateIndex) return { ...item, sessions: daySessions };
+          if (i === dateIndex - 1) return { ...item, sessions: prevSessions };
+          return item;
+        });
+      }
+
+      // ↓ no último item → move para o início do dia seguinte
+      if (direction === "down" && isLast && dateIndex < prev.length - 1) {
+        const session = sessions[idx];
+        const daySessions = sessions.filter((_, i) => i !== idx);
+        const nextSessions = [
+          session,
+          ...(Array.isArray(prev[dateIndex + 1]?.sessions) ? prev[dateIndex + 1].sessions : []),
+        ];
+        return prev.map((item, i) => {
+          if (i === dateIndex) return { ...item, sessions: daySessions };
+          if (i === dateIndex + 1) return { ...item, sessions: nextSessions };
+          return item;
+        });
+      }
+
+      return prev;
     });
   };
 
@@ -1068,9 +1111,9 @@ export default function EventProgramSection({ training }) {
                                         <button
                                           type="button"
                                           onClick={() => handleMoveSession(dateIndex, session.id, "up")}
-                                          disabled={sessionIndex === 0}
+                                          disabled={sessionIndex === 0 && dateIndex === 0}
                                           className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                          title="Mover para cima"
+                                          title={sessionIndex === 0 && dateIndex > 0 ? "Mover para o dia anterior" : "Mover para cima"}
                                         >
                                           <ArrowUp className="h-3.5 w-3.5" />
                                         </button>
@@ -1080,9 +1123,9 @@ export default function EventProgramSection({ training }) {
                                         <button
                                           type="button"
                                           onClick={() => handleMoveSession(dateIndex, session.id, "down")}
-                                          disabled={sessionIndex === computed.length - 1}
+                                          disabled={sessionIndex === computed.length - 1 && dateIndex === programDates.length - 1}
                                           className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                          title="Mover para baixo"
+                                          title={sessionIndex === computed.length - 1 && dateIndex < programDates.length - 1 ? "Mover para o próximo dia" : "Mover para baixo"}
                                         >
                                           <ArrowDown className="h-3.5 w-3.5" />
                                         </button>
@@ -1189,18 +1232,18 @@ export default function EventProgramSection({ training }) {
                                     <button
                                       type="button"
                                       onClick={() => handleMoveSession(dateIndex, session.id, "up")}
-                                      disabled={sessionIndex === 0}
+                                      disabled={sessionIndex === 0 && dateIndex === 0}
                                       className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                      title="Mover para cima"
+                                      title={sessionIndex === 0 && dateIndex > 0 ? "Mover para o dia anterior" : "Mover para cima"}
                                     >
                                       <ArrowUp className="h-3.5 w-3.5" />
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => handleMoveSession(dateIndex, session.id, "down")}
-                                      disabled={sessionIndex === computeSessionTimes(sessions, dateItem?.start_time || "").length - 1}
+                                      disabled={sessionIndex === sessions.length - 1 && dateIndex === programDates.length - 1}
                                       className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                      title="Mover para baixo"
+                                      title={sessionIndex === sessions.length - 1 && dateIndex < programDates.length - 1 ? "Mover para o próximo dia" : "Mover para baixo"}
                                     >
                                       <ArrowDown className="h-3.5 w-3.5" />
                                     </button>
