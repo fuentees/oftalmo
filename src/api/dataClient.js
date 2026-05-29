@@ -180,6 +180,8 @@ const ENTITY_TABLES = {
   CommunicationMessage: "communication_messages",
   TracomaExamAnswerKey: "tracoma_exam_answer_keys",
   TracomaExamResult: "tracoma_exam_results",
+  TrainingWaitlist: "training_waitlist",
+  ParticipantNote: "participant_notes",
 };
 
 const applyOrder = (query, order) => {

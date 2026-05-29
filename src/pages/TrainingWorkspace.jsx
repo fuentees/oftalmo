@@ -13,6 +13,8 @@ import EventProgramSection from "@/components/trainings/EventProgramSection";
 import CertificateManager from "@/components/trainings/CertificateManager";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
 import TrainingForm from "@/components/trainings/TrainingForm";
+import WaitlistManager from "@/components/trainings/WaitlistManager";
+import ReminderSender from "@/components/trainings/ReminderSender";
 import EnrollmentPage from "./EnrollmentPage";
 import TrainingFeedbackPage from "./TrainingFeedbackPage";
 import TracomaExaminerEvaluationPage from "./TracomaExaminerEvaluationPage";
@@ -28,7 +30,9 @@ import {
   Calendar,
   CheckCircle2,
   ClipboardCheck,
+  Clock,
   Eye,
+  Mail,
   EyeOff,
   FileText,
   Globe,
@@ -585,6 +589,14 @@ export default function TrainingWorkspace() {
             <Package className="h-3.5 w-3.5" />
             Materiais
           </TabsTrigger>
+          <TabsTrigger value="waitlist" className="gap-1.5">
+            <Clock className="h-3.5 w-3.5" />
+            Lista de Espera
+          </TabsTrigger>
+          <TabsTrigger value="reminders" className="gap-1.5">
+            <Mail className="h-3.5 w-3.5" />
+            Lembretes
+          </TabsTrigger>
           <TabsTrigger value="edit" className="gap-1.5">
             <Pencil className="h-3.5 w-3.5" />
             Editar
@@ -691,6 +703,14 @@ export default function TrainingWorkspace() {
 
         <TabsContent value="materials" className="mt-6">
           <MaterialsManager training={training} />
+        </TabsContent>
+
+        <TabsContent value="waitlist" className="mt-6">
+          <WaitlistManager training={training} />
+        </TabsContent>
+
+        <TabsContent value="reminders" className="mt-6">
+          <ReminderSender training={training} participants={trainingParticipants} />
         </TabsContent>
 
         <TabsContent value="edit" className="space-y-4 mt-6">

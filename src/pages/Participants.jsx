@@ -29,6 +29,8 @@ import {
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
+import BulkActionBar from "@/components/common/BulkActionBar";
+import SavedFilters from "@/components/common/SavedFilters";
 import { useNavigate } from "react-router-dom";
 
 export default function Participants() {
@@ -49,6 +51,7 @@ export default function Participants() {
   const [uploadStep, setUploadStep] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   const queryClient = useQueryClient();
 
@@ -831,6 +834,41 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
 
   const columns = [
     {
+      header: (
+        <input
+          type="checkbox"
+          className="w-4 h-4 rounded accent-primary cursor-pointer"
+          checked={paginatedParticipants.length > 0 && paginatedParticipants.every((r) => selectedIds.has(r.key))}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setSelectedIds(new Set(paginatedParticipants.map((r) => r.key)));
+            } else {
+              setSelectedIds(new Set());
+            }
+          }}
+          title="Selecionar todos"
+        />
+      ),
+      sortable: false,
+      cellClassName: "w-8",
+      render: (row) => (
+        <input
+          type="checkbox"
+          className="w-4 h-4 rounded accent-primary cursor-pointer"
+          checked={selectedIds.has(row.key)}
+          onChange={(e) => {
+            e.stopPropagation();
+            setSelectedIds((prev) => {
+              const next = new Set(prev);
+              if (e.target.checked) next.add(row.key);
+              else next.delete(row.key);
+              return next;
+            });
+          }}
+        />
+      ),
+    },
+    {
       header: "Nome",
       render: (row) => (
         <div className="flex items-center gap-3">
@@ -956,7 +994,18 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
             ]}
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <SavedFilters
+            storageKey="participants"
+            currentFilters={{ search, typeFilter, courseFilter, municipalityFilter, gveFilter }}
+            onApply={(f) => {
+              if (f.search !== undefined) setSearch(f.search);
+              if (f.typeFilter !== undefined) setTypeFilter(f.typeFilter);
+              if (f.courseFilter !== undefined) setCourseFilter(f.courseFilter);
+              if (f.municipalityFilter !== undefined) setMunicipalityFilter(f.municipalityFilter);
+              if (f.gveFilter !== undefined) setGveFilter(f.gveFilter);
+            }}
+          />
           <Button variant="outline" onClick={handleExport} className="flex items-center gap-2">
             <Download className="h-4 w-4" />
             Exportar Planilha
@@ -971,6 +1020,36 @@ NR-35,2025-01-20,Maria Souza,001235,98.765.432-1,987.654.321-00,maria@email.com,
           </Button>
         </div>
       </div>
+
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        onClearSelection={() => setSelectedIds(new Set())}
+        actions={[
+          {
+            label: "Exportar selecionados",
+            icon: Download,
+            onClick: () => {
+              const rows = paginatedParticipants.filter((r) => selectedIds.has(r.key));
+              if (!rows.length) return;
+              import("xlsx").then(({ utils, writeFile }) => {
+                const data = rows.map((r) => ({
+                  Nome: r.profile.professional_name || "",
+                  RG: r.profile.professional_rg || "",
+                  CPF: r.profile.professional_cpf || "",
+                  "E-mail": r.profile.professional_email || "",
+                  Município: r.profile.municipality || "",
+                  GVE: r.profile.health_region || "",
+                }));
+                const ws = utils.json_to_sheet(data);
+                const wb = utils.book_new();
+                utils.book_append_sheet(wb, ws, "Participantes");
+                writeFile(wb, "participantes_selecionados.xlsx");
+              });
+              setSelectedIds(new Set());
+            },
+          },
+        ]}
+      />
 
       <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4">
         <div className="flex items-start gap-3">

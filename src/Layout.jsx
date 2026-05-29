@@ -45,6 +45,8 @@ import {
 } from "@/components/ui/tooltip";
 import GlobalSearch from "@/components/common/GlobalSearch";
 import CommunicationChatWidget from "@/components/communication/CommunicationChatWidget";
+import NotificationBell from "@/components/common/NotificationBell";
+import OnboardingTour from "@/components/common/OnboardingTour";
 
 export default function Layout({ children, currentPageName }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -100,7 +102,17 @@ export default function Layout({ children, currentPageName }) {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Ctrl/Cmd+K → busca global
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      // Ignorar quando digitando em input/textarea/select
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      // Ctrl/Cmd+/ → abrir ajuda rápida (tooltip de atalhos)
+      if ((e.ctrlKey || e.metaKey) && e.key === "/") {
         e.preventDefault();
         setSearchOpen(true);
       }
@@ -422,6 +434,9 @@ export default function Layout({ children, currentPageName }) {
                   <Search className="h-4 w-4" />
                 </Button>
 
+                {/* Notification bell */}
+                <NotificationBell />
+
                 {/* Dark mode toggle */}
                 <Button
                   variant="ghost"
@@ -613,6 +628,7 @@ export default function Layout({ children, currentPageName }) {
 
         <CommunicationChatWidget currentUser={user} />
         <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
+        <OnboardingTour />
       </div>
     </TooltipProvider>
   );

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
 import {
@@ -13,6 +13,8 @@ import { isRepadronizacaoTraining } from "@/lib/trainingType";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   User,
   GraduationCap,
@@ -24,9 +26,14 @@ import {
   FileText,
   RefreshCw,
   Loader2,
-  Mail
+  Mail,
+  StickyNote,
+  PlusCircle,
+  Trash2,
+  Circle,
 } from "lucide-react";
 import { addMonths, format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 
 export default function ParticipantProfile() {
@@ -37,6 +44,8 @@ export default function ParticipantProfile() {
   const [regenStatus, setRegenStatus] = useState(null);
   const [emailStatus, setEmailStatus] = useState(null);
   const [cleanupStatus, setCleanupStatus] = useState(null);
+  const [newNote, setNewNote] = useState("");
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const queryClient = useQueryClient();
   const cleanedInvalidParticipationIdsRef = React.useRef(new Set());
 
@@ -370,6 +379,53 @@ export default function ParticipantProfile() {
     () => mergeParticipantData(allParticipations),
     [allParticipations]
   );
+
+  // --- Notas internas ---
+  const participantCpf = useMemo(
+    () => normalizeCpf(mergedParticipant?.professional_cpf || participant?.professional_cpf || ""),
+    [mergedParticipant, participant]
+  );
+  const participantEmail = useMemo(
+    () => normalizeEmail(mergedParticipant?.professional_email || participant?.professional_email || ""),
+    [mergedParticipant, participant]
+  );
+  const noteKey = participantCpf || participantEmail;
+
+  const { data: internalNotes = [] } = useQuery({
+    queryKey: ["participant-notes", noteKey],
+    queryFn: () =>
+      participantCpf
+        ? dataClient.entities.ParticipantNote.filter({ professional_cpf: participantCpf }, "-created_at")
+        : dataClient.entities.ParticipantNote.filter({ professional_email: participantEmail }, "-created_at"),
+    enabled: Boolean(noteKey),
+  });
+
+  const addNoteMutation = useMutation({
+    mutationFn: (text) =>
+      dataClient.entities.ParticipantNote.create({
+        professional_cpf: participantCpf || null,
+        professional_email: participantEmail || null,
+        note: text,
+        created_at: new Date().toISOString(),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["participant-notes", noteKey] });
+      setNewNote("");
+      setIsSavingNote(false);
+    },
+    onError: () => setIsSavingNote(false),
+  });
+
+  const deleteNoteMutation = useMutation({
+    mutationFn: (id) => dataClient.entities.ParticipantNote.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["participant-notes", noteKey] }),
+  });
+
+  const handleAddNote = () => {
+    if (!newNote.trim() || !noteKey) return;
+    setIsSavingNote(true);
+    addNoteMutation.mutate(newNote.trim());
+  };
 
   const buildTrainingKey = (trainingId, trainingTitle) => {
     const normalizedId = String(trainingId || "").trim();
@@ -978,6 +1034,70 @@ export default function ParticipantProfile() {
         </Card>
       </div>
 
+      {/* Notas Internas */}
+      <Card>
+        <CardHeader className="pb-3 border-b border-slate-100">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <StickyNote className="h-5 w-5 text-amber-500" />
+            Notas Internas
+            <span className="text-xs font-normal text-slate-400 ml-1">(visível apenas para a equipe)</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          {/* Input nova nota */}
+          {noteKey && (
+            <div className="flex gap-2">
+              <Textarea
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") handleAddNote();
+                }}
+                placeholder="Adicionar nota interna... (Ctrl+Enter para salvar)"
+                rows={2}
+                className="text-sm resize-none flex-1"
+              />
+              <Button
+                size="sm"
+                className="self-end gap-1.5"
+                onClick={handleAddNote}
+                disabled={!newNote.trim() || isSavingNote}
+                style={{ background: "hsl(var(--primary))" }}
+              >
+                {isSavingNote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlusCircle className="h-3.5 w-3.5" />}
+                Salvar
+              </Button>
+            </div>
+          )}
+          {/* Lista de notas */}
+          {internalNotes.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">Nenhuma nota adicionada.</p>
+          ) : (
+            <div className="space-y-2">
+              {internalNotes.map((note) => (
+                <div key={note.id} className="group flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-100">
+                  <StickyNote className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{note.note}</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {note.created_at
+                        ? format(new Date(note.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                        : ""}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => deleteNoteMutation.mutate(note.id)}
+                    className="opacity-0 group-hover:opacity-100 shrink-0 text-slate-400 hover:text-red-500 transition-all mt-0.5"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {regenStatus && (
         <Card className={regenStatus.type === "error" ? "border-red-200" : "border-green-200"}>
           <CardContent className="pt-4">
@@ -1026,23 +1146,53 @@ export default function ParticipantProfile() {
         </Card>
       )}
 
-      {/* Treinamentos por Tipo */}
+      {/* Histórico — Linha do Tempo */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3 border-b border-slate-100">
           <CardTitle className="flex items-center gap-2">
             <GraduationCap className="h-5 w-5 text-blue-600" />
-            Histórico de Treinamentos
+            Linha do Tempo de Treinamentos
+            <span className="ml-auto text-xs font-normal text-slate-400">
+              {participationsSorted.length} registro{participationsSorted.length !== 1 ? "s" : ""}
+            </span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           {participationsSorted.length === 0 ? (
-            <p className="text-center text-slate-500 py-8">
-              Nenhum treinamento realizado
-            </p>
+            <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
+              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
+                <GraduationCap className="h-5 w-5 text-slate-400" />
+              </div>
+              <p className="text-sm font-medium text-slate-500">Nenhum treinamento realizado</p>
+            </div>
           ) : (
-            participationsSorted.map((participation, index) =>
-              renderTrainingCard(participation, index)
-            )
+            <div className="relative">
+              {/* Linha vertical da timeline */}
+              <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-slate-200 dark:bg-slate-700" />
+              <div className="space-y-1 pl-10">
+                {participationsSorted.map((participation, index) => {
+                  const isApproved = participation.approved === true;
+                  const isCancelled = String(participation.enrollment_status || "").toLowerCase() === "cancelado";
+                  return (
+                    <div key={participation.id || index} className="relative">
+                      {/* Círculo na linha */}
+                      <div className={`absolute -left-[2.35rem] top-4 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        isCancelled
+                          ? "border-slate-300 bg-white"
+                          : isApproved
+                          ? "border-green-500 bg-green-50"
+                          : "border-blue-400 bg-blue-50"
+                      }`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${
+                          isCancelled ? "bg-slate-300" : isApproved ? "bg-green-500" : "bg-blue-400"
+                        }`} />
+                      </div>
+                      {renderTrainingCard(participation, index)}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

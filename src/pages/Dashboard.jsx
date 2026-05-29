@@ -18,8 +18,19 @@ import {
   AlertTriangle,
   ChevronRight,
   Calendar,
-  MapPin
+  MapPin,
+  Clock,
+  TrendingUp,
 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -222,6 +233,66 @@ export default function Dashboard() {
     }),
     [participants]
   );
+
+  // Próximos treinamentos (próximos 30 dias)
+  const upcomingTrainings = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const limit = new Date(today);
+    limit.setDate(limit.getDate() + 30);
+
+    return trainings
+      .filter((t) => {
+        if (t.status === "cancelado" || t.status === "concluido") return false;
+        const dates = Array.isArray(t.dates) ? t.dates : [];
+        const candidates = [];
+        const base = parseLocalDate(t.date);
+        if (base) candidates.push(base);
+        dates.forEach((item) => {
+          const v = typeof item === "object" ? item?.date : item;
+          const d = parseLocalDate(v);
+          if (d) candidates.push(d);
+        });
+        return candidates.some((d) => d >= today && d <= limit);
+      })
+      .map((t) => {
+        const dates = Array.isArray(t.dates) ? t.dates : [];
+        const candidates = [];
+        const base = parseLocalDate(t.date);
+        if (base) candidates.push(base);
+        dates.forEach((item) => {
+          const v = typeof item === "object" ? item?.date : item;
+          const d = parseLocalDate(v);
+          if (d) candidates.push(d);
+        });
+        const today2 = new Date(); today2.setHours(0, 0, 0, 0);
+        const future = candidates.filter((d) => d >= today2);
+        const nextDate = future.length
+          ? future.reduce((min, d) => (d < min ? d : min))
+          : candidates.reduce((min, d) => (d < min ? d : min));
+        const daysUntil = differenceInDays(nextDate, today2);
+        const max = t.max_participants || 0;
+        const curr = t.participants_count || 0;
+        const pct = max > 0 ? Math.min(100, Math.round((curr / max) * 100)) : null;
+        return { ...t, nextDate, daysUntil, occupancyPct: pct, max, curr };
+      })
+      .sort((a, b) => a.nextDate - b.nextDate)
+      .slice(0, 6);
+  }, [trainings]);
+
+  // Cobertura por município (top 10)
+  const municipalityCoverage = useMemo(() => {
+    const map = new Map();
+    participants.forEach((p) => {
+      const city = String(p.municipality || "").trim();
+      if (!city) return;
+      map.set(city, (map.get(city) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [participants]);
 
   const currentYearFieldWorkCount = useMemo(() => {
     return events.filter((event) => {
@@ -601,6 +672,122 @@ export default function Dashboard() {
             </Card>
           )}
         </div>
+      )}
+
+      {/* Próximos Treinamentos */}
+      {(upcomingTrainings.length > 0 || loadingTrainings) && (
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
+            <CardTitle className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+              <Clock className="h-4 w-4 text-purple-500" />
+              Próximos Treinamentos
+            </CardTitle>
+            <Link to={createPageUrl("Trainings")} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 font-medium transition-colors">
+              Ver todos <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardHeader>
+          <CardContent className="p-4">
+            {loadingTrainings ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-24 bg-slate-100 rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {upcomingTrainings.map((t) => (
+                  <Link
+                    key={t.id}
+                    to={createPageUrl(`TrainingWorkspace?id=${t.id}`)}
+                    className="group flex flex-col gap-2 p-3 rounded-xl border border-slate-200 hover:border-purple-300 hover:shadow-sm transition-all bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold text-slate-800 line-clamp-2 leading-snug">{t.title}</p>
+                      <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        t.daysUntil === 0
+                          ? "bg-red-100 text-red-700"
+                          : t.daysUntil <= 3
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {t.daysUntil === 0 ? "Hoje" : `${t.daysUntil}d`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-slate-500">
+                      <Calendar className="h-3 w-3 shrink-0" />
+                      {format(t.nextDate, "dd/MM/yyyy", { locale: ptBR })}
+                      {t.location && (
+                        <>
+                          <span className="mx-1">·</span>
+                          <MapPin className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{t.location}</span>
+                        </>
+                      )}
+                    </div>
+                    {t.occupancyPct !== null && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-slate-500">
+                          <span>{t.curr} / {t.max} inscritos</span>
+                          <span className={`font-semibold ${t.occupancyPct >= 100 ? "text-red-600" : t.occupancyPct >= 75 ? "text-amber-600" : "text-green-600"}`}>
+                            {t.occupancyPct}%
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              t.occupancyPct >= 100 ? "bg-red-500" : t.occupancyPct >= 75 ? "bg-amber-500" : "bg-green-500"
+                            }`}
+                            style={{ width: `${Math.min(100, t.occupancyPct)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Cobertura por Município */}
+      {municipalityCoverage.length > 0 && (
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
+            <CardTitle className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-teal-500" />
+              Cobertura por Município (Top 10)
+            </CardTitle>
+            <Link to={createPageUrl("Reports")} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 font-medium transition-colors">
+              Ver relatórios <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardHeader>
+          <CardContent className="p-4 pb-2">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart
+                data={municipalityCoverage}
+                layout="vertical"
+                margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={130}
+                  tick={{ fontSize: 11, fill: "#64748b" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <RechartsTooltip
+                  formatter={(value) => [`${value} participante${value !== 1 ? "s" : ""}`, ""]}
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "0 4px 6px -1px rgba(0,0,0,.08)" }}
+                />
+                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       )}
 
       {/* Tables */}

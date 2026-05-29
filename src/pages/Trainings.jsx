@@ -36,7 +36,8 @@ import {
   FileSpreadsheet,
   AlertCircle,
   CheckCircle,
-  Copy
+  Copy,
+  BarChart2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +78,7 @@ import AttendanceControl from "@/components/trainings/AttendanceControl";
 import CertificateManager from "@/components/trainings/CertificateManager";
 import SendLinkButton from "@/components/trainings/SendLinkButton";
 import MaterialsManager from "@/components/trainings/MaterialsManager";
+import TrainingComparison from "@/components/trainings/TrainingComparison";
 import QueryError from "@/components/common/QueryError";
 
 const KNOWN_TRAINING_TYPE_LABELS = {
@@ -123,6 +125,7 @@ export default function Trainings() {
   const [importStatus, setImportStatus] = useState(null);
   const [deleteStatus, setDeleteStatus] = useState(null);
   const [duplicateStatus, setDuplicateStatus] = useState(/** @type {{ type: string; message: string } | null} */ (null));
+  const [showComparison, setShowComparison] = useState(false);
   const [, forceStatusClockTick] = useState(0);
 
   const navigate = useNavigate();
@@ -1589,6 +1592,14 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
             Modelo
           </Button>
           <Button
+            variant="outline"
+            onClick={() => setShowComparison(true)}
+            className="flex items-center gap-2"
+          >
+            <BarChart2 className="h-4 w-4" />
+            Comparar Turmas
+          </Button>
+          <Button
             onClick={handleOpenImport}
             className="flex items-center gap-2 text-white" style={{ background: "hsl(var(--primary))" }}
           >
@@ -1645,6 +1656,19 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
         emptyMessage="Nenhum treinamento cadastrado"
         rowClassName={(row) => statusRowClass[getTrainingStatus(row)] || ""}
       />
+
+      {/* Comparison Dialog */}
+      <Dialog open={showComparison} onOpenChange={setShowComparison}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart2 className="h-5 w-5" />
+              Comparativo entre Turmas
+            </DialogTitle>
+          </DialogHeader>
+          <TrainingComparison trainings={trainings} participants={participants} />
+        </DialogContent>
+      </Dialog>
 
       {/* Import Dialog */}
       <Dialog
