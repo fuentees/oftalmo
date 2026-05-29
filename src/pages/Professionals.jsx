@@ -269,53 +269,52 @@ export default function Professionals() {
   );
 
   const columns = [
-    { 
-      header: "Nome", 
+    {
+      header: "Nome",
       cellClassName: "font-medium",
-      render: (row) => (
-        <div>
-          <button
-            type="button"
-            className="font-medium text-slate-900 hover:text-blue-700 hover:underline text-left"
-            onClick={(event) => {
-              event.stopPropagation();
-              navigate(
-                `/ProfessionalProfile?id=${encodeURIComponent(String(row?.id || "").trim())}`
-              );
-            }}
-          >
-            {row.name}
-          </button>
-          {row.position && <p className="text-xs text-slate-500">{row.position}</p>}
-        </div>
-      ),
+      render: (row) => {
+        const isInativo = String(row?.status || "").trim().toLowerCase() === "inativo";
+        return (
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-semibold text-sm shrink-0 mt-0.5">
+              {(row.name || "?")[0].toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <button
+                type="button"
+                className="font-semibold text-slate-900 hover:text-primary text-left leading-tight"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  navigate(`/ProfessionalProfile?id=${encodeURIComponent(String(row?.id || "").trim())}`);
+                }}
+              >
+                {row.name}
+              </button>
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                {row.position && <span className="text-xs text-slate-500">{row.position}</span>}
+                {row.sector && <span className="text-xs text-slate-400">· {row.sector}</span>}
+                {isInativo && (
+                  <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-600">Inativo</span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      },
     },
     {
       header: "Contato",
       render: (row) => (
-        <div className="text-sm">
+        <div className="text-xs space-y-1">
           {row.email && (
-            <div className="flex items-center gap-1 text-slate-600">
-              <Mail className="h-3 w-3" />
-              {row.email}
-            </div>
-          )}
-          {resolveProfessionalGoogleEmail(googleEmailStore, {
-            professionalId: row?.id,
-            professionalEmail: row?.email,
-          }) && (
-            <div className="flex items-center gap-1 text-slate-600">
-              <Mail className="h-3 w-3" />
-              Google:{" "}
-              {resolveProfessionalGoogleEmail(googleEmailStore, {
-                professionalId: row?.id,
-                professionalEmail: row?.email,
-              })}
+            <div className="flex items-center gap-1.5 text-slate-600">
+              <Mail className="h-3 w-3 shrink-0 text-slate-400" />
+              <span className="truncate max-w-[200px]">{row.email}</span>
             </div>
           )}
           {row.phone && (
-            <div className="flex items-center gap-1 text-slate-600">
-              <Phone className="h-3 w-3" />
+            <div className="flex items-center gap-1.5 text-slate-600">
+              <Phone className="h-3 w-3 shrink-0 text-slate-400" />
               {row.phone}
             </div>
           )}
@@ -324,14 +323,13 @@ export default function Professionals() {
     },
     {
       header: "Treinamentos",
+      sortable: false,
       render: (row) => {
-        const count = participants.filter((participant) =>
-          matchesProfessional(participant, row)
-        ).length;
+        const count = participants.filter((p) => matchesProfessional(p, row)).length;
         return (
-          <div className="flex items-center gap-1">
-            <GraduationCap className="h-4 w-4 text-slate-400" />
-            {count}
+          <div className="flex items-center gap-1.5">
+            <GraduationCap className="h-3.5 w-3.5 text-slate-400" />
+            <span className="text-sm font-semibold text-slate-700">{count}</span>
           </div>
         );
       },
@@ -339,41 +337,20 @@ export default function Professionals() {
     {
       header: "Ações",
       cellClassName: "text-right",
+      sortable: false,
       render: (row) => (
-        <div className="flex justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleOpenEdit(row);
-            }}
-          >
+        <div className="flex justify-end gap-0.5">
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-slate-900"
+            onClick={(e) => { e.stopPropagation(); navigate(`/ProfessionalProfile?id=${encodeURIComponent(String(row?.id || "").trim())}`); }}>
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-slate-900"
+            onClick={(e) => { e.stopPropagation(); handleOpenEdit(row); }}>
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-red-600 hover:text-red-700"
-            onClick={(e) => {
-              e.stopPropagation();
-              setPageStatus(null);
-              setDeleteConfirm(row);
-            }}
-          >
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-600"
+            onClick={(e) => { e.stopPropagation(); setPageStatus(null); setDeleteConfirm(row); }}>
             <Trash2 className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(
-                `/ProfessionalProfile?id=${encodeURIComponent(String(row?.id || "").trim())}`
-              );
-            }}
-          >
-            <Eye className="h-4 w-4" />
           </Button>
         </div>
       ),
@@ -394,12 +371,10 @@ export default function Professionals() {
         }}
       />
 
-      <Alert>
-        <AlertDescription>
-          Cadastro manual de profissionais desativado. Esta lista é alimentada
-          automaticamente pelos Usuários cadastrados.
-        </AlertDescription>
-      </Alert>
+      <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
+        <span className="shrink-0 mt-0.5 font-bold">ℹ</span>
+        <span>Esta lista é alimentada automaticamente pelos Usuários cadastrados. Edite aqui apenas dados complementares (telefone, RG, setor etc.).</span>
+      </div>
 
       {isProfessionalsError && (
         <QueryError onRetry={refetchProfessionals} />
@@ -582,7 +557,8 @@ export default function Professionals() {
               </Button>
               <Button
                 type="submit"
-                className="bg-blue-600 hover:bg-blue-700"
+                className="text-white"
+                style={{ background: "hsl(var(--primary))" }}
                 disabled={updateProfessional.isPending}
               >
                 {updateProfessional.isPending && (

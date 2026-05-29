@@ -154,89 +154,75 @@ export default function AuditLogs() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Activity className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{stats.total}</div>
-                <div className="text-sm text-slate-600">Total de Ações</div>
-              </div>
+        <Card className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-blue-50 ring-1 ring-blue-100 flex items-center justify-center shrink-0">
+              <Activity className="h-5 w-5 text-blue-600" />
             </div>
-          </CardContent>
+            <div>
+              <div className="text-2xl font-bold tabular-nums">{stats.total}</div>
+              <div className="text-xs text-slate-500 font-medium uppercase tracking-wide">Total de Ações</div>
+            </div>
+          </div>
         </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-lg bg-green-100 flex items-center justify-center">
-                <Calendar className="h-6 w-6 text-green-600" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{stats.today}</div>
-                <div className="text-sm text-slate-600">Ações Hoje</div>
-              </div>
+        <Card className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-green-50 ring-1 ring-green-100 flex items-center justify-center shrink-0">
+              <Calendar className="h-5 w-5 text-green-600" />
             </div>
-          </CardContent>
+            <div>
+              <div className="text-2xl font-bold tabular-nums">{stats.today}</div>
+              <div className="text-xs text-slate-500 font-medium uppercase tracking-wide">Ações Hoje</div>
+            </div>
+          </div>
         </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-lg bg-purple-100 flex items-center justify-center">
-                <User className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{stats.users}</div>
-                <div className="text-sm text-slate-600">Usuários Ativos</div>
-              </div>
+        <Card className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-purple-50 ring-1 ring-purple-100 flex items-center justify-center shrink-0">
+              <User className="h-5 w-5 text-purple-600" />
             </div>
-          </CardContent>
+            <div>
+              <div className="text-2xl font-bold tabular-nums">{stats.users}</div>
+              <div className="text-xs text-slate-500 font-medium uppercase tracking-wide">Usuários Ativos</div>
+            </div>
+          </div>
         </Card>
       </div>
 
       {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input
-                placeholder="Buscar..."
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
-                className="pl-10"
-              />
-            </div>
-
-            <Select value={actionFilter} onValueChange={handleFilterChange(setActionFilter)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todas as ações" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as ações</SelectItem>
-                {actions.map(action => (
-                  <SelectItem key={action} value={action}>{action}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={entityFilter} onValueChange={handleFilterChange(setEntityFilter)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todas as entidades" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as entidades</SelectItem>
-                {entityTypes.map(type => (
-                  <SelectItem key={type} value={type}>{type}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+          <Input
+            placeholder="Buscar por entidade, usuário ou e-mail..."
+            value={searchTerm}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+            className="pl-10 bg-white"
+          />
+        </div>
+        <Select value={actionFilter} onValueChange={handleFilterChange(setActionFilter)}>
+          <SelectTrigger className="w-full sm:w-44 bg-white">
+            <SelectValue placeholder="Todas as ações" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as ações</SelectItem>
+            {actions.map(action => (
+              <SelectItem key={action} value={action}>{action}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={entityFilter} onValueChange={handleFilterChange(setEntityFilter)}>
+          <SelectTrigger className="w-full sm:w-52 bg-white">
+            <SelectValue placeholder="Todas as entidades" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as entidades</SelectItem>
+            {entityTypes.map(type => (
+              <SelectItem key={type} value={type}>{type}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Tabela */}
       <DataTable
