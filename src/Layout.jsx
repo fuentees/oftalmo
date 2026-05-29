@@ -11,6 +11,8 @@ import {
   X,
   LogOut,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Settings,
   User,
   Calendar,
@@ -42,7 +44,14 @@ import GlobalSearch from "@/components/common/GlobalSearch";
 import CommunicationChatWidget from "@/components/communication/CommunicationChatWidget";
 
 export default function Layout({ children, currentPageName }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(() => {
+    try {
+      return localStorage.getItem("sidebar-expanded") !== "false";
+    } catch {
+      return true;
+    }
+  });
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({
@@ -54,6 +63,14 @@ export default function Layout({ children, currentPageName }) {
   const [profileStatus, setProfileStatus] = useState(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const { user, isAdmin, logout, updateProfile } = useAuth();
+
+  const toggleDesktopSidebar = () => {
+    setSidebarExpanded((v) => {
+      const next = !v;
+      try { localStorage.setItem("sidebar-expanded", String(next)); } catch {}
+      return next;
+    });
+  };
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -153,8 +170,11 @@ export default function Layout({ children, currentPageName }) {
     /(Mac|iPhone|iPad|iPod)/i.test(window.navigator.platform || "");
   const shortcutModifier = isMacPlatform ? "⌘" : "Ctrl";
 
+  const sidebarWidth = sidebarExpanded ? "w-56" : "w-16";
+  const contentPadding = sidebarExpanded ? "lg:pl-56" : "lg:pl-16";
+
   const LogoIcon = () => (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <svg viewBox="0 0 24 24" className="h-5 w-5 text-white shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5">
       <circle cx="12" cy="12" r="3" />
       <path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
     </svg>
@@ -164,27 +184,27 @@ export default function Layout({ children, currentPageName }) {
     <TooltipProvider delayDuration={250}>
       <div className="min-h-screen bg-slate-50">
         {/* Mobile overlay */}
-        {sidebarOpen && (
+        {mobileSidebarOpen && (
           <div
             className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
-            onClick={() => setSidebarOpen(false)}
+            onClick={() => setMobileSidebarOpen(false)}
           />
         )}
 
         {/* Mobile Sidebar */}
         <aside
           className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out lg:hidden ${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+            mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
           <div className="flex h-16 items-center justify-between px-5 shrink-0" style={{ background: "hsl(var(--primary))" }}>
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
                 <LogoIcon />
               </div>
               <span className="text-sm font-bold text-white leading-tight">Centro de Oftalmologia</span>
             </div>
-            <button onClick={() => setSidebarOpen(false)} className="text-white/70 hover:text-white transition-colors">
+            <button onClick={() => setMobileSidebarOpen(false)} className="text-white/70 hover:text-white transition-colors">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -197,7 +217,7 @@ export default function Layout({ children, currentPageName }) {
                 <Link
                   key={item.page}
                   to={createPageUrl(item.page)}
-                  onClick={() => setSidebarOpen(false)}
+                  onClick={() => setMobileSidebarOpen(false)}
                   style={active ? { background: "hsl(var(--primary))" } : undefined}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                     active ? "text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -212,82 +232,132 @@ export default function Layout({ children, currentPageName }) {
 
           <div className="shrink-0 p-4 border-t border-slate-100">
             <div className="flex items-center gap-2 text-xs text-slate-400">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
               <span>Sistema ativo · v2.0</span>
             </div>
           </div>
         </aside>
 
-        {/* Desktop Compact Sidebar */}
-        <aside className="hidden lg:flex fixed inset-y-0 left-0 z-50 w-16 flex-col bg-white border-r border-slate-200/80">
+        {/* Desktop Sidebar */}
+        <aside
+          className={`hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-white border-r border-slate-200/80 transition-all duration-300 ease-in-out overflow-hidden ${sidebarWidth}`}
+        >
           {/* Logo */}
           <div
-            className="flex h-16 items-center justify-center shrink-0"
+            className="flex h-16 items-center shrink-0 px-3"
             style={{ background: "hsl(var(--primary))" }}
           >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="h-9 w-9 rounded-xl bg-white/20 flex items-center justify-center cursor-default ring-1 ring-white/20">
-                  <LogoIcon />
+            <div className={`flex items-center gap-3 min-w-0 ${sidebarExpanded ? "w-full" : "justify-center w-full"}`}>
+              <div className="h-9 w-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0 ring-1 ring-white/20">
+                <LogoIcon />
+              </div>
+              {sidebarExpanded && (
+                <div className="min-w-0 overflow-hidden">
+                  <p className="text-sm font-bold text-white leading-tight truncate">Centro de Oftalmologia</p>
+                  <p className="text-[11px] text-blue-100/80 leading-tight">Sanitária</p>
                 </div>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={12} className="font-semibold">
-                Centro de Oftalmologia Sanitária
-              </TooltipContent>
-            </Tooltip>
+              )}
+            </div>
           </div>
 
-          {/* Nav icons */}
-          <nav className="flex-1 flex flex-col items-center gap-1 py-4 px-2 overflow-y-auto">
+          {/* Nav items */}
+          <nav className="flex-1 flex flex-col gap-0.5 py-4 px-2 overflow-y-auto">
             {navigation.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.page);
+
+              if (!sidebarExpanded) {
+                return (
+                  <Tooltip key={item.page}>
+                    <TooltipTrigger asChild>
+                      <Link
+                        to={createPageUrl(item.page)}
+                        style={active ? { background: "hsl(var(--primary))" } : undefined}
+                        className={`flex items-center justify-center w-10 h-10 mx-auto rounded-xl transition-all duration-150 ${
+                          active ? "text-white shadow-md" : "text-slate-400 hover:bg-slate-100 hover:text-slate-800"
+                        }`}
+                      >
+                        <Icon className="h-5 w-5" />
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={12} className="font-medium">
+                      {item.name}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+
               return (
-                <Tooltip key={item.page}>
-                  <TooltipTrigger asChild>
-                    <Link
-                      to={createPageUrl(item.page)}
-                      style={active ? { background: "hsl(var(--primary))" } : undefined}
-                      className={`flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-150 ${
-                        active
-                          ? "text-white shadow-md"
-                          : "text-slate-400 hover:bg-slate-100 hover:text-slate-800"
-                      }`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={12} className="font-medium">
-                    {item.name}
-                  </TooltipContent>
-                </Tooltip>
+                <Link
+                  key={item.page}
+                  to={createPageUrl(item.page)}
+                  style={active ? { background: "hsl(var(--primary))" } : undefined}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                    active ? "text-white shadow-md" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  <Icon className={`h-4 w-4 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
+                  <span className="truncate">{item.name}</span>
+                  {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60 shrink-0" />}
+                </Link>
               );
             })}
           </nav>
 
-          {/* Status dot */}
-          <div className="shrink-0 pb-5 flex justify-center">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center justify-center w-10 h-10 cursor-default">
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+          {/* Bottom: status + toggle */}
+          <div className={`shrink-0 pb-4 border-t border-slate-100 pt-3 px-2 flex flex-col gap-1 ${sidebarExpanded ? "" : "items-center"}`}>
+            {sidebarExpanded ? (
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
+                  <span>Sistema ativo · v2.0</span>
                 </div>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={12}>
-                <span className="font-medium">Sistema ativo</span>
-                <span className="text-white/60 ml-1.5">v2.0</span>
-              </TooltipContent>
-            </Tooltip>
+                <button
+                  onClick={toggleDesktopSidebar}
+                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all"
+                  title="Recolher menu"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center justify-center w-10 h-6 cursor-default">
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={12}>
+                    <span className="font-medium">Sistema ativo</span>
+                    <span className="text-white/60 ml-1.5">v2.0</span>
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={toggleDesktopSidebar}
+                      className="flex items-center justify-center w-10 h-10 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={12} className="font-medium">
+                    Expandir menu
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            )}
           </div>
         </aside>
 
         {/* Main */}
-        <div className="lg:pl-16">
+        <div className={`transition-all duration-300 ease-in-out ${contentPadding}`}>
           {/* Header */}
           <header className="sticky top-0 z-30 h-16 bg-white/90 backdrop-blur-xl border-b border-slate-200/80">
             <div className="flex h-full items-center gap-4 px-5 lg:px-8">
               <button
-                onClick={() => setSidebarOpen(true)}
+                onClick={() => setMobileSidebarOpen(true)}
                 className="lg:hidden p-2 -ml-1 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all"
               >
                 <Menu className="h-5 w-5" />
