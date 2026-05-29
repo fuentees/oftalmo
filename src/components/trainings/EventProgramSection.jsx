@@ -393,12 +393,13 @@ export default function EventProgramSection({ training }) {
     mutationFn: async () => {
       if (!training?.id) throw new Error("Treinamento inválido.");
       const payloadDates = programDates.map((dateItem, dateIndex) => {
-        const typed = getTypedSessions(dateItem?.sessions, dateIndex);
+        const allSessions = Array.isArray(dateItem?.sessions) ? dateItem.sessions : [];
         // Computa start/end a partir do início do dia + durações encadeadas
-        const withTimes = computeSessionTimes(typed, dateItem?.start_time || "");
+        const withTimes = computeSessionTimes(allSessions, dateItem?.start_time || "");
         return {
           ...dateItem,
           sessions: withTimes.map((session) => ({
+            id: session.id,
             start_time: session.start_time,
             end_time: session.end_time,
             duration_minutes: session.duration_minutes ?? null,
