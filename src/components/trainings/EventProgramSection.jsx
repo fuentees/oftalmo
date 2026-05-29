@@ -84,6 +84,8 @@ export default function EventProgramSection({ training }) {
   const [programStatus, setProgramStatus] = useState(null);
   const [dragState, setDragState] = useState(null);
   const [dragOverState, setDragOverState] = useState(null);
+  // Duração padrão por dia (em minutos), indexada por dateIndex
+  const [defaultDurations, setDefaultDurations] = useState({});
   const trainingProgramSignature = useMemo(() => {
     const normalizedDates = Array.isArray(training?.dates)
       ? training.dates.map((dateItem) => ({
@@ -390,8 +392,7 @@ export default function EventProgramSection({ training }) {
     });
   };
 
-  // Quando o usuário preenche o início, sugere fim = início + duração da sessão
-  // anterior (ou 1h se não há padrão).
+  // Calcula fim = início + duração (prioridade: sessão anterior > duração padrão do dia > 60min)
   const handleStartTimeChange = (dateIndex, sessionId, newStart) => {
     handleUpdateSessionField(dateIndex, sessionId, "start_time", newStart);
 
@@ -402,25 +403,30 @@ export default function EventProgramSection({ training }) {
       if (idx < 0) return prev;
       const session = sessions[idx];
 
-      // Só sugere se o fim estiver vazio
-      if (session.end_time) return prev;
+      if (session.end_time) return prev; // não sobrescreve fim já preenchido
       if (!newStart) return prev;
 
-      // Calcula duração da sessão anterior para reutilizar
-      let durationMinutes = 60; // padrão: 1h
-      const prev1 = sessions[idx - 1];
-      if (prev1?.start_time && prev1?.end_time) {
-        const s = parseTimeToMinutes(prev1.start_time);
-        const e = parseTimeToMinutes(prev1.end_time);
+      // 1. Duração da sessão anterior
+      let durationMinutes = null;
+      const prevSession = sessions[idx - 1];
+      if (prevSession?.start_time && prevSession?.end_time) {
+        const s = parseTimeToMinutes(prevSession.start_time);
+        const e = parseTimeToMinutes(prevSession.end_time);
         if (s !== null && e !== null && e > s) durationMinutes = e - s;
       }
+      // 2. Duração padrão configurada para este dia
+      if (durationMinutes === null) {
+        const configured = Number(defaultDurations[dateIndex]);
+        if (Number.isFinite(configured) && configured > 0) durationMinutes = configured;
+      }
+      // 3. Fallback: 60 min
+      if (durationMinutes === null) durationMinutes = 60;
 
       const startMin = parseTimeToMinutes(newStart);
       if (startMin === null) return prev;
       const endMin = startMin + durationMinutes;
       const endH = String(Math.floor(endMin / 60) % 24).padStart(2, "0");
       const endM = String(endMin % 60).padStart(2, "0");
-      const suggestedEnd = `${endH}:${endM}`;
 
       return prev.map((item, i) =>
         i !== dateIndex
@@ -428,7 +434,7 @@ export default function EventProgramSection({ training }) {
           : {
               ...item,
               sessions: item.sessions.map((s) =>
-                s.id === sessionId ? { ...s, end_time: suggestedEnd } : s
+                s.id === sessionId ? { ...s, end_time: `${endH}:${endM}` } : s
               ),
             }
       );
@@ -959,24 +965,48 @@ export default function EventProgramSection({ training }) {
                   >
                     <CardHeader className="border-b border-slate-100 bg-slate-50/70 pb-3">
                       <CardTitle className="text-sm flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           <CalendarDays className="h-4 w-4 text-blue-500 shrink-0" />
-                          <span className="font-semibold text-slate-800">{dateLabel}</span>
-                          <span className="hidden sm:inline text-xs font-normal text-slate-400">
+                          <span className="font-semibold text-slate-800 truncate">{dateLabel}</span>
+                          <span className="hidden sm:inline text-xs font-normal text-slate-400 shrink-0">
                             · {sessions.filter(hasSessionTypedContent).length} aula{sessions.filter(hasSessionTypedContent).length !== 1 ? "s" : ""}
                           </span>
                         </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="border-blue-200 text-blue-700 hover:bg-blue-50 shrink-0"
-                          onClick={() => handleAddSession(dateIndex)}
-                        >
-                          <Plus className="mr-1 h-3.5 w-3.5" />
-                          <span className="hidden sm:inline">Adicionar aula</span>
-                          <span className="sm:hidden">Adicionar</span>
-                        </Button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* Duração padrão por dia */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-slate-400 hidden sm:inline whitespace-nowrap">Duração padrão:</span>
+                            <select
+                              value={defaultDurations[dateIndex] ?? "60"}
+                              onChange={(e) =>
+                                setDefaultDurations((prev) => ({
+                                  ...prev,
+                                  [dateIndex]: Number(e.target.value),
+                                }))
+                              }
+                              className="h-7 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                              title="Duração padrão das aulas deste dia"
+                            >
+                              <option value="30">30 min</option>
+                              <option value="45">45 min</option>
+                              <option value="60">1h</option>
+                              <option value="90">1h30</option>
+                              <option value="120">2h</option>
+                              <option value="180">3h</option>
+                            </select>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                            onClick={() => handleAddSession(dateIndex)}
+                          >
+                            <Plus className="mr-1 h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Adicionar aula</span>
+                            <span className="sm:hidden">Adicionar</span>
+                          </Button>
+                        </div>
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-3 px-3 pb-3">
