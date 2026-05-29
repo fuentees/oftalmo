@@ -72,6 +72,56 @@ const formatTimeDraft = (value) => {
   return `${digits.slice(0, 2)}:${digits.slice(2)}`;
 };
 
+const DURATION_SUGGESTIONS = [10, 15, 20, 25, 30, 45, 60, 75, 90, 105, 120, 150, 180, 240];
+
+const formatDurationLabel = (minutes) => {
+  if (!minutes || minutes <= 0) return "";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h${String(m).padStart(2, "0")}`;
+};
+
+function DurationInput({ value, onChange, inputClassName = "h-8" }) {
+  const [draft, setDraft] = React.useState(value != null ? String(value) : "");
+
+  React.useEffect(() => {
+    setDraft(value != null ? String(value) : "");
+  }, [value]);
+
+  const commit = (raw) => {
+    const n = parseInt(raw, 10);
+    onChange(Number.isFinite(n) && n > 0 ? n : null);
+  };
+
+  return (
+    <div className="relative flex items-center w-full">
+      <input
+        type="number"
+        min="1"
+        max="480"
+        step="5"
+        list="duration-datalist"
+        value={draft}
+        placeholder="min"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(draft); } }}
+        className={`${inputClassName} w-full rounded-md border border-input bg-background pl-2 pr-12 text-sm focus:outline-none focus:ring-1 focus:ring-primary`}
+      />
+      <span className="absolute right-2 text-[11px] font-semibold text-slate-400 pointer-events-none select-none whitespace-nowrap">
+        {value ? formatDurationLabel(value) : "min"}
+      </span>
+      <datalist id="duration-datalist">
+        {DURATION_SUGGESTIONS.map((m) => (
+          <option key={m} value={m}>{formatDurationLabel(m)}</option>
+        ))}
+      </datalist>
+    </div>
+  );
+}
+
 export default function EventProgramSection({ training }) {
   const queryClient = useQueryClient();
 
@@ -1064,30 +1114,10 @@ export default function EventProgramSection({ training }) {
                                     ) : null}
                                     {/* Duração — único campo editável de tempo */}
                                     <TableCell className="py-1.5 px-2">
-                                      <select
-                                        value={session.duration_minutes ?? ""}
-                                        onChange={(e) =>
-                                          handleDurationChange(
-                                            dateIndex,
-                                            session.id,
-                                            e.target.value ? Number(e.target.value) : null
-                                          )
-                                        }
-                                        className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                      >
-                                        <option value="">— duração —</option>
-                                        <option value="15">15 min</option>
-                                        <option value="30">30 min</option>
-                                        <option value="45">45 min</option>
-                                        <option value="60">1h</option>
-                                        <option value="75">1h15</option>
-                                        <option value="90">1h30</option>
-                                        <option value="105">1h45</option>
-                                        <option value="120">2h</option>
-                                        <option value="150">2h30</option>
-                                        <option value="180">3h</option>
-                                        <option value="240">4h</option>
-                                      </select>
+                                      <DurationInput
+                                        value={session.duration_minutes}
+                                        onChange={(v) => handleDurationChange(dateIndex, session.id, v)}
+                                      />
                                     </TableCell>
                                     {/* Horário calculado automaticamente */}
                                     <TableCell className="py-1.5 px-3">
@@ -1217,30 +1247,11 @@ export default function EventProgramSection({ training }) {
                                 </div>
                                 <div className="space-y-1">
                                   <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Duração</label>
-                                  <select
-                                    value={session.duration_minutes ?? ""}
-                                    onChange={(e) =>
-                                      handleDurationChange(
-                                        dateIndex,
-                                        session.id,
-                                        e.target.value ? Number(e.target.value) : null
-                                      )
-                                    }
-                                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                  >
-                                    <option value="">— duração —</option>
-                                    <option value="15">15 min</option>
-                                    <option value="30">30 min</option>
-                                    <option value="45">45 min</option>
-                                    <option value="60">1h</option>
-                                    <option value="75">1h15</option>
-                                    <option value="90">1h30</option>
-                                    <option value="105">1h45</option>
-                                    <option value="120">2h</option>
-                                    <option value="150">2h30</option>
-                                    <option value="180">3h</option>
-                                    <option value="240">4h</option>
-                                  </select>
+                                  <DurationInput
+                                    value={session.duration_minutes}
+                                    onChange={(v) => handleDurationChange(dateIndex, session.id, v)}
+                                    inputClassName="h-9"
+                                  />
                                 </div>
                                 <div className="space-y-1">
                                   <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Tema / atividade</label>
