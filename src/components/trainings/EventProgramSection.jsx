@@ -14,12 +14,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  ArrowDown,
+  ArrowUp,
   CalendarDays,
   ClipboardPaste,
   Copy,
   CopyPlus,
   Download,
-  GripVertical,
   Plus,
   Save,
   Trash2,
@@ -132,8 +133,6 @@ export default function EventProgramSection({ training }) {
 
   const [programDates, setProgramDates] = useState([]);
   const [programStatus, setProgramStatus] = useState(null);
-  const [dragState, setDragState] = useState(null);
-  const [dragOverState, setDragOverState] = useState(null);
   const trainingProgramSignature = useMemo(() => {
     const normalizedDates = Array.isArray(training?.dates)
       ? training.dates.map((dateItem) => ({
@@ -508,41 +507,16 @@ export default function EventProgramSection({ training }) {
     );
   };
 
-  const handleDragStart = (e, dateIndex, sessionId) => {
-    setDragState({ dateIndex, sessionId });
-    e.dataTransfer.effectAllowed = "move";
-  };
-
-  const handleDragOver = (e, dateIndex, sessionIndex) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverState({ dateIndex, sessionIndex });
-  };
-
-  const handleDrop = (e, targetDateIndex, targetSessionIndex) => {
-    e.preventDefault();
-    if (!dragState) return;
-    const { dateIndex: srcDateIndex, sessionId } = dragState;
-    setDragState(null);
-    setDragOverState(null);
-    setProgramDates((prev) => {
-      const next = prev.map((dateItem) => ({
-        ...dateItem,
-        sessions: [...(Array.isArray(dateItem.sessions) ? dateItem.sessions : [])],
-      }));
-      const srcSession = next[srcDateIndex]?.sessions.find((s) => s.id === sessionId);
-      if (!srcSession) return prev;
-      next[srcDateIndex].sessions = next[srcDateIndex].sessions.filter((s) => s.id !== sessionId);
-      if (!next[targetDateIndex]) return next;
-      const insertAt = Math.min(targetSessionIndex, next[targetDateIndex].sessions.length);
-      next[targetDateIndex].sessions.splice(insertAt, 0, srcSession);
+  const handleMoveSession = (dateIndex, sessionId, direction) => {
+    upsertDateSessions(dateIndex, (sessions) => {
+      const idx = sessions.findIndex((s) => s.id === sessionId);
+      if (idx < 0) return sessions;
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= sessions.length) return sessions;
+      const next = [...sessions];
+      [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
       return next;
     });
-  };
-
-  const handleDragEnd = () => {
-    setDragState(null);
-    setDragOverState(null);
   };
 
   const handleCopyProgram = async () => {
@@ -1074,35 +1048,45 @@ export default function EventProgramSection({ training }) {
                             <Table>
                               <TableHeader>
                                 <TableRow className="bg-slate-100/70">
-                                  <TableHead className="w-8 p-2" />
+                                  <TableHead className="w-14 p-2 text-center">Ordem</TableHead>
                                   <TableHead className="w-28">Data</TableHead>
                                   <TableHead className="w-32">Duração</TableHead>
                                   <TableHead className="w-36">Horário</TableHead>
                                   <TableHead>Tema / atividade</TableHead>
                                   <TableHead className="min-w-[200px]">Palestrante</TableHead>
-                                  <TableHead className="w-16" />
+                                  <TableHead className="w-20" />
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
                                 {computed.map((session, sessionIndex) => (
                                   <TableRow
                                     key={session.id}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, dateIndex, session.id)}
-                                    onDragOver={(e) => handleDragOver(e, dateIndex, sessionIndex)}
-                                    onDrop={(e) => handleDrop(e, dateIndex, sessionIndex)}
-                                    onDragEnd={handleDragEnd}
-                                    className={`align-middle transition-opacity ${
-                                      dragState?.sessionId === session.id ? "opacity-40" : ""
-                                    } ${
-                                      dragOverState?.dateIndex === dateIndex &&
-                                      dragOverState?.sessionIndex === sessionIndex
-                                        ? "border-t-2 border-blue-400 bg-blue-50/40"
-                                        : ""
-                                    }`}
+                                    className="align-middle"
                                   >
-                                    <TableCell className="p-2 text-slate-300 cursor-grab active:cursor-grabbing">
-                                      <GripVertical className="h-4 w-4" />
+                                    <TableCell className="p-1 text-center">
+                                      <div className="flex flex-col items-center gap-0.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMoveSession(dateIndex, session.id, "up")}
+                                          disabled={sessionIndex === 0}
+                                          className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                                          title="Mover para cima"
+                                        >
+                                          <ArrowUp className="h-3.5 w-3.5" />
+                                        </button>
+                                        <span className="text-[10px] font-bold text-slate-400 leading-none">
+                                          {sessionIndex + 1}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMoveSession(dateIndex, session.id, "down")}
+                                          disabled={sessionIndex === computed.length - 1}
+                                          className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                                          title="Mover para baixo"
+                                        >
+                                          <ArrowDown className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
                                     </TableCell>
                                     {sessionIndex === 0 ? (
                                       <TableCell
@@ -1187,22 +1171,6 @@ export default function EventProgramSection({ training }) {
                                     </TableCell>
                                   </TableRow>
                                 ))}
-                                {dragState && dragState.dateIndex !== dateIndex && (
-                                  <TableRow
-                                    onDragOver={(e) => handleDragOver(e, dateIndex, sessions.length)}
-                                    onDrop={(e) => handleDrop(e, dateIndex, sessions.length)}
-                                    className={`h-8 border-dashed border-2 ${
-                                      dragOverState?.dateIndex === dateIndex &&
-                                      dragOverState?.sessionIndex === sessions.length
-                                        ? "border-blue-400 bg-blue-50"
-                                        : "border-slate-200"
-                                    }`}
-                                  >
-                                    <TableCell colSpan={7} className="text-center text-xs text-slate-400">
-                                      Solte aqui para mover para este dia
-                                    </TableCell>
-                                  </TableRow>
-                                )}
                               </TableBody>
                             </Table>
                           </div>
@@ -1217,7 +1185,26 @@ export default function EventProgramSection({ training }) {
                                 className="rounded-xl border border-slate-200 bg-white p-3 space-y-2.5"
                               >
                                 <div className="flex items-center gap-2">
-                                  <GripVertical className="h-4 w-4 text-slate-300 shrink-0" />
+                                  <div className="flex items-center gap-0.5 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveSession(dateIndex, session.id, "up")}
+                                      disabled={sessionIndex === 0}
+                                      className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                                      title="Mover para cima"
+                                    >
+                                      <ArrowUp className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveSession(dateIndex, session.id, "down")}
+                                      disabled={sessionIndex === computeSessionTimes(sessions, dateItem?.start_time || "").length - 1}
+                                      className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                                      title="Mover para baixo"
+                                    >
+                                      <ArrowDown className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
                                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                                     Aula {sessionIndex + 1}
                                   </span>
