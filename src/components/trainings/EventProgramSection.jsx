@@ -134,9 +134,9 @@ export default function EventProgramSection({ training }) {
 
   const [programDates, setProgramDates] = useState([]);
   const [programStatus, setProgramStatus] = useState(null);
-  const [dragState, setDragState] = useState(null);
-  const [dragOverState, setDragOverState] = useState(null);
-  const dragFromGripRef = React.useRef(false);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null);
+  const dragRef = React.useRef(null); // { sessionId, srcDateIndex } — usa ref para evitar closure stale no globalMouseUp
   const trainingProgramSignature = useMemo(() => {
     const normalizedDates = Array.isArray(training?.dates)
       ? training.dates.map((dateItem) => ({
@@ -501,39 +501,46 @@ export default function EventProgramSection({ training }) {
     );
   };
 
-  // Drag só funciona quando iniciado pelo grip handle
-  const handleDragStart = (e, dateIndex, sessionId) => {
-    if (!dragFromGripRef.current) { e.preventDefault(); return; }
-    dragFromGripRef.current = false;
-    setDragState({ dateIndex, sessionId });
-    e.dataTransfer.effectAllowed = "move";
+  // Inicia drag a partir do grip
+  const startDrag = (e, dateIndex, sessionId) => {
+    e.preventDefault(); // impede seleção de texto
+    dragRef.current = { sessionId, srcDateIndex: dateIndex };
+    setDraggingId(sessionId);
+    setDropTarget({ dateIndex, sessionIndex: 0 });
   };
 
-  const handleDragOver = (e, dateIndex, sessionIndex) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverState({ dateIndex, sessionIndex });
+  // Atualiza alvo enquanto mouse passa por cima de uma linha
+  const onRowEnter = (dateIndex, sessionIndex) => {
+    if (!dragRef.current) return;
+    setDropTarget({ dateIndex, sessionIndex });
   };
 
-  const handleDrop = (e, targetDateIndex, targetSessionIndex) => {
-    e.preventDefault();
-    if (!dragState) return;
-    const { dateIndex: srcDateIndex, sessionId } = dragState;
-    setDragState(null);
-    setDragOverState(null);
-    setProgramDates((prev) => {
-      const next = prev.map((d) => ({ ...d, sessions: [...(Array.isArray(d.sessions) ? d.sessions : [])] }));
-      const srcSession = next[srcDateIndex]?.sessions.find((s) => s.id === sessionId);
-      if (!srcSession) return prev;
-      next[srcDateIndex].sessions = next[srcDateIndex].sessions.filter((s) => s.id !== sessionId);
-      if (!next[targetDateIndex]) return next;
-      const insertAt = Math.min(targetSessionIndex, next[targetDateIndex].sessions.length);
-      next[targetDateIndex].sessions.splice(insertAt, 0, srcSession);
-      return next;
-    });
-  };
-
-  const handleDragEnd = () => { setDragState(null); setDragOverState(null); dragFromGripRef.current = false; };
+  // Finaliza drag ao soltar o mouse em qualquer lugar
+  React.useEffect(() => {
+    const finish = () => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      dragRef.current = null;
+      setDraggingId(null);
+      setDropTarget((tgt) => {
+        if (!tgt) return null;
+        const { sessionId, srcDateIndex } = drag;
+        setProgramDates((prev) => {
+          const next = prev.map((d) => ({ ...d, sessions: [...(Array.isArray(d.sessions) ? d.sessions : [])] }));
+          const session = next[srcDateIndex]?.sessions?.find((s) => s.id === sessionId);
+          if (!session) return prev;
+          next[srcDateIndex].sessions = next[srcDateIndex].sessions.filter((s) => s.id !== sessionId);
+          if (!next[tgt.dateIndex]) return next;
+          const insertAt = Math.min(tgt.sessionIndex, next[tgt.dateIndex].sessions.length);
+          next[tgt.dateIndex].sessions.splice(insertAt, 0, session);
+          return next;
+        });
+        return null;
+      });
+    };
+    document.addEventListener("mouseup", finish);
+    return () => document.removeEventListener("mouseup", finish);
+  }, []);
 
   const handleUpdateSessionSpeaker = (dateIndex, sessionId, name, professionalId, professionalEmail) => {
     upsertDateSessions(dateIndex, (sessions) =>
@@ -1144,23 +1151,18 @@ export default function EventProgramSection({ training }) {
                                   const isAbsoluteLast = sessionIndex === computed.length - 1 && dateIndex === programDates.length - 1;
                                   const crossUp = sessionIndex === 0 && dateIndex > 0;
                                   const crossDown = sessionIndex === computed.length - 1 && dateIndex < programDates.length - 1;
-                                  const isDragging = dragState?.sessionId === session.id;
-                                  const isDropTarget = dragOverState?.dateIndex === dateIndex && dragOverState?.sessionIndex === sessionIndex;
+                                  const isDragging = draggingId === session.id;
+                                  const isDropTarget = dropTarget?.dateIndex === dateIndex && dropTarget?.sessionIndex === sessionIndex;
                                   return (
                                   <TableRow
                                     key={session.id}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, dateIndex, session.id)}
-                                    onDragOver={(e) => handleDragOver(e, dateIndex, sessionIndex)}
-                                    onDrop={(e) => handleDrop(e, dateIndex, sessionIndex)}
-                                    onDragEnd={handleDragEnd}
-                                    className={`align-middle transition-opacity ${isDragging ? "opacity-40" : ""} ${isDropTarget ? "border-t-2 border-blue-400 bg-blue-50/40" : ""}`}
+                                    onMouseEnter={() => onRowEnter(dateIndex, sessionIndex)}
+                                    className={`align-middle transition-opacity select-none ${isDragging ? "opacity-40" : ""} ${isDropTarget && draggingId ? "border-t-2 border-blue-400 bg-blue-50/40" : ""}`}
                                   >
                                     {/* Grip — único ponto de início do drag */}
                                     <TableCell
                                       className="p-2 text-slate-300 cursor-grab active:cursor-grabbing select-none"
-                                      onMouseDown={() => { dragFromGripRef.current = true; }}
-                                      onMouseUp={() => { dragFromGripRef.current = false; }}
+                                      onMouseDown={(e) => startDrag(e, dateIndex, session.id)}
                                     >
                                       <GripVertical className="h-4 w-4" />
                                     </TableCell>
@@ -1190,7 +1192,6 @@ export default function EventProgramSection({ training }) {
                                       <Input
                                         value={session.title}
                                         onChange={(e) => handleUpdateSessionField(dateIndex, session.id, "title", e.target.value)}
-                                        onMouseDown={(e) => e.stopPropagation()}
                                         placeholder="Tema / atividade"
                                         className="h-8 text-sm"
                                       />
@@ -1205,7 +1206,6 @@ export default function EventProgramSection({ training }) {
                                             const matched = professionals.find((p) => p.name === name);
                                             handleUpdateSessionSpeaker(dateIndex, session.id, name, matched?.id || "", matched?.email || "");
                                           }}
-                                          onMouseDown={(e) => e.stopPropagation()}
                                           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddSession(dateIndex); } }}
                                           placeholder="Palestrante"
                                           className={`h-8 text-sm ${session.professional_id ? "pr-7 border-green-400 focus-visible:ring-green-400" : ""}`}
@@ -1240,13 +1240,12 @@ export default function EventProgramSection({ training }) {
                                   </TableRow>
                                   );
                                 })}
-                                {dragState && dragState.dateIndex !== dateIndex && (
+                                {draggingId && dragRef.current?.srcDateIndex !== dateIndex && (
                                   <TableRow
-                                    onDragOver={(e) => handleDragOver(e, dateIndex, sessions.length)}
-                                    onDrop={(e) => handleDrop(e, dateIndex, sessions.length)}
-                                    className={`h-8 border-dashed border-2 ${dragOverState?.dateIndex === dateIndex && dragOverState?.sessionIndex === sessions.length ? "border-blue-400 bg-blue-50" : "border-slate-200"}`}
+                                    onMouseEnter={() => onRowEnter(dateIndex, sessions.length)}
+                                    className={`h-8 border-dashed border-2 cursor-pointer ${dropTarget?.dateIndex === dateIndex && dropTarget?.sessionIndex === sessions.length ? "border-blue-400 bg-blue-50" : "border-slate-200"}`}
                                   >
-                                    <TableCell colSpan={7} className="text-center text-xs text-slate-400">
+                                    <TableCell colSpan={7} className="text-center text-xs text-slate-400 pointer-events-none">
                                       Solte aqui para mover para este dia
                                     </TableCell>
                                   </TableRow>
