@@ -342,8 +342,9 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     occurrences: 5,
   });
   const [initializedTrainingKey, setInitializedTrainingKey] = useState(null);
-  // Evita que o efeito de regeneração de datas sobrescreva as datas recém-carregadas do banco.
-  const skipNextDateRegenRef = React.useRef(false);
+  // Rastreia o último initializedTrainingKey visto pelo efeito de regeneração
+  // para distinguir mudanças de inicialização de mudanças feitas pelo usuário.
+  const lastInitKeySeenRef = React.useRef(null);
 
   const queryClient = useQueryClient();
   const { municipalityOptions, getGveByMunicipio } = useGveMapping();
@@ -395,9 +396,6 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         resolvedDates
       );
 
-      // Sinaliza que o próximo disparo do efeito de regeneração deve ser ignorado,
-      // pois as datas vêm do banco e não de uma mudança manual do usuário.
-      skipNextDateRegenRef.current = true;
       setFormData({
         title: sourceTraining.title || "",
         code: sourceTraining.code || "",
@@ -477,22 +475,27 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
 
   useEffect(() => {
     if (dateMode !== "range") return;
-    // Se as datas foram recém-carregadas do banco, ignora esta execução
-    // para não sobrescrever com datas recalculadas.
-    if (skipNextDateRegenRef.current) {
-      skipNextDateRegenRef.current = false;
+
+    // Não regenera enquanto o formulário ainda não foi inicializado.
+    if (!initializedTrainingKey) return;
+
+    // Quando initializedTrainingKey muda (null → id ou null → "__new__"),
+    // significa que o efeito de carga acabou de popular o formData com os
+    // dados corretos. Registra a chave vista e sai sem sobrescrever.
+    if (lastInitKeySeenRef.current !== initializedTrainingKey) {
+      lastInitKeySeenRef.current = initializedTrainingKey;
       return;
     }
+
+    // Chave não mudou: o usuário alterou dateMode ou rangeConfig via UI.
+    // Regenera as datas normalmente.
     const generatedDates = buildRangeDates(rangeConfig);
     if (!generatedDates.length) return;
     setFormData((prev) => {
       if (areDateListsEqual(prev.dates || [], generatedDates)) return prev;
-      return {
-        ...prev,
-        dates: generatedDates,
-      };
+      return { ...prev, dates: generatedDates };
     });
-  }, [dateMode, rangeConfig]);
+  }, [dateMode, rangeConfig, initializedTrainingKey]);
 
   useEffect(() => {
     const nextDuration = calculateDurationHours(formData.dates);
