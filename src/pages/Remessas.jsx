@@ -5,6 +5,7 @@ import { supabase } from "@/api/supabaseClient";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { downloadRemessaPdf, previewRemessaPdf } from "@/lib/remessaPdf";
+import { toast } from "@/components/ui/use-toast";
 import {
   Plus,
   Printer,
@@ -139,8 +140,10 @@ export default function Remessas() {
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }) =>
       dataClient.entities.Remessa.update(id, { status }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["remessas"] }),
+    onSuccess: (_, { status }) => {
+      queryClient.invalidateQueries({ queryKey: ["remessas"] });
+      toast({ title: `Status atualizado para "${STATUS_LABELS[status] || status}"` });
+    },
   });
 
   const years = useMemo(
@@ -294,6 +297,12 @@ export default function Remessas() {
         });
       }
       queryClient.invalidateQueries({ queryKey: ["remessas"] });
+      toast({
+        title: editingRemessa ? "Remessa atualizada" : "Remessa criada",
+        description: editingRemessa
+          ? "Alterações salvas e PDF baixado."
+          : "Relação de Remessa criada com sucesso.",
+      });
       setShowForm(false);
       setEditingRemessa(null);
     } catch (err) {
@@ -391,9 +400,12 @@ export default function Remessas() {
                       </span>
                     )}
                     <Badge
+                      role="button"
+                      tabIndex={0}
                       title={STATUS_TOOLTIP[r.status]}
-                      className={`${STATUS_COLORS[r.status] || STATUS_COLORS.emitida} transition-colors select-none`}
-                      onClick={() => cycleStatus(r)}
+                      className={`${STATUS_COLORS[r.status] || STATUS_COLORS.emitida} transition-colors select-none ${updateStatusMutation.isPending ? "opacity-50 pointer-events-none" : ""}`}
+                      onClick={() => !updateStatusMutation.isPending && cycleStatus(r)}
+                      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && !updateStatusMutation.isPending && cycleStatus(r)}
                     >
                       {r.status === "recebida" && (
                         <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -574,11 +586,7 @@ export default function Remessas() {
                 ) : (
                   <FileText className="h-4 w-4" />
                 )}
-                {saving
-                  ? "Salvando..."
-                  : editingRemessa
-                  ? "Salvar Alterações"
-                  : "Criar e Baixar PDF"}
+                {saving ? "Salvando..." : "Salvar e Baixar PDF"}
               </Button>
             </div>
           </div>
