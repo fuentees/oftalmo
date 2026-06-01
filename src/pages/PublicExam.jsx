@@ -60,7 +60,12 @@ export default function PublicExam() {
         setExam(examObj);
 
         const qs = await dataClient.entities.ExamQuestion.filter({ exam_id: examId }, "ordem");
-        setQuestions(Array.isArray(qs) ? qs : []);
+        // Shuffle multiple-choice options once per session (anti-cola)
+        const shuffled = (Array.isArray(qs) ? qs : []).map((q) => {
+          if (q.type !== "multiple_choice" || !Array.isArray(q.options)) return q;
+          return { ...q, options: [...q.options].sort(() => Math.random() - 0.5) };
+        });
+        setQuestions(shuffled);
 
         // Load enrolled participants if training is linked
         if (examObj.training_id) {
