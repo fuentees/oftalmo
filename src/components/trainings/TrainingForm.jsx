@@ -266,7 +266,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
               fallbackTimes?.end_time ||
               "12:00"
           ).trim() || "12:00";
-        return { date, start_time, end_time };
+        return { ...(typeof item === "object" && item !== null ? item : {}), date, start_time, end_time };
       })
       .flat()
       .filter(Boolean);
