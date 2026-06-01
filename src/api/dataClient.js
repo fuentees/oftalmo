@@ -183,6 +183,9 @@ const ENTITY_TABLES = {
   TrainingWaitlist: "training_waitlist",
   ParticipantNote: "participant_notes",
   Remessa: "remessas",
+  Exam: "exams",
+  ExamQuestion: "exam_questions",
+  ExamSubmission: "exam_submissions",
 };
 
 const applyOrder = (query, order) => {

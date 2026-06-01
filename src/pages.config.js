@@ -71,6 +71,9 @@ import TracomaExaminerEvaluationPage from './pages/TracomaExaminerEvaluationPage
 import MaterialRequests from './pages/MaterialRequests';
 import PublicMaterialRequest from './pages/PublicMaterialRequest';
 import Remessas from './pages/Remessas';
+import ExamBuilder from './pages/ExamBuilder';
+import ExamResults from './pages/ExamResults';
+import PublicExam from './pages/PublicExam';
 import __Layout from './Layout.jsx';
 
 
@@ -99,6 +102,9 @@ export const PAGES = {
     "MaterialRequests": MaterialRequests,
     "PublicMaterialRequest": PublicMaterialRequest,
     "Remessas": Remessas,
+    "ExamBuilder": ExamBuilder,
+    "ExamResults": ExamResults,
+    "PublicExam": PublicExam,
 }
 
 export const pagesConfig = {
