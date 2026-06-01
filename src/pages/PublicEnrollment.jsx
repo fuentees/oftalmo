@@ -729,6 +729,82 @@ export default function PublicEnrollment() {
             </p>
           </CardContent>
         </Card>
+
+        {/* Programação pós-inscrição */}
+        {hasPublishedProgram && (
+          <div className="max-w-lg w-full mt-4 space-y-3">
+            <div className="flex items-center gap-2 px-1">
+              <div className="flex-1 h-px bg-green-200" />
+              <span className="text-sm font-semibold text-green-700 flex items-center gap-1.5">
+                <Calendar className="h-4 w-4" />
+                Programação do Treinamento
+              </span>
+              <div className="flex-1 h-px bg-green-200" />
+            </div>
+            {trainingDates
+              .filter((d) => Array.isArray(d.sessions) && d.sessions.length > 0)
+              .map((dateItem, i) => {
+                const sessions = dateItem.sessions || [];
+                return (
+                  <div key={i} className="rounded-2xl overflow-hidden shadow-sm border border-green-100 bg-white">
+                    <div className="px-4 py-3 flex items-center gap-3" style={{ background: "hsl(var(--primary))" }}>
+                      <div className="flex-1">
+                        <p className="text-[11px] font-semibold text-white/70 uppercase tracking-widest leading-none mb-0.5">Dia {i + 1}</p>
+                        <p className="text-sm font-bold text-white">{formatDateSafe(dateItem.date)}</p>
+                      </div>
+                      {dateItem.start_time && (
+                        <span className="text-xs font-semibold text-white bg-white/20 rounded-lg px-2.5 py-1">
+                          {dateItem.start_time}{dateItem.end_time ? ` – ${dateItem.end_time}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {sessions.map((session, j) => {
+                        const title = String(session?.title || session?.activity || "").trim();
+                        const speaker = String(session?.speaker_name || session?.responsible || "").trim();
+                        const timeLabel = session.start_time && session.end_time
+                          ? `${session.start_time} – ${session.end_time}`
+                          : session.start_time || "";
+                        const isBreak = !speaker && (!title || /intervalo|break|coffee|almoço|lanche|pausa/i.test(title));
+                        return (
+                          <div key={j} className={`flex items-start gap-3 px-4 py-3 ${isBreak ? "bg-slate-50/60" : ""}`}>
+                            {timeLabel && (
+                              <span className="shrink-0 text-[11px] font-bold text-primary bg-primary/8 px-2 py-1 rounded-md whitespace-nowrap mt-0.5">
+                                {timeLabel}
+                              </span>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              {title ? (
+                                <p className={`text-sm font-semibold leading-snug ${isBreak ? "text-slate-400 italic" : "text-slate-800"}`}>
+                                  {isBreak && <Coffee className="h-3.5 w-3.5 inline mr-1 text-slate-400" />}
+                                  {title}
+                                </p>
+                              ) : null}
+                              {speaker && (
+                                <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                                  <Mic className="h-3 w-3 text-slate-400 shrink-0" />
+                                  {speaker}
+                                </p>
+                              )}
+                            </div>
+                            {session.duration_minutes > 0 && (
+                              <span className="shrink-0 text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
+                                {session.duration_minutes < 60
+                                  ? `${session.duration_minutes}min`
+                                  : session.duration_minutes % 60 === 0
+                                  ? `${session.duration_minutes / 60}h`
+                                  : `${Math.floor(session.duration_minutes / 60)}h${String(session.duration_minutes % 60).padStart(2, "0")}`}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
       </div>
     );
   }
@@ -931,14 +1007,15 @@ export default function PublicEnrollment() {
 
             {hasPublishedProgram && (
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="inscricao" className="gap-2">
-                    <User className="h-3.5 w-3.5" />
+                <TabsList className="grid w-full grid-cols-2 h-12">
+                  <TabsTrigger value="inscricao" className="gap-2 text-sm">
+                    <User className="h-4 w-4" />
                     Inscrição
                   </TabsTrigger>
-                  <TabsTrigger value="programacao" className="gap-2">
-                    <Calendar className="h-3.5 w-3.5" />
+                  <TabsTrigger value="programacao" className="gap-2 text-sm relative">
+                    <Calendar className="h-4 w-4" />
                     Programação
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
