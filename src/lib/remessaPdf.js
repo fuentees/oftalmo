@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { BRASAO_SP_B64 } from "./brasaoBase64";
 
 const ORIGEM = "Centro de Oftalmologia Sanitária – CVE";
 const INSTITUICAO_LINHA1 = "SECRETARIA DE ESTADO DA SAÚDE";
@@ -57,15 +58,8 @@ export function generateRemessaPdf(remessa) {
   pdf.text(TELEFONE, textX, y + 24.5, { align: "center" });
   pdf.text(EMAIL, textX, y + 27.5, { align: "center" });
 
-  // Placeholder do brasão SP (retângulo tracejado)
-  pdf.setDrawColor(150);
-  pdf.setLineDashPattern([1, 1], 0);
-  pdf.rect(ML + 2, y + 2, logoW - 4, 24);
-  pdf.setLineDashPattern([], 0);
-  pdf.setFontSize(6);
-  pdf.setTextColor(150);
-  pdf.text("Brasão", ML + logoW / 2, y + 15, { align: "center" });
-  pdf.setTextColor(0, 0, 0);
+  // Brasão do Estado de São Paulo
+  pdf.addImage(BRASAO_SP_B64, "PNG", ML + 1, y + 1, logoW - 2, 26);
 
   y += 32;
 
