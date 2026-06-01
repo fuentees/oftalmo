@@ -65,7 +65,7 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/api/supabaseClient";
-import { downloadRemessaPdf } from "@/lib/remessaPdf";
+import { downloadRemessaPdf, previewRemessaPdf } from "@/lib/remessaPdf";
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
@@ -1290,6 +1290,7 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
           assunto: `${mov.quantity} ${mov.material_name}`,
         },
       ],
+      movement_ids: mov.id ? [mov.id] : [],
     });
     setRemessaError(null);
     setShowRemessaDialog(true);
@@ -1317,6 +1318,7 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
         responsavel_cargo: (remessaForm.responsavel_cargo || "").trim(),
         observacoes: "",
         items: remessaForm.items.filter((it) => it.assunto?.trim()),
+        movement_ids: remessaForm.movement_ids || [],
         status: "emitida",
       };
       await dataClient.entities.Remessa.create(remessaPayload);
@@ -2148,6 +2150,22 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
                   disabled={savingRemessa}
                 >
                   Cancelar
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={savingRemessa || !remessaForm?.para_destino?.trim()}
+                  className="gap-1.5"
+                  onClick={() => {
+                    if (!remessaForm?.para_destino?.trim()) return;
+                    previewRemessaPdf({
+                      numero: 0,
+                      ano: new Date(remessaForm.data + "T00:00:00").getFullYear(),
+                      ...remessaForm,
+                      items: remessaForm.items.filter((it) => it.assunto?.trim()),
+                    });
+                  }}
+                >
+                  <Eye className="h-4 w-4" /> Visualizar
                 </Button>
                 <Button
                   onClick={handleSaveRemessa}

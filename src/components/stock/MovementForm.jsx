@@ -304,12 +304,12 @@ export default function MovementForm({
         if (payloads.length === 0) {
           throw new Error("Nenhum item válido encontrado para registrar.");
         }
-        await dataClient.entities.StockMovement.bulkCreate(payloads);
+        const created = await dataClient.entities.StockMovement.bulkCreate(payloads);
         for (const movementItem of payloads) {
           const effect = computeEffect(movementItem);
           await applyStockDelta(movementItem.material_id, effect);
         }
-        return;
+        return Array.isArray(created) ? created.map((c) => c.id).filter(Boolean) : [];
       }
 
       await dataClient.entities.StockMovement.update(movement.id, data);
@@ -328,11 +328,12 @@ export default function MovementForm({
         }
       }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       setFormStatus(null);
       queryClient.invalidateQueries({ queryKey: ["materials"] });
       queryClient.invalidateQueries({ queryKey: ["movements"] });
       if (remessaPreDataRef.current && typeof onAfterSaidaSaved === "function") {
+        remessaPreDataRef.current.movement_ids = Array.isArray(result) ? result : [];
         onAfterSaidaSaved(remessaPreDataRef.current);
         remessaPreDataRef.current = null;
       }
