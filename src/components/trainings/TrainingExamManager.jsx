@@ -10,7 +10,7 @@ import {
 import {
   Plus, Trash2, Edit, Loader2, Image, X, Copy, CheckCircle2,
   ClipboardCheck, Save, ToggleLeft, ToggleRight, AlignLeft,
-  List, Search, Download, Users, BarChart2, Eye,
+  List, Search, Download, Users, BarChart2, Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -325,18 +328,67 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
     );
   }, [submissions, searchSub]);
 
-  // Participants enrolled but haven't submitted yet
-  const pendingParticipants = useMemo(() => {
-    if (!enrolledParticipants.length || !resultsExamId) return [];
-    const submittedIds = new Set(submissions.map((s) => s.training_participant_id).filter(Boolean));
-    return enrolledParticipants.filter((p) => !submittedIds.has(p.id));
+  // Unified list: all enrolled + merge with submission result
+  const allParticipantsWithStatus = useMemo(() => {
+    if (!resultsExamId) return [];
+    const submissionByParticipant = new Map(
+      submissions
+        .filter((s) => s.training_participant_id)
+        .map((s) => [s.training_participant_id, s])
+    );
+    // Enrolled participants merged with their submission
+    const withStatus = enrolledParticipants.map((p) => {
+      const sub = submissionByParticipant.get(p.id);
+      return {
+        id: p.id,
+        name: p.professional_name || "—",
+        municipality: p.municipality || "—",
+        gve: p.health_region || "—",
+        submission: sub || null,
+        status: sub ? (sub.passed ? "aprovado" : "reprovado") : "pendente",
+        percentage: sub ? Math.round(Number(sub.percentage || 0)) : null,
+        submittedAt: sub?.submitted_at || null,
+      };
+    });
+    // Also add anonymous submissions (no training_participant_id)
+    const anonSubs = submissions.filter((s) => !s.training_participant_id);
+    const anonRows = anonSubs.map((s) => ({
+      id: s.id,
+      name: s.participant_name || "—",
+      municipality: "—",
+      gve: "—",
+      submission: s,
+      status: s.passed ? "aprovado" : "reprovado",
+      percentage: Math.round(Number(s.percentage || 0)),
+      submittedAt: s.submitted_at || null,
+    }));
+    return [...withStatus, ...anonRows];
   }, [enrolledParticipants, submissions, resultsExamId]);
 
+  const filteredParticipants = useMemo(() => {
+    const q = searchSub.trim().toLowerCase();
+    if (!q) return allParticipantsWithStatus;
+    return allParticipantsWithStatus.filter((p) =>
+      p.name.toLowerCase().includes(q) ||
+      p.municipality.toLowerCase().includes(q) ||
+      p.gve.toLowerCase().includes(q)
+    );
+  }, [allParticipantsWithStatus, searchSub]);
+
+  const pendingCount  = allParticipantsWithStatus.filter((p) => p.status === "pendente").length;
+  const approvedCount = allParticipantsWithStatus.filter((p) => p.status === "aprovado").length;
+  const rejectedCount = allParticipantsWithStatus.filter((p) => p.status === "reprovado").length;
+
   const exportCSV = () => {
-    const rows = [["Nome","CPF","Nota (%)","Aprovado","Data"],
-      ...submissions.map((s) => [s.participant_name, s.participant_cpf||"",
-        Math.round(Number(s.percentage||0)), s.passed?"Sim":"Não",
-        s.submitted_at ? format(new Date(s.submitted_at),"dd/MM/yyyy HH:mm") : ""])];
+    const rows = [
+      ["Nome","Município","GVE","Nota (%)","Resultado","Data"],
+      ...allParticipantsWithStatus.map((p) => [
+        p.name, p.municipality, p.gve,
+        p.percentage !== null ? p.percentage : "",
+        p.status === "aprovado" ? "Aprovado" : p.status === "reprovado" ? "Reprovado" : "Pendente",
+        p.submittedAt ? format(new Date(p.submittedAt),"dd/MM/yyyy HH:mm") : "",
+      ]),
+    ];
     const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g,'""')}"`).join(";")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type:"text/csv;charset=utf-8;" }));
@@ -681,75 +733,97 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                     )}
                   </div>
 
-                  {/* Pending participants */}
-                  {pendingParticipants.length > 0 && (
-                    <Card className="border-amber-200 bg-amber-50/50">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-xs text-amber-600 flex items-center gap-1.5">
-                          <Users className="h-3.5 w-3.5" />
-                          Ainda não responderam ({pendingParticipants.length})
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="pt-0">
-                        <div className="flex flex-wrap gap-1.5">
-                          {pendingParticipants.map((p) => (
-                            <Badge key={p.id} variant="outline"
-                              className="border-amber-300 text-amber-700 bg-white text-xs">
-                              {p.professional_name}
-                            </Badge>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Table */}
+                  {/* Unified participant table — same style as attendance control */}
                   <Card className="border-slate-200">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <CardTitle className="text-xs text-slate-500">Respostas ({submissions.length})</CardTitle>
-                        <div className="flex gap-2">
-                          <div className="relative">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400"/>
-                            <Input value={searchSub} onChange={(e)=>setSearchSub(e.target.value)}
-                              placeholder="Buscar..." className="h-7 pl-8 text-xs w-40"/>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-3">
+                          <CardTitle className="text-sm font-semibold text-slate-700">
+                            Participantes ({allParticipantsWithStatus.length})
+                          </CardTitle>
+                          <div className="flex gap-1.5">
+                            <Badge className="bg-green-100 text-green-700 text-xs gap-1">
+                              <CheckCircle2 className="h-3 w-3" />{approvedCount}
+                            </Badge>
+                            <Badge className="bg-red-100 text-red-700 text-xs">
+                              {rejectedCount} reprov.
+                            </Badge>
+                            <Badge className="bg-amber-100 text-amber-700 text-xs gap-1">
+                              <Clock className="h-3 w-3" />{pendingCount} pendente{pendingCount !== 1 ? "s" : ""}
+                            </Badge>
                           </div>
-                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportCSV}>
-                            <Download className="h-3 w-3"/> CSV
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                            <Input value={searchSub} onChange={(e) => setSearchSub(e.target.value)}
+                              placeholder="Buscar por nome, município ou GVE..."
+                              className="h-8 pl-8 text-xs w-52" />
+                          </div>
+                          <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={exportCSV}>
+                            <Download className="h-3.5 w-3.5" /> CSV
                           </Button>
                         </div>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-0">
-                      <div className="rounded-lg border border-slate-100 overflow-hidden">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-100">
-                              <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500">Participante</th>
-                              <th className="text-center py-2 px-3 text-xs font-semibold text-slate-500">Nota</th>
-                              <th className="text-center py-2 px-3 text-xs font-semibold text-slate-500">Resultado</th>
-                              <th className="text-right py-2 px-3 text-xs font-semibold text-slate-500 hidden sm:table-cell">Data</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredSubs.length===0 ? (
-                              <tr><td colSpan={4} className="py-6 text-center text-slate-400 text-sm">Nenhum resultado.</td></tr>
-                            ) : filteredSubs.map((s,i)=>(
-                              <tr key={s.id} className={i%2===0?"bg-white":"bg-slate-50/30"}>
-                                <td className="py-2 px-3 font-medium text-slate-800 text-sm">{s.participant_name}</td>
-                                <td className="py-2 px-3 text-center font-bold tabular-nums text-sm">{Math.round(Number(s.percentage||0))}%</td>
-                                <td className="py-2 px-3 text-center">
-                                  <Badge className={s.passed?"bg-green-100 text-green-700":"bg-red-100 text-red-700"}>
-                                    {s.passed?"Aprovado":"Reprovado"}
-                                  </Badge>
-                                </td>
-                                <td className="py-2 px-3 text-right text-xs text-slate-400 hidden sm:table-cell">
-                                  {s.submitted_at ? format(new Date(s.submitted_at),"dd/MM/yyyy HH:mm") : "—"}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div className="border rounded-lg overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-slate-50">
+                              <TableHead className="font-semibold text-xs">Participante</TableHead>
+                              <TableHead className="font-semibold text-xs hidden sm:table-cell">Município</TableHead>
+                              <TableHead className="font-semibold text-xs hidden md:table-cell">GVE</TableHead>
+                              <TableHead className="font-semibold text-xs text-center">Nota</TableHead>
+                              <TableHead className="font-semibold text-xs text-center">Resultado</TableHead>
+                              <TableHead className="font-semibold text-xs text-right hidden lg:table-cell">Respondeu em</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredParticipants.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">
+                                  Nenhum participante encontrado.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              filteredParticipants.map((p) => (
+                                <TableRow key={p.id}>
+                                  <TableCell className="font-medium text-slate-800 text-sm">
+                                    {p.name}
+                                  </TableCell>
+                                  <TableCell className="text-slate-500 text-sm hidden sm:table-cell">
+                                    {p.municipality}
+                                  </TableCell>
+                                  <TableCell className="text-slate-500 text-sm hidden md:table-cell">
+                                    {p.gve}
+                                  </TableCell>
+                                  <TableCell className="text-center font-bold tabular-nums text-sm">
+                                    {p.percentage !== null ? `${p.percentage}%` : "—"}
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <Badge className={
+                                      p.status === "aprovado"
+                                        ? "bg-green-100 text-green-700"
+                                        : p.status === "reprovado"
+                                        ? "bg-red-100 text-red-700"
+                                        : "bg-amber-100 text-amber-700"
+                                    }>
+                                      {p.status === "aprovado" ? "Aprovado"
+                                        : p.status === "reprovado" ? "Reprovado"
+                                        : "Pendente"}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right text-xs text-slate-400 hidden lg:table-cell">
+                                    {p.submittedAt
+                                      ? format(new Date(p.submittedAt), "dd/MM/yyyy HH:mm")
+                                      : "—"}
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
                       </div>
                     </CardContent>
                   </Card>
