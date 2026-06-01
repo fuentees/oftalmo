@@ -18,6 +18,7 @@ import ReminderSender from "@/components/trainings/ReminderSender";
 import EnrollmentPage from "./EnrollmentPage";
 import TrainingFeedbackPage from "./TrainingFeedbackPage";
 import TracomaExaminerEvaluationPage from "./TracomaExaminerEvaluationPage";
+import TrainingExamManager from "@/components/trainings/TrainingExamManager";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -581,6 +582,12 @@ export default function TrainingWorkspace() {
               Provas
             </TabsTrigger>
           )}
+          {!isRepadTraining && (
+            <TabsTrigger value="exam_tab" className="gap-1.5">
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              Prova
+            </TabsTrigger>
+          )}
           <TabsTrigger value="certificates" className="gap-1.5">
             <Award className="h-3.5 w-3.5" />
             Certificados
@@ -689,6 +696,15 @@ export default function TrainingWorkspace() {
               showBackButton={false}
               allowedTabs={["history", "monitor"]}
               initialTab="history"
+            />
+          </TabsContent>
+        )}
+
+        {!isRepadTraining && (
+          <TabsContent value="exam_tab" className="mt-6">
+            <TrainingExamManager
+              trainingId={trainingId}
+              trainingTitle={training?.title}
             />
           </TabsContent>
         )}

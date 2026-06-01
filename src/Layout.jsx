@@ -197,8 +197,6 @@ export default function Layout({ children, currentPageName }) {
     { name: "Solicitações", page: "MaterialRequests", icon: ClipboardList },
     { name: "Remessas", page: "Remessas", icon: Send },
     { name: "Treinamentos", page: "Trainings", icon: GraduationCap },
-    { name: "Provas", page: "ExamBuilder", icon: ClipboardCheck },
-    { name: "Resultados", page: "ExamResults", icon: BarChart2 },
     { name: "Profissionais", page: "Professionals", icon: Users },
     { name: "Participantes", page: "Participants", icon: Users },
     { name: "Relatórios", page: "Reports", icon: FileText },
