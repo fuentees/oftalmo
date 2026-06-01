@@ -137,7 +137,7 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
 
   const { data: allTrainings = [] } = useQuery({
     queryKey: ["allTrainings"],
-    queryFn: () => dataClient.entities.Training.filter({}, "-start_date"),
+    queryFn: () => dataClient.entities.Training.list("-start_date"),
     enabled: !!copyExamSource,
     select: (data) => (Array.isArray(data) ? data.filter((t) => t.id !== trainingId) : []),
   });
