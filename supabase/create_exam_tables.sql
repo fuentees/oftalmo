@@ -2,15 +2,15 @@
 -- Execute no SQL Editor do Supabase.
 
 CREATE TABLE IF NOT EXISTS exams (
-  id          uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
-  title       text    NOT NULL,
-  description text,
-  training_id uuid,
+  id            uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
+  title         text    NOT NULL,
+  description   text,
+  training_id   uuid,
   training_title text,
   passing_score numeric NOT NULL DEFAULT 60,
-  is_active   boolean NOT NULL DEFAULT true,
-  created_at  timestamptz DEFAULT now(),
-  updated_at  timestamptz DEFAULT now()
+  is_active     boolean NOT NULL DEFAULT true,
+  created_at    timestamptz DEFAULT now(),
+  updated_at    timestamptz DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS exam_questions (
@@ -28,19 +28,24 @@ CREATE TABLE IF NOT EXISTS exam_questions (
 CREATE INDEX IF NOT EXISTS idx_exam_questions_exam ON exam_questions(exam_id, ordem ASC);
 
 CREATE TABLE IF NOT EXISTS exam_submissions (
-  id               uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
-  exam_id          uuid,
-  exam_title       text,
-  participant_name text    NOT NULL,
-  participant_cpf  text,
-  answers          jsonb   NOT NULL DEFAULT '{}',
-  score            numeric NOT NULL DEFAULT 0,
-  max_score        numeric NOT NULL DEFAULT 0,
-  percentage       numeric NOT NULL DEFAULT 0,
-  passed           boolean NOT NULL DEFAULT false,
-  submitted_at     timestamptz DEFAULT now()
+  id                      uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
+  exam_id                 uuid,
+  exam_title              text,
+  -- Vínculo com o participante inscrito no treinamento
+  training_participant_id uuid,
+  professional_rg         text,
+  -- Dados exibidos nas listagens
+  participant_name        text    NOT NULL,
+  participant_cpf         text,
+  answers                 jsonb   NOT NULL DEFAULT '{}',
+  score                   numeric NOT NULL DEFAULT 0,
+  max_score               numeric NOT NULL DEFAULT 0,
+  percentage              numeric NOT NULL DEFAULT 0,
+  passed                  boolean NOT NULL DEFAULT false,
+  submitted_at            timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_exam_submissions_exam ON exam_submissions(exam_id, submitted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_exam_submissions_participant ON exam_submissions(training_participant_id);
 
 ALTER TABLE exams            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exam_questions   ENABLE ROW LEVEL SECURITY;

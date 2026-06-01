@@ -92,6 +92,13 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
     enabled: !!trainingId,
   });
 
+  const { data: enrolledParticipants = [] } = useQuery({
+    queryKey: ["trainingParticipants", trainingId],
+    queryFn: () => dataClient.entities.TrainingParticipant.filter({ training_id: trainingId }),
+    enabled: !!trainingId,
+    select: (data) => (Array.isArray(data) ? data.filter((p) => p.enrollment_status !== "cancelado") : []),
+  });
+
   const { data: submissions = [], isLoading: loadingSubs } = useQuery({
     queryKey: ["examSubmissions", resultsExamId],
     queryFn: () =>
@@ -317,6 +324,13 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
       String(s.participant_cpf||"").toLowerCase().includes(q)
     );
   }, [submissions, searchSub]);
+
+  // Participants enrolled but haven't submitted yet
+  const pendingParticipants = useMemo(() => {
+    if (!enrolledParticipants.length || !resultsExamId) return [];
+    const submittedIds = new Set(submissions.map((s) => s.training_participant_id).filter(Boolean));
+    return enrolledParticipants.filter((p) => !submittedIds.has(p.id));
+  }, [enrolledParticipants, submissions, resultsExamId]);
 
   const exportCSV = () => {
     const rows = [["Nome","CPF","Nota (%)","Aprovado","Data"],
@@ -666,6 +680,28 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                       </Card>
                     )}
                   </div>
+
+                  {/* Pending participants */}
+                  {pendingParticipants.length > 0 && (
+                    <Card className="border-amber-200 bg-amber-50/50">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-xs text-amber-600 flex items-center gap-1.5">
+                          <Users className="h-3.5 w-3.5" />
+                          Ainda não responderam ({pendingParticipants.length})
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <div className="flex flex-wrap gap-1.5">
+                          {pendingParticipants.map((p) => (
+                            <Badge key={p.id} variant="outline"
+                              className="border-amber-300 text-amber-700 bg-white text-xs">
+                              {p.professional_name}
+                            </Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
                   {/* Table */}
                   <Card className="border-slate-200">
