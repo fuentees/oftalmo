@@ -11,6 +11,7 @@ import {
   Plus, Trash2, Edit, Loader2, Image, X, Copy, CheckCircle2,
   ClipboardCheck, Save, ToggleLeft, ToggleRight, AlignLeft,
   List, Search, Download, Users, BarChart2, Clock,
+  ChevronDown, ChevronUp, FileBarChart2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +68,14 @@ function StatCard({ label, value, sub, color = "slate" }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function TrainingExamManager({ trainingId, trainingTitle }) {
   const qc = useQueryClient();
+
+  const [expandedQuestions, setExpandedQuestions] = useState(new Set());
+  const toggleQuestion = (id) =>
+    setExpandedQuestions((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   // ── Exam form ──────────────────────────────────────────────────────────────
   const [showExamForm, setShowExamForm]   = useState(false);
@@ -378,6 +387,42 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
   const pendingCount  = allParticipantsWithStatus.filter((p) => p.status === "pendente").length;
   const approvedCount = allParticipantsWithStatus.filter((p) => p.status === "aprovado").length;
   const rejectedCount = allParticipantsWithStatus.filter((p) => p.status === "reprovado").length;
+
+  // Detailed per-question report
+  const questionReport = useMemo(() => {
+    if (!resultsQuestions.length || !submissions.length) return [];
+    const OPTION_LETTERS = ["A","B","C","D","E"];
+    return resultsQuestions.map((q, i) => {
+      const answered = submissions.map((s) => s.answers?.[q.id]).filter((a) => a !== undefined && a !== null && a !== "");
+      const totalAnswered = answered.length;
+      if (q.type === "multiple_choice") {
+        const optionCounts = (q.options || []).map((opt, oi) => ({
+          ...opt,
+          letter: OPTION_LETTERS[oi] || String(oi + 1),
+          count: answered.filter((a) => a === opt.id).length,
+          pct: totalAnswered > 0 ? Math.round((answered.filter((a) => a === opt.id).length / totalAnswered) * 100) : 0,
+        }));
+        return { ...q, qNum: i + 1, totalAnswered, optionCounts };
+      }
+      if (q.type === "true_false") {
+        const vCount = answered.filter((a) => a === "V").length;
+        const fCount = answered.filter((a) => a === "F").length;
+        return {
+          ...q, qNum: i + 1, totalAnswered,
+          tfCounts: [
+            { label: "V", count: vCount, pct: totalAnswered > 0 ? Math.round((vCount / totalAnswered) * 100) : 0, isCorrect: q.correct_answer === "V" },
+            { label: "F", count: fCount, pct: totalAnswered > 0 ? Math.round((fCount / totalAnswered) * 100) : 0, isCorrect: q.correct_answer === "F" },
+          ],
+        };
+      }
+      // essay
+      const essayAnswers = submissions.map((s) => ({
+        name: allParticipantsWithStatus.find((p) => p.submission?.id === s.id)?.name || s.participant_name || "—",
+        text: String(s.answers?.[q.id] || "").trim(),
+      })).filter((a) => a.text);
+      return { ...q, qNum: i + 1, totalAnswered, essayAnswers };
+    });
+  }, [resultsQuestions, submissions, allParticipantsWithStatus]);
 
   const exportCSV = () => {
     const rows = [
@@ -827,6 +872,149 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {/* Per-question detailed report */}
+                  {questionReport.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <FileBarChart2 className="h-4 w-4 text-slate-500" />
+                        Relatório por Questão
+                      </h3>
+                      {questionReport.map((q) => {
+                        const isExpanded = expandedQuestions.has(q.id);
+                        const correctCount =
+                          q.type === "multiple_choice"
+                            ? (q.optionCounts || []).find((o) => o.is_correct)?.count ?? 0
+                            : q.type === "true_false"
+                            ? (q.tfCounts || []).find((o) => o.isCorrect)?.count ?? 0
+                            : null;
+                        const accuracy =
+                          correctCount !== null && q.totalAnswered > 0
+                            ? Math.round((correctCount / q.totalAnswered) * 100)
+                            : null;
+
+                        return (
+                          <Card key={q.id} className="border-slate-200 overflow-hidden">
+                            {/* Question header — always visible, click to expand */}
+                            <button
+                              type="button"
+                              className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors"
+                              onClick={() => toggleQuestion(q.id)}
+                            >
+                              <span className="shrink-0 text-xs font-bold text-slate-400 mt-0.5 w-6">Q{q.qNum}</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-800 text-left">{q.text || "(sem enunciado)"}</p>
+                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                  <Badge className={`${
+                                    q.type === "multiple_choice" ? "bg-blue-100 text-blue-700"
+                                    : q.type === "true_false" ? "bg-green-100 text-green-700"
+                                    : "bg-purple-100 text-purple-700"
+                                  } text-xs`}>
+                                    {q.type === "multiple_choice" ? "Múltipla Escolha"
+                                      : q.type === "true_false" ? "V / F"
+                                      : "Dissertativa"}
+                                  </Badge>
+                                  <span className="text-xs text-slate-400">{q.totalAnswered} resposta{q.totalAnswered !== 1 ? "s" : ""}</span>
+                                  {accuracy !== null && (
+                                    <span className={`text-xs font-semibold ${accuracy >= Number(resultsExam?.passing_score || 60) ? "text-green-600" : "text-orange-500"}`}>
+                                      {accuracy}% de acerto
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="shrink-0 text-slate-400 mt-0.5">
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </span>
+                            </button>
+
+                            {/* Expanded detail */}
+                            {isExpanded && (
+                              <div className="border-t border-slate-100 px-4 py-4 space-y-4 bg-slate-50/30">
+                                {q.image_url && (
+                                  <img src={q.image_url} alt="imagem" className="max-h-40 rounded-lg border border-slate-200 object-contain" />
+                                )}
+
+                                {/* Multiple choice */}
+                                {q.type === "multiple_choice" && (
+                                  <div className="space-y-2.5">
+                                    {(q.optionCounts || []).map((opt) => (
+                                      <div key={opt.id}>
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <span className={`shrink-0 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center
+                                            ${opt.is_correct ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"}`}>
+                                            {opt.letter}
+                                          </span>
+                                          <span className={`text-sm flex-1 ${opt.is_correct ? "font-semibold text-green-700" : "text-slate-700"}`}>
+                                            {opt.text || "(sem texto)"}
+                                          </span>
+                                          <span className="shrink-0 text-xs font-bold text-slate-600 tabular-nums w-16 text-right">
+                                            {opt.count} ({opt.pct}%)
+                                          </span>
+                                          {opt.is_correct && (
+                                            <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                                          )}
+                                        </div>
+                                        <div className="ml-7 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                          <div
+                                            className={`h-full rounded-full transition-all ${opt.is_correct ? "bg-green-400" : "bg-slate-400"}`}
+                                            style={{ width: `${opt.pct}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* True/False */}
+                                {q.type === "true_false" && (
+                                  <div className="space-y-2.5">
+                                    {(q.tfCounts || []).map((tf) => (
+                                      <div key={tf.label}>
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <span className={`shrink-0 text-sm font-bold w-8 h-8 rounded-lg flex items-center justify-center border-2
+                                            ${tf.isCorrect ? "border-green-500 bg-green-50 text-green-700" : "border-slate-200 bg-white text-slate-600"}`}>
+                                            {tf.label}
+                                          </span>
+                                          <span className={`text-sm flex-1 font-medium ${tf.isCorrect ? "text-green-700" : "text-slate-600"}`}>
+                                            {tf.isCorrect ? "✅ Resposta correta" : "Incorreto"}
+                                          </span>
+                                          <span className="shrink-0 text-xs font-bold text-slate-600 tabular-nums">
+                                            {tf.count} ({tf.pct}%)
+                                          </span>
+                                        </div>
+                                        <div className="ml-10 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                          <div
+                                            className={`h-full rounded-full ${tf.isCorrect ? "bg-green-400" : "bg-red-300"}`}
+                                            style={{ width: `${tf.pct}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Essay answers */}
+                                {q.type === "essay" && (
+                                  <div className="space-y-2">
+                                    {(q.essayAnswers || []).length === 0 ? (
+                                      <p className="text-xs text-slate-400">Nenhuma resposta registrada.</p>
+                                    ) : (
+                                      (q.essayAnswers || []).map((a, ai) => (
+                                        <div key={ai} className="bg-white border border-slate-200 rounded-lg px-3 py-2.5">
+                                          <p className="text-xs font-semibold text-slate-500 mb-1">{a.name}</p>
+                                          <p className="text-sm text-slate-700 whitespace-pre-wrap">{a.text}</p>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
                 </>
               )}
             </>
