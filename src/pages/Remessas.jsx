@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { supabase } from "@/api/supabaseClient";
@@ -7,17 +7,8 @@ import { ptBR } from "date-fns/locale";
 import { downloadRemessaPdf, previewRemessaPdf } from "@/lib/remessaPdf";
 import { toast } from "@/components/ui/use-toast";
 import {
-  Plus,
-  Printer,
-  Eye,
-  Trash2,
-  FileText,
-  MapPin,
-  Loader2,
-  X,
-  Edit,
-  Search,
-  CheckCircle2,
+  Plus, Printer, Eye, Trash2, FileText, MapPin, Loader2, X,
+  Edit, Search, CheckCircle2, Send, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,45 +16,37 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import PageHeader from "@/components/common/PageHeader";
 
-const STATUS_LABELS = { emitida: "Emitida", enviada: "Enviada", recebida: "Recebida" };
-const STATUS_COLORS = {
-  emitida: "bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer",
-  enviada: "bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer",
+const STATUS_LABELS  = { emitida: "Emitida", enviada: "Enviada", recebida: "Recebida" };
+const STATUS_COLORS  = {
+  emitida:  "bg-blue-100  text-blue-700  hover:bg-blue-200  cursor-pointer",
+  enviada:  "bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer",
   recebida: "bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer",
 };
-const NEXT_STATUS = { emitida: "enviada", enviada: "recebida", recebida: "emitida" };
+const STATUS_BORDER  = {
+  emitida:  "border-l-blue-400",
+  enviada:  "border-l-amber-400",
+  recebida: "border-l-green-400",
+};
+const NEXT_STATUS    = { emitida: "enviada", enviada: "recebida", recebida: "emitida" };
 const STATUS_TOOLTIP = {
-  emitida: "Clique para marcar como Enviada",
-  enviada: "Clique para marcar como Recebida",
+  emitida:  "Clique para marcar como Enviada",
+  enviada:  "Clique para marcar como Recebida",
   recebida: "Clique para voltar para Emitida",
 };
 
 const EMPTY_ITEM = { ordem: 1, interessado: "", assunto: "" };
+const PAGE_SIZES = [10, 20, 50];
 
 function ItemRow({ item, index, total, onChange, onRemove, onMove }) {
   return (
@@ -78,22 +61,16 @@ function ItemRow({ item, index, total, onChange, onRemove, onMove }) {
           <svg className="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"><path d="M6 10L2 4h8z"/></svg>
         </button>
       </div>
-      <div className="w-10 shrink-0 pt-1 text-center">
-        <span className="text-sm font-bold text-slate-500">{index + 1}</span>
+      <div className="w-8 shrink-0 pt-1 text-center">
+        <span className="text-sm font-bold text-slate-400">{index + 1}</span>
       </div>
       <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <Input
-          value={item.interessado}
+        <Input value={item.interessado}
           onChange={(e) => onChange(index, "interessado", e.target.value)}
-          placeholder="Interessado (ex: A/C)"
-          className="h-8 text-sm"
-        />
-        <Input
-          value={item.assunto}
+          placeholder="Interessado (ex: A/C)" className="h-8 text-sm" />
+        <Input value={item.assunto}
           onChange={(e) => onChange(index, "assunto", e.target.value)}
-          placeholder="Assunto / item remetido"
-          className="h-8 text-sm sm:col-span-2"
-        />
+          placeholder="Assunto / item remetido" className="h-8 text-sm sm:col-span-2" />
       </div>
       <button type="button" onClick={() => onRemove(index)}
         className="shrink-0 mt-1 text-slate-300 hover:text-red-500 transition-colors">
@@ -105,19 +82,19 @@ function ItemRow({ item, index, total, onChange, onRemove, onMove }) {
 
 export default function Remessas() {
   const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm]         = useState(false);
   const [editingRemessa, setEditingRemessa] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-  const [yearFilter, setYearFilter] = useState("all");
+  const [saving, setSaving]             = useState(false);
+  const [saveError, setSaveError]       = useState(null);
+  const [yearFilter, setYearFilter]     = useState("all");
   const [searchFilter, setSearchFilter] = useState("");
+  const [page, setPage]                 = useState(1);
+  const [pageSize, setPageSize]         = useState(10);
 
   const [form, setForm] = useState({
     data: format(new Date(), "yyyy-MM-dd"),
-    para_destino: "",
-    para_gve: "",
-    interessado: "",
+    para_destino: "", para_gve: "", interessado: "",
     responsavel: "",
     responsavel_cargo: "Favor retornar à oftalmologia sanitária uma via de recebimento assinada",
     observacoes: "",
@@ -134,15 +111,15 @@ export default function Remessas() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["remessas"] });
       setDeleteTarget(null);
+      toast({ title: "Remessa excluída." });
     },
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }) =>
-      dataClient.entities.Remessa.update(id, { status }),
+    mutationFn: ({ id, status }) => dataClient.entities.Remessa.update(id, { status }),
     onSuccess: (_, { status }) => {
       queryClient.invalidateQueries({ queryKey: ["remessas"] });
-      toast({ title: `Status atualizado para "${STATUS_LABELS[status] || status}"` });
+      toast({ title: `Status: ${STATUS_LABELS[status] || status}` });
     },
   });
 
@@ -151,33 +128,38 @@ export default function Remessas() {
     [remessas]
   );
 
-  const filteredRemessas = useMemo(
-    () =>
-      remessas.filter((r) => {
-        const matchYear =
-          yearFilter === "all" || r.ano === Number(yearFilter);
-        const q = searchFilter.trim().toLowerCase();
-        const matchSearch =
-          !q ||
-          r.para_destino?.toLowerCase().includes(q) ||
-          r.para_gve?.toLowerCase().includes(q);
-        return matchYear && matchSearch;
-      }),
+  const stats = useMemo(() => ({
+    emitida:  remessas.filter((r) => r.status === "emitida").length,
+    enviada:  remessas.filter((r) => r.status === "enviada").length,
+    recebida: remessas.filter((r) => r.status === "recebida").length,
+  }), [remessas]);
+
+  const filteredRemessas = useMemo(() =>
+    remessas.filter((r) => {
+      const matchYear = yearFilter === "all" || r.ano === Number(yearFilter);
+      const q = searchFilter.trim().toLowerCase();
+      const matchSearch = !q ||
+        r.para_destino?.toLowerCase().includes(q) ||
+        r.para_gve?.toLowerCase().includes(q);
+      return matchYear && matchSearch;
+    }),
     [remessas, yearFilter, searchFilter]
   );
 
+  const totalPages = Math.max(1, Math.ceil(filteredRemessas.length / pageSize));
+  const paginatedRemessas = filteredRemessas.slice((page - 1) * pageSize, page * pageSize);
+
+  // reset page on filter change
+  useEffect(() => setPage(1), [searchFilter, yearFilter, pageSize]);
+
   const cycleStatus = (r) => {
-    updateStatusMutation.mutate({
-      id: r.id,
-      status: NEXT_STATUS[r.status] || "enviada",
-    });
+    if (updateStatusMutation.isPending) return;
+    updateStatusMutation.mutate({ id: r.id, status: NEXT_STATUS[r.status] || "enviada" });
   };
 
   const resetForm = () => ({
     data: format(new Date(), "yyyy-MM-dd"),
-    para_destino: "",
-    para_gve: "",
-    interessado: "",
+    para_destino: "", para_gve: "", interessado: "",
     responsavel: "",
     responsavel_cargo: "Favor retornar à oftalmologia sanitária uma via de recebimento assinada",
     observacoes: "",
@@ -199,48 +181,26 @@ export default function Remessas() {
       para_gve: remessa.para_gve || "",
       interessado: remessa.interessado || "",
       responsavel: remessa.responsavel || "",
-      responsavel_cargo:
-        remessa.responsavel_cargo ||
+      responsavel_cargo: remessa.responsavel_cargo ||
         "Favor retornar à oftalmologia sanitária uma via de recebimento assinada",
       observacoes: remessa.observacoes || "",
-      items:
-        Array.isArray(remessa.items) && remessa.items.length > 0
-          ? remessa.items
-          : [{ ...EMPTY_ITEM }],
+      items: Array.isArray(remessa.items) && remessa.items.length > 0
+        ? remessa.items : [{ ...EMPTY_ITEM }],
     });
     setSaveError(null);
     setShowForm(true);
   };
 
-  const updateItem = (idx, field, value) => {
-    setForm((f) => {
-      const items = f.items.map((it, i) =>
-        i === idx ? { ...it, [field]: value } : it
-      );
-      return { ...f, items };
-    });
-  };
+  const updateItem  = (idx, field, value) =>
+    setForm((f) => ({ ...f, items: f.items.map((it, i) => i === idx ? { ...it, [field]: value } : it) }));
 
-  const addItem = () => {
-    setForm((f) => ({
-      ...f,
-      items: [
-        ...f.items,
-        { ordem: f.items.length + 1, interessado: "", assunto: "" },
-      ],
-    }));
-  };
+  const addItem = () =>
+    setForm((f) => ({ ...f, items: [...f.items, { ordem: f.items.length + 1, interessado: "", assunto: "" }] }));
 
-  const removeItem = (idx) => {
-    setForm((f) => ({
-      ...f,
-      items: f.items
-        .filter((_, i) => i !== idx)
-        .map((it, i) => ({ ...it, ordem: i + 1 })),
-    }));
-  };
+  const removeItem = (idx) =>
+    setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx).map((it, i) => ({ ...it, ordem: i + 1 })) }));
 
-  const moveItem = (idx, dir) => {
+  const moveItem = (idx, dir) =>
     setForm((f) => {
       const items = [...f.items];
       const target = dir === "up" ? idx - 1 : idx + 1;
@@ -248,13 +208,9 @@ export default function Remessas() {
       [items[idx], items[target]] = [items[target], items[idx]];
       return { ...f, items: items.map((it, i) => ({ ...it, ordem: i + 1 })) };
     });
-  };
 
   const handleSave = async () => {
-    if (!form.para_destino.trim()) {
-      setSaveError("Informe o destino (PARA).");
-      return;
-    }
+    if (!form.para_destino.trim()) { setSaveError("Informe o destino (PARA)."); return; }
     setSaving(true);
     setSaveError(null);
     try {
@@ -271,21 +227,13 @@ export default function Remessas() {
           items: filteredItems,
         };
         await dataClient.entities.Remessa.update(editingRemessa.id, updatedPayload);
-        downloadRemessaPdf({
-          numero: editingRemessa.numero,
-          ano: editingRemessa.ano,
-          ...updatedPayload,
-        });
+        downloadRemessaPdf({ numero: editingRemessa.numero, ano: editingRemessa.ano, ...updatedPayload });
       } else {
         const ano = new Date(form.data + "T00:00:00").getFullYear();
-        const { data: numData } = await supabase.rpc("next_remessa_number", {
-          p_ano: ano,
-        });
+        const { data: numData } = await supabase.rpc("next_remessa_number", { p_ano: ano });
         const numero = numData ?? 1;
         await dataClient.entities.Remessa.create({
-          numero,
-          ano,
-          data: form.data,
+          numero, ano, data: form.data,
           para_destino: form.para_destino.trim(),
           para_gve: form.para_gve.trim(),
           interessado: form.interessado.trim(),
@@ -299,9 +247,7 @@ export default function Remessas() {
       queryClient.invalidateQueries({ queryKey: ["remessas"] });
       toast({
         title: editingRemessa ? "Remessa atualizada" : "Remessa criada",
-        description: editingRemessa
-          ? "Alterações salvas e PDF baixado."
-          : "Relação de Remessa criada com sucesso.",
+        description: editingRemessa ? "Alterações salvas e PDF baixado." : "PDF gerado com sucesso.",
       });
       setShowForm(false);
       setEditingRemessa(null);
@@ -321,33 +267,64 @@ export default function Remessas() {
         actionLabel="Nova Remessa"
       />
 
+      {/* Cards de status */}
+      {remessas.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-blue-500 uppercase tracking-wide">Emitidas</p>
+              <p className="text-2xl font-black text-blue-700 leading-none mt-0.5">{stats.emitida}</p>
+            </div>
+            <FileText className="h-7 w-7 text-blue-300" />
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-amber-500 uppercase tracking-wide">Enviadas</p>
+              <p className="text-2xl font-black text-amber-700 leading-none mt-0.5">{stats.enviada}</p>
+            </div>
+            <Send className="h-7 w-7 text-amber-300" />
+          </div>
+          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-green-500 uppercase tracking-wide">Recebidas</p>
+              <p className="text-2xl font-black text-green-700 leading-none mt-0.5">{stats.recebida}</p>
+            </div>
+            <CheckCircle2 className="h-7 w-7 text-green-300" />
+          </div>
+        </div>
+      )}
+
       {/* Filtros */}
       {remessas.length > 0 && (
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder="Buscar por destino ou GVE..."
-              className="pl-9"
-            />
+            <Input value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)}
+              placeholder="Buscar por destino ou GVE..." className="pl-9" />
           </div>
           {years.length > 1 && (
             <Select value={yearFilter} onValueChange={setYearFilter}>
-              <SelectTrigger className="w-32">
+              <SelectTrigger className="w-36">
                 <SelectValue placeholder="Ano" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os anos</SelectItem>
                 {years.map((y) => (
-                  <SelectItem key={y} value={String(y)}>
-                    {y}
-                  </SelectItem>
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           )}
+          <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZES.map((s) => (
+                <SelectItem key={s} value={String(s)}>{s} por página</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
@@ -357,11 +334,14 @@ export default function Remessas() {
           <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando...
         </div>
       ) : remessas.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center">
-            <FileText className="h-7 w-7 text-slate-400" />
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
+            <FileText className="h-8 w-8 text-slate-400" />
           </div>
-          <p className="text-slate-500 font-medium">Nenhuma remessa emitida ainda.</p>
+          <div className="text-center">
+            <p className="text-slate-600 font-semibold">Nenhuma remessa emitida ainda.</p>
+            <p className="text-slate-400 text-sm mt-1">Crie a primeira relação de remessa de materiais.</p>
+          </div>
           <Button onClick={openNew} className="gap-2 text-white" style={{ background: "hsl(var(--primary))" }}>
             <Plus className="h-4 w-4" /> Criar primeira remessa
           </Button>
@@ -374,93 +354,105 @@ export default function Remessas() {
           </Button>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filteredRemessas.map((r) => (
-            <Card key={r.id} className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4 flex items-center gap-4">
-                {/* Número */}
-                <div className="shrink-0 w-16 text-center">
-                  <p className="text-2xl font-black text-slate-700 leading-none">
-                    {String(r.numero).padStart(2, "0")}
-                  </p>
-                  <p className="text-xs text-slate-400 font-semibold">{r.ano}</p>
-                </div>
+        <>
+          {/* Contador */}
+          <div className="flex items-center justify-between text-sm text-slate-500 px-1">
+            <span>
+              {filteredRemessas.length} remessa{filteredRemessas.length !== 1 ? "s" : ""}
+              {(searchFilter || yearFilter !== "all") && " encontradas"}
+            </span>
+            <span>Página {page} de {totalPages}</span>
+          </div>
 
-                <div className="w-px h-10 bg-slate-200 shrink-0" />
-
-                {/* Detalhes */}
-                <div className="flex-1 min-w-0 space-y-0.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-semibold text-slate-800">
-                      {r.para_destino || "—"}
+          <div className="space-y-2">
+            {paginatedRemessas.map((r) => (
+              <Card key={r.id}
+                className={`border-slate-200 border-l-4 ${STATUS_BORDER[r.status] || "border-l-slate-300"} shadow-sm hover:shadow-md transition-all`}>
+                <CardContent className="p-4 flex items-center gap-4">
+                  {/* Número */}
+                  <div className="shrink-0 w-14 text-center">
+                    <p className="text-xl font-black text-slate-700 leading-none">
+                      {String(r.numero).padStart(2, "0")}
                     </p>
-                    {r.para_gve && (
-                      <span className="text-xs text-slate-500 flex items-center gap-0.5">
-                        <MapPin className="h-3 w-3" /> GVE {r.para_gve}
-                      </span>
-                    )}
-                    <Badge
-                      role="button"
-                      tabIndex={0}
-                      title={STATUS_TOOLTIP[r.status]}
-                      className={`${STATUS_COLORS[r.status] || STATUS_COLORS.emitida} transition-colors select-none ${updateStatusMutation.isPending ? "opacity-50 pointer-events-none" : ""}`}
-                      onClick={() => !updateStatusMutation.isPending && cycleStatus(r)}
-                      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && !updateStatusMutation.isPending && cycleStatus(r)}
-                    >
-                      {r.status === "recebida" && (
-                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                      )}
-                      {STATUS_LABELS[r.status] || r.status}
-                    </Badge>
+                    <p className="text-xs text-slate-400 font-medium">{r.ano}</p>
                   </div>
-                  <p className="text-xs text-slate-400">
-                    {r.data
-                      ? format(new Date(r.data + "T00:00:00"), "dd/MM/yyyy", { locale: ptBR })
-                      : "—"}
-                    {Array.isArray(r.items) && r.items.length > 0 && (
-                      <span className="ml-2">
-                        · {r.items.length} item{r.items.length !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                  </p>
-                </div>
 
-                {/* Ações */}
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button
-                    size="sm" variant="outline"
-                    className="gap-1.5 h-8 text-xs"
-                    onClick={() => previewRemessaPdf(r)}
-                  >
-                    <Eye className="h-3.5 w-3.5" /> Visualizar
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="gap-1.5 h-8 text-xs text-white"
-                    style={{ background: "hsl(var(--primary))" }}
-                    onClick={() => downloadRemessaPdf(r)}
-                  >
-                    <Printer className="h-3.5 w-3.5" /> Imprimir
-                  </Button>
-                  <button
-                    onClick={() => openEdit(r)}
-                    className="text-slate-400 hover:text-blue-500 transition-colors p-1.5 rounded"
-                    title="Editar"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setDeleteTarget(r)}
-                    className="text-slate-300 hover:text-red-500 transition-colors p-1.5 rounded"
-                    title="Excluir"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  <div className="w-px h-10 bg-slate-200 shrink-0" />
+
+                  {/* Detalhes */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-slate-800 truncate">
+                        {r.para_destino || "—"}
+                      </p>
+                      {r.para_gve && (
+                        <span className="text-xs text-slate-400 flex items-center gap-0.5 shrink-0">
+                          <MapPin className="h-3 w-3" /> {r.para_gve}
+                        </span>
+                      )}
+                      <Badge
+                        role="button" tabIndex={0}
+                        title={STATUS_TOOLTIP[r.status]}
+                        className={`${STATUS_COLORS[r.status] || STATUS_COLORS.emitida} transition-colors select-none text-xs ${updateStatusMutation.isPending ? "opacity-50 pointer-events-none" : ""}`}
+                        onClick={() => cycleStatus(r)}
+                        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && cycleStatus(r)}
+                      >
+                        {r.status === "recebida" && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                        {STATUS_LABELS[r.status] || r.status}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {r.data ? format(new Date(r.data + "T00:00:00"), "dd/MM/yyyy", { locale: ptBR }) : "—"}
+                      {Array.isArray(r.items) && r.items.length > 0 && (
+                        <span className="ml-2">· {r.items.length} item{r.items.length !== 1 ? "s" : ""}</span>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Ações */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs" onClick={() => previewRemessaPdf(r)}>
+                      <Eye className="h-3.5 w-3.5" /> Visualizar
+                    </Button>
+                    <Button size="sm" className="gap-1.5 h-8 text-xs text-white" style={{ background: "hsl(var(--primary))" }}
+                      onClick={() => downloadRemessaPdf(r)}>
+                      <Printer className="h-3.5 w-3.5" /> Imprimir
+                    </Button>
+                    <button onClick={() => openEdit(r)} title="Editar"
+                      className="text-slate-400 hover:text-blue-500 transition-colors p-1.5 rounded hover:bg-blue-50">
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => setDeleteTarget(r)} title="Excluir"
+                      className="text-slate-300 hover:text-red-500 transition-colors p-1.5 rounded hover:bg-red-50">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1} className="h-8 w-8 p-0">
+                «
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="h-8 w-8 p-0">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm text-slate-600 px-2">
+                {page} / {totalPages}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="h-8 w-8 p-0">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages} className="h-8 w-8 p-0">
+                »
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Formulário nova/editar remessa */}
@@ -476,87 +468,50 @@ export default function Remessas() {
           </DialogHeader>
 
           <div className="space-y-5 py-2">
-            {/* Meta */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Data</Label>
-                <Input
-                  type="date"
-                  value={form.data}
-                  onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))}
-                />
+                <Input type="date" value={form.data}
+                  onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <Label>
-                  Destino (PARA) <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  value={form.para_destino}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, para_destino: e.target.value }))
-                  }
-                  placeholder="Ex: Conchas"
-                />
+                <Label>Destino (PARA) <span className="text-red-500">*</span></Label>
+                <Input value={form.para_destino}
+                  onChange={(e) => setForm((f) => ({ ...f, para_destino: e.target.value }))}
+                  placeholder="Ex: Conchas" />
               </div>
               <div className="space-y-1.5">
                 <Label>GVE</Label>
-                <Input
-                  value={form.para_gve}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, para_gve: e.target.value }))
-                  }
-                  placeholder="Ex: Botucatu"
-                />
+                <Input value={form.para_gve}
+                  onChange={(e) => setForm((f) => ({ ...f, para_gve: e.target.value }))}
+                  placeholder="Ex: Botucatu" />
               </div>
               <div className="space-y-1.5">
                 <Label>Responsável (remetente)</Label>
-                <Input
-                  value={form.responsavel}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, responsavel: e.target.value }))
-                  }
-                  placeholder="Nome de quem envia"
-                />
+                <Input value={form.responsavel}
+                  onChange={(e) => setForm((f) => ({ ...f, responsavel: e.target.value }))}
+                  placeholder="Nome de quem envia" />
               </div>
             </div>
 
             <div className="space-y-1.5">
               <Label>Observação do rodapé</Label>
-              <Textarea
-                value={form.responsavel_cargo}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, responsavel_cargo: e.target.value }))
-                }
-                rows={2}
-                className="text-sm resize-none"
-              />
+              <Textarea value={form.responsavel_cargo}
+                onChange={(e) => setForm((f) => ({ ...f, responsavel_cargo: e.target.value }))}
+                rows={2} className="text-sm resize-none" />
             </div>
 
-            {/* Itens */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold">Itens remetidos</Label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={addItem}
-                  className="gap-1.5 h-7 text-xs"
-                >
+                <Button type="button" size="sm" variant="outline" onClick={addItem} className="gap-1.5 h-7 text-xs">
                   <Plus className="h-3.5 w-3.5" /> Adicionar item
                 </Button>
               </div>
               <div className="space-y-2">
                 {form.items.map((item, idx) => (
-                  <ItemRow
-                    key={idx}
-                    item={item}
-                    index={idx}
-                    total={form.items.length}
-                    onChange={updateItem}
-                    onRemove={removeItem}
-                    onMove={moveItem}
-                  />
+                  <ItemRow key={idx} item={item} index={idx} total={form.items.length}
+                    onChange={updateItem} onRemove={removeItem} onMove={moveItem} />
                 ))}
               </div>
             </div>
@@ -568,24 +523,12 @@ export default function Remessas() {
             )}
 
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <Button
-                variant="outline"
-                onClick={() => setShowForm(false)}
-                disabled={saving}
-              >
+              <Button variant="outline" onClick={() => setShowForm(false)} disabled={saving}>
                 Cancelar
               </Button>
-              <Button
-                onClick={handleSave}
-                disabled={saving}
-                className="gap-2 text-white"
-                style={{ background: "hsl(var(--primary))" }}
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
+              <Button onClick={handleSave} disabled={saving} className="gap-2 text-white"
+                style={{ background: "hsl(var(--primary))" }}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                 {saving ? "Salvando..." : "Salvar e Baixar PDF"}
               </Button>
             </div>
@@ -594,25 +537,18 @@ export default function Remessas() {
       </Dialog>
 
       {/* Confirmar exclusão */}
-      <AlertDialog
-        open={!!deleteTarget}
-        onOpenChange={(v) => !v && setDeleteTarget(null)}
-      >
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir remessa?</AlertDialogTitle>
             <AlertDialogDescription>
-              Remessa Nº{" "}
-              {String(deleteTarget?.numero || "").padStart(2, "0")}/
-              {deleteTarget?.ano} será excluída permanentemente.
+              Remessa Nº {String(deleteTarget?.numero || "").padStart(2, "0")}/{deleteTarget?.ano} será excluída permanentemente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
-              onClick={() => deleteMutation.mutate(deleteTarget.id)}
-            >
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700"
+              onClick={() => deleteMutation.mutate(deleteTarget.id)}>
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
