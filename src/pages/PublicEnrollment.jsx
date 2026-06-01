@@ -20,6 +20,8 @@ import {
   Video,
   Mic,
   Coffee,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatDateSafe, parseDateSafe } from "@/lib/date";
@@ -39,6 +41,161 @@ import {
   loadProfessionalGoogleEmailStore,
   resolveProfessionalGoogleEmail,
 } from "@/lib/professionalGoogleEmailStore";
+
+function SubmittedView({
+  training, trainingDates, isAlreadyEnrolled, hasWarning,
+  submissionFeedback, eventMunicipalityLabel, programDays, formatDateSafe,
+}) {
+  const [showProgram, setShowProgram] = useState(false);
+  return (
+    <div
+      className="min-h-screen flex flex-col items-center justify-start py-10 px-4 gap-5"
+      style={{ background: "linear-gradient(135deg,#f0fdf4 0%,#dcfce7 50%,#d1fae5 100%)" }}
+    >
+      {/* ── Confirmation card ── */}
+      <Card className="max-w-lg w-full shadow-xl border-green-200">
+        <CardContent className="pt-8 pb-8 text-center space-y-5">
+          <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-lg">
+            <CheckCircle className="h-12 w-12 text-white" />
+          </div>
+
+          <div className="space-y-1">
+            <h2 className="text-2xl font-bold text-green-700">
+              {isAlreadyEnrolled ? "Já Inscrito!" : "Inscrição Confirmada!"}
+            </h2>
+            <p className="text-slate-500 text-sm">
+              {submissionFeedback?.message || "Sua inscrição foi registrada com sucesso."}
+            </p>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 text-left space-y-2.5">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+              Detalhes do Treinamento
+            </p>
+            <p className="text-sm font-semibold text-slate-800">{training.title}</p>
+            {trainingDates.length > 0 && (
+              <div className="space-y-1">
+                {trainingDates.map((d, i) => (
+                  <p key={i} className="text-sm text-slate-600 flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    {formatDateSafe(d.date)}
+                    {d.start_time && d.end_time ? ` · ${d.start_time}–${d.end_time}` : ""}
+                  </p>
+                ))}
+              </div>
+            )}
+            {training.online_link ? (
+              <p className="text-sm text-slate-600 flex items-center gap-1.5">
+                <Video className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                Treinamento on-line
+              </p>
+            ) : eventMunicipalityLabel ? (
+              <p className="text-sm text-slate-600 flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                {eventMunicipalityLabel}
+              </p>
+            ) : null}
+          </div>
+
+          {hasWarning && (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
+              {submissionFeedback.message}
+            </p>
+          )}
+
+          <p className="text-xs text-green-600 font-medium">
+            ✅ Guarde esta tela como comprovante de inscrição.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* ── Schedule toggle ── */}
+      {programDays.length > 0 && (
+        <div className="max-w-lg w-full">
+          <button
+            onClick={() => setShowProgram((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-green-200 bg-white shadow-sm hover:shadow-md transition-all text-sm font-semibold text-green-700"
+          >
+            <span className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Programação do Treinamento
+            </span>
+            {showProgram
+              ? <ChevronUp className="h-4 w-4" />
+              : <ChevronDown className="h-4 w-4" />}
+          </button>
+
+          {showProgram && (
+            <div className="mt-3 space-y-3">
+              {programDays.map((dateItem, i) => {
+                const sessions = dateItem.sessions || [];
+                return (
+                  <div key={i} className="rounded-2xl overflow-hidden shadow-sm border border-green-100 bg-white">
+                    <div className="px-4 py-3 flex items-center gap-3" style={{ background: "hsl(var(--primary))" }}>
+                      <div className="flex-1">
+                        <p className="text-[11px] font-semibold text-white/70 uppercase tracking-widest leading-none mb-0.5">
+                          Dia {i + 1}
+                        </p>
+                        <p className="text-sm font-bold text-white">{formatDateSafe(dateItem.date)}</p>
+                      </div>
+                      {dateItem.start_time && (
+                        <span className="text-xs font-semibold text-white bg-white/20 rounded-lg px-2.5 py-1">
+                          {dateItem.start_time}{dateItem.end_time ? `–${dateItem.end_time}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {sessions.map((session, j) => {
+                        const title    = String(session?.title || session?.activity || "").trim();
+                        const speaker  = String(session?.speaker_name || session?.responsible || "").trim();
+                        const timeLabel = session.start_time && session.end_time
+                          ? `${session.start_time}–${session.end_time}`
+                          : session.start_time || "";
+                        const isBreak  = !speaker && (!title || /intervalo|break|coffee|almoço|lanche|pausa/i.test(title));
+                        return (
+                          <div key={j} className={`flex items-start gap-3 px-4 py-3 ${isBreak ? "bg-slate-50/60" : ""}`}>
+                            {timeLabel && (
+                              <span className="shrink-0 text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md whitespace-nowrap mt-0.5">
+                                {timeLabel}
+                              </span>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              {title && (
+                                <p className={`text-sm font-semibold leading-snug ${isBreak ? "text-slate-400 italic" : "text-slate-800"}`}>
+                                  {isBreak && <Coffee className="h-3.5 w-3.5 inline mr-1 text-slate-400" />}
+                                  {title}
+                                </p>
+                              )}
+                              {speaker && (
+                                <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                                  <Mic className="h-3 w-3 text-slate-400 shrink-0" />
+                                  {speaker}
+                                </p>
+                              )}
+                            </div>
+                            {session.duration_minutes > 0 && (
+                              <span className="shrink-0 text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
+                                {session.duration_minutes < 60
+                                  ? `${session.duration_minutes}min`
+                                  : session.duration_minutes % 60 === 0
+                                  ? `${session.duration_minutes / 60}h`
+                                  : `${Math.floor(session.duration_minutes / 60)}h${String(session.duration_minutes % 60).padStart(2, "0")}`}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function PublicEnrollment() {
   const resolveTrainingIdFromToken = async (rawToken) => {
@@ -673,139 +830,21 @@ export default function PublicEnrollment() {
   if (submitted) {
     const isAlreadyEnrolled = submissionFeedback?.type === "info";
     const hasWarning = submissionFeedback?.type === "warning";
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 50%, #d1fae5 100%)' }}>
-        <Card className="max-w-lg w-full shadow-xl border-green-200">
-          <CardContent className="pt-8 pb-8 text-center space-y-5">
-            <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-lg">
-              <CheckCircle className="h-14 w-14 text-white" />
-            </div>
-            <div className="space-y-1">
-              <h2 className="text-3xl font-bold text-green-700">
-                {isAlreadyEnrolled ? "Já Inscrito!" : "Inscrição Confirmada!"}
-              </h2>
-              <p className="text-slate-600 text-base">
-                {submissionFeedback?.message || "Sua inscrição foi registrada com sucesso."}
-              </p>
-            </div>
-            <div className="bg-white border border-green-100 rounded-xl p-5 text-left space-y-3 shadow-sm">
-              <p className="text-sm font-semibold text-green-700 uppercase tracking-wide mb-2">Detalhes do Treinamento</p>
-              <p className="text-sm text-slate-700">
-                <strong>Treinamento:</strong> {training.title}
-              </p>
-              {trainingDates.length > 0 && (
-                <div>
-                  <p className="text-sm text-slate-700 font-semibold mb-1">Datas:</p>
-                  {trainingDates.map((dateItem, index) => (
-                    <p key={index} className="text-sm text-slate-600 pl-3">
-                      • {formatDateSafe(dateItem.date)}
-                      {dateItem.start_time && dateItem.end_time
-                        ? ` — ${dateItem.start_time} às ${dateItem.end_time}`
-                        : ""}
-                    </p>
-                  ))}
-                </div>
-              )}
-              {training.online_link ? (
-                <p className="text-sm text-slate-700">
-                  <strong>Modalidade:</strong> Treinamento on-line
-                </p>
-              ) : (
-                <p className="text-sm text-slate-700">
-                  <strong>Local:</strong> {eventMunicipalityLabel}
-                </p>
-              )}
-            </div>
-            {hasWarning && (
-              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
-                {submissionFeedback.message}
-              </p>
-            )}
-            <p className="text-sm font-medium text-green-600">
-              ✅ Guarde esta tela como comprovante de inscrição.
-            </p>
-            <p className="text-xs text-slate-400">
-              Compareça 15 minutos antes do horário previsto.
-            </p>
-          </CardContent>
-        </Card>
+    const programDays = hasPublishedProgram
+      ? trainingDates.filter((d) => Array.isArray(d.sessions) && d.sessions.length > 0)
+      : [];
 
-        {/* Programação pós-inscrição */}
-        {hasPublishedProgram && (
-          <div className="max-w-lg w-full mt-4 space-y-3">
-            <div className="flex items-center gap-2 px-1">
-              <div className="flex-1 h-px bg-green-200" />
-              <span className="text-sm font-semibold text-green-700 flex items-center gap-1.5">
-                <Calendar className="h-4 w-4" />
-                Programação do Treinamento
-              </span>
-              <div className="flex-1 h-px bg-green-200" />
-            </div>
-            {trainingDates
-              .filter((d) => Array.isArray(d.sessions) && d.sessions.length > 0)
-              .map((dateItem, i) => {
-                const sessions = dateItem.sessions || [];
-                return (
-                  <div key={i} className="rounded-2xl overflow-hidden shadow-sm border border-green-100 bg-white">
-                    <div className="px-4 py-3 flex items-center gap-3" style={{ background: "hsl(var(--primary))" }}>
-                      <div className="flex-1">
-                        <p className="text-[11px] font-semibold text-white/70 uppercase tracking-widest leading-none mb-0.5">Dia {i + 1}</p>
-                        <p className="text-sm font-bold text-white">{formatDateSafe(dateItem.date)}</p>
-                      </div>
-                      {dateItem.start_time && (
-                        <span className="text-xs font-semibold text-white bg-white/20 rounded-lg px-2.5 py-1">
-                          {dateItem.start_time}{dateItem.end_time ? ` – ${dateItem.end_time}` : ""}
-                        </span>
-                      )}
-                    </div>
-                    <div className="divide-y divide-slate-100">
-                      {sessions.map((session, j) => {
-                        const title = String(session?.title || session?.activity || "").trim();
-                        const speaker = String(session?.speaker_name || session?.responsible || "").trim();
-                        const timeLabel = session.start_time && session.end_time
-                          ? `${session.start_time} – ${session.end_time}`
-                          : session.start_time || "";
-                        const isBreak = !speaker && (!title || /intervalo|break|coffee|almoço|lanche|pausa/i.test(title));
-                        return (
-                          <div key={j} className={`flex items-start gap-3 px-4 py-3 ${isBreak ? "bg-slate-50/60" : ""}`}>
-                            {timeLabel && (
-                              <span className="shrink-0 text-[11px] font-bold text-primary bg-primary/8 px-2 py-1 rounded-md whitespace-nowrap mt-0.5">
-                                {timeLabel}
-                              </span>
-                            )}
-                            <div className="flex-1 min-w-0">
-                              {title ? (
-                                <p className={`text-sm font-semibold leading-snug ${isBreak ? "text-slate-400 italic" : "text-slate-800"}`}>
-                                  {isBreak && <Coffee className="h-3.5 w-3.5 inline mr-1 text-slate-400" />}
-                                  {title}
-                                </p>
-                              ) : null}
-                              {speaker && (
-                                <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
-                                  <Mic className="h-3 w-3 text-slate-400 shrink-0" />
-                                  {speaker}
-                                </p>
-                              )}
-                            </div>
-                            {session.duration_minutes > 0 && (
-                              <span className="shrink-0 text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
-                                {session.duration_minutes < 60
-                                  ? `${session.duration_minutes}min`
-                                  : session.duration_minutes % 60 === 0
-                                  ? `${session.duration_minutes / 60}h`
-                                  : `${Math.floor(session.duration_minutes / 60)}h${String(session.duration_minutes % 60).padStart(2, "0")}`}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        )}
-      </div>
+    return (
+      <SubmittedView
+        training={training}
+        trainingDates={trainingDates}
+        isAlreadyEnrolled={isAlreadyEnrolled}
+        hasWarning={hasWarning}
+        submissionFeedback={submissionFeedback}
+        eventMunicipalityLabel={eventMunicipalityLabel}
+        programDays={programDays}
+        formatDateSafe={formatDateSafe}
+      />
     );
   }
 
