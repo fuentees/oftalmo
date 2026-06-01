@@ -8,7 +8,7 @@ import { downloadRemessaPdf, previewRemessaPdf } from "@/lib/remessaPdf";
 import {
   Plus, Package, CheckCircle, CheckCircle2, XCircle, Clock,
   Trash2, Edit, Globe, Copy, Settings2, Loader2, FileText,
-  Printer, X, Truck, Send, Eye,
+  Printer, X, Truck, Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +49,30 @@ const STATUS_BADGE = {
   entregue:  "bg-blue-100  text-blue-700  border-blue-200",
 };
 const STATUS_LABEL = { pendente:"Pendente", aprovado:"Aprovado", rejeitado:"Rejeitado", entregue:"Entregue" };
+
+// Classes estáticas para os cards de KPI (Tailwind não aceita interpolação dinâmica)
+const KPI_STYLES = {
+  pendente: {
+    border: "border-amber-200", bg: "bg-amber-50/50",
+    activeBorder: "border-amber-400", activeBg: "bg-amber-50", activeRing: "ring-2 ring-amber-200",
+    hover: "hover:border-amber-300", label: "text-amber-500", count: "text-amber-700", icon: "text-amber-300",
+  },
+  aprovado: {
+    border: "border-green-200", bg: "bg-green-50/50",
+    activeBorder: "border-green-400", activeBg: "bg-green-50", activeRing: "ring-2 ring-green-200",
+    hover: "hover:border-green-300", label: "text-green-500", count: "text-green-700", icon: "text-green-300",
+  },
+  entregue: {
+    border: "border-blue-200", bg: "bg-blue-50/50",
+    activeBorder: "border-blue-400", activeBg: "bg-blue-50", activeRing: "ring-2 ring-blue-200",
+    hover: "hover:border-blue-300", label: "text-blue-500", count: "text-blue-700", icon: "text-blue-300",
+  },
+  rejeitado: {
+    border: "border-red-200", bg: "bg-red-50/50",
+    activeBorder: "border-red-400", activeBg: "bg-red-50", activeRing: "ring-2 ring-red-200",
+    hover: "hover:border-red-300", label: "text-red-500", count: "text-red-700", icon: "text-red-300",
+  },
+};
 
 const EMPTY_FORM = {
   item_name:"", quantity:"", unit:"", reason:"",
@@ -378,28 +402,30 @@ export default function MaterialRequests() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label:"Pendentes",  key:"pendente",  color:"amber", Icon:Clock },
-          { label:"Aprovadas",  key:"aprovado",  color:"green", Icon:CheckCircle },
-          { label:"Entregues",  key:"entregue",  color:"blue",  Icon:Package },
-          { label:"Rejeitadas", key:"rejeitado", color:"red",   Icon:XCircle },
-        ].map(({ label, key, color, Icon }) => (
-          <div key={key}
-            role="button" tabIndex={0}
-            onClick={() => setStatusFilter(s => s === key ? "all" : key)}
-            onKeyDown={(e) => (e.key==="Enter"||e.key===" ") && setStatusFilter(s => s===key?"all":key)}
-            className={`rounded-xl border p-4 flex items-center justify-between cursor-pointer transition-all
-              ${statusFilter === key
-                ? `border-${color}-400 bg-${color}-50 ring-2 ring-${color}-200`
-                : `border-${color}-200 bg-${color}-50/50 hover:border-${color}-300`}`}
-          >
-            <div>
-              <p className={`text-xs font-medium text-${color}-500 uppercase tracking-wide`}>{label}</p>
-              <p className={`text-2xl font-black text-${color}-700 leading-none mt-0.5`}>{counts[key]}</p>
+        {([
+          { label:"Pendentes",  key:"pendente",  Icon:Clock },
+          { label:"Aprovadas",  key:"aprovado",  Icon:CheckCircle },
+          { label:"Entregues",  key:"entregue",  Icon:Package },
+          { label:"Rejeitadas", key:"rejeitado", Icon:XCircle },
+        ]).map(({ label, key, Icon }) => {
+          const s = KPI_STYLES[key];
+          const active = statusFilter === key;
+          return (
+            <div key={key}
+              role="button" tabIndex={0}
+              onClick={() => setStatusFilter(f => f === key ? "all" : key)}
+              onKeyDown={(e) => (e.key==="Enter"||e.key===" ") && setStatusFilter(f => f===key?"all":key)}
+              className={`rounded-xl border p-4 flex items-center justify-between cursor-pointer transition-all
+                ${active ? `${s.activeBorder} ${s.activeBg} ${s.activeRing}` : `${s.border} ${s.bg} ${s.hover}`}`}
+            >
+              <div>
+                <p className={`text-xs font-medium ${s.label} uppercase tracking-wide`}>{label}</p>
+                <p className={`text-2xl font-black ${s.count} leading-none mt-0.5`}>{counts[key]}</p>
+              </div>
+              <Icon className={`h-7 w-7 ${s.icon}`} />
             </div>
-            <Icon className={`h-7 w-7 text-${color}-300`} />
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Filtros */}
