@@ -94,8 +94,9 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
   const [deleteQTarget, setDeleteQTarget] = useState(null);
 
   // ── Results ────────────────────────────────────────────────────────────────
-  const [resultsExamId, setResultsExamId] = useState("");
-  const [searchSub, setSearchSub]         = useState("");
+  const [resultsExamId, setResultsExamId]       = useState("");
+  const [searchSub, setSearchSub]               = useState("");
+  const [selectedParticipant, setSelectedParticipant] = useState(null);
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: exams = [], isLoading: loadingExams } = useQuery({
@@ -997,7 +998,16 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                             ) : (
                               filteredParticipants.map((p) => (
                                 <TableRow key={p.id}>
-                                  <TableCell className="font-medium text-slate-800 text-sm">{p.name}</TableCell>
+                                  <TableCell className="font-medium text-slate-800 text-sm">
+                                    {p.submission ? (
+                                      <button
+                                        className="text-left hover:underline hover:text-blue-600 transition-colors"
+                                        onClick={() => setSelectedParticipant(p)}
+                                      >
+                                        {p.name}
+                                      </button>
+                                    ) : p.name}
+                                  </TableCell>
                                   <TableCell className="text-slate-500 text-sm hidden sm:table-cell">{p.municipality}</TableCell>
                                   <TableCell className="text-slate-500 text-sm hidden md:table-cell">{p.gve}</TableCell>
                                   <TableCell className="text-center font-bold tabular-nums text-sm">
@@ -1084,6 +1094,109 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Participant answers detail */}
+      <Dialog open={!!selectedParticipant} onOpenChange={(v) => !v && setSelectedParticipant(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          {selectedParticipant && (() => {
+            const p = selectedParticipant;
+            const answers = p.submission?.answers || {};
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-3 flex-wrap">
+                    <span>{p.name}</span>
+                    <Badge className={
+                      p.status === "aprovado" ? "bg-green-100 text-green-700"
+                      : "bg-red-100 text-red-700"
+                    }>
+                      {p.status === "aprovado" ? "Aprovado" : "Reprovado"} — {p.percentage}%
+                    </Badge>
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-3 mt-2">
+                  {resultsQuestions.length === 0 && (
+                    <p className="text-sm text-slate-400 text-center py-6">Questões não disponíveis.</p>
+                  )}
+                  {resultsQuestions.map((q, i) => {
+                    const answer = answers[q.id];
+                    const unanswered = answer === undefined || answer === null || answer === "";
+
+                    let isCorrect = null;
+                    let answerLabel = null;
+                    let correctLabel = null;
+
+                    if (q.type === "true_false") {
+                      isCorrect = unanswered ? null : answer === q.correct_answer;
+                      answerLabel = unanswered ? "—" : answer;
+                      correctLabel = q.correct_answer;
+                    } else if (q.type === "multiple_choice") {
+                      const chosenOpt = (q.options || []).find((o) => o.id === answer);
+                      const correctOpt = (q.options || []).find((o) => o.is_correct);
+                      const letters = ["A","B","C","D","E"];
+                      const chosenIdx = (q.options || []).findIndex((o) => o.id === answer);
+                      const correctIdx = (q.options || []).findIndex((o) => o.is_correct);
+                      isCorrect = unanswered ? null : chosenOpt?.is_correct;
+                      answerLabel = unanswered ? "—" : `${letters[chosenIdx] ?? "?"}) ${chosenOpt?.text || ""}`;
+                      correctLabel = correctOpt ? `${letters[correctIdx] ?? "?"}) ${correctOpt.text}` : null;
+                    }
+
+                    const borderColor = unanswered
+                      ? "border-slate-200"
+                      : isCorrect === true
+                      ? "border-green-300 bg-green-50/30"
+                      : "border-red-300 bg-red-50/30";
+
+                    return (
+                      <div key={q.id} className={`rounded-lg border px-4 py-3 space-y-2 ${borderColor}`}>
+                        <div className="flex items-start gap-2">
+                          <span className="shrink-0 text-xs font-bold text-slate-400 mt-0.5 w-6">Q{i+1}</span>
+                          <p className="text-sm text-slate-800 flex-1">{q.text || "(sem enunciado)"}</p>
+                          {!unanswered && isCorrect !== null && (
+                            <span className={`shrink-0 text-xs font-bold ${isCorrect ? "text-green-600" : "text-red-600"}`}>
+                              {isCorrect ? "✓ Certo" : "✗ Errou"}
+                            </span>
+                          )}
+                          {unanswered && <span className="shrink-0 text-xs text-slate-400">Não respondeu</span>}
+                        </div>
+
+                        {q.type !== "essay" && (
+                          <div className="ml-8 space-y-1 text-xs">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-500 w-20 shrink-0">Respondeu:</span>
+                              <span className={`font-medium ${
+                                unanswered ? "text-slate-400 italic"
+                                : isCorrect ? "text-green-700"
+                                : "text-red-700"
+                              }`}>{answerLabel}</span>
+                            </div>
+                            {!isCorrect && !unanswered && correctLabel && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-slate-500 w-20 shrink-0">Correto:</span>
+                                <span className="font-medium text-green-700">{correctLabel}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {q.type === "essay" && (
+                          <div className="ml-8 text-xs">
+                            <span className="text-slate-500">Resposta: </span>
+                            <span className="text-slate-700 whitespace-pre-wrap">
+                              {unanswered ? <em className="text-slate-400">Não respondeu</em> : String(answer)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Delete question */}
       <AlertDialog open={!!deleteQTarget} onOpenChange={(v)=>!v&&setDeleteQTarget(null)}>
