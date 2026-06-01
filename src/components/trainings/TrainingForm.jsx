@@ -368,6 +368,9 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     if (trainingId) {
       // Aguarda a busca completa no modo edição para evitar abrir com dados parciais.
       if (loadingCompleteTraining) return;
+      // Só usa o prop `training` como fallback se ele vier com dates — caso contrário
+      // aguarda o completeTraining para não inicializar com datas vazias.
+      if (!completeTraining && training && !training.dates) return;
       const sourceTraining = completeTraining || training;
       if (!sourceTraining) return;
       if (initializedTrainingKey === trainingId) return;
