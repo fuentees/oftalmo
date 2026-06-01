@@ -553,10 +553,11 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                             onClick={() => openQuestionsForExam(exam)}>
                             <List className="h-3 w-3" /> Questões
                           </Button>
-                          <button onClick={() => { setCopyExamSource(exam); setCopyTrainingId(""); }}
-                            title="Copiar para outro treinamento" className="p-1 text-slate-300 hover:text-violet-500">
-                            <Copy className="h-3.5 w-3.5" />
-                          </button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 hover:border-violet-400 hover:text-violet-600"
+                            onClick={() => { setCopyExamSource(exam); setCopyTrainingId(""); }}
+                            title="Copiar para outro treinamento">
+                            <Copy className="h-3 w-3" /> Usar em outro
+                          </Button>
                           <button onClick={() => openEditExam(exam)} className="p-1 text-slate-400 hover:text-blue-500">
                             <Edit className="h-3.5 w-3.5" />
                           </button>
