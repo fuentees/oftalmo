@@ -43,7 +43,7 @@ const isGoogleOAuthCallback =
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
-const NO_LAYOUT_PAGES = new Set(["PublicEnrollment", "CheckIn", "PublicMaterialRequest"]);
+const NO_LAYOUT_PAGES = new Set(["PublicEnrollment", "CheckIn", "PublicMaterialRequest", "PublicExam"]);
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
@@ -55,6 +55,7 @@ const PUBLIC_ROUTES = [
   "/trainingfeedback",
   "/tracomaexaminertest",
   "/publicmaterialrequest",
+  "/publicexam",
 ];
 
 const AuthenticatedApp = () => {
