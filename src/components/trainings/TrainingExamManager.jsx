@@ -94,9 +94,14 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
   const [deleteQTarget, setDeleteQTarget] = useState(null);
 
   // ── Results ────────────────────────────────────────────────────────────────
-  const [resultsExamId, setResultsExamId]       = useState("");
-  const [searchSub, setSearchSub]               = useState("");
+  const [resultsExamId, setResultsExamId]             = useState("");
+  const [searchSub, setSearchSub]                     = useState("");
   const [selectedParticipant, setSelectedParticipant] = useState(null);
+
+  // ── Copy exam ──────────────────────────────────────────────────────────────
+  const [copyExamSource, setCopyExamSource]   = useState(null);
+  const [copyTrainingId, setCopyTrainingId]   = useState("");
+  const [copying, setCopying]                 = useState(false);
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: exams = [], isLoading: loadingExams } = useQuery({
@@ -128,6 +133,13 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
         ? dataClient.entities.ExamQuestion.filter({ exam_id: resultsExamId }, "ordem")
         : Promise.resolve([]),
     enabled: !!resultsExamId,
+  });
+
+  const { data: allTrainings = [] } = useQuery({
+    queryKey: ["allTrainings"],
+    queryFn: () => dataClient.entities.Training.filter({}, "-start_date"),
+    enabled: !!copyExamSource,
+    select: (data) => (Array.isArray(data) ? data.filter((t) => t.id !== trainingId) : []),
   });
 
   // ── Exam CRUD ──────────────────────────────────────────────────────────────
@@ -296,6 +308,47 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
     navigator.clipboard.writeText(publicLink(exam)).then(() =>
       toast({ title: "Link copiado!", description: "Envie para os participantes." })
     );
+
+  const handleCopyExam = async () => {
+    if (!copyExamSource || !copyTrainingId) return;
+    setCopying(true);
+    try {
+      const targetTraining = allTrainings.find((t) => t.id === copyTrainingId);
+      const newExam = await dataClient.entities.Exam.create({
+        title: copyExamSource.title,
+        description: copyExamSource.description || null,
+        passing_score: copyExamSource.passing_score,
+        training_id: copyTrainingId,
+        training_title: targetTraining?.title || null,
+        is_active: false,
+      });
+      const sourceQs = await dataClient.entities.ExamQuestion.filter({ exam_id: copyExamSource.id }, "ordem");
+      await Promise.all(
+        (Array.isArray(sourceQs) ? sourceQs : []).map((q) =>
+          dataClient.entities.ExamQuestion.create({
+            exam_id: newExam.id,
+            ordem: q.ordem,
+            type: q.type,
+            text: q.text,
+            image_url: q.image_url || null,
+            points: q.points,
+            options: q.options || [],
+            correct_answer: q.correct_answer || null,
+          })
+        )
+      );
+      toast({
+        title: "Prova copiada!",
+        description: `Copiada para "${targetTraining?.title || "outro treinamento"}" (desativada por padrão).`,
+      });
+      setCopyExamSource(null);
+      setCopyTrainingId("");
+    } catch (err) {
+      toast({ title: "Erro ao copiar prova.", description: err?.message, variant: "destructive" });
+    } finally {
+      setCopying(false);
+    }
+  };
 
   // ── Results derived ────────────────────────────────────────────────────────
   const resultsExam = exams.find((e) => e.id === resultsExamId);
@@ -500,6 +553,10 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                             onClick={() => openQuestionsForExam(exam)}>
                             <List className="h-3 w-3" /> Questões
                           </Button>
+                          <button onClick={() => { setCopyExamSource(exam); setCopyTrainingId(""); }}
+                            title="Copiar para outro treinamento" className="p-1 text-slate-300 hover:text-violet-500">
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
                           <button onClick={() => openEditExam(exam)} className="p-1 text-slate-400 hover:text-blue-500">
                             <Edit className="h-3.5 w-3.5" />
                           </button>
@@ -1094,6 +1151,69 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Copy exam to another training */}
+      <Dialog open={!!copyExamSource} onOpenChange={(v) => { if (!v) { setCopyExamSource(null); setCopyTrainingId(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Copiar prova para outro treinamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
+              <p className="text-xs text-slate-500">Prova selecionada</p>
+              <p className="text-sm font-semibold text-slate-800 mt-0.5">{copyExamSource?.title}</p>
+              <p className="text-xs text-slate-400">Aprovação: {copyExamSource?.passing_score}%</p>
+            </div>
+
+            <div>
+              <Label className="text-sm">Treinamento destino</Label>
+              {allTrainings.length === 0 ? (
+                <p className="text-sm text-slate-400 mt-2">Nenhum outro treinamento disponível.</p>
+              ) : (
+                <div className="mt-2 space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {allTrainings.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setCopyTrainingId(t.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
+                        copyTrainingId === t.id
+                          ? "border-violet-400 bg-violet-50 text-violet-800"
+                          : "border-slate-200 hover:border-slate-300 text-slate-700"
+                      }`}
+                    >
+                      <p className="font-medium">{t.title}</p>
+                      {t.start_date && (
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {format(new Date(t.start_date), "dd/MM/yyyy")}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-400">
+              A cópia será criada <strong>desativada</strong> no treinamento destino. As respostas dos participantes não são copiadas.
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setCopyExamSource(null); setCopyTrainingId(""); }}>
+                Cancelar
+              </Button>
+              <Button
+                disabled={!copyTrainingId || copying}
+                onClick={handleCopyExam}
+                className="text-white gap-1.5"
+                style={{ background: "hsl(var(--primary))" }}
+              >
+                {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                {copying ? "Copiando..." : "Copiar"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Participant answers detail */}
       <Dialog open={!!selectedParticipant} onOpenChange={(v) => !v && setSelectedParticipant(null)}>
