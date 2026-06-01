@@ -718,6 +718,7 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
 
               {resultsExamId && !loadingSubs && stats && (
                 <>
+                  {/* Stats cards — always on top */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <StatCard label="Total"      value={stats.total}                   color="blue"/>
                     <StatCard label="Aprovados"  value={stats.passed}  sub={`${Math.round((stats.passed/stats.total)*100)}%`}  color="green"/>
@@ -725,162 +726,85 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                     <StatCard label="Média"      value={`${Math.round(stats.avgPct)}%`} sub={`Mínimo: ${resultsExam?.passing_score}%`} color="slate"/>
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    <Card className="border-slate-200">
-                      <CardHeader className="pb-1"><CardTitle className="text-xs text-slate-500">Aprovação</CardTitle></CardHeader>
-                      <CardContent>
-                        <ResponsiveContainer width="100%" height={180}>
-                          <PieChart>
-                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70}
-                              dataKey="value" label={({name,value})=>`${name}: ${value}`}>
-                              {pieData.map((_,i)=><Cell key={i} fill={PIE_COLORS[i]}/>)}
-                            </Pie>
-                            <Tooltip/>
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </CardContent>
-                    </Card>
+                  {/* Sub-tabs */}
+                  <Tabs defaultValue="visao_geral">
+                    <TabsList>
+                      <TabsTrigger value="visao_geral" className="gap-1.5">
+                        <BarChart2 className="h-3.5 w-3.5" /> Visão Geral
+                      </TabsTrigger>
+                      <TabsTrigger value="por_questao" className="gap-1.5">
+                        <FileBarChart2 className="h-3.5 w-3.5" /> Por Questão
+                      </TabsTrigger>
+                      <TabsTrigger value="participantes" className="gap-1.5">
+                        <Users className="h-3.5 w-3.5" /> Participantes
+                        <span className="ml-1 bg-slate-200 text-slate-600 rounded-full px-1.5 py-0 text-[10px] font-bold">
+                          {allParticipantsWithStatus.length}
+                        </span>
+                      </TabsTrigger>
+                    </TabsList>
 
-                    <Card className="border-slate-200 lg:col-span-2">
-                      <CardHeader className="pb-1"><CardTitle className="text-xs text-slate-500">Distribuição de Notas</CardTitle></CardHeader>
-                      <CardContent>
-                        <ResponsiveContainer width="100%" height={180}>
-                          <BarChart data={scoreDistribution}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-                            <XAxis dataKey="label" tick={{fontSize:10}}/>
-                            <YAxis allowDecimals={false} tick={{fontSize:10}}/>
-                            <Tooltip/>
-                            <Bar dataKey="count" name="Participantes" fill="hsl(var(--primary))" radius={[4,4,0,0]}/>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </CardContent>
-                    </Card>
+                    {/* ── Visão Geral ── */}
+                    <TabsContent value="visao_geral" className="mt-4 space-y-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <Card className="border-slate-200">
+                          <CardHeader className="pb-1"><CardTitle className="text-xs text-slate-500">Aprovação</CardTitle></CardHeader>
+                          <CardContent>
+                            <ResponsiveContainer width="100%" height={180}>
+                              <PieChart>
+                                <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70}
+                                  dataKey="value" label={({name,value})=>`${name}: ${value}`}>
+                                  {pieData.map((_,i)=><Cell key={i} fill={PIE_COLORS[i]}/>)}
+                                </Pie>
+                                <Tooltip/>
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
 
-                    {questionAccuracy.length > 0 && (
-                      <Card className="border-slate-200 lg:col-span-3">
-                        <CardHeader className="pb-1"><CardTitle className="text-xs text-slate-500">Acerto por Questão (%)</CardTitle></CardHeader>
-                        <CardContent>
-                          <ResponsiveContainer width="100%" height={180}>
-                            <BarChart data={questionAccuracy}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-                              <XAxis dataKey="name" tick={{fontSize:10}}/>
-                              <YAxis domain={[0,100]} tickFormatter={v=>`${v}%`} tick={{fontSize:10}}/>
-                              <Tooltip formatter={v=>[`${v}%`,"Acertos"]}/>
-                              <Bar dataKey="pct" radius={[4,4,0,0]}>
-                                {questionAccuracy.map((e,i)=>(
-                                  <Cell key={i} fill={e.pct>=Number(resultsExam?.passing_score||60)?"#22c55e":"#f97316"}/>
-                                ))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
+                        <Card className="border-slate-200 lg:col-span-2">
+                          <CardHeader className="pb-1"><CardTitle className="text-xs text-slate-500">Distribuição de Notas</CardTitle></CardHeader>
+                          <CardContent>
+                            <ResponsiveContainer width="100%" height={180}>
+                              <BarChart data={scoreDistribution}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                                <XAxis dataKey="label" tick={{fontSize:10}}/>
+                                <YAxis allowDecimals={false} tick={{fontSize:10}}/>
+                                <Tooltip/>
+                                <Bar dataKey="count" name="Participantes" fill="hsl(var(--primary))" radius={[4,4,0,0]}/>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
 
-                  {/* Unified participant table — same style as attendance control */}
-                  <Card className="border-slate-200">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-3">
-                          <CardTitle className="text-sm font-semibold text-slate-700">
-                            Participantes ({allParticipantsWithStatus.length})
-                          </CardTitle>
-                          <div className="flex gap-1.5">
-                            <Badge className="bg-green-100 text-green-700 text-xs gap-1">
-                              <CheckCircle2 className="h-3 w-3" />{approvedCount}
-                            </Badge>
-                            <Badge className="bg-red-100 text-red-700 text-xs">
-                              {rejectedCount} reprov.
-                            </Badge>
-                            <Badge className="bg-amber-100 text-amber-700 text-xs gap-1">
-                              <Clock className="h-3 w-3" />{pendingCount} pendente{pendingCount !== 1 ? "s" : ""}
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="relative">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                            <Input value={searchSub} onChange={(e) => setSearchSub(e.target.value)}
-                              placeholder="Buscar por nome, município ou GVE..."
-                              className="h-8 pl-8 text-xs w-52" />
-                          </div>
-                          <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={exportCSV}>
-                            <Download className="h-3.5 w-3.5" /> CSV
-                          </Button>
-                        </div>
+                        {questionAccuracy.length > 0 && (
+                          <Card className="border-slate-200 lg:col-span-3">
+                            <CardHeader className="pb-1"><CardTitle className="text-xs text-slate-500">Acerto por Questão (%)</CardTitle></CardHeader>
+                            <CardContent>
+                              <ResponsiveContainer width="100%" height={180}>
+                                <BarChart data={questionAccuracy}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                                  <XAxis dataKey="name" tick={{fontSize:10}}/>
+                                  <YAxis domain={[0,100]} tickFormatter={v=>`${v}%`} tick={{fontSize:10}}/>
+                                  <Tooltip formatter={v=>[`${v}%`,"Acertos"]}/>
+                                  <Bar dataKey="pct" radius={[4,4,0,0]}>
+                                    {questionAccuracy.map((e,i)=>(
+                                      <Cell key={i} fill={e.pct>=Number(resultsExam?.passing_score||60)?"#22c55e":"#f97316"}/>
+                                    ))}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </CardContent>
+                          </Card>
+                        )}
                       </div>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-slate-50">
-                              <TableHead className="font-semibold text-xs">Participante</TableHead>
-                              <TableHead className="font-semibold text-xs hidden sm:table-cell">Município</TableHead>
-                              <TableHead className="font-semibold text-xs hidden md:table-cell">GVE</TableHead>
-                              <TableHead className="font-semibold text-xs text-center">Nota</TableHead>
-                              <TableHead className="font-semibold text-xs text-center">Resultado</TableHead>
-                              <TableHead className="font-semibold text-xs text-right hidden lg:table-cell">Respondeu em</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {filteredParticipants.length === 0 ? (
-                              <TableRow>
-                                <TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">
-                                  Nenhum participante encontrado.
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              filteredParticipants.map((p) => (
-                                <TableRow key={p.id}>
-                                  <TableCell className="font-medium text-slate-800 text-sm">
-                                    {p.name}
-                                  </TableCell>
-                                  <TableCell className="text-slate-500 text-sm hidden sm:table-cell">
-                                    {p.municipality}
-                                  </TableCell>
-                                  <TableCell className="text-slate-500 text-sm hidden md:table-cell">
-                                    {p.gve}
-                                  </TableCell>
-                                  <TableCell className="text-center font-bold tabular-nums text-sm">
-                                    {p.percentage !== null ? `${p.percentage}%` : "—"}
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    <Badge className={
-                                      p.status === "aprovado"
-                                        ? "bg-green-100 text-green-700"
-                                        : p.status === "reprovado"
-                                        ? "bg-red-100 text-red-700"
-                                        : "bg-amber-100 text-amber-700"
-                                    }>
-                                      {p.status === "aprovado" ? "Aprovado"
-                                        : p.status === "reprovado" ? "Reprovado"
-                                        : "Pendente"}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell className="text-right text-xs text-slate-400 hidden lg:table-cell">
-                                    {p.submittedAt
-                                      ? format(new Date(p.submittedAt), "dd/MM/yyyy HH:mm")
-                                      : "—"}
-                                  </TableCell>
-                                </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </CardContent>
-                  </Card>
+                    </TabsContent>
 
-                  {/* Per-question detailed report */}
-                  {questionReport.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                        <FileBarChart2 className="h-4 w-4 text-slate-500" />
-                        Relatório por Questão
-                      </h3>
-                      {questionReport.map((q) => {
+                    {/* ── Por Questão ── */}
+                    <TabsContent value="por_questao" className="mt-4 space-y-3">
+                      {questionReport.length === 0 ? (
+                        <p className="text-center py-10 text-slate-400 text-sm">Nenhuma questão com respostas ainda.</p>
+                      ) : (
+                        questionReport.map((q) => {
                         const isExpanded = expandedQuestions.has(q.id);
                         const correctCount =
                           q.type === "multiple_choice"
@@ -1012,9 +936,98 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                             )}
                           </Card>
                         );
-                      })}
-                    </div>
+                      })
                   )}
+                </TabsContent>
+
+                {/* ── Participantes ── */}
+                <TabsContent value="participantes" className="mt-4">
+                  <Card className="border-slate-200">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-3">
+                          <CardTitle className="text-sm font-semibold text-slate-700">
+                            Participantes ({allParticipantsWithStatus.length})
+                          </CardTitle>
+                          <div className="flex gap-1.5">
+                            <Badge className="bg-green-100 text-green-700 text-xs gap-1">
+                              <CheckCircle2 className="h-3 w-3" />{approvedCount}
+                            </Badge>
+                            <Badge className="bg-red-100 text-red-700 text-xs">
+                              {rejectedCount} reprov.
+                            </Badge>
+                            <Badge className="bg-amber-100 text-amber-700 text-xs gap-1">
+                              <Clock className="h-3 w-3" />{pendingCount} pendente{pendingCount !== 1 ? "s" : ""}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                            <Input value={searchSub} onChange={(e) => setSearchSub(e.target.value)}
+                              placeholder="Buscar por nome, município ou GVE..."
+                              className="h-8 pl-8 text-xs w-52" />
+                          </div>
+                          <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={exportCSV}>
+                            <Download className="h-3.5 w-3.5" /> CSV
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="border rounded-lg overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-slate-50">
+                              <TableHead className="font-semibold text-xs">Participante</TableHead>
+                              <TableHead className="font-semibold text-xs hidden sm:table-cell">Município</TableHead>
+                              <TableHead className="font-semibold text-xs hidden md:table-cell">GVE</TableHead>
+                              <TableHead className="font-semibold text-xs text-center">Nota</TableHead>
+                              <TableHead className="font-semibold text-xs text-center">Resultado</TableHead>
+                              <TableHead className="font-semibold text-xs text-right hidden lg:table-cell">Respondeu em</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredParticipants.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">
+                                  Nenhum participante encontrado.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              filteredParticipants.map((p) => (
+                                <TableRow key={p.id}>
+                                  <TableCell className="font-medium text-slate-800 text-sm">{p.name}</TableCell>
+                                  <TableCell className="text-slate-500 text-sm hidden sm:table-cell">{p.municipality}</TableCell>
+                                  <TableCell className="text-slate-500 text-sm hidden md:table-cell">{p.gve}</TableCell>
+                                  <TableCell className="text-center font-bold tabular-nums text-sm">
+                                    {p.percentage !== null ? `${p.percentage}%` : "—"}
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <Badge className={
+                                      p.status === "aprovado" ? "bg-green-100 text-green-700"
+                                      : p.status === "reprovado" ? "bg-red-100 text-red-700"
+                                      : "bg-amber-100 text-amber-700"
+                                    }>
+                                      {p.status === "aprovado" ? "Aprovado"
+                                        : p.status === "reprovado" ? "Reprovado"
+                                        : "Pendente"}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right text-xs text-slate-400 hidden lg:table-cell">
+                                    {p.submittedAt ? format(new Date(p.submittedAt), "dd/MM/yyyy HH:mm") : "—"}
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+              </Tabs>
                 </>
               )}
             </>
