@@ -27,7 +27,11 @@ import {
   CalendarX,
   CalendarClock,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileText,
+  Loader2,
+  X,
+  Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +63,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
+import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/api/supabaseClient";
+import { downloadRemessaPdf } from "@/lib/remessaPdf";
 import PageHeader from "@/components/common/PageHeader";
 import SearchFilter from "@/components/common/SearchFilter";
 import DataTable from "@/components/common/DataTable";
@@ -103,6 +110,10 @@ export default function Stock() {
   const [movementType, setMovementType] = useState("entrada");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleteMovementConfirm, setDeleteMovementConfirm] = useState(null);
+  const [showRemessaDialog, setShowRemessaDialog] = useState(false);
+  const [remessaForm, setRemessaForm] = useState(null);
+  const [savingRemessa, setSavingRemessa] = useState(false);
+  const [remessaError, setRemessaError] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [importTarget, setImportTarget] = useState("materials");
   const [importFile, setImportFile] = useState(null);
@@ -1197,6 +1208,19 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
       cellClassName: "text-right",
       render: (row) => (
         <div className="flex justify-end gap-1">
+          {row.type === "saida" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Gerar Relação de Remessa"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleGenerateRemessaFromMovement(row);
+              }}
+            >
+              <FileText className="h-4 w-4 text-blue-500" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -1241,6 +1265,73 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
     setSelectedMaterial(null);
     setEditingMovement(null);
     setShowMovementForm(true);
+  };
+
+  const handleAfterSaidaSaved = (preData) => {
+    setRemessaForm(preData);
+    setRemessaError(null);
+    setShowRemessaDialog(true);
+  };
+
+  const handleGenerateRemessaFromMovement = (mov) => {
+    setRemessaForm({
+      data: mov.date
+        ? format(new Date(mov.date), "yyyy-MM-dd")
+        : format(new Date(), "yyyy-MM-dd"),
+      para_destino: mov.destination_municipio || mov.destination_label || "",
+      para_gve: mov.destination_gve || "",
+      responsavel: mov.responsible || "",
+      responsavel_cargo:
+        "Favor retornar à oftalmologia sanitária uma via de recebimento assinada",
+      items: [
+        {
+          ordem: 1,
+          interessado: "A/C",
+          assunto: `${mov.quantity} ${mov.material_name}`,
+        },
+      ],
+    });
+    setRemessaError(null);
+    setShowRemessaDialog(true);
+  };
+
+  const handleSaveRemessa = async () => {
+    if (!remessaForm?.para_destino?.trim()) {
+      setRemessaError("Informe o destino (PARA).");
+      return;
+    }
+    setSavingRemessa(true);
+    setRemessaError(null);
+    try {
+      const ano = new Date(remessaForm.data + "T00:00:00").getFullYear();
+      const { data: numData } = await supabase.rpc("next_remessa_number", { p_ano: ano });
+      const numero = numData ?? 1;
+      const remessaPayload = {
+        numero,
+        ano,
+        data: remessaForm.data,
+        para_destino: remessaForm.para_destino.trim(),
+        para_gve: (remessaForm.para_gve || "").trim(),
+        interessado: "",
+        responsavel: (remessaForm.responsavel || "").trim(),
+        responsavel_cargo: (remessaForm.responsavel_cargo || "").trim(),
+        observacoes: "",
+        items: remessaForm.items.filter((it) => it.assunto?.trim()),
+        status: "emitida",
+      };
+      await dataClient.entities.Remessa.create(remessaPayload);
+      downloadRemessaPdf(remessaPayload);
+      setShowRemessaDialog(false);
+      setRemessaForm(null);
+      toast({
+        title: "Remessa salva",
+        description: `Remessa Nº ${String(numero).padStart(2, "0")}/${ano} criada e PDF gerado.`,
+      });
+    } catch (err) {
+      setRemessaError(err?.message || "Erro ao salvar remessa.");
+    } finally {
+      setSavingRemessa(false);
+    }
   };
 
   return (
@@ -1763,6 +1854,7 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
             type={movementType}
             materials={materials}
             movement={editingMovement}
+            onAfterSaidaSaved={handleAfterSaidaSaved}
             onClose={() => {
               setShowMovementForm(false);
               setEditingMovement(null);
@@ -1875,6 +1967,206 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Remessa Dialog */}
+      <Dialog
+        open={showRemessaDialog}
+        onOpenChange={(v) => !savingRemessa && setShowRemessaDialog(v)}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Gerar Relação de Remessa
+            </DialogTitle>
+          </DialogHeader>
+          {remessaForm && (
+            <div className="space-y-5 py-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Data</Label>
+                  <Input
+                    type="date"
+                    value={remessaForm.data}
+                    onChange={(e) =>
+                      setRemessaForm((f) => ({ ...f, data: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>
+                    Destino (PARA) <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    value={remessaForm.para_destino}
+                    onChange={(e) =>
+                      setRemessaForm((f) => ({
+                        ...f,
+                        para_destino: e.target.value,
+                      }))
+                    }
+                    placeholder="Ex: Conchas"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>GVE</Label>
+                  <Input
+                    value={remessaForm.para_gve}
+                    onChange={(e) =>
+                      setRemessaForm((f) => ({
+                        ...f,
+                        para_gve: e.target.value,
+                      }))
+                    }
+                    placeholder="Ex: Botucatu"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Responsável</Label>
+                  <Input
+                    value={remessaForm.responsavel}
+                    onChange={(e) =>
+                      setRemessaForm((f) => ({
+                        ...f,
+                        responsavel: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Observação do rodapé</Label>
+                <Textarea
+                  value={remessaForm.responsavel_cargo}
+                  onChange={(e) =>
+                    setRemessaForm((f) => ({
+                      ...f,
+                      responsavel_cargo: e.target.value,
+                    }))
+                  }
+                  rows={2}
+                  className="text-sm resize-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold">
+                    Itens remetidos
+                  </Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setRemessaForm((f) => ({
+                        ...f,
+                        items: [
+                          ...f.items,
+                          {
+                            ordem: f.items.length + 1,
+                            interessado: "A/C",
+                            assunto: "",
+                          },
+                        ],
+                      }))
+                    }
+                    className="gap-1.5 h-7 text-xs"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Adicionar item
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {remessaForm.items.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-start gap-2 p-2 rounded border border-slate-200 bg-slate-50/50"
+                    >
+                      <span className="w-7 text-xs text-center font-bold text-slate-500 pt-1.5">
+                        {idx + 1}
+                      </span>
+                      <Input
+                        value={item.interessado}
+                        onChange={(e) =>
+                          setRemessaForm((f) => ({
+                            ...f,
+                            items: f.items.map((it, i) =>
+                              i === idx
+                                ? { ...it, interessado: e.target.value }
+                                : it
+                            ),
+                          }))
+                        }
+                        placeholder="Interessado"
+                        className="h-8 text-sm w-32"
+                      />
+                      <Input
+                        value={item.assunto}
+                        onChange={(e) =>
+                          setRemessaForm((f) => ({
+                            ...f,
+                            items: f.items.map((it, i) =>
+                              i === idx
+                                ? { ...it, assunto: e.target.value }
+                                : it
+                            ),
+                          }))
+                        }
+                        placeholder="Assunto / item remetido"
+                        className="h-8 text-sm flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRemessaForm((f) => ({
+                            ...f,
+                            items: f.items
+                              .filter((_, i) => i !== idx)
+                              .map((it, i) => ({ ...it, ordem: i + 1 })),
+                          }))
+                        }
+                        className="mt-1 text-slate-300 hover:text-red-500 transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {remessaError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+                  {remessaError}
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRemessaDialog(false)}
+                  disabled={savingRemessa}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSaveRemessa}
+                  disabled={savingRemessa}
+                  className="gap-2 text-white"
+                  style={{ background: "hsl(var(--primary))" }}
+                >
+                  {savingRemessa ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Printer className="h-4 w-4" />
+                  )}
+                  {savingRemessa ? "Salvando..." : "Salvar e Imprimir PDF"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Movement Delete Confirmation */}
       <AlertDialog

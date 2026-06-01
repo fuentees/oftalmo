@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { useAuth } from "@/lib/AuthContext";
@@ -45,6 +45,7 @@ export default function MovementForm({
   preselectedMaterial = null,
   onClose,
   movement = null,
+  onAfterSaidaSaved = null,
 }) {
   const [formData, setFormData] = useState({
     material_id: "",
@@ -68,6 +69,7 @@ export default function MovementForm({
   const [materialInput, setMaterialInput] = useState("");
   const [batchItems, setBatchItems] = useState(() => [buildBatchItem(preselectedMaterial)]);
   const [formStatus, setFormStatus] = useState(null);
+  const remessaPreDataRef = useRef(/** @type {any} */ (null));
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -330,6 +332,10 @@ export default function MovementForm({
       setFormStatus(null);
       queryClient.invalidateQueries({ queryKey: ["materials"] });
       queryClient.invalidateQueries({ queryKey: ["movements"] });
+      if (remessaPreDataRef.current && typeof onAfterSaidaSaved === "function") {
+        onAfterSaidaSaved(remessaPreDataRef.current);
+        remessaPreDataRef.current = null;
+      }
       onClose();
     },
     onError: (error) => {
@@ -535,6 +541,29 @@ export default function MovementForm({
             return Array.from(grouped.values());
           })(),
         };
+
+    if (!movement && formData.type === "saida" && typeof onAfterSaidaSaved === "function") {
+      remessaPreDataRef.current = {
+        data: formData.date,
+        para_destino:
+          formData.destination_municipio ||
+          formData.destination_gve ||
+          formData.destination_other ||
+          formData.destination_sector ||
+          "",
+        para_gve: formData.destination_gve || "",
+        responsavel: responsibleValue,
+        responsavel_cargo:
+          "Favor retornar à oftalmologia sanitária uma via de recebimento assinada",
+        items: batchItems
+          .filter((item) => item.material_id && Number(item.quantity) > 0)
+          .map((item, i) => ({
+            ordem: i + 1,
+            interessado: "A/C",
+            assunto: `${item.quantity} ${item.material_name}`,
+          })),
+      };
+    }
 
     saveMovement.mutate(payload);
   };
