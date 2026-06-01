@@ -110,6 +110,7 @@ export default function Stock() {
   const [movementType, setMovementType] = useState("entrada");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleteMovementConfirm, setDeleteMovementConfirm] = useState(null);
+  const [showRemessaConfirm, setShowRemessaConfirm] = useState(false);
   const [showRemessaDialog, setShowRemessaDialog] = useState(false);
   const [remessaForm, setRemessaForm] = useState(null);
   const [savingRemessa, setSavingRemessa] = useState(false);
@@ -1270,7 +1271,7 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
   const handleAfterSaidaSaved = (preData) => {
     setRemessaForm(preData);
     setRemessaError(null);
-    setShowRemessaDialog(true);
+    setShowRemessaConfirm(true);
   };
 
   const handleGenerateRemessaFromMovement = (mov) => {
@@ -1318,10 +1319,17 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
         responsavel_cargo: (remessaForm.responsavel_cargo || "").trim(),
         observacoes: "",
         items: remessaForm.items.filter((it) => it.assunto?.trim()),
-        movement_ids: remessaForm.movement_ids || [],
         status: "emitida",
       };
-      await dataClient.entities.Remessa.create(remessaPayload);
+      const created = await dataClient.entities.Remessa.create(remessaPayload);
+      // Rastreabilidade: silencioso caso a coluna ainda não exista no banco
+      if (created?.id && remessaForm.movement_ids?.length > 0) {
+        try {
+          await dataClient.entities.Remessa.update(created.id, {
+            movement_ids: remessaForm.movement_ids,
+          });
+        } catch (_) {}
+      }
       downloadRemessaPdf(remessaPayload);
       setShowRemessaDialog(false);
       setRemessaForm(null);
@@ -1965,6 +1973,36 @@ LIM-002,Álcool 70%,saida,3,2025-01-20,João Silva,outros,,,,Parceria externa,fa
               className="bg-red-600 hover:bg-red-700"
             >
               Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação: gerar remessa após saída */}
+      <AlertDialog
+        open={showRemessaConfirm}
+        onOpenChange={(v) => !v && setShowRemessaConfirm(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Gerar Relação de Remessa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A saída foi registrada. Deseja emitir uma Relação de Remessa para
+              este envio?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowRemessaConfirm(false)}>
+              Não, obrigado
+            </AlertDialogCancel>
+            <AlertDialogAction
+              style={{ background: "hsl(var(--primary))" }}
+              onClick={() => {
+                setShowRemessaConfirm(false);
+                setShowRemessaDialog(true);
+              }}
+            >
+              Sim, gerar remessa
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

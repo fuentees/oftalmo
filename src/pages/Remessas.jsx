@@ -257,7 +257,7 @@ export default function Remessas() {
     try {
       const filteredItems = form.items.filter((it) => it.assunto.trim());
       if (editingRemessa) {
-        await dataClient.entities.Remessa.update(editingRemessa.id, {
+        const updatedPayload = {
           data: form.data,
           para_destino: form.para_destino.trim(),
           para_gve: form.para_gve.trim(),
@@ -266,6 +266,12 @@ export default function Remessas() {
           responsavel_cargo: form.responsavel_cargo.trim(),
           observacoes: form.observacoes.trim(),
           items: filteredItems,
+        };
+        await dataClient.entities.Remessa.update(editingRemessa.id, updatedPayload);
+        downloadRemessaPdf({
+          numero: editingRemessa.numero,
+          ano: editingRemessa.ano,
+          ...updatedPayload,
         });
       } else {
         const ano = new Date(form.data + "T00:00:00").getFullYear();

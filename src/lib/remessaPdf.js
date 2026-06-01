@@ -80,7 +80,10 @@ export function generateRemessaPdf(remessa) {
   pdf.rect(ML, y, halfW, 9);
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(9);
-  pdf.text(`RELAÇÃO: Nº ${String(remessa.numero).padStart(2, "0")}/${remessa.ano}`, ML + 3, y + 6);
+  const relacaoLabel = remessa.numero
+    ? `RELAÇÃO: Nº ${String(remessa.numero).padStart(2, "0")}/${remessa.ano}`
+    : `RELAÇÃO: PRÉVIA – ${remessa.ano}`;
+  pdf.text(relacaoLabel, ML + 3, y + 6);
 
   // Box DATA
   pdf.rect(ML + halfW, y, halfW, 9);
@@ -187,7 +190,9 @@ export function generateRemessaPdf(remessa) {
   pdf.setFontSize(7);
   pdf.setTextColor(120);
   pdf.text(
-    `Remessa Nº ${String(remessa.numero).padStart(2, "0")}/${remessa.ano}`,
+    remessa.numero
+      ? `Remessa Nº ${String(remessa.numero).padStart(2, "0")}/${remessa.ano}`
+      : `Prévia – ${remessa.ano}`,
     PW / 2,
     293,
     { align: "center" }
