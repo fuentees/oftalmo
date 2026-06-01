@@ -18,6 +18,8 @@ import {
   AlertCircle,
   Loader2,
   Video,
+  Mic,
+  Coffee,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatDateSafe, parseDateSafe } from "@/lib/date";
@@ -943,52 +945,101 @@ export default function PublicEnrollment() {
             )}
 
             {hasPublishedProgram && activeTab === "programacao" && (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {trainingDates
-                  .filter(
-                    (d) =>
-                      Array.isArray(d.sessions) &&
-                      d.sessions.some((s) => String(s?.title || s?.activity || "").trim())
-                  )
-                  .map((dateItem, i) => (
-                    <div key={i} className="rounded-lg border bg-white overflow-hidden">
-                      <div className="bg-blue-50 px-4 py-3 border-b flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-blue-600" />
-                        <span className="font-semibold text-slate-800">
-                          {formatDateSafe(dateItem.date)}
-                        </span>
-                        {dateItem.start_time && (
-                          <span className="text-sm text-slate-500 ml-auto">
-                            {dateItem.start_time}
-                            {dateItem.end_time ? ` – ${dateItem.end_time}` : ""}
-                          </span>
-                        )}
-                      </div>
-                      <div className="divide-y">
-                        {dateItem.sessions
-                          .filter((s) => String(s?.title || s?.activity || "").trim())
-                          .map((session, j) => (
-                            <div key={j} className="px-4 py-3 flex gap-3">
-                              <div className="text-xs text-slate-500 w-28 shrink-0 pt-0.5">
-                                {session.start_time && session.end_time
-                                  ? `${session.start_time} – ${session.end_time}`
-                                  : session.start_time || ""}
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-sm font-medium text-slate-800">
-                                  {session.title || session.activity}
-                                </p>
-                                {(session.speaker_name || session.responsible) && (
-                                  <p className="text-xs text-slate-500 mt-0.5">
-                                    {session.speaker_name || session.responsible}
-                                  </p>
+                  .filter((d) => Array.isArray(d.sessions) && d.sessions.length > 0)
+                  .map((dateItem, i) => {
+                    const dateLabel = formatDateSafe(dateItem.date);
+                    const sessions = dateItem.sessions || [];
+                    return (
+                      <div key={i} className="rounded-2xl overflow-hidden shadow-sm border border-slate-200 bg-white">
+                        {/* Cabeçalho do dia */}
+                        <div className="px-5 py-4 flex items-center gap-3" style={{ background: "hsl(var(--primary))" }}>
+                          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                            <Calendar className="h-4.5 w-4.5 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-white/70 uppercase tracking-widest leading-none mb-0.5">
+                              Dia {i + 1}
+                            </p>
+                            <p className="text-base font-bold text-white leading-tight">
+                              {dateLabel}
+                            </p>
+                          </div>
+                          {dateItem.start_time && (
+                            <div className="shrink-0 flex items-center gap-1.5 bg-white/20 rounded-lg px-3 py-1.5">
+                              <Clock className="h-3.5 w-3.5 text-white/80" />
+                              <span className="text-sm font-semibold text-white">
+                                {dateItem.start_time}{dateItem.end_time ? ` – ${dateItem.end_time}` : ""}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Lista de sessões */}
+                        <div className="divide-y divide-slate-100">
+                          {sessions.map((session, j) => {
+                            const title = String(session?.title || session?.activity || "").trim();
+                            const speaker = String(session?.speaker_name || session?.responsible || "").trim();
+                            const timeLabel = session.start_time && session.end_time
+                              ? `${session.start_time} – ${session.end_time}`
+                              : session.start_time || "";
+                            const isBreak = !speaker && (!title || /intervalo|break|coffee|almoço|lanche|pausa/i.test(title));
+
+                            return (
+                              <div
+                                key={j}
+                                className={`flex items-start gap-4 px-5 py-4 transition-colors ${
+                                  isBreak ? "bg-slate-50/60" : "hover:bg-slate-50/40"
+                                }`}
+                              >
+                                {/* Horário */}
+                                <div className="shrink-0 w-24 pt-0.5">
+                                  {timeLabel ? (
+                                    <span className="inline-flex items-center gap-1 text-xs font-bold text-primary bg-primary/8 px-2 py-1 rounded-lg whitespace-nowrap">
+                                      <Clock className="h-3 w-3" />
+                                      {timeLabel}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-slate-300">—</span>
+                                  )}
+                                </div>
+
+                                {/* Conteúdo */}
+                                <div className="flex-1 min-w-0">
+                                  {title ? (
+                                    <p className={`text-sm font-semibold leading-snug ${isBreak ? "text-slate-500 italic" : "text-slate-800"}`}>
+                                      {isBreak && <Coffee className="h-3.5 w-3.5 inline mr-1.5 text-slate-400" />}
+                                      {title}
+                                    </p>
+                                  ) : (
+                                    <p className="text-sm text-slate-400 italic">Sem título</p>
+                                  )}
+                                  {speaker && (
+                                    <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                                      <Mic className="h-3 w-3 text-slate-400 shrink-0" />
+                                      {speaker}
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Duração badge */}
+                                {session.duration_minutes > 0 && (
+                                  <div className="shrink-0 text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded-md whitespace-nowrap">
+                                    {session.duration_minutes < 60
+                                      ? `${session.duration_minutes} min`
+                                      : session.duration_minutes % 60 === 0
+                                      ? `${session.duration_minutes / 60}h`
+                                      : `${Math.floor(session.duration_minutes / 60)}h${String(session.duration_minutes % 60).padStart(2, "0")}`}
+                                  </div>
                                 )}
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             )}
 
