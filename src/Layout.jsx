@@ -22,6 +22,7 @@ import {
   Pencil,
   Loader2,
   ClipboardList,
+  Send,
   Sun,
   Moon,
 } from "lucide-react";
@@ -192,6 +193,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "Agenda", page: "Schedule", icon: Calendar },
     { name: "Estoque", page: "Stock", icon: Package },
     { name: "Solicitações", page: "MaterialRequests", icon: ClipboardList },
+    { name: "Remessas", page: "Remessas", icon: Send },
     { name: "Treinamentos", page: "Trainings", icon: GraduationCap },
     { name: "Profissionais", page: "Professionals", icon: Users },
     { name: "Participantes", page: "Participants", icon: Users },

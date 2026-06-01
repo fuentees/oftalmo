@@ -182,6 +182,7 @@ const ENTITY_TABLES = {
   TracomaExamResult: "tracoma_exam_results",
   TrainingWaitlist: "training_waitlist",
   ParticipantNote: "participant_notes",
+  Remessa: "remessas",
 };
 
 const applyOrder = (query, order) => {

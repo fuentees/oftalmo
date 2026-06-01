@@ -70,6 +70,7 @@ import Communication from './pages/Communication';
 import TracomaExaminerEvaluationPage from './pages/TracomaExaminerEvaluationPage';
 import MaterialRequests from './pages/MaterialRequests';
 import PublicMaterialRequest from './pages/PublicMaterialRequest';
+import Remessas from './pages/Remessas';
 import __Layout from './Layout.jsx';
 
 
@@ -97,6 +98,7 @@ export const PAGES = {
     "TracomaExaminerEvaluationPage": TracomaExaminerEvaluationPage,
     "MaterialRequests": MaterialRequests,
     "PublicMaterialRequest": PublicMaterialRequest,
+    "Remessas": Remessas,
 }
 
 export const pagesConfig = {
