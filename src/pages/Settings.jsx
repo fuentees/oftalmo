@@ -1892,7 +1892,8 @@ export default function Settings() {
                   {"{{coordenador}}"}, {"{{instrutor}}"}, {"{{funcao}}"},
                   {"{{tipo_certificado}}"}, {"{{aula}}"}, {"{{periodo_treinamento}}"},
                   {"{{dias_treinamento}}"}, {"{{nota}}"}, {"{{nota_percentual}}"},
-                  {"{{kappa}}"} e {"{{nota_texto}}"}.
+                  {"{{kappa}}"}, {"{{nota_texto}}"}, {"{{municipio}}"} (município do
+                  treinamento presencial) e {"{{local}}"} (município + GVE).
                 </AlertDescription>
               </Alert>
 

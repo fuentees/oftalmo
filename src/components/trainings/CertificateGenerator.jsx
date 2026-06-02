@@ -53,6 +53,16 @@ const toNumeric = (value) => {
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
+const parseMunicipalityFromLocation = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const hasGve = /gve/i.test(raw);
+  if (!hasGve) return raw;
+  const match = raw.match(/^(.*?)\s*(?:-|•|\|)?\s*GVE\s*[:\-]?\s*(.+)$/i);
+  if (match) return String(match[1] || "").trim();
+  return raw;
+};
+
 const formatDecimal = (value, digits) => {
   if (!Number.isFinite(value)) return "";
   return Number(value).toFixed(digits).replace(".", ",");
@@ -750,6 +760,7 @@ export const generateParticipantCertificate = (participant, training, templateOv
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
     local: training.municipality || training.location || "",
+    municipio: training.municipality || parseMunicipalityFromLocation(training.location),
     funcao: "participante",
     tipo_certificado: "participante",
     aula: "",
@@ -950,6 +961,7 @@ const generateStaffCertificate = ({
     coordenador: training.coordinator || "",
     instrutor: training.instructor || "",
     local: training.municipality || training.location || "",
+    municipio: training.municipality || parseMunicipalityFromLocation(training.location),
     funcao: roleKey,
     tipo_certificado: roleKey,
     aula: staff.lecture || "",
