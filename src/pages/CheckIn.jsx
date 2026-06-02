@@ -57,9 +57,18 @@ export default function CheckIn() {
         throw new Error("Informe ao menos 4 dígitos do RG");
       }
 
-      const participants = await dataClient.entities.TrainingParticipant.filter({
-        training_id: linkData.training_id,
-      });
+      // Busca participantes e dados do treinamento em paralelo para reduzir tempo sob carga
+      let participants, selectedTraining;
+      try {
+        const [participantRows, trainingRows] = await Promise.all([
+          dataClient.entities.TrainingParticipant.filter({ training_id: linkData.training_id }),
+          dataClient.entities.Training.filter({ id: linkData.training_id }).catch(() => []),
+        ]);
+        participants = participantRows;
+        selectedTraining = trainingRows[0] || null;
+      } catch {
+        throw new Error("Erro de conexão. Verifique sua internet e tente novamente.");
+      }
 
       const matched = participants.filter((participant) => {
         const participantRg = String(participant.professional_rg || "").replace(/\D/g, "");
@@ -99,8 +108,6 @@ export default function CheckIn() {
         });
       }
 
-      const training = await dataClient.entities.Training.filter({ id: linkData.training_id });
-      const selectedTraining = training[0] || null;
       const totalDates = selectedTraining?.dates?.length || 1;
       const presentCount = updatedRecords.filter(r => r.status === "presente").length;
       const percentage = Math.round((presentCount / totalDates) * 100);
