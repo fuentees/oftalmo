@@ -63,15 +63,16 @@ export default function CheckIn() {
 
       const matched = participants.filter((participant) => {
         const participantRg = String(participant.professional_rg || "").replace(/\D/g, "");
-        return participantRg.startsWith(rgDigits);
+        const participantCpf = String(participant.professional_cpf || "").replace(/\D/g, "");
+        return participantRg.startsWith(rgDigits) || participantCpf.startsWith(rgDigits);
       });
 
       if (matched.length === 0) {
-        throw new Error("RG não encontrado neste treinamento");
+        throw new Error("RG/CPF não encontrado neste treinamento");
       }
 
       if (matched.length > 1) {
-        throw new Error("Mais de um participante encontrado. Informe mais dígitos do RG");
+        throw new Error("Mais de um participante encontrado. Informe mais dígitos do RG ou CPF");
       }
 
       const participant = matched[0];
@@ -257,7 +258,7 @@ export default function CheckIn() {
             </div>
             <div className="flex items-center gap-2 text-slate-600">
               <Clock className="h-4 w-4" />
-              <span>Expira: {format(new Date(linkData.expires_at), "dd/MM/yyyy HH:mm")}</span>
+              <span>Expira: {formatDateSafe(linkData.expires_at, "dd/MM/yyyy HH:mm") || "-"}</span>
             </div>
           </div>
 
@@ -269,7 +270,7 @@ export default function CheckIn() {
             className="space-y-4"
           >
             <div className="space-y-2">
-              <Label htmlFor="rgPrefix">RG (4 primeiros dígitos) *</Label>
+              <Label htmlFor="rgPrefix">RG ou CPF (4 primeiros dígitos) *</Label>
               <Input
                 id="rgPrefix"
                 value={rgPrefix}
@@ -309,7 +310,7 @@ export default function CheckIn() {
           </form>
 
           <p className="text-xs text-center text-slate-500">
-            ⚠️ Use os 4 primeiros dígitos do RG. Se houver duplicidade, informe mais dígitos.
+            ⚠️ Use os 4 primeiros dígitos do RG ou CPF. Se houver duplicidade, informe mais dígitos.
           </p>
         </CardContent>
       </Card>
