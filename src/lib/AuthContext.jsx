@@ -28,22 +28,28 @@ export const AuthProvider = ({ children }) => {
       setIsLoadingAuth(true);
       setIsLoadingPublicSettings(true);
 
-      const { data, error } = await supabase.auth.getSession();
-      if (!isMounted) return;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!isMounted) return;
 
-      if (error) {
-        setAuthError({ type: "auth_error", message: error.message });
-        setUser(null);
-        setIsAuthenticated(false);
-      } else {
-        const sessionUser = data?.session?.user
-          ? mapSupabaseUser(data.session.user)
-          : null;
-        setAuthStateFromUser(sessionUser);
+        if (error) {
+          setAuthError({ type: "auth_error", message: error.message });
+          setUser(null);
+          setIsAuthenticated(false);
+        } else {
+          const sessionUser = data?.session?.user
+            ? mapSupabaseUser(data.session.user)
+            : null;
+          setAuthStateFromUser(sessionUser);
+        }
+      } catch {
+        if (!isMounted) return;
+        setAuthStateFromUser(null);
+      } finally {
+        if (!isMounted) return;
+        setIsLoadingAuth(false);
+        setIsLoadingPublicSettings(false);
       }
-
-      setIsLoadingAuth(false);
-      setIsLoadingPublicSettings(false);
     };
 
     loadSession();
