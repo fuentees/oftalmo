@@ -573,7 +573,7 @@ export default function Dashboard() {
               {todayEvents.slice(0, 7).map((event, idx) => {
                 const trainingId = event.type === "treinamento" ? extractTrainingIdFromEventNotes(event.notes) : null;
                 const href = trainingId
-                  ? createPageUrl(`TrainingWorkspace?id=${trainingId}`)
+                  ? createPageUrl(`TrainingWorkspace?training=${trainingId}`)
                   : createPageUrl("Schedule");
                 return (
                   <Link key={event.id ?? idx} to={href} className="flex items-center gap-2 bg-white border border-blue-100 rounded-lg px-3 py-1.5 shadow-sm hover:border-blue-300 hover:shadow-md transition-all">
