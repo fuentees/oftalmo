@@ -9,6 +9,7 @@ import {
   getEffectiveEventStatus as resolveEffectiveEventStatus,
   getEventDateBounds,
 } from "@/lib/statusRules";
+import { extractTrainingIdFromEventNotes } from "@/lib/eventMetadata";
 import {
   Package,
   GraduationCap,
@@ -569,19 +570,25 @@ export default function Dashboard() {
               <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{todayEvents.length}</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              {todayEvents.slice(0, 7).map((event, idx) => (
-                <Link key={event.id ?? idx} to={createPageUrl("Schedule")} className="flex items-center gap-2 bg-white border border-blue-100 rounded-lg px-3 py-1.5 shadow-sm hover:border-blue-300 hover:shadow-md transition-all">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: event.color || "#94a3b8" }} />
-                  <span className="text-sm font-medium text-slate-700 max-w-[160px] truncate">{event.title}</span>
-                  <span className="text-xs text-slate-400 shrink-0">{typeLabels[event.type] || "Outro"}</span>
-                  {event.start_time && (
-                    <span className="text-xs text-slate-500 flex items-center gap-0.5 shrink-0">
-                      <Clock className="h-3 w-3" />
-                      {event.start_time}
-                    </span>
-                  )}
-                </Link>
-              ))}
+              {todayEvents.slice(0, 7).map((event, idx) => {
+                const trainingId = event.type === "treinamento" ? extractTrainingIdFromEventNotes(event.notes) : null;
+                const href = trainingId
+                  ? createPageUrl(`TrainingWorkspace?id=${trainingId}`)
+                  : createPageUrl("Schedule");
+                return (
+                  <Link key={event.id ?? idx} to={href} className="flex items-center gap-2 bg-white border border-blue-100 rounded-lg px-3 py-1.5 shadow-sm hover:border-blue-300 hover:shadow-md transition-all">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: event.color || "#94a3b8" }} />
+                    <span className="text-sm font-medium text-slate-700 max-w-[160px] truncate">{event.title}</span>
+                    <span className="text-xs text-slate-400 shrink-0">{typeLabels[event.type] || "Outro"}</span>
+                    {event.start_time && (
+                      <span className="text-xs text-slate-500 flex items-center gap-0.5 shrink-0">
+                        <Clock className="h-3 w-3" />
+                        {event.start_time}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
               {todayEvents.length > 7 && (
                 <span className="text-xs text-blue-600 font-medium self-center">+{todayEvents.length - 7} mais</span>
               )}
