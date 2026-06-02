@@ -21,6 +21,7 @@ import {
   Copy,
   CopyPlus,
   Download,
+  FileText,
   GripVertical,
   Plus,
   Save,
@@ -953,6 +954,96 @@ export default function EventProgramSection({ training }) {
     window.URL.revokeObjectURL(url);
   };
 
+  const handlePreviewPDF = () => {
+    if (!training) return;
+    if (!groupedProgramRows.length) {
+      setProgramStatus({ type: "error", message: "N\u00e3o h\u00e1 programa\u00e7\u00e3o digitada para visualizar." });
+      return;
+    }
+
+    const WEEKDAYS_PT = ["domingo", "segunda-feira", "ter\u00e7a-feira", "quarta-feira", "quinta-feira", "sexta-feira", "s\u00e1bado"];
+    const getWeekdayLabel = (rawDate) => {
+      const dt = parseDateSafe(rawDate);
+      return dt && !Number.isNaN(dt.getTime()) ? WEEKDAYS_PT[dt.getDay()] : "";
+    };
+
+    const dayBlocks = groupedProgramRows.map((group) => {
+      const weekday = getWeekdayLabel(group.rawDate);
+      const dateLabel = group.dateLabel + (weekday ? ` \u2014 ${weekday}` : "");
+      const rows = group.sessions.map((s) => `
+        <tr>
+          <td class="col-time">${escapeHtml(s.start_time || "")}${s.end_time ? `<br/><span style="color:#6b7280;font-size:9pt">at\u00e9 ${escapeHtml(s.end_time)}</span>` : ""}</td>
+          <td>${escapeHtml(s.title || "")}</td>
+          <td class="col-speaker">${escapeHtml(s.speaker_name || "")}</td>
+        </tr>`).join("");
+      return `
+        <div class="day-block">
+          <div class="day-header">${escapeHtml(dateLabel)}</div>
+          <table>
+            <thead><tr><th class="col-time">Hor\u00e1rio</th><th>Atividade / Tema</th><th class="col-speaker">Palestrante</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }).join("");
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <title>Programa\u00e7\u00e3o \u2014 ${escapeHtml(training?.title || "")}</title>
+  <style>
+    @page { size: A4; margin: 1.8cm 1.5cm; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 11pt; color: #1e293b; margin: 0; }
+    .hero { background: #1d4ed8; color: #fff; padding: 14px 16px 10px; margin-bottom: 12px; border-radius: 4px; }
+    .hero .org { font-size: 8pt; opacity: .8; margin: 0 0 4px; }
+    .hero .doc-title { font-size: 10pt; font-weight: 700; margin: 0 0 2px; text-transform: uppercase; letter-spacing: .5px; }
+    .hero .doc-subtitle { font-size: 13pt; font-weight: 700; margin: 0; }
+    .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 10pt; }
+    .meta-table td { border: 1px solid #cbd5e1; padding: 5px 8px; vertical-align: top; width: 50%; }
+    .day-block { margin-bottom: 14px; page-break-inside: avoid; }
+    .day-header { background: #1d4ed8; color: #fff; font-weight: 700; font-size: 11pt; padding: 5px 8px; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; font-size: 10.5pt; }
+    th, td { border: 1px solid #9ca3af; padding: 5px 7px; vertical-align: top; }
+    th { background: #dbeafe; color: #1e3a8a; font-weight: 700; text-align: left; border-top: none; }
+    .col-time { width: 68px; white-space: nowrap; }
+    .col-speaker { width: 28%; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .print-btn { position: fixed; top: 12px; right: 12px; background: #1d4ed8; color: #fff; border: none; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+    .print-btn:hover { background: #1e40af; }
+    @media print { .print-btn { display: none; } }
+  </style>
+</head>
+<body>
+  <button class="print-btn" onclick="window.print()">\ud83d\udda8\ufe0f Imprimir / Salvar PDF</button>
+  <div class="hero">
+    <p class="org">Secretaria de Estado da Sa\u00fade \u2022 CVE \u2022 CCD \u2022 S\u00e3o Paulo</p>
+    <p class="doc-title">Programa\u00e7\u00e3o do treinamento</p>
+    <p class="doc-subtitle">${escapeHtml(training?.title || "-")}</p>
+  </div>
+  <table class="meta-table">
+    <tr>
+      <td><strong>Treinamento:</strong><br/>${escapeHtml(training?.title || "-")}</td>
+      <td><strong>Per\u00edodo:</strong><br/>${escapeHtml(trainingPeriodLabel)}</td>
+    </tr>
+    <tr>
+      <td><strong>Local:</strong><br/>${escapeHtml(training?.location || (training?.online_link ? "Evento online" : "N\u00e3o informado"))}</td>
+      <td><strong>Coordena\u00e7\u00e3o:</strong><br/>${escapeHtml(training?.coordinator || "-")}</td>
+    </tr>
+    <tr>
+      <td colspan="2"><strong>Carga hor\u00e1ria:</strong> ${escapeHtml(training?.duration_hours ? `${training.duration_hours} horas` : "N\u00e3o informada")}</td>
+    </tr>
+  </table>
+  ${dayBlocks}
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+  };
+
   const hasProgramDates = programDates.length > 0;
   const trainingPeriodLabel = useMemo(() => {
     if (programDates.length === 0) {
@@ -1054,6 +1145,17 @@ export default function EventProgramSection({ training }) {
             >
               <Download className="mr-1 h-4 w-4" />
               Baixar programação (.doc)
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handlePreviewPDF}
+              disabled={totalTypedSessions === 0}
+            >
+              <FileText className="mr-1 h-4 w-4" />
+              Visualizar PDF
             </Button>
 
             <div className="ml-auto text-xs font-medium text-slate-500">
