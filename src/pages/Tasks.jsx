@@ -18,7 +18,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -886,9 +885,9 @@ export default function Tasks() {
         </DragDropContext>
       )}
 
-      {/* ── Task detail sheet ── */}
-      <Sheet open={!!selectedTask} onOpenChange={(open) => !open && setSelectedTask(null)}>
-        <SheetContent className="w-full sm:max-w-lg flex flex-col p-0">
+      {/* ── Task detail dialog ── */}
+      <Dialog open={!!selectedTask} onOpenChange={(open) => !open && setSelectedTask(null)}>
+        <DialogContent className="max-w-2xl p-0 gap-0 flex flex-col max-h-[88vh]">
           {selectedTask && (() => {
             const overdue = isOverdue(selectedTask);
             const priority = PRIORITY_CONFIG[selectedTask.priority] ?? PRIORITY_CONFIG.media;
@@ -897,21 +896,19 @@ export default function Tasks() {
             const isDone = selectedTask.status === "concluida" || selectedTask.status === "cancelada";
             return (
               <>
-                <SheetHeader className="px-6 pt-6 pb-4 border-b">
-                  <div className="flex items-start gap-3 pr-6">
+                <DialogHeader className="px-6 pt-6 pb-4 border-b">
+                  <div className="flex items-start gap-3 pr-2">
                     <button
                       className={`mt-1 shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all
                         ${selectedTask.status === "concluida" ? "border-green-500 bg-green-500 text-white" : "border-slate-300 hover:border-green-400 text-transparent hover:text-green-400"}`}
-                      onClick={() => {
-                        toggleCompleteMutation.mutate({ id: selectedTask.id, isDone: selectedTask.status === "concluida" });
-                      }}
+                      onClick={() => toggleCompleteMutation.mutate({ id: selectedTask.id, isDone: selectedTask.status === "concluida" })}
                     >
                       <CheckCheck className="h-3 w-3" />
                     </button>
                     <div className="flex-1 min-w-0">
-                      <SheetTitle className={`text-left leading-snug ${isDone ? "line-through text-slate-400" : ""}`}>
+                      <DialogTitle className={`text-left leading-snug ${isDone ? "line-through text-slate-400" : ""}`}>
                         {selectedTask.title}
-                      </SheetTitle>
+                      </DialogTitle>
                       {selectedTask.description && (
                         <p className="text-sm text-slate-500 mt-1">{selectedTask.description}</p>
                       )}
@@ -926,6 +923,11 @@ export default function Tasks() {
                     {cat && (
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${cat.color}`}>
                         <Tag className="h-3 w-3" />{cat.label}
+                      </span>
+                    )}
+                    {selectedTask.training_name && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+                        <ListTodo className="h-3 w-3" />{selectedTask.training_name}
                       </span>
                     )}
                     {overdue && (
@@ -967,7 +969,7 @@ export default function Tasks() {
                       <Trash2 className="h-3.5 w-3.5" /> Excluir
                     </Button>
                   </div>
-                </SheetHeader>
+                </DialogHeader>
 
                 <Tabs value={detailTab} onValueChange={setDetailTab} className="flex-1 flex flex-col overflow-hidden">
                   <TabsList className="mx-6 mt-4 shrink-0">
@@ -1020,7 +1022,7 @@ export default function Tasks() {
                         </div>
                       )}
                     </ScrollArea>
-                    <form onSubmit={handleAddSubtask} className="flex gap-2 pt-3 border-t mt-2 shrink-0">
+                    <form onSubmit={handleAddSubtask} className="flex gap-2 pt-3 border-t mt-2 mb-4 shrink-0">
                       <Input
                         value={newSubtask}
                         onChange={(e) => setNewSubtask(e.target.value)}
@@ -1069,7 +1071,7 @@ export default function Tasks() {
                         </div>
                       )}
                     </ScrollArea>
-                    <form onSubmit={handleAddComment} className="pt-3 border-t mt-2 shrink-0 space-y-2">
+                    <form onSubmit={handleAddComment} className="pt-3 border-t mt-2 mb-4 shrink-0 space-y-2">
                       <Textarea
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
@@ -1090,8 +1092,8 @@ export default function Tasks() {
               </>
             );
           })()}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Create dialog ── */}
       <Dialog open={showCreate} onOpenChange={(open) => { if (!open) { setShowCreate(false); setFormError(null); } }}>
