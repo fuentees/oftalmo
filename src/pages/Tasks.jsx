@@ -133,6 +133,150 @@ function Avatar({ name, size = "sm" }) {
   );
 }
 
+// ─── Task cards (module-level to avoid DOM remount on parent re-render) ─────────
+
+function TaskListCard({ task, onSelect, onToggleComplete, onEdit, onDelete }) {
+  const isDone = task.status === "concluida" || task.status === "cancelada";
+  const overdue = isOverdue(task);
+  const priority = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.media;
+  const cat = CATEGORY_CONFIG[task.category];
+  const dueDateObj = task.due_date ? parseISO(task.due_date) : null;
+
+  return (
+    <Card
+      className={`transition-all duration-150 hover:shadow-md cursor-pointer ${overdue ? "border-l-4 border-l-red-400" : ""}`}
+      onClick={() => onSelect(task)}
+    >
+      <CardContent className="py-3.5 px-4">
+        <div className={`flex items-start gap-3 ${isDone ? "opacity-50" : ""}`}>
+          <button
+            className={`mt-0.5 shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all
+              ${task.status === "concluida" ? "border-green-500 bg-green-500 text-white" : "border-slate-300 hover:border-green-400 text-transparent hover:text-green-400"}`}
+            onClick={(e) => { e.stopPropagation(); onToggleComplete(task.id, task.status === "concluida"); }}
+          >
+            <CheckCheck className="h-3 w-3" />
+          </button>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start gap-2 flex-wrap">
+              <span className={`font-medium text-slate-800 leading-snug ${isDone ? "line-through text-slate-400" : ""}`}>
+                {task.title}
+              </span>
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border shrink-0 ${priority.color}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />
+                {priority.label}
+              </span>
+              {cat && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold shrink-0 ${cat.color}`}>
+                  <Tag className="h-3 w-3" />{cat.label}
+                </span>
+              )}
+              {task.training_name && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200 shrink-0 max-w-[160px] truncate">
+                  <ListTodo className="h-3 w-3 shrink-0" />{task.training_name}
+                </span>
+              )}
+              {overdue && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 shrink-0">
+                  <AlertTriangle className="h-3 w-3" /> Atrasada
+                </span>
+              )}
+              {task.status === "em_andamento" && !overdue && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200 shrink-0">
+                  Em andamento
+                </span>
+              )}
+            </div>
+            {task.description && (
+              <p className="text-sm text-slate-500 mt-0.5 line-clamp-1">{task.description}</p>
+            )}
+            <div className="flex items-center gap-4 mt-2 flex-wrap">
+              {task.assigned_to_name && (
+                <div className="flex items-center gap-1.5">
+                  <Avatar name={task.assigned_to_name} />
+                  <span className="text-xs text-slate-500">{task.assigned_to_name}</span>
+                </div>
+              )}
+              {dueDateObj && (
+                <div className={`flex items-center gap-1 text-xs ${overdue ? "text-red-600 font-semibold" : isToday(dueDateObj) ? "text-amber-600 font-semibold" : "text-slate-400"}`}>
+                  <Calendar className="h-3 w-3" />
+                  {format(dueDateObj, "dd/MM/yyyy")}
+                  {isToday(dueDateObj) && <span className="ml-0.5">— hoje</span>}
+                </div>
+              )}
+              {task.status === "concluida" && task.completed_at && (
+                <span className="text-xs text-green-600">Concluída em {format(new Date(task.completed_at), "dd/MM/yyyy")}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-0.5 shrink-0 ml-1">
+            {!isDone && (
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600"
+                onClick={(e) => { e.stopPropagation(); onEdit(task); }}>
+                <Edit className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-300 hover:text-red-600"
+              onClick={(e) => { e.stopPropagation(); onDelete(task); }}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function KanbanCard({ task, dragHandleProps, onSelect }) {
+  const overdue = isOverdue(task);
+  const priority = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.media;
+  const dueDateObj = task.due_date ? parseISO(task.due_date) : null;
+
+  return (
+    <div
+      className={`bg-white rounded-xl border shadow-sm hover:shadow-md transition-all cursor-pointer ${overdue ? "border-l-4 border-l-red-400" : "border-slate-200"}`}
+      onClick={() => onSelect(task)}
+    >
+      <div className="p-3">
+        <div className="flex items-start gap-2 mb-2">
+          <div {...dragHandleProps} className="mt-0.5 shrink-0 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing" onClick={(e) => e.stopPropagation()}>
+            <GripVertical className="h-4 w-4" />
+          </div>
+          <p className="font-medium text-slate-800 text-sm leading-snug flex-1">{task.title}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap ml-6">
+          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-semibold border ${priority.color}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />
+            {priority.label}
+          </span>
+          {overdue && (
+            <span className="text-xs font-semibold text-red-600 flex items-center gap-0.5">
+              <AlertTriangle className="h-3 w-3" /> Atrasada
+            </span>
+          )}
+        </div>
+        {(task.assigned_to_name || dueDateObj) && (
+          <div className="flex items-center justify-between mt-2.5 ml-6">
+            {task.assigned_to_name ? (
+              <div className="flex items-center gap-1">
+                <Avatar name={task.assigned_to_name} />
+                <span className="text-xs text-slate-500 truncate max-w-[90px]">{task.assigned_to_name}</span>
+              </div>
+            ) : <span />}
+            {dueDateObj && (
+              <span className={`text-xs flex items-center gap-1 ${overdue ? "text-red-600 font-semibold" : "text-slate-400"}`}>
+                <Calendar className="h-3 w-3" />
+                {format(dueDateObj, "dd/MM")}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Task form (module-level so React never remounts inputs on parent re-render) ─
 
 function TaskForm({ onSubmit, isEditing, formData, setFormData, onAssignedChange, professionals, trainings, formError, onCancel, isPending }) {
@@ -565,152 +709,6 @@ export default function Tasks() {
     { label: "Atrasadas",    key: "atrasada",     count: counts.atrasada,     Icon: AlertTriangle, cls: "text-red-500",    border: "border-red-200",   bg: "bg-red-50/50" },
   ];
 
-  // ── Task card (list) ──────────────────────────────────────────────────────
-
-  const TaskListCard = ({ task }) => {
-    const isDone = task.status === "concluida" || task.status === "cancelada";
-    const overdue = isOverdue(task);
-    const priority = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.media;
-    const cat = CATEGORY_CONFIG[task.category];
-    const dueDateObj = task.due_date ? parseISO(task.due_date) : null;
-
-    return (
-      <Card
-        className={`transition-all duration-150 hover:shadow-md cursor-pointer ${overdue ? "border-l-4 border-l-red-400" : ""}`}
-        onClick={() => { setSelectedTask(task); setDetailTab("subtarefas"); }}
-      >
-        <CardContent className="py-3.5 px-4">
-          <div className={`flex items-start gap-3 ${isDone ? "opacity-50" : ""}`}>
-            <button
-              className={`mt-0.5 shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all
-                ${task.status === "concluida" ? "border-green-500 bg-green-500 text-white" : "border-slate-300 hover:border-green-400 text-transparent hover:text-green-400"}`}
-              onClick={(e) => { e.stopPropagation(); toggleCompleteMutation.mutate({ id: task.id, isDone: task.status === "concluida" }); }}
-            >
-              <CheckCheck className="h-3 w-3" />
-            </button>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start gap-2 flex-wrap">
-                <span className={`font-medium text-slate-800 leading-snug ${isDone ? "line-through text-slate-400" : ""}`}>
-                  {task.title}
-                </span>
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border shrink-0 ${priority.color}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />
-                  {priority.label}
-                </span>
-                {cat && (
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold shrink-0 ${cat.color}`}>
-                    <Tag className="h-3 w-3" />{cat.label}
-                  </span>
-                )}
-                {task.training_name && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200 shrink-0 max-w-[160px] truncate">
-                    <ListTodo className="h-3 w-3 shrink-0" />{task.training_name}
-                  </span>
-                )}
-                {overdue && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 shrink-0">
-                    <AlertTriangle className="h-3 w-3" /> Atrasada
-                  </span>
-                )}
-                {task.status === "em_andamento" && !overdue && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200 shrink-0">
-                    Em andamento
-                  </span>
-                )}
-              </div>
-              {task.description && (
-                <p className="text-sm text-slate-500 mt-0.5 line-clamp-1">{task.description}</p>
-              )}
-              <div className="flex items-center gap-4 mt-2 flex-wrap">
-                {task.assigned_to_name && (
-                  <div className="flex items-center gap-1.5">
-                    <Avatar name={task.assigned_to_name} />
-                    <span className="text-xs text-slate-500">{task.assigned_to_name}</span>
-                  </div>
-                )}
-                {dueDateObj && (
-                  <div className={`flex items-center gap-1 text-xs ${overdue ? "text-red-600 font-semibold" : isToday(dueDateObj) ? "text-amber-600 font-semibold" : "text-slate-400"}`}>
-                    <Calendar className="h-3 w-3" />
-                    {format(dueDateObj, "dd/MM/yyyy")}
-                    {isToday(dueDateObj) && <span className="ml-0.5">— hoje</span>}
-                  </div>
-                )}
-                {task.status === "concluida" && task.completed_at && (
-                  <span className="text-xs text-green-600">Concluída em {format(new Date(task.completed_at), "dd/MM/yyyy")}</span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-0.5 shrink-0 ml-1">
-              {!isDone && (
-                <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600"
-                  onClick={(e) => { e.stopPropagation(); setSelectedTask(task); openEdit(task); }}>
-                  <Edit className="h-3.5 w-3.5" />
-                </Button>
-              )}
-              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-300 hover:text-red-600"
-                onClick={(e) => { e.stopPropagation(); setDeleteTarget(task); }}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  // ── Kanban card ───────────────────────────────────────────────────────────
-
-  const KanbanCard = ({ task, dragHandleProps }) => {
-    const overdue = isOverdue(task);
-    const priority = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.media;
-    const dueDateObj = task.due_date ? parseISO(task.due_date) : null;
-
-    return (
-      <div
-        className={`bg-white rounded-xl border shadow-sm hover:shadow-md transition-all cursor-pointer ${overdue ? "border-l-4 border-l-red-400" : "border-slate-200"}`}
-        onClick={() => { setSelectedTask(task); setDetailTab("subtarefas"); }}
-      >
-        <div className="p-3">
-          <div className="flex items-start gap-2 mb-2">
-            <div {...dragHandleProps} className="mt-0.5 shrink-0 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing" onClick={(e) => e.stopPropagation()}>
-              <GripVertical className="h-4 w-4" />
-            </div>
-            <p className="font-medium text-slate-800 text-sm leading-snug flex-1">{task.title}</p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap ml-6">
-            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-semibold border ${priority.color}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />
-              {priority.label}
-            </span>
-            {overdue && (
-              <span className="text-xs font-semibold text-red-600 flex items-center gap-0.5">
-                <AlertTriangle className="h-3 w-3" /> Atrasada
-              </span>
-            )}
-          </div>
-          {(task.assigned_to_name || dueDateObj) && (
-            <div className="flex items-center justify-between mt-2.5 ml-6">
-              {task.assigned_to_name ? (
-                <div className="flex items-center gap-1">
-                  <Avatar name={task.assigned_to_name} />
-                  <span className="text-xs text-slate-500 truncate max-w-[90px]">{task.assigned_to_name}</span>
-                </div>
-              ) : <span />}
-              {dueDateObj && (
-                <span className={`text-xs flex items-center gap-1 ${overdue ? "text-red-600 font-semibold" : "text-slate-400"}`}>
-                  <Calendar className="h-3 w-3" />
-                  {format(dueDateObj, "dd/MM")}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -815,7 +813,16 @@ export default function Tasks() {
               </CardContent>
             </Card>
           ) : (
-            sortedTasks.map((task) => <TaskListCard key={task.id} task={task} />)
+            sortedTasks.map((task) => (
+              <TaskListCard
+                key={task.id}
+                task={task}
+                onSelect={(t) => { setSelectedTask(t); setDetailTab("subtarefas"); }}
+                onToggleComplete={(id, isDone) => toggleCompleteMutation.mutate({ id, isDone })}
+                onEdit={(t) => { setSelectedTask(t); openEdit(t); }}
+                onDelete={(t) => setDeleteTarget(t)}
+              />
+            ))
           )}
         </div>
       )}
@@ -842,7 +849,11 @@ export default function Tasks() {
                             {(provided, snapshot) => (
                               <div ref={provided.innerRef} {...provided.draggableProps}
                                 className={snapshot.isDragging ? "opacity-90 shadow-2xl rotate-1 scale-105" : ""}>
-                                <KanbanCard task={task} dragHandleProps={provided.dragHandleProps} />
+                                <KanbanCard
+                                  task={task}
+                                  dragHandleProps={provided.dragHandleProps}
+                                  onSelect={(t) => { setSelectedTask(t); setDetailTab("subtarefas"); }}
+                                />
                               </div>
                             )}
                           </Draggable>
