@@ -267,7 +267,7 @@ export default function TrainingTasksPanel({ training }) {
       )}
 
       {/* Create dialog */}
-      <Dialog open={showForm} onOpenChange={(open) => !open && setShowForm(false)}>
+      <Dialog open={showForm} onOpenChange={(open) => { if (!open) { setShowForm(false); setFormError(null); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Nova Tarefa — {training?.title ?? training?.name}</DialogTitle>
@@ -289,7 +289,11 @@ export default function TrainingTasksPanel({ training }) {
               <div>
                 <Label>Atribuir a</Label>
                 <Select value={formData.assigned_to_id || "__none__"}
-                  onValueChange={(v) => setFormData((p) => ({ ...p, assigned_to_id: v === "__none__" ? "" : v }))}>
+                  onValueChange={(v) => {
+                    if (v === "__none__") { setFormData((p) => ({ ...p, assigned_to_id: "", assigned_to_name: "" })); return; }
+                    const prof = professionals.find((p) => p.id === v);
+                    setFormData((p) => ({ ...p, assigned_to_id: v, assigned_to_name: prof?.name ?? "" }));
+                  }}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Sem responsável</SelectItem>
@@ -344,7 +348,7 @@ export default function TrainingTasksPanel({ training }) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction className="bg-red-600 hover:bg-red-700"
-              onClick={() => deleteMutation.mutate(deleteTarget.id)}>
+              onClick={() => { const id = deleteTarget?.id; if (id) deleteMutation.mutate(id); }}>
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -133,6 +133,116 @@ function Avatar({ name, size = "sm" }) {
   );
 }
 
+// ─── Task form (module-level so React never remounts inputs on parent re-render) ─
+
+function TaskForm({ onSubmit, isEditing, formData, setFormData, onAssignedChange, professionals, trainings, formError, onCancel, isPending }) {
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div>
+        <Label>Título *</Label>
+        <Input className="mt-1" value={formData.title} autoFocus
+          onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))}
+          placeholder="Descreva a tarefa" />
+      </div>
+      <div>
+        <Label>Descrição</Label>
+        <Textarea className="mt-1 resize-none" rows={3} value={formData.description}
+          onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
+          placeholder="Detalhes adicionais (opcional)" />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Atribuir a</Label>
+          <Select value={formData.assigned_to_id || "__none__"} onValueChange={onAssignedChange}>
+            <SelectTrigger className="mt-1"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Sem responsável</SelectItem>
+              {professionals.filter((p) => p.status !== "inativo").map((p) => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Prazo</Label>
+          <Input type="date" className="mt-1" value={formData.due_date}
+            onChange={(e) => setFormData((p) => ({ ...p, due_date: e.target.value }))} />
+        </div>
+        <div>
+          <Label>Prioridade</Label>
+          <Select value={formData.priority} onValueChange={(v) => setFormData((p) => ({ ...p, priority: v }))}>
+            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="baixa">Baixa</SelectItem>
+              <SelectItem value="media">Média</SelectItem>
+              <SelectItem value="alta">Alta</SelectItem>
+              <SelectItem value="urgente">Urgente</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Categoria</Label>
+          <Select value={formData.category || "__none__"} onValueChange={(v) => setFormData((p) => ({ ...p, category: v === "__none__" ? "" : v }))}>
+            <SelectTrigger className="mt-1"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Sem categoria</SelectItem>
+              {Object.entries(CATEGORY_CONFIG).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="col-span-2">
+          <Label>Vincular a treinamento</Label>
+          <Select
+            value={formData.training_id || "__none__"}
+            onValueChange={(v) => {
+              if (v === "__none__") { setFormData((p) => ({ ...p, training_id: "", training_name: "" })); return; }
+              const tr = trainings.find((t) => t.id === v);
+              setFormData((p) => ({ ...p, training_id: v, training_name: tr?.title ?? tr?.name ?? "" }));
+            }}
+          >
+            <SelectTrigger className="mt-1"><SelectValue placeholder="Sem vínculo" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Sem vínculo</SelectItem>
+              {trainings.map((t) => (
+                <SelectItem key={t.id} value={t.id}>{t.title ?? t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {isEditing && (
+          <div>
+            <Label>Status</Label>
+            <Select value={formData.status} onValueChange={(v) => setFormData((p) => ({ ...p, status: v }))}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pendente">Pendente</SelectItem>
+                <SelectItem value="em_andamento">Em andamento</SelectItem>
+                <SelectItem value="concluida">Concluída</SelectItem>
+                <SelectItem value="cancelada">Cancelada</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+      {formError && (
+        <Alert className="border-red-200 bg-red-50">
+          <AlertDescription className="text-red-700">{formError}</AlertDescription>
+        </Alert>
+      )}
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="outline" onClick={onCancel}>Cancelar</Button>
+        <Button type="submit" className="text-white" style={{ background: "hsl(var(--primary))" }}
+          disabled={isPending}>
+          {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+          {isEditing ? "Salvar" : "Criar Tarefa"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Tasks() {
@@ -221,7 +331,7 @@ export default function Tasks() {
       }
       return true;
     });
-  }, [tasks, statusFilter, categoryFilter, assignedFilter, search, user]);
+  }, [tasks, statusFilter, categoryFilter, assignedFilter, search, user, trainingFilter]);
 
   const sortedTasks = useMemo(() => {
     return [...filteredTasks].sort((a, b) => {
@@ -269,7 +379,8 @@ export default function Tasks() {
       setShowEdit(false);
       setFormError(null);
       if (updated.assigned_to_id && updated.assigned_to_id !== prevAssignedId) {
-        await sendAssignmentEmail(updated, professionals);
+        const currentProfessionals = queryClient.getQueryData(["professionals"]) ?? professionals;
+        await sendAssignmentEmail(updated, currentProfessionals);
       }
     },
     onError: (err) => setFormError(err?.message || "Erro ao atualizar."),
@@ -422,7 +533,7 @@ export default function Tasks() {
       task_id: selectedTask.id,
       title,
       completed: false,
-      position: subtasks.length,
+      position: Date.now(),
     });
   };
 
@@ -600,114 +711,6 @@ export default function Tasks() {
     );
   };
 
-  // ── Task form ─────────────────────────────────────────────────────────────
-
-  const TaskForm = ({ onSubmit, isEditing }) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <Label>Título *</Label>
-        <Input className="mt-1" value={formData.title} autoFocus
-          onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))}
-          placeholder="Descreva a tarefa" />
-      </div>
-      <div>
-        <Label>Descrição</Label>
-        <Textarea className="mt-1 resize-none" rows={3} value={formData.description}
-          onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
-          placeholder="Detalhes adicionais (opcional)" />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Atribuir a</Label>
-          <Select value={formData.assigned_to_id || "__none__"} onValueChange={handleAssignedChange}>
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">Sem responsável</SelectItem>
-              {professionals.filter((p) => p.status !== "inativo").map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Prazo</Label>
-          <Input type="date" className="mt-1" value={formData.due_date}
-            onChange={(e) => setFormData((p) => ({ ...p, due_date: e.target.value }))} />
-        </div>
-        <div>
-          <Label>Prioridade</Label>
-          <Select value={formData.priority} onValueChange={(v) => setFormData((p) => ({ ...p, priority: v }))}>
-            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="baixa">Baixa</SelectItem>
-              <SelectItem value="media">Média</SelectItem>
-              <SelectItem value="alta">Alta</SelectItem>
-              <SelectItem value="urgente">Urgente</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Categoria</Label>
-          <Select value={formData.category || "__none__"} onValueChange={(v) => setFormData((p) => ({ ...p, category: v === "__none__" ? "" : v }))}>
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">Sem categoria</SelectItem>
-              {Object.entries(CATEGORY_CONFIG).map(([k, v]) => (
-                <SelectItem key={k} value={k}>{v.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="col-span-2">
-          <Label>Vincular a treinamento</Label>
-          <Select
-            value={formData.training_id || "__none__"}
-            onValueChange={(v) => {
-              if (v === "__none__") { setFormData((p) => ({ ...p, training_id: "", training_name: "" })); return; }
-              const tr = trainings.find((t) => t.id === v);
-              setFormData((p) => ({ ...p, training_id: v, training_name: tr?.title ?? tr?.name ?? "" }));
-            }}
-          >
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Sem vínculo" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">Sem vínculo</SelectItem>
-              {trainings.map((t) => (
-                <SelectItem key={t.id} value={t.id}>{t.title ?? t.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {isEditing && (
-          <div>
-            <Label>Status</Label>
-            <Select value={formData.status} onValueChange={(v) => setFormData((p) => ({ ...p, status: v }))}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pendente">Pendente</SelectItem>
-                <SelectItem value="em_andamento">Em andamento</SelectItem>
-                <SelectItem value="concluida">Concluída</SelectItem>
-                <SelectItem value="cancelada">Cancelada</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-      </div>
-      {formError && (
-        <Alert className="border-red-200 bg-red-50">
-          <AlertDescription className="text-red-700">{formError}</AlertDescription>
-        </Alert>
-      )}
-      <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={() => isEditing ? setShowEdit(false) : setShowCreate(false)}>Cancelar</Button>
-        <Button type="submit" className="text-white" style={{ background: "hsl(var(--primary))" }}
-          disabled={createTaskMutation.isPending || updateTaskMutation.isPending}>
-          {(createTaskMutation.isPending || updateTaskMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          {isEditing ? "Salvar" : "Criar Tarefa"}
-        </Button>
-      </div>
-    </form>
-  );
-
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -861,7 +864,7 @@ export default function Tasks() {
       )}
 
       {/* ── Task detail sheet ── */}
-      <Sheet open={!!selectedTask && !showEdit} onOpenChange={(open) => !open && setSelectedTask(null)}>
+      <Sheet open={!!selectedTask} onOpenChange={(open) => !open && setSelectedTask(null)}>
         <SheetContent className="w-full sm:max-w-lg flex flex-col p-0">
           {selectedTask && (() => {
             const overdue = isOverdue(selectedTask);
@@ -1071,7 +1074,18 @@ export default function Tasks() {
       <Dialog open={showCreate} onOpenChange={(open) => { if (!open) { setShowCreate(false); setFormError(null); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Nova Tarefa</DialogTitle></DialogHeader>
-          <TaskForm onSubmit={handleCreateSubmit} isEditing={false} />
+          <TaskForm
+            onSubmit={handleCreateSubmit}
+            isEditing={false}
+            formData={formData}
+            setFormData={setFormData}
+            onAssignedChange={handleAssignedChange}
+            professionals={professionals}
+            trainings={trainings}
+            formError={formError}
+            onCancel={() => { setShowCreate(false); setFormError(null); }}
+            isPending={createTaskMutation.isPending}
+          />
         </DialogContent>
       </Dialog>
 
@@ -1079,7 +1093,18 @@ export default function Tasks() {
       <Dialog open={showEdit} onOpenChange={(open) => { if (!open) { setShowEdit(false); setFormError(null); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Editar Tarefa</DialogTitle></DialogHeader>
-          <TaskForm onSubmit={handleEditSubmit} isEditing={true} />
+          <TaskForm
+            onSubmit={handleEditSubmit}
+            isEditing={true}
+            formData={formData}
+            setFormData={setFormData}
+            onAssignedChange={handleAssignedChange}
+            professionals={professionals}
+            trainings={trainings}
+            formError={formError}
+            onCancel={() => { setShowEdit(false); setFormError(null); }}
+            isPending={updateTaskMutation.isPending}
+          />
         </DialogContent>
       </Dialog>
 
@@ -1096,7 +1121,7 @@ export default function Tasks() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction className="bg-red-600 hover:bg-red-700"
-              onClick={() => deleteTaskMutation.mutate(deleteTarget.id)}>
+              onClick={() => { const id = deleteTarget?.id; if (id) deleteTaskMutation.mutate(id); }}>
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
