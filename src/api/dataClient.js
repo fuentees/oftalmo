@@ -165,6 +165,8 @@ export const mapSupabaseUser = (user) => {
 
 const ENTITY_TABLES = {
   Task: "tasks",
+  TaskComment: "task_comments",
+  TaskSubtask: "task_subtasks",
   Training: "trainings",
   Professional: "professionals",
   TrainingParticipant: "training_participants",
