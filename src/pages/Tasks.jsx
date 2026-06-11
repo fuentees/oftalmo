@@ -464,6 +464,7 @@ export default function Tasks() {
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
+      if (statusFilter === "atrasada") return isOverdue(t);
       if (statusFilter === "active" && (t.status === "concluida" || t.status === "cancelada")) return false;
       if (statusFilter !== "active" && statusFilter !== "all" && t.status !== statusFilter) return false;
       if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
@@ -758,6 +759,7 @@ export default function Tasks() {
           <SelectContent>
             <SelectItem value="active">Ativas</SelectItem>
             <SelectItem value="all">Todas</SelectItem>
+            <SelectItem value="atrasada">Atrasadas</SelectItem>
             <SelectItem value="pendente">Pendentes</SelectItem>
             <SelectItem value="em_andamento">Em andamento</SelectItem>
             <SelectItem value="concluida">Concluídas</SelectItem>
@@ -859,7 +861,8 @@ export default function Tasks() {
                         className={`flex-1 min-h-[180px] space-y-2 p-1 rounded-xl transition-colors duration-150 ${snapshot.isDraggingOver ? "bg-blue-50/60 ring-2 ring-blue-200" : ""}`}
                       >
                         {colTasks.map((task, index) => (
-                          <Draggable key={task.id} draggableId={task.id} index={index}>
+                          <Draggable key={task.id} draggableId={task.id} index={index}
+                            isDragDisabled={!(!task.created_by_id || task.created_by_id === user?.id)}>
                             {(provided, snapshot) => (
                               <div ref={provided.innerRef} {...provided.draggableProps}
                                 className={snapshot.isDragging ? "opacity-90 shadow-2xl rotate-1 scale-105" : ""}>

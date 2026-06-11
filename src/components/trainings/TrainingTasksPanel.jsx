@@ -7,7 +7,7 @@ import { createPageUrl } from "@/utils";
 import { Link } from "react-router-dom";
 import {
   Plus, CheckCheck, AlertTriangle, Calendar, User,
-  Loader2, ListTodo, ArrowUpRight, Trash2, Circle,
+  Loader2, ListTodo, ArrowUpRight, Trash2, Circle, Edit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,6 +62,7 @@ export default function TrainingTasksPanel({ training }) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -111,6 +112,18 @@ export default function TrainingTasksPanel({ training }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }) => dataClient.entities.Task.update(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      toast({ title: "Tarefa atualizada." });
+      setEditTarget(null);
+      setFormData(EMPTY_FORM);
+      setFormError(null);
+    },
+    onError: (err) => setFormError(err?.message || "Erro ao atualizar."),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id) => dataClient.entities.Task.delete(id),
     onSuccess: () => {
@@ -120,25 +133,51 @@ export default function TrainingTasksPanel({ training }) {
     },
   });
 
+  const openEdit = (task) => {
+    setFormData({
+      title: task.title ?? "",
+      description: task.description ?? "",
+      assigned_to_id: task.assigned_to_id ?? "",
+      assigned_to_name: task.assigned_to_name ?? "",
+      due_date: task.due_date ?? "",
+      priority: task.priority ?? "media",
+    });
+    setFormError(null);
+    setEditTarget(task);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const title = formData.title.trim();
     if (!title) { setFormError("Informe o título."); return; }
-    const prof = professionals.find((p) => p.id === formData.assigned_to_id);
-    createMutation.mutate({
-      title,
-      description: formData.description.trim() || null,
-      assigned_to_id: formData.assigned_to_id || null,
-      assigned_to_name: prof?.name || formData.assigned_to_name || null,
-      due_date: formData.due_date || null,
-      priority: formData.priority,
-      status: "pendente",
-      category: "treinamento",
-      training_id: training.id,
-      training_name: training.title ?? training.name ?? null,
-      created_by_id: user?.id ?? null,
-      created_by_name: user?.full_name ?? user?.email ?? null,
-    });
+    if (editTarget) {
+      updateMutation.mutate({
+        id: editTarget.id,
+        payload: {
+          title,
+          description: formData.description.trim() || null,
+          assigned_to_id: formData.assigned_to_id || null,
+          assigned_to_name: formData.assigned_to_name || null,
+          due_date: formData.due_date || null,
+          priority: formData.priority,
+        },
+      });
+    } else {
+      createMutation.mutate({
+        title,
+        description: formData.description.trim() || null,
+        assigned_to_id: formData.assigned_to_id || null,
+        assigned_to_name: formData.assigned_to_name || null,
+        due_date: formData.due_date || null,
+        priority: formData.priority,
+        status: "pendente",
+        category: "treinamento",
+        training_id: training.id,
+        training_name: training.title ?? training.name ?? null,
+        created_by_id: user?.id ?? null,
+        created_by_name: user?.full_name ?? user?.email ?? null,
+      });
+    }
   };
 
   return (
@@ -254,12 +293,22 @@ export default function TrainingTasksPanel({ training }) {
                       </div>
                     </div>
                     {canDelete && (
-                      <button
-                        className="shrink-0 text-slate-300 hover:text-red-500 transition-colors"
-                        onClick={() => setDeleteTarget(task)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {!isDone && (
+                          <button
+                            className="text-slate-300 hover:text-blue-500 transition-colors"
+                            onClick={() => openEdit(task)}
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        <button
+                          className="text-slate-300 hover:text-red-500 transition-colors"
+                          onClick={() => setDeleteTarget(task)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </CardContent>
@@ -269,11 +318,11 @@ export default function TrainingTasksPanel({ training }) {
         </div>
       )}
 
-      {/* Create dialog */}
-      <Dialog open={showForm} onOpenChange={(open) => { if (!open) { setShowForm(false); setFormError(null); } }}>
+      {/* Create / Edit dialog */}
+      <Dialog open={showForm || !!editTarget} onOpenChange={(open) => { if (!open) { setShowForm(false); setEditTarget(null); setFormData(EMPTY_FORM); setFormError(null); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Nova Tarefa — {training?.title ?? training?.name}</DialogTitle>
+            <DialogTitle>{editTarget ? "Editar Tarefa" : `Nova Tarefa — ${training?.title ?? training?.name}`}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -330,9 +379,9 @@ export default function TrainingTasksPanel({ training }) {
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
               <Button type="submit" className="text-white" style={{ background: "hsl(var(--primary))" }}
-                disabled={createMutation.isPending}>
-                {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Criar Tarefa
+                disabled={createMutation.isPending || updateMutation.isPending}>
+                {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {editTarget ? "Salvar" : "Criar Tarefa"}
               </Button>
             </div>
           </form>
