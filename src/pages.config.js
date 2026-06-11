@@ -74,6 +74,7 @@ import Remessas from './pages/Remessas';
 import ExamBuilder from './pages/ExamBuilder';
 import ExamResults from './pages/ExamResults';
 import PublicExam from './pages/PublicExam';
+import Tasks from './pages/Tasks';
 import __Layout from './Layout.jsx';
 
 
@@ -105,6 +106,7 @@ export const PAGES = {
     "ExamBuilder": ExamBuilder,
     "ExamResults": ExamResults,
     "PublicExam": PublicExam,
+    "Tasks": Tasks,
 }
 
 export const pagesConfig = {

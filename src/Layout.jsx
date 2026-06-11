@@ -25,6 +25,7 @@ import {
   Send,
   ClipboardCheck,
   BarChart2,
+  ListTodo,
   Sun,
   Moon,
 } from "lucide-react";
@@ -199,6 +200,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "Treinamentos", page: "Trainings", icon: GraduationCap },
     { name: "Profissionais", page: "Professionals", icon: Users },
     { name: "Participantes", page: "Participants", icon: Users },
+    { name: "Tarefas", page: "Tasks", icon: ListTodo },
     { name: "Relatórios", page: "Reports", icon: FileText },
     { name: "Logs", page: "AuditLogs", icon: FileText, adminOnly: true },
     { name: "Configurações", page: "Settings", icon: Settings, adminOnly: true },
