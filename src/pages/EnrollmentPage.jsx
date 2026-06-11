@@ -3509,11 +3509,11 @@ export default function EnrollmentPage({
           }
         }}
       >
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
             <DialogTitle>Editar Inscrito</DialogTitle>
           </DialogHeader>
-          <div className="space-y-6">
+          <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
             {municipalityOptions.length > 0 && (
               <datalist id="municipios-list-edit">
                 {municipalityOptions.map((municipio) => (
@@ -3654,7 +3654,8 @@ export default function EnrollmentPage({
               </Alert>
             )}
 
-            <div className="flex justify-end gap-3">
+          </div>
+          <div className="flex justify-end gap-3 px-6 py-4 border-t shrink-0">
               <Button
                 variant="outline"
                 onClick={() => setShowEditParticipant(false)}
@@ -3669,7 +3670,6 @@ export default function EnrollmentPage({
                 {updateParticipant.isPending ? "Salvando..." : "Salvar alterações"}
               </Button>
             </div>
-          </div>
         </DialogContent>
       </Dialog>
 
