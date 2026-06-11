@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { dataClient } from "@/api/dataClient";
 import { useAuth } from "@/lib/AuthContext";
+import { useLocation } from "react-router-dom";
 import { format, isPast, isToday, parseISO } from "date-fns";
 import {
   CheckCheck, Circle, Clock, AlertTriangle, Trash2, Edit,
@@ -68,6 +69,7 @@ const AVATAR_COLORS = [
 const EMPTY_FORM = {
   title: "", description: "", assigned_to_id: "", assigned_to_name: "",
   due_date: "", priority: "media", status: "pendente", category: "",
+  training_id: "", training_name: "",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -137,11 +139,18 @@ export default function Tasks() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
+  const location = useLocation();
+  const urlParams = new URLSearchParams(location.search);
+  const urlTrainingId = urlParams.get("training") || "";
+
   const [view, setView] = useState("list");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("active");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [assignedFilter, setAssignedFilter] = useState("all");
+  const [trainingFilter, setTrainingFilter] = useState(urlTrainingId);
+
+  useEffect(() => { if (urlTrainingId) setTrainingFilter(urlTrainingId); }, [urlTrainingId]);
 
   const [selectedTask, setSelectedTask] = useState(null);
   const [detailTab, setDetailTab] = useState("subtarefas");
@@ -163,6 +172,11 @@ export default function Tasks() {
   const { data: professionals = [] } = useQuery({
     queryKey: ["professionals"],
     queryFn: () => dataClient.entities.Professional.list("name"),
+  });
+
+  const { data: trainings = [] } = useQuery({
+    queryKey: ["trainings"],
+    queryFn: () => dataClient.entities.Training.list("-date"),
   });
 
   const { data: subtasks = [], isLoading: loadingSubtasks } = useQuery({
@@ -191,6 +205,7 @@ export default function Tasks() {
       if (statusFilter === "active" && (t.status === "concluida" || t.status === "cancelada")) return false;
       if (statusFilter !== "active" && statusFilter !== "all" && t.status !== statusFilter) return false;
       if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
+      if (trainingFilter && t.training_id !== trainingFilter) return false;
       if (assignedFilter === "me") {
         const matchId = user?.id && t.assigned_to_id === user.id;
         const matchName = user?.full_name && String(t.assigned_to_name || "").toLowerCase() === user.full_name.toLowerCase();
@@ -341,6 +356,8 @@ export default function Tasks() {
       priority: task.priority ?? "media",
       status: task.status ?? "pendente",
       category: task.category ?? "",
+      training_id: task.training_id ?? "",
+      training_name: task.training_name ?? "",
     });
     setFormError(null);
     setShowEdit(true);
@@ -368,6 +385,8 @@ export default function Tasks() {
       priority: formData.priority,
       status: "pendente",
       category: formData.category || null,
+      training_id: formData.training_id || null,
+      training_name: formData.training_name || null,
       created_by_id: formData.created_by_id || null,
       created_by_name: formData.created_by_name || null,
     });
@@ -389,6 +408,8 @@ export default function Tasks() {
         priority: formData.priority,
         status: formData.status,
         category: formData.category || null,
+        training_id: formData.training_id || null,
+        training_name: formData.training_name || null,
       },
     });
   };
@@ -469,6 +490,11 @@ export default function Tasks() {
                 {cat && (
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold shrink-0 ${cat.color}`}>
                     <Tag className="h-3 w-3" />{cat.label}
+                  </span>
+                )}
+                {task.training_name && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200 shrink-0 max-w-[160px] truncate">
+                    <ListTodo className="h-3 w-3 shrink-0" />{task.training_name}
                   </span>
                 )}
                 {overdue && (
@@ -632,6 +658,25 @@ export default function Tasks() {
             </SelectContent>
           </Select>
         </div>
+        <div className="col-span-2">
+          <Label>Vincular a treinamento</Label>
+          <Select
+            value={formData.training_id || "__none__"}
+            onValueChange={(v) => {
+              if (v === "__none__") { setFormData((p) => ({ ...p, training_id: "", training_name: "" })); return; }
+              const tr = trainings.find((t) => t.id === v);
+              setFormData((p) => ({ ...p, training_id: v, training_name: tr?.title ?? tr?.name ?? "" }));
+            }}
+          >
+            <SelectTrigger className="mt-1"><SelectValue placeholder="Sem vínculo" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Sem vínculo</SelectItem>
+              {trainings.map((t) => (
+                <SelectItem key={t.id} value={t.id}>{t.title ?? t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         {isEditing && (
           <div>
             <Label>Status</Label>
@@ -715,6 +760,15 @@ export default function Tasks() {
             <SelectItem value="all">Todas as categorias</SelectItem>
             {Object.entries(CATEGORY_CONFIG).map(([k, v]) => (
               <SelectItem key={k} value={k}>{v.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={trainingFilter || "__none__"} onValueChange={(v) => setTrainingFilter(v === "__none__" ? "" : v)}>
+          <SelectTrigger className="w-52"><SelectValue placeholder="Todos os treinamentos" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Todos os treinamentos</SelectItem>
+            {trainings.map((t) => (
+              <SelectItem key={t.id} value={t.id}>{t.title ?? t.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>

@@ -19,6 +19,7 @@ import EnrollmentPage from "./EnrollmentPage";
 import TrainingFeedbackPage from "./TrainingFeedbackPage";
 import TracomaExaminerEvaluationPage from "./TracomaExaminerEvaluationPage";
 import TrainingExamManager from "@/components/trainings/TrainingExamManager";
+import TrainingTasksPanel from "@/components/trainings/TrainingTasksPanel";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,7 @@ import {
   EyeOff,
   FileText,
   Globe,
+  ListTodo,
   Loader2,
   MessageSquare,
   Package,
@@ -604,6 +606,10 @@ export default function TrainingWorkspace() {
             <Mail className="h-3.5 w-3.5" />
             Lembretes
           </TabsTrigger>
+          <TabsTrigger value="tasks" className="gap-1.5">
+            <ListTodo className="h-3.5 w-3.5" />
+            Tarefas
+          </TabsTrigger>
           <TabsTrigger value="edit" className="gap-1.5">
             <Pencil className="h-3.5 w-3.5" />
             Editar
@@ -727,6 +733,10 @@ export default function TrainingWorkspace() {
 
         <TabsContent value="reminders" className="mt-6">
           <ReminderSender training={training} participants={trainingParticipants} />
+        </TabsContent>
+
+        <TabsContent value="tasks" className="mt-6">
+          <TrainingTasksPanel training={training} />
         </TabsContent>
 
         <TabsContent value="edit" className="space-y-4 mt-6">
