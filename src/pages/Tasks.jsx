@@ -134,7 +134,7 @@ function Avatar({ name, size = "sm" }) {
 
 // ─── Task cards (module-level to avoid DOM remount on parent re-render) ─────────
 
-function TaskListCard({ task, onSelect, onToggleComplete, onEdit, onDelete }) {
+function TaskListCard({ task, onSelect, onToggleComplete, onEdit, onDelete, canModify }) {
   const isDone = task.status === "concluida" || task.status === "cancelada";
   const overdue = isOverdue(task);
   const priority = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.media;
@@ -209,18 +209,20 @@ function TaskListCard({ task, onSelect, onToggleComplete, onEdit, onDelete }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-0.5 shrink-0 ml-1">
-            {!isDone && (
-              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600"
-                onClick={(e) => { e.stopPropagation(); onEdit(task); }}>
-                <Edit className="h-3.5 w-3.5" />
+          {canModify && (
+            <div className="flex items-center gap-0.5 shrink-0 ml-1">
+              {!isDone && (
+                <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600"
+                  onClick={(e) => { e.stopPropagation(); onEdit(task); }}>
+                  <Edit className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-300 hover:text-red-600"
+                onClick={(e) => { e.stopPropagation(); onDelete(task); }}>
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
-            )}
-            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-300 hover:text-red-600"
-              onClick={(e) => { e.stopPropagation(); onDelete(task); }}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -832,6 +834,7 @@ export default function Tasks() {
                 onToggleComplete={(id, isDone) => toggleCompleteMutation.mutate({ id, isDone })}
                 onEdit={(t) => { setSelectedTask(t); openEdit(t); }}
                 onDelete={(t) => setDeleteTarget(t)}
+                canModify={!task.created_by_id || task.created_by_id === user?.id}
               />
             ))
           )}
@@ -894,6 +897,7 @@ export default function Tasks() {
             const cat = CATEGORY_CONFIG[selectedTask.category];
             const dueDateObj = selectedTask.due_date ? parseISO(selectedTask.due_date) : null;
             const isDone = selectedTask.status === "concluida" || selectedTask.status === "cancelada";
+            const canModify = !selectedTask.created_by_id || selectedTask.created_by_id === user?.id;
             return (
               <>
                 <DialogHeader className="px-6 pt-6 pb-4 border-b">
@@ -959,16 +963,18 @@ export default function Tasks() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex gap-2 mt-3 ml-8">
-                    <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs"
-                      onClick={() => openEdit(selectedTask)}>
-                      <Edit className="h-3.5 w-3.5" /> Editar
-                    </Button>
-                    <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs text-red-600 border-red-200 hover:bg-red-50"
-                      onClick={() => setDeleteTarget(selectedTask)}>
-                      <Trash2 className="h-3.5 w-3.5" /> Excluir
-                    </Button>
-                  </div>
+                  {canModify && (
+                    <div className="flex gap-2 mt-3 ml-8">
+                      <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs"
+                        onClick={() => openEdit(selectedTask)}>
+                        <Edit className="h-3.5 w-3.5" /> Editar
+                      </Button>
+                      <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={() => setDeleteTarget(selectedTask)}>
+                        <Trash2 className="h-3.5 w-3.5" /> Excluir
+                      </Button>
+                    </div>
+                  )}
                 </DialogHeader>
 
                 <Tabs value={detailTab} onValueChange={setDetailTab} className="flex-1 flex flex-col overflow-hidden">

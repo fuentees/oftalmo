@@ -212,6 +212,7 @@ export default function TrainingTasksPanel({ training }) {
             const priority = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.media;
             const dueDateObj = task.due_date ? parseISO(task.due_date) : null;
             const avatarColor = getAvatarColor(task.assigned_to_name);
+            const canDelete = !task.created_by_id || task.created_by_id === user?.id;
 
             return (
               <Card key={task.id} className={`${overdue ? "border-l-4 border-l-red-400" : ""}`}>
@@ -252,12 +253,14 @@ export default function TrainingTasksPanel({ training }) {
                         )}
                       </div>
                     </div>
-                    <button
-                      className="shrink-0 text-slate-300 hover:text-red-500 transition-colors"
-                      onClick={() => setDeleteTarget(task)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {canDelete && (
+                      <button
+                        className="shrink-0 text-slate-300 hover:text-red-500 transition-colors"
+                        onClick={() => setDeleteTarget(task)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
