@@ -1294,45 +1294,71 @@ export default function EnrollmentPage({
   };
 
   const handleExportExcel = () => {
+    // Coleta todas as chaves de custom_fields presentes nos participantes
+    const customFieldKeys = [];
+    const seenKeys = new Set();
+    filteredParticipants.forEach((p) => {
+      const cf = p.custom_fields;
+      if (cf && typeof cf === "object") {
+        Object.keys(cf).forEach((k) => {
+          if (!seenKeys.has(k)) {
+            seenKeys.add(k);
+            customFieldKeys.push(k);
+          }
+        });
+      }
+    });
+
+    // Mapa de field_key → label legível (usando enrollmentFields quando disponível)
+    const customFieldLabel = (key) => {
+      const field = enrollmentFields.find((f) => f.field_key === key);
+      return field?.label || key;
+    };
+
     const headers = [
       "Nome", "CPF", "RG", "Email", "Setor", "Matrícula", "Formação Profissional",
       "Instituição", "Estado", "GVE", "Município", "Nome da Unidade", "Cargo",
       "Endereço de Trabalho", "Endereço Residencial", "Telefone Comercial", "Celular",
-      "Data de Inscrição", "Status"
+      "Data de Inscrição", "Status",
+      ...customFieldKeys.map(customFieldLabel),
     ];
 
-    const rows = filteredParticipants.map(p => [
-      p.professional_name || "",
-      p.professional_cpf || "",
-      p.professional_rg || "",
-      p.professional_email || "",
-      p.professional_sector || "",
-      p.professional_registration || "",
-      p.professional_formation || "",
-      p.institution || "",
-      p.state || "",
-      p.health_region || "",
-      p.municipality || "",
-      p.unit_name || "",
-      p.position || "",
-      p.work_address || "",
-      p.residential_address || "",
-      p.commercial_phone || "",
-      p.mobile_phone || "",
-      p.enrollment_date ? format(new Date(p.enrollment_date), "dd/MM/yyyy HH:mm") : "",
-      p.enrollment_status || ""
-    ]);
-
-    let csv = headers.join(",") + "\n";
-    rows.forEach(row => {
-      csv += row.map(cell => `"${cell}"`).join(",") + "\n";
+    const rows = filteredParticipants.map((p) => {
+      const cf = p.custom_fields && typeof p.custom_fields === "object" ? p.custom_fields : {};
+      return [
+        p.professional_name || "",
+        p.professional_cpf || "",
+        p.professional_rg || "",
+        p.professional_email || "",
+        p.professional_sector || "",
+        p.professional_registration || "",
+        p.professional_formation || "",
+        p.institution || "",
+        p.state || "",
+        p.health_region || "",
+        p.municipality || "",
+        p.unit_name || "",
+        p.position || "",
+        p.work_address || "",
+        p.residential_address || "",
+        p.commercial_phone || "",
+        p.mobile_phone || "",
+        p.enrollment_date ? format(new Date(p.enrollment_date), "dd/MM/yyyy HH:mm") : "",
+        p.enrollment_status || "",
+        ...customFieldKeys.map((k) => String(cf[k] ?? "")),
+      ];
     });
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    let csv = headers.join(",") + "\n";
+    rows.forEach((row) => {
+      csv += row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",") + "\n";
+    });
+
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `inscricoes_${training?.title || 'treinamento'}_${format(new Date(), "yyyy-MM-dd")}.csv`);
+    link.setAttribute("download", `inscricoes_${training?.title || "treinamento"}_${format(new Date(), "yyyy-MM-dd")}.csv`);
     link.click();
   };
 
