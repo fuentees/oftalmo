@@ -349,9 +349,16 @@ function TaskForm({ onSubmit, isEditing, formData, setFormData, onAssignedChange
             <SelectTrigger className="mt-1"><SelectValue placeholder="Sem vínculo" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">Sem vínculo</SelectItem>
-              {trainings.map((t) => (
-                <SelectItem key={t.id} value={t.id}>{t.title ?? t.name}</SelectItem>
-              ))}
+              {trainings
+                .filter((t) => t.date && (!isPast(parseISO(t.date)) || isToday(parseISO(t.date))))
+                .map((t) => {
+                  const parts = [
+                    t.title ?? t.name,
+                    t.date ? format(parseISO(t.date), "dd/MM/yyyy") : null,
+                    t.location || null,
+                  ].filter(Boolean);
+                  return <SelectItem key={t.id} value={t.id}>{parts.join(" — ")}</SelectItem>;
+                })}
             </SelectContent>
           </Select>
         </div>
@@ -765,12 +772,17 @@ export default function Tasks() {
           </SelectContent>
         </Select>
         <Select value={trainingFilter || "__none__"} onValueChange={(v) => setTrainingFilter(v === "__none__" ? "" : v)}>
-          <SelectTrigger className="w-52"><SelectValue placeholder="Todos os treinamentos" /></SelectTrigger>
+          <SelectTrigger className="w-56"><SelectValue placeholder="Todos os treinamentos" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">Todos os treinamentos</SelectItem>
-            {trainings.map((t) => (
-              <SelectItem key={t.id} value={t.id}>{t.title ?? t.name}</SelectItem>
-            ))}
+            {trainings.map((t) => {
+              const parts = [
+                t.title ?? t.name,
+                t.date ? format(parseISO(t.date), "dd/MM/yyyy") : null,
+                t.location || null,
+              ].filter(Boolean);
+              return <SelectItem key={t.id} value={t.id}>{parts.join(" — ")}</SelectItem>;
+            })}
           </SelectContent>
         </Select>
         <Button variant={assignedFilter === "me" ? "default" : "outline"} size="sm" className="gap-2"
