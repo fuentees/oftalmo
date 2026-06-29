@@ -103,6 +103,9 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
   const [copyTrainingId, setCopyTrainingId]   = useState("");
   const [copying, setCopying]                 = useState(false);
 
+  // ── Exam detail tab ────────────────────────────────────────────────────────
+  const [examDetailTab, setExamDetailTab]     = useState("questoes");
+
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: exams = [], isLoading: loadingExams } = useQuery({
     queryKey: ["exams", trainingId],
@@ -149,7 +152,7 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
       qc.invalidateQueries({ queryKey: ["exams", trainingId] });
       toast({ title: "Prova criada." });
       setShowExamForm(false);
-      openQuestionsForExam(created);
+      openExamDetail(created);
     },
     onError: (err) => setExamFormError(err?.message || "Erro ao criar prova."),
   });
@@ -175,9 +178,13 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["exams", trainingId] }),
   });
 
-  // ── Open questions for exam ────────────────────────────────────────────────
-  const openQuestionsForExam = async (exam) => {
+  // ── Open exam detail (questions + results) ────────────────────────────────
+  const openExamDetail = async (exam, tab = "questoes") => {
     setSelectedExam(exam);
+    setResultsExamId(exam.id);
+    setExamDetailTab(tab);
+    setExpandedQuestions(new Set());
+    setSearchSub("");
     setLoadingQs(true);
     try {
       const qs = await dataClient.entities.ExamQuestion.filter({ exam_id: exam.id }, "ordem");
@@ -351,7 +358,6 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
   };
 
   // ── Results derived ────────────────────────────────────────────────────────
-  const resultsExam = exams.find((e) => e.id === resultsExamId);
   const stats = useMemo(() => {
     if (!submissions.length) return null;
     const passed = submissions.filter((s) => s.passed).length;
@@ -382,14 +388,6 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
       return { name:`Q${i+1}`, pct: Math.round((correct/submissions.length)*100), correct };
     });
   }, [resultsQuestions, submissions]);
-
-  const filteredSubs = useMemo(() => {
-    const q = searchSub.trim().toLowerCase();
-    return !q ? submissions : submissions.filter((s) =>
-      String(s.participant_name||"").toLowerCase().includes(q) ||
-      String(s.participant_cpf||"").toLowerCase().includes(q)
-    );
-  }, [submissions, searchSub]);
 
   // Unified list: all enrolled + merge with submission result
   const allParticipantsWithStatus = useMemo(() => {
@@ -478,6 +476,11 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
     });
   }, [resultsQuestions, submissions, allParticipantsWithStatus]);
 
+  const sortedExams = useMemo(
+    () => [...exams].sort((a, b) => (a.title || "").localeCompare(b.title || "", "pt-BR")),
+    [exams]
+  );
+
   const exportCSV = () => {
     const rows = [
       ["Nome","Município","GVE","Nota (%)","Resultado","Data"],
@@ -491,103 +494,128 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
     const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g,'""')}"`).join(";")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type:"text/csv;charset=utf-8;" }));
-    a.download = `resultados_${resultsExam?.title?.replace(/\s+/g,"_")||"prova"}.csv`;
+    a.download = `resultados_${selectedExam?.title?.replace(/\s+/g,"_")||"prova"}.csv`;
     a.click();
   };
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
-      <Tabs defaultValue="provas">
-        <TabsList>
-          <TabsTrigger value="provas" className="gap-1.5">
-            <ClipboardCheck className="h-3.5 w-3.5" /> Questões
-          </TabsTrigger>
-          <TabsTrigger value="resultados" className="gap-1.5">
-            <BarChart2 className="h-3.5 w-3.5" /> Resultados
-          </TabsTrigger>
-        </TabsList>
 
-        {/* ── ABA QUESTÕES ─────────────────────────────────────────────────── */}
-        <TabsContent value="provas" className="mt-5 space-y-5">
+      {/* ── EXAM LIST ──────────────────────────────────────────────────────────── */}
+      {!selectedExam ? (
+        <>
           {loadingExams ? (
             <div className="flex justify-center py-10 text-slate-400">
               <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando...
             </div>
-          ) : !selectedExam ? (
-            <>
-              {/* Exam list for this training */}
-              {exams.length === 0 ? (
-                <div className="flex flex-col items-center py-14 gap-3 text-slate-400">
-                  <ClipboardCheck className="h-12 w-12 text-slate-200" />
-                  <p className="text-sm">Nenhuma prova criada para este treinamento ainda.</p>
-                  <Button onClick={openNewExam} className="gap-1.5 text-white" style={{ background:"hsl(var(--primary))" }}>
-                    <Plus className="h-4 w-4" /> Criar Prova
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex justify-end">
-                    <Button size="sm" onClick={openNewExam} className="gap-1.5 text-white h-8 text-xs" style={{ background:"hsl(var(--primary))" }}>
-                      <Plus className="h-3.5 w-3.5" /> Nova Prova
-                    </Button>
-                  </div>
-                  {exams.map((exam) => (
-                    <Card key={exam.id} className={`border-slate-200 ${!exam.is_active?"opacity-60":""}`}>
-                      <CardContent className="py-3 px-4 flex items-center gap-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-slate-800 text-sm">{exam.title}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Aprovação: {exam.passing_score}%</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button onClick={() => toggleMutation.mutate({ id:exam.id, is_active:!exam.is_active })}
-                            title={exam.is_active?"Desativar":"Ativar"} className="text-slate-400 hover:text-slate-600">
-                            {exam.is_active
-                              ? <ToggleRight className="h-5 w-5 text-green-500" />
-                              : <ToggleLeft className="h-5 w-5" />}
-                          </button>
-                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => copyLink(exam)}>
-                            <Copy className="h-3 w-3" /> Link
-                          </Button>
-                          <Button size="sm" className="h-7 text-xs gap-1 text-white" style={{ background:"hsl(var(--primary))" }}
-                            onClick={() => openQuestionsForExam(exam)}>
-                            <List className="h-3 w-3" /> Questões
-                          </Button>
-                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 hover:border-violet-400 hover:text-violet-600"
-                            onClick={() => { setCopyExamSource(exam); setCopyTrainingId(""); }}
-                            title="Copiar para outro treinamento">
-                            <Copy className="h-3 w-3" /> Usar em outro
-                          </Button>
-                          <button onClick={() => openEditExam(exam)} className="p-1 text-slate-400 hover:text-blue-500">
-                            <Edit className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => setDeleteExamTarget(exam)} className="p-1 text-slate-300 hover:text-red-500">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </>
+          ) : exams.length === 0 ? (
+            <div className="flex flex-col items-center py-14 gap-3 text-slate-400">
+              <ClipboardCheck className="h-12 w-12 text-slate-200" />
+              <p className="text-sm">Nenhuma prova criada para este treinamento ainda.</p>
+              <Button onClick={openNewExam} className="gap-1.5 text-white" style={{ background:"hsl(var(--primary))" }}>
+                <Plus className="h-4 w-4" /> Criar Prova
+              </Button>
+            </div>
           ) : (
-            /* ── Question editor ── */
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <Button variant="ghost" size="sm" onClick={() => setSelectedExam(null)} className="gap-1">
-                  ← Voltar
-                </Button>
-                <div className="flex-1">
-                  <p className="font-bold text-slate-800 text-sm">{selectedExam.title}</p>
-                  <p className="text-xs text-slate-400">{questions.length} questão{questions.length!==1?"ões":""} · {selectedExam.passing_score}% para aprovação</p>
-                </div>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => copyLink(selectedExam)}>
-                  <Copy className="h-3 w-3" /> Link
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <Button size="sm" onClick={openNewExam} className="gap-1.5 text-white h-8 text-xs" style={{ background:"hsl(var(--primary))" }}>
+                  <Plus className="h-3.5 w-3.5" /> Nova Prova
                 </Button>
               </div>
+              {sortedExams.map((exam) => (
+                <Card key={exam.id} className={`border-slate-200 ${!exam.is_active?"opacity-60":""}`}>
+                  <CardContent className="py-3 px-4 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <button
+                        onClick={() => openExamDetail(exam)}
+                        className="font-semibold text-blue-600 hover:text-blue-800 hover:underline text-sm text-left transition-colors"
+                      >
+                        {exam.title}
+                      </button>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-slate-400">Aprovação: {exam.passing_score}%</span>
+                        {!exam.is_active && (
+                          <Badge className="bg-slate-100 text-slate-500 text-[10px] px-1.5 py-0">Inativa</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button onClick={() => toggleMutation.mutate({ id:exam.id, is_active:!exam.is_active })}
+                        title={exam.is_active?"Desativar":"Ativar"} className="text-slate-400 hover:text-slate-600">
+                        {exam.is_active
+                          ? <ToggleRight className="h-5 w-5 text-green-500" />
+                          : <ToggleLeft className="h-5 w-5" />}
+                      </button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => copyLink(exam)}>
+                        <Copy className="h-3 w-3" /> Link
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1 hover:border-violet-400 hover:text-violet-600"
+                        onClick={() => { setCopyExamSource(exam); setCopyTrainingId(""); }}
+                        title="Copiar para outro treinamento">
+                        <Copy className="h-3 w-3" /> Usar em outro
+                      </Button>
+                      <button onClick={() => openEditExam(exam)} className="p-1 text-slate-400 hover:text-blue-500">
+                        <Edit className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => setDeleteExamTarget(exam)} className="p-1 text-slate-300 hover:text-red-500">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        /* ── EXAM DETAIL VIEW ─────────────────────────────────────────────────── */
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => { setSelectedExam(null); setResultsExamId(""); setSearchSub(""); setExpandedQuestions(new Set()); }}
+              className="gap-1"
+            >
+              ← Voltar
+            </Button>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-slate-800 text-sm">{selectedExam.title}</p>
+              <p className="text-xs text-slate-400">
+                {questions.length} questão{questions.length!==1?"ões":""} · {selectedExam.passing_score}% para aprovação
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+              <button onClick={() => toggleMutation.mutate({ id:selectedExam.id, is_active:!selectedExam.is_active })}
+                title={selectedExam.is_active?"Desativar":"Ativar"} className="text-slate-400 hover:text-slate-600">
+                {selectedExam.is_active
+                  ? <ToggleRight className="h-5 w-5 text-green-500" />
+                  : <ToggleLeft className="h-5 w-5" />}
+              </button>
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => copyLink(selectedExam)}>
+                <Copy className="h-3 w-3" /> Link
+              </Button>
+              <button onClick={() => openEditExam(selectedExam)} className="p-1 text-slate-400 hover:text-blue-500">
+                <Edit className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
 
-              {/* Add question buttons */}
+          {/* Sub-tabs: Questões | Resultados */}
+          <Tabs value={examDetailTab} onValueChange={setExamDetailTab}>
+            <TabsList>
+              <TabsTrigger value="questoes" className="gap-1.5">
+                <List className="h-3.5 w-3.5" /> Questões
+              </TabsTrigger>
+              <TabsTrigger value="resultados" className="gap-1.5">
+                <BarChart2 className="h-3.5 w-3.5" /> Resultados
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ── Questões ── */}
+            <TabsContent value="questoes" className="mt-4 space-y-4">
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="text-xs text-slate-500">Adicionar:</span>
                 {Object.entries(Q_TYPE_LABELS).map(([type, label]) => (
@@ -598,7 +626,6 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                   </Button>
                 ))}
               </div>
-
               {loadingQs ? (
                 <div className="flex justify-center py-8 text-slate-400">
                   <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando questões...
@@ -648,8 +675,6 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                         <Textarea value={q.text} rows={2} placeholder="Enunciado da questão..."
                           className="text-sm resize-none"
                           onChange={(e) => editQ(q.id,{text:e.target.value})} />
-
-                        {/* Image */}
                         <div className="flex items-center gap-2 flex-wrap">
                           {q.image_url ? (
                             <>
@@ -669,8 +694,6 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                             </label>
                           )}
                         </div>
-
-                        {/* V/F */}
                         {q.type === "true_false" && (
                           <div>
                             <Label className="text-xs text-slate-500 mb-1.5">Resposta correta</Label>
@@ -687,8 +710,6 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                             </div>
                           </div>
                         )}
-
-                        {/* Multiple choice */}
                         {q.type === "multiple_choice" && (
                           <div className="space-y-2">
                             <Label className="text-xs text-slate-500">Opções (marque a correta)</Label>
@@ -718,7 +739,6 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                             )}
                           </div>
                         )}
-
                         {q.type === "essay" && (
                           <p className="text-xs text-purple-600 bg-purple-50 rounded px-2 py-1.5">
                             Dissertativa — correção manual
@@ -729,63 +749,31 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                   );
                 })
               )}
-            </div>
-          )}
-        </TabsContent>
+            </TabsContent>
 
-        {/* ── ABA RESULTADOS ───────────────────────────────────────────────── */}
-        <TabsContent value="resultados" className="mt-5 space-y-5">
-          {exams.length === 0 ? (
-            <p className="text-center py-10 text-slate-400 text-sm">Crie uma prova primeiro para ver os resultados.</p>
-          ) : (
-            <>
-              {/* Exam selector */}
-              {exams.length > 1 && (
-                <div className="flex gap-2 flex-wrap">
-                  {exams.map((e) => (
-                    <Button key={e.id} size="sm" variant={resultsExamId===e.id?"default":"outline"}
-                      className="h-7 text-xs"
-                      onClick={() => setResultsExamId(e.id)}>
-                      {e.title}
-                    </Button>
-                  ))}
-                </div>
-              )}
-
-              {/* Auto-select if only one exam */}
-              {exams.length === 1 && !resultsExamId && (() => { setResultsExamId(exams[0].id); return null; })()}
-
-              {!resultsExamId && exams.length > 1 && (
-                <p className="text-sm text-slate-400 text-center py-6">Selecione uma prova acima.</p>
-              )}
-
-              {resultsExamId && loadingSubs && (
+            {/* ── Resultados ── */}
+            <TabsContent value="resultados" className="mt-4 space-y-5">
+              {loadingSubs ? (
                 <div className="flex justify-center py-8 text-slate-400">
                   <Loader2 className="h-5 w-5 animate-spin mr-2"/>Carregando...
                 </div>
-              )}
-
-              {resultsExamId && !loadingSubs && !stats && (
+              ) : !stats ? (
                 <div className="flex flex-col items-center py-14 gap-3 text-slate-400">
                   <Users className="h-12 w-12 text-slate-200"/>
                   <p className="text-sm">Nenhuma resposta enviada ainda.</p>
-                  <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={() => copyLink(exams.find(e=>e.id===resultsExamId)||exams[0])}>
+                  <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={() => copyLink(selectedExam)}>
                     <Copy className="h-3 w-3"/> Copiar link da prova
                   </Button>
                 </div>
-              )}
-
-              {resultsExamId && !loadingSubs && stats && (
+              ) : (
                 <>
-                  {/* Stats cards — always on top */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <StatCard label="Total"      value={stats.total}                   color="blue"/>
                     <StatCard label="Aprovados"  value={stats.passed}  sub={`${Math.round((stats.passed/stats.total)*100)}%`}  color="green"/>
                     <StatCard label="Reprovados" value={stats.failed}  sub={`${Math.round((stats.failed/stats.total)*100)}%`}  color="red"/>
-                    <StatCard label="Média"      value={`${Math.round(stats.avgPct)}%`} sub={`Mínimo: ${resultsExam?.passing_score}%`} color="slate"/>
+                    <StatCard label="Média"      value={`${Math.round(stats.avgPct)}%`} sub={`Mínimo: ${selectedExam?.passing_score}%`} color="slate"/>
                   </div>
 
-                  {/* Sub-tabs */}
                   <Tabs defaultValue="visao_geral">
                     <TabsList>
                       <TabsTrigger value="visao_geral" className="gap-1.5">
@@ -802,7 +790,6 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                       </TabsTrigger>
                     </TabsList>
 
-                    {/* ── Visão Geral ── */}
                     <TabsContent value="visao_geral" className="mt-4 space-y-4">
                       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                         <Card className="border-slate-200">
@@ -819,7 +806,6 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                             </ResponsiveContainer>
                           </CardContent>
                         </Card>
-
                         <Card className="border-slate-200 lg:col-span-2">
                           <CardHeader className="pb-1"><CardTitle className="text-xs text-slate-500">Distribuição de Notas</CardTitle></CardHeader>
                           <CardContent>
@@ -834,7 +820,6 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                             </ResponsiveContainer>
                           </CardContent>
                         </Card>
-
                         {questionAccuracy.length > 0 && (
                           <Card className="border-slate-200 lg:col-span-3">
                             <CardHeader className="pb-1"><CardTitle className="text-xs text-slate-500">Acerto por Questão (%)</CardTitle></CardHeader>
@@ -847,7 +832,7 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                                   <Tooltip formatter={v=>[`${v}%`,"Acertos"]}/>
                                   <Bar dataKey="pct" radius={[4,4,0,0]}>
                                     {questionAccuracy.map((e,i)=>(
-                                      <Cell key={i} fill={e.pct>=Number(resultsExam?.passing_score||60)?"#22c55e":"#f97316"}/>
+                                      <Cell key={i} fill={e.pct>=Number(selectedExam?.passing_score||60)?"#22c55e":"#f97316"}/>
                                     ))}
                                   </Bar>
                                 </BarChart>
@@ -858,250 +843,235 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                       </div>
                     </TabsContent>
 
-                    {/* ── Por Questão ── */}
                     <TabsContent value="por_questao" className="mt-4 space-y-3">
                       {questionReport.length === 0 ? (
                         <p className="text-center py-10 text-slate-400 text-sm">Nenhuma questão com respostas ainda.</p>
                       ) : (
                         questionReport.map((q) => {
-                        const isExpanded = expandedQuestions.has(q.id);
-                        const correctCount =
-                          q.type === "multiple_choice"
-                            ? (q.optionCounts || []).find((o) => o.is_correct)?.count ?? 0
-                            : q.type === "true_false"
-                            ? (q.tfCounts || []).find((o) => o.isCorrect)?.count ?? 0
-                            : null;
-                        const accuracy =
-                          correctCount !== null && q.totalAnswered > 0
-                            ? Math.round((correctCount / q.totalAnswered) * 100)
-                            : null;
-
-                        return (
-                          <Card key={q.id} className="border-slate-200 overflow-hidden">
-                            {/* Question header — always visible, click to expand */}
-                            <button
-                              type="button"
-                              className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors"
-                              onClick={() => toggleQuestion(q.id)}
-                            >
-                              <span className="shrink-0 text-xs font-bold text-slate-400 mt-0.5 w-6">Q{q.qNum}</span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-slate-800 text-left">{q.text || "(sem enunciado)"}</p>
-                                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                  <Badge className={`${
-                                    q.type === "multiple_choice" ? "bg-blue-100 text-blue-700"
-                                    : q.type === "true_false" ? "bg-green-100 text-green-700"
-                                    : "bg-purple-100 text-purple-700"
-                                  } text-xs`}>
-                                    {q.type === "multiple_choice" ? "Múltipla Escolha"
-                                      : q.type === "true_false" ? "V / F"
-                                      : "Dissertativa"}
-                                  </Badge>
-                                  <span className="text-xs text-slate-400">{q.totalAnswered} resposta{q.totalAnswered !== 1 ? "s" : ""}</span>
-                                  {accuracy !== null && (
-                                    <span className={`text-xs font-semibold ${accuracy >= Number(resultsExam?.passing_score || 60) ? "text-green-600" : "text-orange-500"}`}>
-                                      {accuracy}% de acerto
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <span className="shrink-0 text-slate-400 mt-0.5">
-                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                              </span>
-                            </button>
-
-                            {/* Expanded detail */}
-                            {isExpanded && (
-                              <div className="border-t border-slate-100 px-4 py-4 space-y-4 bg-slate-50/30">
-                                {q.image_url && (
-                                  <img src={q.image_url} alt="imagem" className="max-h-40 rounded-lg border border-slate-200 object-contain" />
-                                )}
-
-                                {/* Multiple choice */}
-                                {q.type === "multiple_choice" && (
-                                  <div className="space-y-2.5">
-                                    {(q.optionCounts || []).map((opt) => (
-                                      <div key={opt.id}>
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <span className={`shrink-0 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center
-                                            ${opt.is_correct ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"}`}>
-                                            {opt.letter}
-                                          </span>
-                                          <span className={`text-sm flex-1 ${opt.is_correct ? "font-semibold text-green-700" : "text-slate-700"}`}>
-                                            {opt.text || "(sem texto)"}
-                                          </span>
-                                          <span className="shrink-0 text-xs font-bold text-slate-600 tabular-nums w-16 text-right">
-                                            {opt.count} ({opt.pct}%)
-                                          </span>
-                                          {opt.is_correct && (
-                                            <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                                          )}
-                                        </div>
-                                        <div className="ml-7 h-2 bg-slate-200 rounded-full overflow-hidden">
-                                          <div
-                                            className={`h-full rounded-full transition-all ${opt.is_correct ? "bg-green-400" : "bg-slate-400"}`}
-                                            style={{ width: `${opt.pct}%` }}
-                                          />
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {/* True/False */}
-                                {q.type === "true_false" && (
-                                  <div className="space-y-2.5">
-                                    {(q.tfCounts || []).map((tf) => (
-                                      <div key={tf.label}>
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <span className={`shrink-0 text-sm font-bold w-8 h-8 rounded-lg flex items-center justify-center border-2
-                                            ${tf.isCorrect ? "border-green-500 bg-green-50 text-green-700" : "border-slate-200 bg-white text-slate-600"}`}>
-                                            {tf.label}
-                                          </span>
-                                          <span className={`text-sm flex-1 font-medium ${tf.isCorrect ? "text-green-700" : "text-slate-600"}`}>
-                                            {tf.isCorrect ? "✅ Resposta correta" : "Incorreto"}
-                                          </span>
-                                          <span className="shrink-0 text-xs font-bold text-slate-600 tabular-nums">
-                                            {tf.count} ({tf.pct}%)
-                                          </span>
-                                        </div>
-                                        <div className="ml-10 h-2 bg-slate-200 rounded-full overflow-hidden">
-                                          <div
-                                            className={`h-full rounded-full ${tf.isCorrect ? "bg-green-400" : "bg-red-300"}`}
-                                            style={{ width: `${tf.pct}%` }}
-                                          />
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {/* Essay answers */}
-                                {q.type === "essay" && (
-                                  <div className="space-y-2">
-                                    {(q.essayAnswers || []).length === 0 ? (
-                                      <p className="text-xs text-slate-400">Nenhuma resposta registrada.</p>
-                                    ) : (
-                                      (q.essayAnswers || []).map((a, ai) => (
-                                        <div key={ai} className="bg-white border border-slate-200 rounded-lg px-3 py-2.5">
-                                          <p className="text-xs font-semibold text-slate-500 mb-1">{a.name}</p>
-                                          <p className="text-sm text-slate-700 whitespace-pre-wrap">{a.text}</p>
-                                        </div>
-                                      ))
+                          const isExpanded = expandedQuestions.has(q.id);
+                          const correctCount =
+                            q.type === "multiple_choice"
+                              ? (q.optionCounts || []).find((o) => o.is_correct)?.count ?? 0
+                              : q.type === "true_false"
+                              ? (q.tfCounts || []).find((o) => o.isCorrect)?.count ?? 0
+                              : null;
+                          const accuracy =
+                            correctCount !== null && q.totalAnswered > 0
+                              ? Math.round((correctCount / q.totalAnswered) * 100)
+                              : null;
+                          return (
+                            <Card key={q.id} className="border-slate-200 overflow-hidden">
+                              <button
+                                type="button"
+                                className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors"
+                                onClick={() => toggleQuestion(q.id)}
+                              >
+                                <span className="shrink-0 text-xs font-bold text-slate-400 mt-0.5 w-6">Q{q.qNum}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-800 text-left">{q.text || "(sem enunciado)"}</p>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <Badge className={`${
+                                      q.type === "multiple_choice" ? "bg-blue-100 text-blue-700"
+                                      : q.type === "true_false" ? "bg-green-100 text-green-700"
+                                      : "bg-purple-100 text-purple-700"
+                                    } text-xs`}>
+                                      {q.type === "multiple_choice" ? "Múltipla Escolha"
+                                        : q.type === "true_false" ? "V / F"
+                                        : "Dissertativa"}
+                                    </Badge>
+                                    <span className="text-xs text-slate-400">{q.totalAnswered} resposta{q.totalAnswered !== 1 ? "s" : ""}</span>
+                                    {accuracy !== null && (
+                                      <span className={`text-xs font-semibold ${accuracy >= Number(selectedExam?.passing_score || 60) ? "text-green-600" : "text-orange-500"}`}>
+                                        {accuracy}% de acerto
+                                      </span>
                                     )}
                                   </div>
-                                )}
+                                </div>
+                                <span className="shrink-0 text-slate-400 mt-0.5">
+                                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                </span>
+                              </button>
+                              {isExpanded && (
+                                <div className="border-t border-slate-100 px-4 py-4 space-y-4 bg-slate-50/30">
+                                  {q.image_url && (
+                                    <img src={q.image_url} alt="imagem" className="max-h-40 rounded-lg border border-slate-200 object-contain" />
+                                  )}
+                                  {q.type === "multiple_choice" && (
+                                    <div className="space-y-2.5">
+                                      {(q.optionCounts || []).map((opt) => (
+                                        <div key={opt.id}>
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className={`shrink-0 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center
+                                              ${opt.is_correct ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"}`}>
+                                              {opt.letter}
+                                            </span>
+                                            <span className={`text-sm flex-1 ${opt.is_correct ? "font-semibold text-green-700" : "text-slate-700"}`}>
+                                              {opt.text || "(sem texto)"}
+                                            </span>
+                                            <span className="shrink-0 text-xs font-bold text-slate-600 tabular-nums w-16 text-right">
+                                              {opt.count} ({opt.pct}%)
+                                            </span>
+                                            {opt.is_correct && <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />}
+                                          </div>
+                                          <div className="ml-7 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                            <div
+                                              className={`h-full rounded-full transition-all ${opt.is_correct ? "bg-green-400" : "bg-slate-400"}`}
+                                              style={{ width: `${opt.pct}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {q.type === "true_false" && (
+                                    <div className="space-y-2.5">
+                                      {(q.tfCounts || []).map((tf) => (
+                                        <div key={tf.label}>
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className={`shrink-0 text-sm font-bold w-8 h-8 rounded-lg flex items-center justify-center border-2
+                                              ${tf.isCorrect ? "border-green-500 bg-green-50 text-green-700" : "border-slate-200 bg-white text-slate-600"}`}>
+                                              {tf.label}
+                                            </span>
+                                            <span className={`text-sm flex-1 font-medium ${tf.isCorrect ? "text-green-700" : "text-slate-600"}`}>
+                                              {tf.isCorrect ? "✅ Resposta correta" : "Incorreto"}
+                                            </span>
+                                            <span className="shrink-0 text-xs font-bold text-slate-600 tabular-nums">
+                                              {tf.count} ({tf.pct}%)
+                                            </span>
+                                          </div>
+                                          <div className="ml-10 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                            <div
+                                              className={`h-full rounded-full ${tf.isCorrect ? "bg-green-400" : "bg-red-300"}`}
+                                              style={{ width: `${tf.pct}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {q.type === "essay" && (
+                                    <div className="space-y-2">
+                                      {(q.essayAnswers || []).length === 0 ? (
+                                        <p className="text-xs text-slate-400">Nenhuma resposta registrada.</p>
+                                      ) : (
+                                        (q.essayAnswers || []).map((a, ai) => (
+                                          <div key={ai} className="bg-white border border-slate-200 rounded-lg px-3 py-2.5">
+                                            <p className="text-xs font-semibold text-slate-500 mb-1">{a.name}</p>
+                                            <p className="text-sm text-slate-700 whitespace-pre-wrap">{a.text}</p>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </Card>
+                          );
+                        })
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="participantes" className="mt-4">
+                      <Card className="border-slate-200">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-3">
+                              <CardTitle className="text-sm font-semibold text-slate-700">
+                                Participantes ({allParticipantsWithStatus.length})
+                              </CardTitle>
+                              <div className="flex gap-1.5">
+                                <Badge className="bg-green-100 text-green-700 text-xs gap-1">
+                                  <CheckCircle2 className="h-3 w-3" />{approvedCount}
+                                </Badge>
+                                <Badge className="bg-red-100 text-red-700 text-xs">
+                                  {rejectedCount} reprov.
+                                </Badge>
+                                <Badge className="bg-amber-100 text-amber-700 text-xs gap-1">
+                                  <Clock className="h-3 w-3" />{pendingCount} pendente{pendingCount !== 1 ? "s" : ""}
+                                </Badge>
                               </div>
-                            )}
-                          </Card>
-                        );
-                      })
-                  )}
-                </TabsContent>
-
-                {/* ── Participantes ── */}
-                <TabsContent value="participantes" className="mt-4">
-                  <Card className="border-slate-200">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-3">
-                          <CardTitle className="text-sm font-semibold text-slate-700">
-                            Participantes ({allParticipantsWithStatus.length})
-                          </CardTitle>
-                          <div className="flex gap-1.5">
-                            <Badge className="bg-green-100 text-green-700 text-xs gap-1">
-                              <CheckCircle2 className="h-3 w-3" />{approvedCount}
-                            </Badge>
-                            <Badge className="bg-red-100 text-red-700 text-xs">
-                              {rejectedCount} reprov.
-                            </Badge>
-                            <Badge className="bg-amber-100 text-amber-700 text-xs gap-1">
-                              <Clock className="h-3 w-3" />{pendingCount} pendente{pendingCount !== 1 ? "s" : ""}
-                            </Badge>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="relative">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                                <Input value={searchSub} onChange={(e) => setSearchSub(e.target.value)}
+                                  placeholder="Buscar por nome, município ou GVE..."
+                                  className="h-8 pl-8 text-xs w-52" />
+                              </div>
+                              <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={exportCSV}>
+                                <Download className="h-3.5 w-3.5" /> CSV
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="relative">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                            <Input value={searchSub} onChange={(e) => setSearchSub(e.target.value)}
-                              placeholder="Buscar por nome, município ou GVE..."
-                              className="h-8 pl-8 text-xs w-52" />
-                          </div>
-                          <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={exportCSV}>
-                            <Download className="h-3.5 w-3.5" /> CSV
-                          </Button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-slate-50">
-                              <TableHead className="font-semibold text-xs">Participante</TableHead>
-                              <TableHead className="font-semibold text-xs hidden sm:table-cell">Município</TableHead>
-                              <TableHead className="font-semibold text-xs hidden md:table-cell">GVE</TableHead>
-                              <TableHead className="font-semibold text-xs text-center">Nota</TableHead>
-                              <TableHead className="font-semibold text-xs text-center">Resultado</TableHead>
-                              <TableHead className="font-semibold text-xs text-right hidden lg:table-cell">Respondeu em</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {filteredParticipants.length === 0 ? (
-                              <TableRow>
-                                <TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">
-                                  Nenhum participante encontrado.
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              filteredParticipants.map((p) => (
-                                <TableRow key={p.id}>
-                                  <TableCell className="font-medium text-slate-800 text-sm">
-                                    {p.submission ? (
-                                      <button
-                                        className="text-left hover:underline hover:text-blue-600 transition-colors"
-                                        onClick={() => setSelectedParticipant(p)}
-                                      >
-                                        {p.name}
-                                      </button>
-                                    ) : p.name}
-                                  </TableCell>
-                                  <TableCell className="text-slate-500 text-sm hidden sm:table-cell">{p.municipality}</TableCell>
-                                  <TableCell className="text-slate-500 text-sm hidden md:table-cell">{p.gve}</TableCell>
-                                  <TableCell className="text-center font-bold tabular-nums text-sm">
-                                    {p.percentage !== null ? `${p.percentage}%` : "—"}
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    <Badge className={
-                                      p.status === "aprovado" ? "bg-green-100 text-green-700"
-                                      : p.status === "reprovado" ? "bg-red-100 text-red-700"
-                                      : "bg-amber-100 text-amber-700"
-                                    }>
-                                      {p.status === "aprovado" ? "Aprovado"
-                                        : p.status === "reprovado" ? "Reprovado"
-                                        : "Pendente"}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell className="text-right text-xs text-slate-400 hidden lg:table-cell">
-                                    {p.submittedAt ? format(new Date(p.submittedAt), "dd/MM/yyyy HH:mm") : "—"}
-                                  </TableCell>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <div className="border rounded-lg overflow-hidden">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="bg-slate-50">
+                                  <TableHead className="font-semibold text-xs">Participante</TableHead>
+                                  <TableHead className="font-semibold text-xs hidden sm:table-cell">Município</TableHead>
+                                  <TableHead className="font-semibold text-xs hidden md:table-cell">GVE</TableHead>
+                                  <TableHead className="font-semibold text-xs text-center">Nota</TableHead>
+                                  <TableHead className="font-semibold text-xs text-center">Resultado</TableHead>
+                                  <TableHead className="font-semibold text-xs text-right hidden lg:table-cell">Respondeu em</TableHead>
                                 </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-              </Tabs>
+                              </TableHeader>
+                              <TableBody>
+                                {filteredParticipants.length === 0 ? (
+                                  <TableRow>
+                                    <TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">
+                                      Nenhum participante encontrado.
+                                    </TableCell>
+                                  </TableRow>
+                                ) : (
+                                  filteredParticipants.map((p) => (
+                                    <TableRow key={p.id}>
+                                      <TableCell className="font-medium text-slate-800 text-sm">
+                                        {p.submission ? (
+                                          <button
+                                            className="text-left hover:underline hover:text-blue-600 transition-colors"
+                                            onClick={() => setSelectedParticipant(p)}
+                                          >
+                                            {p.name}
+                                          </button>
+                                        ) : p.name}
+                                      </TableCell>
+                                      <TableCell className="text-slate-500 text-sm hidden sm:table-cell">{p.municipality}</TableCell>
+                                      <TableCell className="text-slate-500 text-sm hidden md:table-cell">{p.gve}</TableCell>
+                                      <TableCell className="text-center font-bold tabular-nums text-sm">
+                                        {p.percentage !== null ? `${p.percentage}%` : "—"}
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        <Badge className={
+                                          p.status === "aprovado" ? "bg-green-100 text-green-700"
+                                          : p.status === "reprovado" ? "bg-red-100 text-red-700"
+                                          : "bg-amber-100 text-amber-700"
+                                        }>
+                                          {p.status === "aprovado" ? "Aprovado"
+                                            : p.status === "reprovado" ? "Reprovado"
+                                            : "Pendente"}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-right text-xs text-slate-400 hidden lg:table-cell">
+                                        {p.submittedAt ? format(new Date(p.submittedAt), "dd/MM/yyyy HH:mm") : "—"}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))
+                                )}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+                  </Tabs>
                 </>
               )}
-            </>
-          )}
-        </TabsContent>
-      </Tabs>
+            </TabsContent>
+          </Tabs>
+        </div>
+      )}
 
       {/* Exam form dialog */}
       <Dialog open={showExamForm} onOpenChange={(v)=>!v&&setShowExamForm(false)}>
