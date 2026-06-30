@@ -428,12 +428,14 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
 
   const filteredParticipants = useMemo(() => {
     const q = searchSub.trim().toLowerCase();
-    if (!q) return allParticipantsWithStatus;
-    return allParticipantsWithStatus.filter((p) =>
-      p.name.toLowerCase().includes(q) ||
-      p.municipality.toLowerCase().includes(q) ||
-      p.gve.toLowerCase().includes(q)
-    );
+    const list = !q
+      ? allParticipantsWithStatus
+      : allParticipantsWithStatus.filter((p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.municipality.toLowerCase().includes(q) ||
+          p.gve.toLowerCase().includes(q)
+        );
+    return [...list].sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
   }, [allParticipantsWithStatus, searchSub]);
 
   const pendingCount  = allParticipantsWithStatus.filter((p) => p.status === "pendente").length;
