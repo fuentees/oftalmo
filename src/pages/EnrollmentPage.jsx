@@ -47,6 +47,7 @@ import {
   QrCode,
   Copy,
   Check,
+  UserPlus,
 } from "lucide-react";
 import { format } from "date-fns";
 import {
