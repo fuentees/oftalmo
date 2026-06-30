@@ -865,6 +865,40 @@ export default function EnrollmentPage({
     },
   });
 
+  const enrollStaffMutation = useMutation({
+    mutationFn: async ({ name, email, rg }) => {
+      const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
+      const baseDate = firstDate ? new Date(firstDate) : null;
+      const validityDate =
+        training.validity_months && baseDate && !Number.isNaN(baseDate.getTime())
+          ? format(
+              new Date(baseDate.setMonth(baseDate.getMonth() + training.validity_months)),
+              "yyyy-MM-dd"
+            )
+          : null;
+
+      await dataClient.entities.TrainingParticipant.create({
+        training_id: trainingId,
+        training_title: training.title,
+        training_date: firstDate,
+        professional_name: name || "",
+        professional_rg: rg || "",
+        professional_email: email || "",
+        enrollment_status: "inscrito",
+        enrollment_date: new Date().toISOString(),
+        attendance_records: [],
+        attendance_percentage: 0,
+        approved: false,
+        certificate_issued: false,
+        validity_date: validityDate,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["enrolled-participants"] });
+      queryClient.invalidateQueries({ queryKey: ["training"] });
+    },
+  });
+
   const deleteParticipant = useMutation({
     mutationFn: async (/** @type {any} */ participant) => {
       if (!participant) {
@@ -2787,6 +2821,73 @@ export default function EnrollmentPage({
 
             {normalizedAllowedTabs.includes("list") && (
               <TabsContent value="list" className="mt-6 space-y-4">
+              {(() => {
+                const staffMonitors = (Array.isArray(training?.monitors) ? training.monitors : []).filter((m) => m?.name);
+                const staffSpeakers = (Array.isArray(training?.speakers) ? training.speakers : []).filter((s) => s?.name);
+                if (staffMonitors.length === 0 && staffSpeakers.length === 0) return null;
+                const enrolledNames = new Set(
+                  allParticipants.map((p) => String(p.professional_name || "").trim().toLowerCase())
+                );
+                return (
+                  <div className="border rounded-lg divide-y">
+                    <div className="px-4 py-2.5 bg-slate-50">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Equipe do Treinamento</p>
+                    </div>
+                    {staffMonitors.map((monitor, index) => {
+                      const name = String(monitor?.name || "").trim();
+                      const isEnrolled = enrolledNames.has(name.toLowerCase());
+                      return (
+                        <div key={`monitor-${index}`} className="flex items-center justify-between px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{name}</span>
+                            <Badge variant="outline" className="text-xs">Monitor</Badge>
+                          </div>
+                          {isEnrolled ? (
+                            <Badge className="bg-green-100 text-green-700 text-xs">Inscrito</Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => enrollStaffMutation.mutate({ name, email: monitor.email || "", rg: "" })}
+                              disabled={enrollStaffMutation.isPending}
+                            >
+                              <UserPlus className="h-3 w-3" />
+                              Inscrever
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {staffSpeakers.map((speaker, index) => {
+                      const name = String(speaker?.name || "").trim();
+                      const isEnrolled = enrolledNames.has(name.toLowerCase());
+                      return (
+                        <div key={`speaker-${index}`} className="flex items-center justify-between px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{name}</span>
+                            <Badge variant="outline" className="text-xs">Palestrante</Badge>
+                          </div>
+                          {isEnrolled ? (
+                            <Badge className="bg-green-100 text-green-700 text-xs">Inscrito</Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => enrollStaffMutation.mutate({ name, email: speaker.email || "", rg: speaker.rg || "" })}
+                              disabled={enrollStaffMutation.isPending}
+                            >
+                              <UserPlus className="h-3 w-3" />
+                              Inscrever
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
               <div className="flex flex-col lg:flex-row lg:items-start gap-3 justify-between">
                 <div className="flex-1 min-w-0">
                   <SearchFilter
