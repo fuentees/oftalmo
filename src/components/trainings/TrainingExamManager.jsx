@@ -106,6 +106,15 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
   // ── Exam detail tab ────────────────────────────────────────────────────────
   const [examDetailTab, setExamDetailTab]     = useState("questoes");
 
+  // ── Participant table sort ─────────────────────────────────────────────────
+  const [sortCol, setSortCol]   = useState("name");
+  const [sortDir, setSortDir]   = useState("asc");
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("asc"); }
+  };
+
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: exams = [], isLoading: loadingExams } = useQuery({
     queryKey: ["exams", trainingId],
@@ -435,8 +444,20 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
           p.municipality.toLowerCase().includes(q) ||
           p.gve.toLowerCase().includes(q)
         );
-    return [...list].sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
-  }, [allParticipantsWithStatus, searchSub]);
+    return [...list].sort((a, b) => {
+      let valA, valB;
+      if (sortCol === "name")       { valA = a.name || ""; valB = b.name || ""; return sortDir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR"); }
+      if (sortCol === "municipality") { valA = a.municipality || ""; valB = b.municipality || ""; return sortDir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR"); }
+      if (sortCol === "gve")        { valA = a.gve || ""; valB = b.gve || ""; return sortDir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR"); }
+      if (sortCol === "percentage") { valA = a.percentage ?? -1; valB = b.percentage ?? -1; return sortDir === "asc" ? valA - valB : valB - valA; }
+      if (sortCol === "status") {
+        const order = { aprovado: 0, reprovado: 1, pendente: 2 };
+        valA = order[a.status] ?? 3; valB = order[b.status] ?? 3;
+        return sortDir === "asc" ? valA - valB : valB - valA;
+      }
+      return 0;
+    });
+  }, [allParticipantsWithStatus, searchSub, sortCol, sortDir]);
 
   const pendingCount  = allParticipantsWithStatus.filter((p) => p.status === "pendente").length;
   const approvedCount = allParticipantsWithStatus.filter((p) => p.status === "aprovado").length;
@@ -1011,11 +1032,28 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                             <Table>
                               <TableHeader>
                                 <TableRow className="bg-slate-50">
-                                  <TableHead className="font-semibold text-xs">Participante</TableHead>
-                                  <TableHead className="font-semibold text-xs hidden sm:table-cell">Município</TableHead>
-                                  <TableHead className="font-semibold text-xs hidden md:table-cell">GVE</TableHead>
-                                  <TableHead className="font-semibold text-xs text-center">Nota</TableHead>
-                                  <TableHead className="font-semibold text-xs text-center">Resultado</TableHead>
+                                  {[
+                                    { col: "name",         label: "Participante",  cls: "text-left" },
+                                    { col: "municipality", label: "Município",     cls: "text-left hidden sm:table-cell" },
+                                    { col: "gve",          label: "GVE",           cls: "text-left hidden md:table-cell" },
+                                    { col: "percentage",   label: "Nota",          cls: "text-center" },
+                                    { col: "status",       label: "Resultado",     cls: "text-center" },
+                                  ].map(({ col, label, cls }) => (
+                                    <TableHead key={col}
+                                      className={`font-semibold text-xs cursor-pointer select-none hover:bg-slate-100 transition-colors ${cls}`}
+                                      onClick={() => toggleSort(col)}
+                                    >
+                                      <span className="inline-flex items-center gap-1">
+                                        {label}
+                                        {sortCol === col
+                                          ? sortDir === "asc"
+                                            ? <svg className="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"><path d="M6 2l4 6H2z"/></svg>
+                                            : <svg className="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"><path d="M6 10L2 4h8z"/></svg>
+                                          : <svg className="h-3 w-3 text-slate-300" viewBox="0 0 12 12" fill="currentColor"><path d="M6 2l4 6H2z"/></svg>
+                                        }
+                                      </span>
+                                    </TableHead>
+                                  ))}
                                   <TableHead className="font-semibold text-xs text-right hidden lg:table-cell">Respondeu em</TableHead>
                                 </TableRow>
                               </TableHeader>
