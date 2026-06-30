@@ -241,11 +241,6 @@ export default function EnrollmentPage({
     enabled: !!trainingId,
   });
 
-  const { data: professionals = [] } = useQuery({
-    queryKey: ["professionals"],
-    queryFn: () => dataClient.entities.Professional.list(),
-  });
-
   const { data: enrollmentFields = [], isFetched: fieldsFetched } = useQuery({
     queryKey: ["enrollment-fields", trainingId],
     queryFn: async () => {
@@ -1433,81 +1428,7 @@ export default function EnrollmentPage({
         )
       );
 
-    // Lookup de profissionais cadastrados por id e por nome
-    const profById = new Map(professionals.map((p) => [String(p.id || ""), p]));
-    const profByName = new Map(professionals.map((p) => [String(p.name || "").trim().toLowerCase(), p]));
-
-    const profToRow = (prof) => ({
-      professional_name: String(prof.name || "").trim(),
-      professional_rg: String(prof.rg || prof.cpf || "").trim(),
-      professional_cpf: String(prof.cpf || "").trim(),
-      professional_email: String(prof.email || "").trim(),
-      professional_sector: String(prof.sector || "").trim(),
-      professional_registration: String(prof.registration || "").trim(),
-      professional_formation: String(prof.professional_formation || prof.position || "").trim(),
-      health_region: String(prof.health_region || "").trim(),
-      municipality: String(prof.municipality || "").trim(),
-      unit_name: String(prof.unit_name || "").trim(),
-    });
-
-    // Normaliza entrada de equipe e enriquece com dados do profissional cadastrado
-    const normalizeAndEnrichStaff = (value) => {
-      const raw = (() => {
-        if (!value) return [];
-        if (typeof value === "string") {
-          const name = value.trim();
-          return name ? [{ name, professional_id: "" }] : [];
-        }
-        if (Array.isArray(value)) {
-          return value.map((item) => {
-            if (typeof item === "string") return { name: item.trim(), professional_id: "" };
-            if (item && typeof item === "object") {
-              return { name: String(item.name || "").trim(), professional_id: String(item.professional_id || "").trim() };
-            }
-            return null;
-          }).filter((e) => e && e.name);
-        }
-        return [];
-      })();
-
-      return raw.map((entry) => {
-        const prof =
-          (entry.professional_id && profById.get(entry.professional_id)) ||
-          profByName.get(entry.name.toLowerCase());
-        if (prof) return profToRow(prof);
-        return {
-          professional_name: entry.name,
-          professional_rg: "",
-          professional_cpf: "",
-          professional_email: "",
-          professional_sector: "",
-          professional_registration: "",
-          professional_formation: "",
-          health_region: "",
-          municipality: "",
-          unit_name: "",
-        };
-      });
-    };
-
-    const staffParticipants = [
-      ...normalizeAndEnrichStaff(training.coordinator),
-      ...normalizeAndEnrichStaff(training.monitors),
-    ];
-
-    // Deduplica por nome (não adiciona quem já está inscrito)
-    const staffNames = new Set(activeParticipants.map((p) => String(p.professional_name || "").trim().toLowerCase()));
-    const uniqueStaff = staffParticipants.filter((s) => {
-      const name = String(s.professional_name || "").trim().toLowerCase();
-      if (!name || staffNames.has(name)) return false;
-      staffNames.add(name);
-      return true;
-    });
-
-    // Lista completa em ordem alfabética
-    const allPrintableParticipants = [...activeParticipants, ...uniqueStaff].sort((a, b) =>
-      String(a.professional_name || "").localeCompare(String(b.professional_name || ""), "pt-BR", { sensitivity: "base" })
-    );
+    const allPrintableParticipants = activeParticipants;
 
     const parsedExtraRows = Math.max(
       0,

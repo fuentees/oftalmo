@@ -22,6 +22,7 @@ import {
 export default function EnrollmentManager({ training, professionals, existingParticipants, onClose }) {
   const [selectedProfessional, setSelectedProfessional] = useState("");
   const [emailsCopied, setEmailsCopied] = useState(false);
+  const [enrollMonitorsStatus, setEnrollMonitorsStatus] = useState(null);
 
   const handleCopyEmails = () => {
     const emails = existingParticipants
@@ -154,6 +155,92 @@ export default function EnrollmentManager({ training, professionals, existingPar
     },
   });
 
+  const enrollMonitors = useMutation({
+    mutationFn: async () => {
+      const monitors = Array.isArray(training?.monitors) ? training.monitors : [];
+      if (monitors.length === 0) return { count: 0 };
+
+      const trainingDates = Array.isArray(training?.dates) ? training.dates : [];
+      const firstDate = trainingDates.length > 0 ? trainingDates[0].date : null;
+      const baseDate = firstDate ? parseDateSafe(firstDate) : null;
+      const validityDate =
+        training.validity_months && baseDate && !Number.isNaN(baseDate.getTime())
+          ? format(addMonths(baseDate, training.validity_months), "yyyy-MM-dd")
+          : null;
+
+      const alreadyEnrolledIds = new Set(existingParticipants.map((p) => p.professional_id));
+      const alreadyEnrolledNames = new Set(
+        existingParticipants.map((p) => String(p.professional_name || "").trim().toLowerCase())
+      );
+
+      const toEnroll = [];
+      for (const monitor of monitors) {
+        const monitorProfId = String(monitor?.professional_id || "").trim();
+        const monitorName = String(monitor?.name || "").trim().toLowerCase();
+
+        let professional = null;
+        if (monitorProfId) professional = professionals.find((p) => p.id === monitorProfId);
+        if (!professional && monitorName) {
+          professional = professionals.find(
+            (p) => String(p.name || "").trim().toLowerCase() === monitorName
+          );
+        }
+        if (!professional) continue;
+        if (alreadyEnrolledIds.has(professional.id)) continue;
+        if (alreadyEnrolledNames.has(String(professional.name || "").trim().toLowerCase())) continue;
+
+        toEnroll.push(professional);
+        alreadyEnrolledIds.add(professional.id);
+      }
+
+      if (toEnroll.length === 0) return { count: 0 };
+
+      await Promise.all(
+        toEnroll.map(async (professional) => {
+          const participant = {
+            training_id: training.id,
+            training_title: training.title,
+            training_date: firstDate,
+            professional_id: professional.id,
+            professional_name: professional.name,
+            professional_registration: professional.registration,
+            professional_rg: professional.rg,
+            professional_cpf: professional.cpf,
+            professional_email: professional.email,
+            professional_sector: professional.sector,
+            enrollment_status: "inscrito",
+            enrollment_date: new Date().toISOString(),
+            attendance_records: [],
+            attendance_percentage: 0,
+            approved: false,
+            certificate_issued: false,
+            validity_date: validityDate,
+          };
+          const createdParticipant = await dataClient.entities.TrainingParticipant.create(participant);
+          await syncEnrollmentCalendar({
+            participant: createdParticipant || participant,
+            professional,
+            operation: "upsert",
+          });
+        })
+      );
+
+      return { count: toEnroll.length };
+    },
+    onSuccess: ({ count }) => {
+      queryClient.invalidateQueries({ queryKey: ["participants"] });
+      queryClient.invalidateQueries({ queryKey: ["trainings"] });
+      setEnrollMonitorsStatus(
+        count > 0
+          ? `${count} monitor(es) inscrito(s) com sucesso.`
+          : "Todos os monitores já estão inscritos."
+      );
+    },
+    onError: () => {
+      setEnrollMonitorsStatus("Erro ao inscrever monitores. Tente novamente.");
+    },
+  });
+
   const existingProfessionalIds = existingParticipants.map((p) => p.professional_id);
   const isProfessionalActive = (professional) =>
     String(professional?.status || "").trim().toLowerCase() !== "inativo";
@@ -178,7 +265,28 @@ export default function EnrollmentManager({ training, professionals, existingPar
     <div className="space-y-6">
       {/* Enroll New Participant */}
       <div>
-        <h3 className="font-semibold mb-3">Nova Inscrição</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold">Nova Inscrição</h3>
+          {Array.isArray(training?.monitors) && training.monitors.some((m) => m?.name) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setEnrollMonitorsStatus(null); enrollMonitors.mutate(); }}
+              disabled={enrollMonitors.isPending}
+              className="text-xs gap-1.5"
+            >
+              {enrollMonitors.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <UserPlus className="h-3.5 w-3.5" />
+              )}
+              Inscrever monitores
+            </Button>
+          )}
+        </div>
+        {enrollMonitorsStatus && (
+          <p className="text-sm text-green-700 mb-3">{enrollMonitorsStatus}</p>
+        )}
         <div className="flex gap-3">
           <select
             value={selectedProfessional}
