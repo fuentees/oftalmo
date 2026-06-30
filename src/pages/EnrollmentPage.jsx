@@ -48,6 +48,8 @@ import {
   Copy,
   Check,
   UserPlus,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -217,6 +219,9 @@ export default function EnrollmentPage({
     DEFAULT_ATTENDANCE_PRINT_COLUMNS
   );
   const [emailsCopied, setEmailsCopied] = useState(false);
+  const [showStaffSection, setShowStaffSection] = useState(false);
+  const [showProfessionalsSection, setShowProfessionalsSection] = useState(false);
+  const [sectorFilter, setSectorFilter] = useState("");
 
   const handleGoBack = () => {
     if (window.history.length > 1) {
@@ -240,6 +245,11 @@ export default function EnrollmentPage({
       return trainings.find(t => t.id === trainingId);
     },
     enabled: !!trainingId,
+  });
+
+  const { data: professionals = [] } = useQuery({
+    queryKey: ["professionals"],
+    queryFn: () => dataClient.entities.Professional.list(),
   });
 
   const { data: enrollmentFields = [], isFetched: fieldsFetched } = useQuery({
@@ -2825,68 +2835,145 @@ export default function EnrollmentPage({
               {(() => {
                 const staffMonitors = (Array.isArray(training?.monitors) ? training.monitors : []).filter((m) => m?.name);
                 const staffSpeakers = (Array.isArray(training?.speakers) ? training.speakers : []).filter((s) => s?.name);
-                if (staffMonitors.length === 0 && staffSpeakers.length === 0) return null;
+                const hasStaff = staffMonitors.length > 0 || staffSpeakers.length > 0;
                 const enrolledNames = new Set(
                   allParticipants.map((p) => String(p.professional_name || "").trim().toLowerCase())
                 );
+                const availableSectors = [...new Set(professionals.map((p) => p.sector).filter(Boolean))].sort();
+                const sectorProfessionals = sectorFilter
+                  ? professionals.filter(
+                      (p) =>
+                        p.sector === sectorFilter &&
+                        String(p.status || "").trim().toLowerCase() !== "inativo" &&
+                        !enrolledNames.has(String(p.name || "").trim().toLowerCase())
+                    )
+                  : [];
                 return (
-                  <div className="border rounded-lg divide-y">
-                    <div className="px-4 py-2.5 bg-slate-50">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Equipe do Treinamento</p>
+                  <>
+                    {hasStaff && (
+                      <div className="border rounded-lg">
+                        <button
+                          type="button"
+                          className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 text-left rounded-lg"
+                          onClick={() => setShowStaffSection((v) => !v)}
+                        >
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Equipe do Treinamento</p>
+                          {showStaffSection ? (
+                            <ChevronUp className="h-4 w-4 text-slate-400" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-slate-400" />
+                          )}
+                        </button>
+                        {showStaffSection && (
+                          <div className="divide-y">
+                            {staffMonitors.map((monitor, index) => {
+                              const name = String(monitor?.name || "").trim();
+                              const isEnrolled = enrolledNames.has(name.toLowerCase());
+                              return (
+                                <div key={`monitor-${index}`} className="flex items-center justify-between px-4 py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium">{name}</span>
+                                    <Badge variant="outline" className="text-xs">Monitor</Badge>
+                                  </div>
+                                  {isEnrolled ? (
+                                    <Badge className="bg-green-100 text-green-700 text-xs">Inscrito</Badge>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs gap-1"
+                                      onClick={() => enrollStaffMutation.mutate({ name, email: monitor.email || "", rg: "" })}
+                                      disabled={enrollStaffMutation.isPending}
+                                    >
+                                      <UserPlus className="h-3 w-3" />
+                                      Inscrever
+                                    </Button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {staffSpeakers.map((speaker, index) => {
+                              const name = String(speaker?.name || "").trim();
+                              const isEnrolled = enrolledNames.has(name.toLowerCase());
+                              return (
+                                <div key={`speaker-${index}`} className="flex items-center justify-between px-4 py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium">{name}</span>
+                                    <Badge variant="outline" className="text-xs">Palestrante</Badge>
+                                  </div>
+                                  {isEnrolled ? (
+                                    <Badge className="bg-green-100 text-green-700 text-xs">Inscrito</Badge>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs gap-1"
+                                      onClick={() => enrollStaffMutation.mutate({ name, email: speaker.email || "", rg: speaker.rg || "" })}
+                                      disabled={enrollStaffMutation.isPending}
+                                    >
+                                      <UserPlus className="h-3 w-3" />
+                                      Inscrever
+                                    </Button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="border rounded-lg">
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 text-left rounded-lg"
+                        onClick={() => setShowProfessionalsSection((v) => !v)}
+                      >
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Profissionais por Setor</p>
+                        {showProfessionalsSection ? (
+                          <ChevronUp className="h-4 w-4 text-slate-400" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-slate-400" />
+                        )}
+                      </button>
+                      {showProfessionalsSection && (
+                        <div className="px-4 py-3 space-y-3">
+                          <select
+                            value={sectorFilter}
+                            onChange={(e) => setSectorFilter(e.target.value)}
+                            className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                          >
+                            <option value="">Selecione um setor...</option>
+                            {availableSectors.map((sector) => (
+                              <option key={sector} value={sector}>{sector}</option>
+                            ))}
+                          </select>
+                          {sectorFilter && (
+                            sectorProfessionals.length === 0 ? (
+                              <p className="text-sm text-slate-500 text-center py-2">Todos do setor já estão inscritos</p>
+                            ) : (
+                              <div className="border rounded-lg divide-y">
+                                {sectorProfessionals.map((prof) => (
+                                  <div key={prof.id} className="flex items-center justify-between px-4 py-2.5">
+                                    <span className="text-sm font-medium">{prof.name}</span>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs gap-1"
+                                      onClick={() => enrollStaffMutation.mutate({ name: prof.name, email: prof.email || "", rg: prof.rg || "" })}
+                                      disabled={enrollStaffMutation.isPending}
+                                    >
+                                      <UserPlus className="h-3 w-3" />
+                                      Inscrever
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {staffMonitors.map((monitor, index) => {
-                      const name = String(monitor?.name || "").trim();
-                      const isEnrolled = enrolledNames.has(name.toLowerCase());
-                      return (
-                        <div key={`monitor-${index}`} className="flex items-center justify-between px-4 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{name}</span>
-                            <Badge variant="outline" className="text-xs">Monitor</Badge>
-                          </div>
-                          {isEnrolled ? (
-                            <Badge className="bg-green-100 text-green-700 text-xs">Inscrito</Badge>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1"
-                              onClick={() => enrollStaffMutation.mutate({ name, email: monitor.email || "", rg: "" })}
-                              disabled={enrollStaffMutation.isPending}
-                            >
-                              <UserPlus className="h-3 w-3" />
-                              Inscrever
-                            </Button>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {staffSpeakers.map((speaker, index) => {
-                      const name = String(speaker?.name || "").trim();
-                      const isEnrolled = enrolledNames.has(name.toLowerCase());
-                      return (
-                        <div key={`speaker-${index}`} className="flex items-center justify-between px-4 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{name}</span>
-                            <Badge variant="outline" className="text-xs">Palestrante</Badge>
-                          </div>
-                          {isEnrolled ? (
-                            <Badge className="bg-green-100 text-green-700 text-xs">Inscrito</Badge>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1"
-                              onClick={() => enrollStaffMutation.mutate({ name, email: speaker.email || "", rg: speaker.rg || "" })}
-                              disabled={enrollStaffMutation.isPending}
-                            >
-                              <UserPlus className="h-3 w-3" />
-                              Inscrever
-                            </Button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  </>
                 );
               })()}
               <div className="flex flex-col lg:flex-row lg:items-start gap-3 justify-between">
