@@ -880,11 +880,13 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     );
   };
 
-  const findProfessionalByRg = (rg) => {
-    if (!rg) return null;
-    const normalized = rg.replace(/\D/g, "");
+  const findProfessionalByDocument = (documentValue) => {
+    if (!documentValue) return null;
+    const normalized = documentValue.replace(/\D/g, "");
     return activeProfessionals.find(
-      (prof) => String(prof.rg || "").replace(/\D/g, "") === normalized
+      (prof) =>
+        String(prof.rg || "").replace(/\D/g, "") === normalized ||
+        String(prof.cpf || "").replace(/\D/g, "") === normalized
     );
   };
 
@@ -1470,7 +1472,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             onClick={() =>
               handleChange("speakers", [
                 ...formData.speakers,
-                { name: "", rg: "", email: "", lecture: "" },
+                { name: "", rg: "", cpf: "", email: "", lecture: "" },
               ])
             }
           >
@@ -1491,8 +1493,11 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
                 if (!newSpeakers[index].email && match?.email) {
                   newSpeakers[index].email = match.email;
                 }
-                if (!newSpeakers[index].rg && match?.rg) {
-                  newSpeakers[index].rg = match.rg;
+                if (!newSpeakers[index].rg && (match?.rg || match?.cpf)) {
+                  newSpeakers[index].rg = match.rg || match.cpf;
+                }
+                if (!newSpeakers[index].cpf && match?.cpf) {
+                  newSpeakers[index].cpf = match.cpf;
                 }
                 handleChange("speakers", newSpeakers);
               }}
@@ -1500,21 +1505,28 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             />
             <Input
               value={speaker.rg}
-              list="professionals-rg"
+              list="professionals-documents"
               onChange={(e) => {
                 const nextValue = e.target.value;
-                const match = findProfessionalByRg(nextValue);
+                const match = findProfessionalByDocument(nextValue);
                 const newSpeakers = [...formData.speakers];
                 newSpeakers[index].rg = nextValue;
+                newSpeakers[index].cpf =
+                  nextValue.replace(/\D/g, "").length === 11
+                    ? nextValue
+                    : newSpeakers[index].cpf || "";
                 if (!newSpeakers[index].name && match?.name) {
                   newSpeakers[index].name = match.name;
                 }
                 if (!newSpeakers[index].email && match?.email) {
                   newSpeakers[index].email = match.email;
                 }
+                if (!newSpeakers[index].cpf && match?.cpf) {
+                  newSpeakers[index].cpf = match.cpf;
+                }
                 handleChange("speakers", newSpeakers);
               }}
-              placeholder="RG do palestrante"
+              placeholder="RG ou CPF do palestrante"
             />
             <Input
               type="email"
@@ -1528,8 +1540,11 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
                 if (!newSpeakers[index].name && match?.name) {
                   newSpeakers[index].name = match.name;
                 }
-                if (!newSpeakers[index].rg && match?.rg) {
-                  newSpeakers[index].rg = match.rg;
+                if (!newSpeakers[index].rg && (match?.rg || match?.cpf)) {
+                  newSpeakers[index].rg = match.rg || match.cpf;
+                }
+                if (!newSpeakers[index].cpf && match?.cpf) {
+                  newSpeakers[index].cpf = match.cpf;
                 }
                 handleChange("speakers", newSpeakers);
               }}
@@ -1572,11 +1587,11 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             <option key={prof.id} value={prof.email} />
           ))}
       </datalist>
-      <datalist id="professionals-rg">
+      <datalist id="professionals-documents">
         {activeProfessionals
-          .filter((prof) => prof.rg)
+          .filter((prof) => prof.rg || prof.cpf)
           .map((prof) => (
-            <option key={prof.id} value={prof.rg} />
+            <option key={prof.id} value={prof.rg || prof.cpf} />
           ))}
       </datalist>
       <div className="space-y-1.5">

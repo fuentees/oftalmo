@@ -1887,10 +1887,13 @@ export default function Settings() {
 
               <Alert>
                 <AlertDescription>
-                  Variáveis disponíveis: {"{{nome}}"}, {"{{rg}}"}, {"{{treinamento}}"},
-                  {"{{carga_horaria}}"}, {"{{data}}"}, {"{{entidade}}"},
+                  Variáveis disponíveis: {"{{nome}}"}, {"{{documento}}"}, {"{{rg}}"},
+                  {"{{cpf}}"}, {"{{documento_tipo}}"}, {"{{documento_numero}}"},
+                  {"{{treinamento}}"}, {"{{carga_horaria}}"}, {"{{data}}"}, {"{{entidade}}"},
                   {"{{coordenador}}"}, {"{{instrutor}}"}, {"{{funcao}}"},
-                  {"{{tipo_certificado}}"}, {"{{aula}}"}, {"{{periodo_treinamento}}"},
+                  {"{{tipo_certificado}}"}, {"{{aula}}"}, {"{{data_aula}}"},
+                  {"{{horario_aula}}"}, {"{{periodo_aula}}"}, {"{{detalhes_aula}}"},
+                  {"{{periodo_treinamento}}"},
                   {"{{dias_treinamento}}"}, {"{{nota}}"}, {"{{nota_percentual}}"},
                   {"{{kappa}}"}, {"{{nota_texto}}"}, {"{{municipio}}"} (município do
                   treinamento presencial) e {"{{local}}"} (município + GVE).
@@ -2909,7 +2912,7 @@ export default function Settings() {
 
             <Alert>
               <AlertDescription>
-                Variáveis disponíveis: {"{{nome}}"}, {"{{treinamento}}"},
+                Variáveis disponíveis: {"{{nome}}"}, {"{{documento}}"}, {"{{rg}}"}, {"{{treinamento}}"},
                 {"{{tipo_certificado}}"}, {"{{funcao}}"}, {"{{aula}}"},
                 {"{{periodo_treinamento}}"}, {"{{dias_treinamento}}"},
                 {"{{data}}"}, {"{{carga_horaria}}"}, {"{{coordenador}}"} e {"{{instrutor}}"}.

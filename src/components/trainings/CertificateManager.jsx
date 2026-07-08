@@ -7,6 +7,10 @@ import {
   generateCoordinatorCertificate,
   generateMonitorCertificate,
   generateSpeakerCertificate,
+  generateParticipantCertificateWordBlob,
+  generateCoordinatorCertificateWordBlob,
+  generateMonitorCertificateWordBlob,
+  generateSpeakerCertificateWordBlob,
 } from "./CertificateGenerator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Mail, CheckCircle, Award, Printer, Eye, Loader2, ArrowUpDown, ArrowUp, ArrowDown, FileDown } from "lucide-react";
+import { Mail, CheckCircle, Award, Printer, Eye, Loader2, ArrowUpDown, ArrowUp, ArrowDown, FileDown, FileText } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
@@ -95,6 +99,25 @@ const normalizeEmailToken = (value) => {
     return String(bracketMatch[1]).trim().toLowerCase();
   }
   return raw;
+};
+const toSafeFileName = (value, fallback = "certificado") => {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  return normalized || fallback;
+};
+const downloadBlob = (blob, fileName) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 };
 const resolveSingleRecipientEmail = (value) => {
   const rawList = Array.isArray(value) ? value.join(",") : String(value || "");
@@ -164,19 +187,45 @@ const normalizeStaffEntries = (value) => {
       if (typeof item === "string") {
         const name = item.trim();
         if (!name) return null;
-        return { name, email: "", rg: "", lecture: "" };
+        return { name, email: "", rg: "", cpf: "", lecture: "" };
       }
       if (!item || typeof item !== "object") return null;
       const name = String(item?.name || "").trim();
       if (!name) return null;
       return {
+        professional_id: String(item?.professional_id || "").trim(),
         name,
         email: String(item?.email || "").trim(),
         rg: String(item?.rg || "").trim(),
+        cpf: String(item?.cpf || "").trim(),
+        document: String(item?.document || item?.documento || "").trim(),
         lecture: String(item?.lecture || "").trim(),
       };
     })
     .filter(Boolean);
+};
+
+const normalizeComparableText = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const formatTrainingDateLabel = (value) => {
+  if (!value) return "";
+  try {
+    return format(new Date(`${String(value).slice(0, 10)}T00:00:00`), "dd/MM/yyyy");
+  } catch {
+    return String(value || "").trim();
+  }
+};
+
+const formatTimeRange = (start, end) => {
+  const startTime = String(start || "").trim();
+  const endTime = String(end || "").trim();
+  if (startTime && endTime) return `${startTime} - ${endTime}`;
+  return startTime || endTime || "";
 };
 
 export default function CertificateManager({ training, participants = [], onClose }) {
@@ -261,13 +310,92 @@ export default function CertificateManager({ training, participants = [], onClos
     [training?.speakers]
   );
 
+  const scheduleSessionsByStaff = useMemo(() => {
+    const map = new Map();
+    const addSession = (session, dateItem) => {
+      const name = String(session?.speaker_name || "").trim();
+      const email = String(session?.professional_email || "").trim().toLowerCase();
+      const professionalId = String(session?.professional_id || "").trim();
+      const keys = [
+        professionalId ? `id:${professionalId}` : "",
+        email ? `email:${email}` : "",
+        name ? `name:${normalizeComparableText(name)}` : "",
+      ].filter(Boolean);
+      if (!keys.length) return;
+      const item = {
+        title: String(session?.title || "").trim(),
+        date: String(dateItem?.date || "").trim(),
+        start_time: String(session?.start_time || dateItem?.start_time || "").trim(),
+        end_time: String(session?.end_time || dateItem?.end_time || "").trim(),
+      };
+      keys.forEach((key) => {
+        const current = map.get(key) || [];
+        current.push(item);
+        map.set(key, current);
+      });
+    };
+
+    (Array.isArray(training?.dates) ? training.dates : []).forEach((dateItem) => {
+      (Array.isArray(dateItem?.sessions) ? dateItem.sessions : []).forEach((session) =>
+        addSession(session, dateItem)
+      );
+    });
+    return map;
+  }, [training?.dates]);
+
+  const enrichStaffRecipient = (recipient) => {
+    const professionalId = String(recipient?.professional_id || "").trim();
+    const email = String(recipient?.email || "").trim().toLowerCase();
+    const name = normalizeComparableText(recipient?.name);
+    const sessions =
+      (professionalId && scheduleSessionsByStaff.get(`id:${professionalId}`)) ||
+      (email && scheduleSessionsByStaff.get(`email:${email}`)) ||
+      (name && scheduleSessionsByStaff.get(`name:${name}`)) ||
+      [];
+    const lectureTitles = Array.from(
+      new Set(
+        sessions
+          .map((session) => session.title)
+          .filter(Boolean)
+      )
+    );
+    const dates = Array.from(
+      new Set(sessions.map((session) => formatTrainingDateLabel(session.date)).filter(Boolean))
+    );
+    const times = Array.from(
+      new Set(
+        sessions
+          .map((session) => formatTimeRange(session.start_time, session.end_time))
+          .filter(Boolean)
+      )
+    );
+    return {
+      ...recipient,
+      lecture: String(recipient?.lecture || "").trim() || lectureTitles.join("; "),
+      lecture_date: dates.join(", "),
+      lecture_time: times.join(", "),
+      lecture_details: sessions
+        .map((session) =>
+          [
+            formatTrainingDateLabel(session.date),
+            formatTimeRange(session.start_time, session.end_time),
+            session.title,
+          ]
+            .filter(Boolean)
+            .join(" - ")
+        )
+        .filter(Boolean)
+        .join("; "),
+    };
+  };
+
   const teamRecipients = useMemo(
     () =>
       [
         ...(coordinatorRecipient ? [coordinatorRecipient] : []),
         ...monitorRecipients,
         ...speakerRecipients,
-      ].sort((a, b) => {
+      ].map(enrichStaffRecipient).sort((a, b) => {
         const roleCompare = String(a.role).localeCompare(String(b.role), "pt-BR", {
           sensitivity: "base",
         });
@@ -276,7 +404,7 @@ export default function CertificateManager({ training, participants = [], onClos
           sensitivity: "base",
         });
       }),
-    [coordinatorRecipient, monitorRecipients, speakerRecipients]
+    [coordinatorRecipient, monitorRecipients, speakerRecipients, scheduleSessionsByStaff]
   );
   const answerKeyByCode = useMemo(() => {
     const map = new Map();
@@ -442,6 +570,23 @@ export default function CertificateManager({ training, participants = [], onClos
       reader.readAsDataURL(blob);
     });
 
+  const buildStaffCertificatePayload = (recipient, fallbackEmail = "") => ({
+    name: String(recipient?.name || "").trim(),
+    email: fallbackEmail || String(recipient?.email || "").trim(),
+    rg: String(recipient?.rg || "").trim(),
+    cpf: String(recipient?.cpf || "").trim(),
+    document: String(recipient?.document || "").trim(),
+    professional_id: String(recipient?.professional_id || "").trim(),
+    lecture: String(recipient?.lecture || "").trim(),
+  });
+
+  const resolveTeamWordGenerator = (role) => {
+    if (role === "coordenador") return generateCoordinatorCertificateWordBlob;
+    if (role === "monitor") return generateMonitorCertificateWordBlob;
+    if (role === "palestrante") return generateSpeakerCertificateWordBlob;
+    return null;
+  };
+
   const buildTeamResultMessage = (results, roleLabel) => {
     const successCount = results.filter((item) => item.status === "success").length;
     const warningCount = results.filter((item) => item.status === "warning").length;
@@ -480,16 +625,13 @@ export default function CertificateManager({ training, participants = [], onClos
       const recipientEmailInfo = resolveSingleRecipientEmail(recipient?.email);
       const recipientEmail = recipientEmailInfo.email;
       const recipientRg = String(recipient?.rg || "").trim();
+      const recipientCpf = String(recipient?.cpf || "").trim();
+      const recipientDocument = String(recipient?.document || "").trim();
       const recipientLecture = String(recipient?.lecture || "").trim();
 
       try {
         const pdf = generator(
-          {
-            name: recipientName,
-            email: recipientEmail || String(recipient?.email || "").trim(),
-            rg: recipientRg,
-            lecture: recipientLecture,
-          },
+          buildStaffCertificatePayload(recipient, recipientEmail),
           training,
           templateOverride
         );
@@ -526,9 +668,9 @@ export default function CertificateManager({ training, participants = [], onClos
             const emailData = buildCertificateEmailData({
               training,
               nome: recipientName,
-              rg: recipientRg,
+              rg: recipientRg || recipientCpf || recipientDocument,
               role: emailRole,
-              aula: recipientLecture,
+              aula: recipientLecture || recipient?.lecture_details || "",
             });
             const emailContent = resolveEmailContent(emailData);
             await dataClient.integrations.Core.SendEmail({
@@ -747,12 +889,7 @@ export default function CertificateManager({ training, participants = [], onClos
 
       const templateOverride = await resolveSelectedTemplateOverride();
       const pdf = generator(
-        {
-          name: String(recipient?.name || "").trim(),
-          email: String(recipient?.email || "").trim(),
-          rg: String(recipient?.rg || "").trim(),
-          lecture: String(recipient?.lecture || "").trim(),
-        },
+        buildStaffCertificatePayload(recipient),
         training,
         templateOverride
       );
@@ -785,6 +922,111 @@ export default function CertificateManager({ training, participants = [], onClos
       setResult({
         success: false,
         message: error?.message || "Não foi possível abrir a pré-visualização.",
+      });
+    },
+  });
+
+  const downloadParticipantWordCertificates = useMutation({
+    mutationFn: async () => {
+      if (!training) {
+        throw new Error("Treinamento inválido para baixar certificados em Word.");
+      }
+      const targetIds =
+        selectedParticipants.length > 0
+          ? selectedParticipants
+          : previewParticipantId
+          ? [previewParticipantId]
+          : [];
+      if (targetIds.length === 0) {
+        throw new Error("Selecione ao menos um participante para baixar em Word.");
+      }
+      const templateOverride = await resolveSelectedTemplateOverride();
+      const participantsToDownload = safeParticipants.filter((participant) =>
+        targetIds.includes(participant.id)
+      );
+      if (participantsToDownload.length === 0) {
+        throw new Error("Nenhum participante selecionado foi encontrado.");
+      }
+
+      participantsToDownload.forEach((participant) => {
+        const participantWithMetrics =
+          buildParticipantWithCertificateMetrics(participant);
+        const blob = generateParticipantCertificateWordBlob(
+          participantWithMetrics,
+          training,
+          templateOverride
+        );
+        const fileName = `certificado-${toSafeFileName(
+          participant.professional_name,
+          "participante"
+        )}.doc`;
+        downloadBlob(blob, fileName);
+      });
+      return participantsToDownload.length;
+    },
+    onSuccess: (count) => {
+      setResult({
+        success: true,
+        message: `${count} certificado(s) baixado(s) em Word.`,
+      });
+    },
+    onError: (error) => {
+      setResult({
+        success: false,
+        message: error?.message || "Não foi possível baixar em Word.",
+      });
+    },
+  });
+
+  const downloadTeamWordCertificates = useMutation({
+    mutationFn: async ({ onlySelected = false } = {}) => {
+      if (!training) {
+        throw new Error("Treinamento inválido para baixar certificados em Word.");
+      }
+      const recipientsToDownload = onlySelected
+        ? teamRecipients.filter(
+            (recipient) =>
+              String(recipient?.id || "").trim() ===
+              String(previewTeamRecipientId || "").trim()
+          )
+        : teamRecipients;
+      if (recipientsToDownload.length === 0) {
+        throw new Error(
+          onlySelected
+            ? "Selecione um membro da equipe para baixar em Word."
+            : "Nenhum membro da equipe cadastrado para baixar em Word."
+        );
+      }
+
+      const templateOverride = await resolveSelectedTemplateOverride();
+      recipientsToDownload.forEach((recipient) => {
+        const role = String(recipient?.role || "").trim();
+        const generator = resolveTeamWordGenerator(role);
+        if (!generator) return;
+        const blob = generator(
+          buildStaffCertificatePayload(recipient),
+          training,
+          templateOverride
+        );
+        const roleLabel = STAFF_ROLE_LABELS[role] || "equipe";
+        const fileName = `certificado-${toSafeFileName(roleLabel)}-${toSafeFileName(
+          recipient.name,
+          "membro"
+        )}.doc`;
+        downloadBlob(blob, fileName);
+      });
+      return recipientsToDownload.length;
+    },
+    onSuccess: (count) => {
+      setResult({
+        success: true,
+        message: `${count} certificado(s) da equipe baixado(s) em Word.`,
+      });
+    },
+    onError: (error) => {
+      setResult({
+        success: false,
+        message: error?.message || "Não foi possível baixar certificados da equipe em Word.",
       });
     },
   });
@@ -852,7 +1094,7 @@ export default function CertificateManager({ training, participants = [], onClos
               const emailData = buildCertificateEmailData({
                 training,
                 nome: participant.professional_name,
-                rg: participant.professional_rg,
+                rg: participant.professional_rg || participant.professional_cpf,
                 role: "participant",
               });
               const emailContent = resolveEmailContent(emailData);
@@ -877,6 +1119,7 @@ export default function CertificateManager({ training, participants = [], onClos
           const validityDate = training.validity_months
             ? format(addMonths(new Date(), training.validity_months), "yyyy-MM-dd")
             : null;
+          /** @type {any} */
           const participantUpdatePayload = {
             certificate_url: file_url,
             validity_date: validityDate,
@@ -996,6 +1239,21 @@ export default function CertificateManager({ training, participants = [], onClos
 
   const alreadySentCount = eligibleParticipants.filter(p => p.certificate_issued).length;
   const pendingEligibleParticipants = eligibleParticipants.filter(p => !p.certificate_issued);
+  const eligibleMissingDocumentCount = eligibleParticipants.filter(
+    (participant) => !participant?.professional_rg && !participant?.professional_cpf
+  ).length;
+  const eligibleMissingEmailCount = eligibleParticipants.filter(
+    (participant) => !resolveSingleRecipientEmail(participant?.professional_email).email
+  ).length;
+  const teamMissingDocumentCount = teamRecipients.filter(
+    (member) => !member?.rg && !member?.cpf && !member?.document
+  ).length;
+  const teamMissingLectureCount = teamRecipients.filter(
+    (member) => member?.role === "palestrante" && !member?.lecture
+  ).length;
+  const teamMissingScheduleCount = teamRecipients.filter(
+    (member) => member?.role === "palestrante" && (!member?.lecture_date || !member?.lecture_time)
+  ).length;
 
   const toggleAll = () => {
     const pendingIds = pendingEligibleParticipants.map(p => p.id);
@@ -1240,7 +1498,7 @@ export default function CertificateManager({ training, participants = [], onClos
                 <tr>
                   <th class="idx">#</th>
                   <th>Nome</th>
-                  <th>RG</th>
+                  <th>Documento</th>
                   <th>Município</th>
                   <th>GVE</th>
                   <th>E-mail</th>
@@ -1512,6 +1770,16 @@ export default function CertificateManager({ training, participants = [], onClos
             </div>
           </div>
 
+          {(eligibleMissingDocumentCount > 0 || eligibleMissingEmailCount > 0) && (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertDescription className="text-amber-800">
+                Atenção antes de emitir: {eligibleMissingDocumentCount} participante(s) sem documento
+                e {eligibleMissingEmailCount} participante(s) sem e-mail válido. O Word/PDF pode ser
+                baixado mesmo sem e-mail, mas o envio automático depende de e-mail válido.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -1530,6 +1798,23 @@ export default function CertificateManager({ training, participants = [], onClos
             >
               <FileDown className="h-4 w-4 mr-2" />
               Exportar CSV
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => downloadParticipantWordCertificates.mutate()}
+              disabled={
+                processing ||
+                downloadParticipantWordCertificates.isPending ||
+                (selectedParticipants.length === 0 && !previewParticipantId)
+              }
+            >
+              {downloadParticipantWordCertificates.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4 mr-2" />
+              )}
+              Baixar Word
             </Button>
             <Button
               type="button"
@@ -1573,7 +1858,7 @@ export default function CertificateManager({ training, participants = [], onClos
                   >
                     Nome <SortIcon field="professional_name" />
                   </TableHead>
-                  <TableHead>RG</TableHead>
+                  <TableHead>Documento</TableHead>
                   <TableHead
                     className="cursor-pointer select-none hover:bg-slate-100"
                     onClick={() => handleSort("municipality")}
@@ -1763,11 +2048,42 @@ export default function CertificateManager({ training, participants = [], onClos
                   ? "Abrindo visualização..."
                   : "Visualizar certificado da equipe"}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  downloadTeamWordCertificates.mutate({ onlySelected: true })
+                }
+                disabled={
+                  processing ||
+                  downloadTeamWordCertificates.isPending ||
+                  !previewTeamRecipientId
+                }
+              >
+                {downloadTeamWordCertificates.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4 mr-2" />
+                )}
+                Baixar Word selecionado
+              </Button>
               <span className="text-xs text-slate-600">
                 Fluxo recomendado: selecione o modelo, visualize e depois emita para a equipe.
               </span>
             </div>
           </div>
+
+          {(teamMissingDocumentCount > 0 ||
+            teamMissingLectureCount > 0 ||
+            teamMissingScheduleCount > 0) && (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertDescription className="text-amber-800">
+                Revise a equipe: {teamMissingDocumentCount} membro(s) sem documento,{" "}
+                {teamMissingLectureCount} palestrante(s) sem aula/tema e{" "}
+                {teamMissingScheduleCount} palestrante(s) sem dia ou horário vinculados.
+              </AlertDescription>
+            </Alert>
+          )}
 
           <div className="flex flex-wrap gap-2">
             <Button
@@ -1794,6 +2110,23 @@ export default function CertificateManager({ training, participants = [], onClos
               <Award className="h-4 w-4 mr-2" />
               Emitir certificados de palestrantes
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => downloadTeamWordCertificates.mutate({ onlySelected: false })}
+              disabled={
+                processing ||
+                downloadTeamWordCertificates.isPending ||
+                teamRecipients.length === 0
+              }
+            >
+              {downloadTeamWordCertificates.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4 mr-2" />
+              )}
+              Baixar Word da equipe
+            </Button>
           </div>
 
           <div className="border rounded-lg overflow-x-auto">
@@ -1802,16 +2135,17 @@ export default function CertificateManager({ training, participants = [], onClos
                 <TableRow className="bg-slate-50">
                   <TableHead>Função</TableHead>
                   <TableHead>Nome</TableHead>
-                  <TableHead>RG</TableHead>
+                  <TableHead>Documento</TableHead>
                   <TableHead>E-mail</TableHead>
                   <TableHead>Aula/Tema</TableHead>
+                  <TableHead>Dia/Horário</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {teamRecipients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={7} className="text-center py-8 text-slate-500">
                       Nenhum membro de equipe cadastrado para emissão.
                     </TableCell>
                   </TableRow>
@@ -1822,7 +2156,7 @@ export default function CertificateManager({ training, participants = [], onClos
                         <Badge variant="outline">{STAFF_ROLE_LABELS[member.role]}</Badge>
                       </TableCell>
                       <TableCell className="font-medium">{member.name}</TableCell>
-                      <TableCell>{member.rg || "-"}</TableCell>
+                      <TableCell>{member.rg || member.cpf || member.document || "-"}</TableCell>
                       <TableCell>
                         {member.email ? (
                           <div className="flex items-center gap-1 text-sm">
@@ -1834,6 +2168,9 @@ export default function CertificateManager({ training, participants = [], onClos
                         )}
                       </TableCell>
                       <TableCell>{member.lecture || "-"}</TableCell>
+                      <TableCell>
+                        {[member.lecture_date, member.lecture_time].filter(Boolean).join(" - ") || "-"}
+                      </TableCell>
                       <TableCell>
                         <Badge
                           className={

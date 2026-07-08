@@ -27,7 +27,7 @@ export const DEFAULT_CERTIFICATE_TEMPLATE = {
   title: "CERTIFICADO",
   entityName: "Centro de Oftalmologia Sanitária",
   body:
-    "Certificamos que {{nome}} {{rg}}, participou do treinamento \"{{treinamento}}\" promovido por {{entidade}}, com carga horária de {{carga_horaria}} horas, realizado em {{data}}. {{nota_texto}}",
+    "Certificamos que {{nome}} {{documento}}, participou do treinamento \"{{treinamento}}\" promovido por {{entidade}}, com carga horária de {{carga_horaria}} horas, realizado em {{periodo_treinamento}}. {{nota_texto}}",
   footer: "São Paulo, {{data}}",
   signature1: {
     source: "coordinator",

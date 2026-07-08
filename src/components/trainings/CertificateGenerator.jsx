@@ -42,6 +42,159 @@ const buildTrainingDays = (dates) => {
   return dates.join(", ");
 };
 
+const formatCpf = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length !== 11) return String(value || "").trim();
+  return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+};
+
+const resolveDocumentInfo = ({ rg, cpf, document = "" }) => {
+  const rawRg = String(rg || "").trim();
+  const rawCpf = String(cpf || "").trim();
+  const rawDocument = String(document || "").trim();
+  if (rawRg && !rawCpf && rawRg.replace(/\D/g, "").length === 11) {
+    const formattedCpf = formatCpf(rawRg);
+    return { type: "CPF", number: formattedCpf, label: `CPF ${formattedCpf}` };
+  }
+  if (rawRg) {
+    return { type: "RG", number: rawRg, label: `RG ${rawRg}` };
+  }
+  if (rawCpf) {
+    const formattedCpf = formatCpf(rawCpf);
+    return { type: "CPF", number: formattedCpf, label: `CPF ${formattedCpf}` };
+  }
+  if (rawDocument) {
+    const digits = rawDocument.replace(/\D/g, "");
+    if (digits.length === 11) {
+      const formattedCpf = formatCpf(rawDocument);
+      return { type: "CPF", number: formattedCpf, label: `CPF ${formattedCpf}` };
+    }
+    return { type: "Documento", number: rawDocument, label: rawDocument };
+  }
+  return { type: "", number: "", label: "" };
+};
+
+const formatTimeRange = (start, end) => {
+  const startTime = String(start || "").trim();
+  const endTime = String(end || "").trim();
+  if (startTime && endTime) return `${startTime} às ${endTime}`;
+  return startTime || endTime || "";
+};
+
+const normalizeComparableText = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const getTrainingScheduleEntries = (training) => {
+  const entries = [];
+  const dates = Array.isArray(training?.dates) ? training.dates : [];
+  dates.forEach((dateItem) => {
+    const date = dateItem?.date || dateItem?.start_date || "";
+    const fallbackStart = dateItem?.start_time || training?.start_time || "";
+    const fallbackEnd = dateItem?.end_time || training?.end_time || "";
+    const sessions = Array.isArray(dateItem?.sessions) ? dateItem.sessions : [];
+    if (sessions.length === 0) {
+      entries.push({
+        date,
+        start_time: fallbackStart,
+        end_time: fallbackEnd,
+        title: "",
+        speaker_name: "",
+        professional_id: "",
+        professional_email: "",
+      });
+      return;
+    }
+    sessions.forEach((session) => {
+      entries.push({
+        date,
+        start_time: session?.start_time || fallbackStart,
+        end_time: session?.end_time || fallbackEnd,
+        title: session?.title || "",
+        speaker_name: session?.speaker_name || "",
+        professional_id: session?.professional_id || "",
+        professional_email: session?.professional_email || "",
+      });
+    });
+  });
+  if (entries.length > 0) return entries;
+  return getTrainingDates(training).map((date) => ({
+    date,
+    start_time: training?.start_time || "",
+    end_time: training?.end_time || "",
+    title: "",
+    speaker_name: "",
+    professional_id: "",
+    professional_email: "",
+  }));
+};
+
+const formatScheduleDate = (value) => {
+  const parsed = parseDateSafe(value);
+  if (Number.isNaN(parsed.getTime())) return String(value || "").trim();
+  return format(parsed, "dd/MM/yyyy");
+};
+
+const resolveStaffScheduleDetails = (staff, training) => {
+  const entries = getTrainingScheduleEntries(training);
+  const staffName = normalizeComparableText(staff?.name);
+  const staffEmail = String(staff?.email || "").trim().toLowerCase();
+  const staffProfessionalId = String(staff?.professional_id || "").trim();
+  const staffLecture = normalizeComparableText(staff?.lecture);
+
+  const matched = entries.filter((entry) => {
+    const entryProfessionalId = String(entry?.professional_id || "").trim();
+    if (staffProfessionalId && entryProfessionalId === staffProfessionalId) return true;
+    const entryEmail = String(entry?.professional_email || "").trim().toLowerCase();
+    if (staffEmail && entryEmail === staffEmail) return true;
+    const entrySpeaker = normalizeComparableText(entry?.speaker_name);
+    if (staffName && entrySpeaker && staffName === entrySpeaker) return true;
+    const entryTitle = normalizeComparableText(entry?.title);
+    return staffLecture && entryTitle && staffLecture === entryTitle;
+  });
+
+  const source = matched.length > 0 ? matched : entries;
+  const lectureTitles = Array.from(
+    new Set(
+      source
+        .map((entry) => String(entry?.title || "").trim())
+        .filter(Boolean)
+    )
+  );
+  const dates = Array.from(
+    new Set(
+      source
+        .map((entry) => formatScheduleDate(entry?.date))
+        .filter(Boolean)
+    )
+  );
+  const times = Array.from(
+    new Set(
+      source
+        .map((entry) => formatTimeRange(entry?.start_time, entry?.end_time))
+        .filter(Boolean)
+    )
+  );
+  const details = source
+    .map((entry) => {
+      const date = formatScheduleDate(entry?.date);
+      const time = formatTimeRange(entry?.start_time, entry?.end_time);
+      const title = String(entry?.title || "").trim();
+      return [date, time, title].filter(Boolean).join(" - ");
+    })
+    .filter(Boolean);
+
+  return {
+    lecture: String(staff?.lecture || "").trim() || lectureTitles.join("; "),
+    dates: dates.join(", "),
+    times: times.join(", "),
+    details: details.join("; "),
+  };
+};
+
 const toNumeric = (value) => {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -662,6 +815,268 @@ const resolveSignature = (signature, training) => {
   return null;
 };
 
+const buildParticipantCertificateTextData = (participant, training, template) => {
+  const trainingDates = getTrainingDates(training);
+  const trainingPeriod = buildTrainingPeriod(trainingDates);
+  const trainingDays = buildTrainingDays(trainingDates);
+  const participantDate = trainingDates[0] || formatDateSafe(training?.dates?.[0]?.date);
+  const emissionDate = formatDateSafe(new Date());
+  const scoreInfo = resolveParticipantScore(participant);
+  const documentInfo = resolveDocumentInfo({
+    rg: participant?.professional_rg,
+    cpf: participant?.professional_cpf,
+  });
+
+  return {
+    nome: participant?.professional_name || "",
+    rg: documentInfo.label,
+    cpf: participant?.professional_cpf ? `CPF ${formatCpf(participant.professional_cpf)}` : "",
+    documento: documentInfo.label,
+    documento_tipo: documentInfo.type,
+    documento_numero: documentInfo.number,
+    treinamento: training?.title || "",
+    carga_horaria: training?.duration_hours || "",
+    data: participantDate || formatDateSafe(new Date()),
+    data_treinamento: participantDate || "",
+    data_emissao: emissionDate || "",
+    entidade: template?.entityName || "",
+    coordenador: training?.coordinator || "",
+    instrutor: training?.instructor || "",
+    local: training?.municipality || training?.location || "",
+    municipio: training?.municipality || parseMunicipalityFromLocation(training?.location),
+    funcao: "participante",
+    tipo_certificado: "participante",
+    aula: "",
+    data_aula: "",
+    horario_aula: "",
+    periodo_aula: "",
+    detalhes_aula: "",
+    periodo_treinamento: trainingPeriod,
+    dias_treinamento: trainingDays,
+    nota: scoreInfo.scoreLabel,
+    nota_percentual: scoreInfo.scoreLabel ? `${scoreInfo.scoreLabel}%` : "",
+    kappa: scoreInfo.kappaLabel,
+    nota_texto: scoreInfo.scoreText,
+  };
+};
+
+const buildStaffCertificateTextData = (staff, training, template, roleKey) => {
+  const trainingDates = getTrainingDates(training);
+  const trainingPeriod = buildTrainingPeriod(trainingDates);
+  const trainingDays = buildTrainingDays(trainingDates);
+  const trainingDate =
+    trainingDates[0] ||
+    formatDateSafe(training?.dates?.[0]?.date) ||
+    formatDateSafe(new Date());
+  const emissionDate = formatDateSafe(new Date());
+  const documentInfo = resolveDocumentInfo({
+    rg: staff?.rg,
+    cpf: staff?.cpf,
+    document: staff?.document,
+  });
+  const scheduleDetails = resolveStaffScheduleDetails(staff, training);
+
+  return {
+    nome: staff?.name || "",
+    rg: documentInfo.label,
+    cpf: staff?.cpf ? `CPF ${formatCpf(staff.cpf)}` : "",
+    documento: documentInfo.label,
+    documento_tipo: documentInfo.type,
+    documento_numero: documentInfo.number,
+    treinamento: training?.title || "",
+    carga_horaria: training?.duration_hours || "",
+    data: trainingDate,
+    data_treinamento: trainingDate || "",
+    data_emissao: emissionDate || "",
+    entidade: template?.entityName || "",
+    coordenador: training?.coordinator || "",
+    instrutor: training?.instructor || "",
+    local: training?.municipality || training?.location || "",
+    municipio: training?.municipality || parseMunicipalityFromLocation(training?.location),
+    funcao: roleKey,
+    tipo_certificado: roleKey,
+    aula: scheduleDetails.lecture,
+    data_aula: scheduleDetails.dates,
+    horario_aula: scheduleDetails.times,
+    periodo_aula: [scheduleDetails.dates, scheduleDetails.times].filter(Boolean).join(", "),
+    detalhes_aula: scheduleDetails.details,
+    periodo_treinamento: trainingPeriod,
+    dias_treinamento: trainingDays,
+    nota: "",
+    nota_percentual: "",
+    kappa: "",
+    nota_texto: "",
+  };
+};
+
+const escapeWordHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const interpolateHtmlText = (value, textData) =>
+  String(value || "").replace(/\{\{(\w+)\}\}/g, (_, key) =>
+    textData[key] !== undefined && textData[key] !== null
+      ? escapeWordHtml(textData[key])
+      : ""
+  );
+
+const renderWordBody = (template, textData) => {
+  const interpolated = interpolateText(template?.body || "", textData).trim();
+  if (!interpolated) return "";
+  if (BODY_HTML_TAG_REGEX.test(interpolated)) return interpolated;
+  return interpolated
+    .split(/\n+/)
+    .map((line) => `<p>${escapeWordHtml(line)}</p>`)
+    .join("");
+};
+
+const renderWordLogos = (template) => {
+  const logoEntries = Array.isArray(template?.logos)
+    ? template.logos.map((logo, index) => [
+        logo?.id || `logo_${index + 1}`,
+        logo?.dataUrl || logo?.url || logo,
+      ])
+    : Object.entries(template?.logos || {});
+  const logos = logoEntries
+    .map(([key, dataUrl]) => {
+      if (!dataUrl) return "";
+      return `<img alt="${escapeWordHtml(key)}" src="${dataUrl}" />`;
+    })
+    .filter(Boolean);
+  if (!logos.length) return "";
+  return `<div class="logos">${logos.join("")}</div>`;
+};
+
+const createCertificateWordBlob = ({ template, training, textData }) => {
+  const fonts = template?.fonts || {};
+  const headerLines = Array.isArray(template?.headerLines)
+    ? template.headerLines
+    : [];
+  const title = interpolateHtmlText(template?.title || "CERTIFICADO", textData);
+  const footer = template?.footer
+    ? interpolateHtmlText(template.footer, {
+        ...textData,
+        data: textData.data_emissao || textData.data || "",
+      })
+    : "";
+  const signature1 = resolveSignature(template?.signature1, training);
+  const signature2 = resolveSignature(template?.signature2, training);
+  const signatureHtml = [signature1, signature2]
+    .filter((signature) => signature?.name)
+    .map(
+      (signature) => `
+        <div class="signature">
+          <div class="signature-line"></div>
+          <div class="signature-name">${escapeWordHtml(signature.name)}</div>
+          <div class="signature-role">${escapeWordHtml(signature.role || "")}</div>
+        </div>
+      `
+    )
+    .join("");
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          @page WordSection1 {
+            size: 29.7cm 21cm;
+            margin: 1cm;
+            mso-page-orientation: landscape;
+          }
+          body {
+            margin: 0;
+            font-family: ${fonts.family || "Arial"}, Arial, sans-serif;
+            color: #0f172a;
+          }
+          .page {
+            page: WordSection1;
+            width: 27.7cm;
+            min-height: 19cm;
+            border: 6px double #0052cc;
+            padding: 1cm 1.2cm;
+            box-sizing: border-box;
+            text-align: center;
+          }
+          .logos {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 2.2cm;
+            margin-bottom: .25cm;
+          }
+          .logos img {
+            max-height: 2.1cm;
+            max-width: 4cm;
+            object-fit: contain;
+          }
+          .header div {
+            font-size: ${Number(fonts.headerSize) || 10}pt;
+            font-weight: 700;
+            line-height: 1.25;
+          }
+          h1 {
+            font-size: ${Number(fonts.titleSize) || 28}pt;
+            margin: .75cm 0 .55cm;
+            letter-spacing: 0;
+          }
+          .body {
+            font-size: ${Number(fonts.bodySize) || 14}pt;
+            line-height: ${Number(template?.textOptions?.bodyLineHeight) || 1.35};
+            text-align: ${template?.textOptions?.bodyJustify === false ? "left" : "justify"};
+            margin: 0 auto;
+            max-width: 24cm;
+          }
+          .body p {
+            margin: 0 0 .35cm;
+            text-indent: ${Number(template?.textOptions?.bodyIndent) || 0}mm;
+          }
+          .footer {
+            margin-top: .8cm;
+            font-size: ${Number(fonts.footerSize) || 12}pt;
+            text-align: center;
+          }
+          .signatures {
+            display: flex;
+            justify-content: space-around;
+            gap: 1.5cm;
+            margin-top: 1.2cm;
+          }
+          .signature {
+            width: 7cm;
+            text-align: center;
+            font-size: ${Number(fonts.signatureSize) || 11}pt;
+          }
+          .signature-line {
+            border-top: 1px solid #111827;
+            margin-bottom: .18cm;
+          }
+          .signature-role {
+            font-size: ${Number(fonts.signatureRoleSize) || 9}pt;
+            color: #475569;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          ${renderWordLogos(template)}
+          <div class="header">
+            ${headerLines.map((line) => `<div>${escapeWordHtml(line)}</div>`).join("")}
+          </div>
+          <h1>${title}</h1>
+          <div class="body">${renderWordBody(template, textData)}</div>
+          ${footer ? `<div class="footer">${footer}</div>` : ""}
+          ${signatureHtml ? `<div class="signatures">${signatureHtml}</div>` : ""}
+        </div>
+      </body>
+    </html>
+  `;
+  return new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
+};
+
 export const generateParticipantCertificate = (participant, training, templateOverride) => {
   const template = templateOverride || loadCertificateTemplate();
   const pdf = new jsPDF({
@@ -747,10 +1162,18 @@ export const generateParticipantCertificate = (participant, training, templateOv
   const participantDate = trainingDates[0] || formatDateSafe(training?.dates?.[0]?.date);
   const emissionDate = formatDateSafe(new Date());
   const scoreInfo = resolveParticipantScore(participant);
+  const documentInfo = resolveDocumentInfo({
+    rg: participant.professional_rg,
+    cpf: participant.professional_cpf,
+  });
 
   const textData = {
     nome: participant.professional_name || "",
-    rg: participant.professional_rg ? `RG ${participant.professional_rg}` : "",
+    rg: documentInfo.label,
+    cpf: participant.professional_cpf ? `CPF ${formatCpf(participant.professional_cpf)}` : "",
+    documento: documentInfo.label,
+    documento_tipo: documentInfo.type,
+    documento_numero: documentInfo.number,
     treinamento: training.title || "",
     carga_horaria: training.duration_hours || "",
     data: participantDate || formatDateSafe(new Date()),
@@ -764,6 +1187,10 @@ export const generateParticipantCertificate = (participant, training, templateOv
     funcao: "participante",
     tipo_certificado: "participante",
     aula: "",
+    data_aula: "",
+    horario_aula: "",
+    periodo_aula: "",
+    detalhes_aula: "",
     periodo_treinamento: trainingPeriod,
     dias_treinamento: trainingDays,
     nota: scoreInfo.scoreLabel,
@@ -948,10 +1375,20 @@ const generateStaffCertificate = ({
     formatDateSafe(training.dates?.[0]?.date) ||
     formatDateSafe(new Date());
   const emissionDate = formatDateSafe(new Date());
+  const documentInfo = resolveDocumentInfo({
+    rg: staff.rg,
+    cpf: staff.cpf,
+    document: staff.document,
+  });
+  const scheduleDetails = resolveStaffScheduleDetails(staff, training);
 
   const textData = {
     nome: staff.name || "",
-    rg: staff.rg ? `RG ${staff.rg}` : "",
+    rg: documentInfo.label,
+    cpf: staff.cpf ? `CPF ${formatCpf(staff.cpf)}` : "",
+    documento: documentInfo.label,
+    documento_tipo: documentInfo.type,
+    documento_numero: documentInfo.number,
     treinamento: training.title || "",
     carga_horaria: training.duration_hours || "",
     data: trainingDate,
@@ -964,7 +1401,11 @@ const generateStaffCertificate = ({
     municipio: training.municipality || parseMunicipalityFromLocation(training.location),
     funcao: roleKey,
     tipo_certificado: roleKey,
-    aula: staff.lecture || "",
+    aula: scheduleDetails.lecture,
+    data_aula: scheduleDetails.dates,
+    horario_aula: scheduleDetails.times,
+    periodo_aula: [scheduleDetails.dates, scheduleDetails.times].filter(Boolean).join(", "),
+    detalhes_aula: scheduleDetails.details,
     periodo_treinamento: trainingPeriod,
     dias_treinamento: trainingDays,
     nota: "",
@@ -1079,6 +1520,69 @@ export const generateMonitorCertificate = (monitor, training, templateOverride) 
 
 export const generateSpeakerCertificate = (speaker, training, templateOverride) =>
   generateStaffCertificate({
+    staff: speaker || {},
+    training,
+    templateOverride,
+    roleKey: "palestrante",
+  });
+
+export const generateParticipantCertificateWordBlob = (
+  participant,
+  training,
+  templateOverride
+) => {
+  const template = templateOverride || loadCertificateTemplate();
+  return createCertificateWordBlob({
+    template,
+    training,
+    textData: buildParticipantCertificateTextData(participant || {}, training || {}, template),
+  });
+};
+
+const generateStaffCertificateWordBlob = ({
+  staff,
+  training,
+  templateOverride,
+  roleKey,
+}) => {
+  const template = templateOverride || loadCertificateTemplate();
+  return createCertificateWordBlob({
+    template,
+    training,
+    textData: buildStaffCertificateTextData(staff || {}, training || {}, template, roleKey),
+  });
+};
+
+export const generateCoordinatorCertificateWordBlob = (
+  coordinator,
+  training,
+  templateOverride
+) =>
+  generateStaffCertificateWordBlob({
+    staff: coordinator || {},
+    training,
+    templateOverride,
+    roleKey: "coordenador",
+  });
+
+export const generateMonitorCertificateWordBlob = (
+  monitor,
+  training,
+  templateOverride
+) =>
+  generateStaffCertificateWordBlob({
+    staff: monitor || {},
+    training,
+    templateOverride,
+    roleKey: "monitor",
+  });
+
+export const generateSpeakerCertificateWordBlob = (
+  speaker,
+  training,
+  templateOverride
+) =>
+  generateStaffCertificateWordBlob({
     staff: speaker || {},
     training,
     templateOverride,

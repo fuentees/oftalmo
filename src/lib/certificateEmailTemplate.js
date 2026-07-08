@@ -194,21 +194,36 @@ const EMAIL_ROLE_LABELS = {
   speaker: { tipo: "palestra", funcao: "palestrante" },
 };
 
+const formatCpf = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length !== 11) return String(value || "").trim();
+  return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+};
+
+const resolveDocumentLabel = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.replace(/\D/g, "").length === 11) return `CPF ${formatCpf(raw)}`;
+  return `RG ${raw}`;
+};
+
 export const buildCertificateEmailData = ({
   training,
   nome,
-  rg,
-  carga_horaria,
-  coordenador,
-  instrutor,
+  rg = "",
+  carga_horaria = "",
+  coordenador = "",
+  instrutor = "",
   role = "participant",
   aula = "",
 }) => {
   const roleLabels = EMAIL_ROLE_LABELS[role] || EMAIL_ROLE_LABELS.participant;
   const trainingDates = getTrainingDates(training);
+  const documentLabel = resolveDocumentLabel(rg);
   return {
     nome: nome || "",
-    rg: rg ? `RG ${rg}` : "",
+    rg: documentLabel,
+    documento: documentLabel,
     treinamento: training?.title || "",
     carga_horaria: carga_horaria || training?.duration_hours || "",
     data: trainingDates[0] || "",
