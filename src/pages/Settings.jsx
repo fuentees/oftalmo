@@ -103,6 +103,91 @@ const CERTIFICATE_BODY_EDITOR_FORMATS = [
   "link",
 ];
 
+const CERTIFICATE_VARIABLES = [
+  { token: "{{nome}}", label: "Nome" },
+  { token: "{{documento}}", label: "Documento" },
+  { token: "{{rg}}", label: "RG" },
+  { token: "{{cpf}}", label: "CPF" },
+  { token: "{{documento_tipo}}", label: "Tipo doc." },
+  { token: "{{documento_numero}}", label: "Nº doc." },
+  { token: "{{treinamento}}", label: "Treinamento" },
+  { token: "{{carga_horaria}}", label: "Carga horária" },
+  { token: "{{data}}", label: "Data" },
+  { token: "{{entidade}}", label: "Entidade" },
+  { token: "{{coordenador}}", label: "Coordenador" },
+  { token: "{{instrutor}}", label: "Instrutor" },
+  { token: "{{funcao}}", label: "Função" },
+  { token: "{{tipo_certificado}}", label: "Tipo certificado" },
+  { token: "{{aula}}", label: "Aula" },
+  { token: "{{data_aula}}", label: "Data aula" },
+  { token: "{{horario_aula}}", label: "Horário aula" },
+  { token: "{{periodo_aula}}", label: "Período aula" },
+  { token: "{{detalhes_aula}}", label: "Detalhes aula" },
+  { token: "{{periodo_treinamento}}", label: "Período" },
+  { token: "{{dias_treinamento}}", label: "Dias" },
+  { token: "{{nota}}", label: "Nota" },
+  { token: "{{nota_percentual}}", label: "Nota %" },
+  { token: "{{kappa}}", label: "Kappa" },
+  { token: "{{nota_texto}}", label: "Texto nota" },
+  { token: "{{municipio}}", label: "Município" },
+  { token: "{{local}}", label: "Local" },
+];
+
+const EMAIL_TEMPLATE_VARIABLES = [
+  { token: "{{nome}}", label: "Nome" },
+  { token: "{{documento}}", label: "Documento" },
+  { token: "{{rg}}", label: "RG/CPF" },
+  { token: "{{treinamento}}", label: "Treinamento" },
+  { token: "{{tipo_certificado}}", label: "Tipo certificado" },
+  { token: "{{funcao}}", label: "Função" },
+  { token: "{{aula}}", label: "Aula" },
+  { token: "{{periodo_treinamento}}", label: "Período" },
+  { token: "{{dias_treinamento}}", label: "Dias" },
+  { token: "{{data}}", label: "Data" },
+  { token: "{{carga_horaria}}", label: "Carga horária" },
+  { token: "{{coordenador}}", label: "Coordenador" },
+  { token: "{{instrutor}}", label: "Instrutor" },
+];
+
+const VARIABLE_DRAG_MIME = "application/x-certificate-variable";
+
+function VariablePalette({ variables, activeTargetLabel, onInsert }) {
+  return (
+    <div className="rounded-lg border border-cyan-200 bg-cyan-50/50 p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium text-cyan-950">Variáveis</p>
+          <p className="text-xs text-cyan-800">
+            Clique para inserir em {activeTargetLabel}; ou arraste para um campo.
+          </p>
+        </div>
+        <Badge variant="outline" className="border-cyan-300 bg-white text-cyan-800">
+          arrastáveis
+        </Badge>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {variables.map((variable) => (
+          <button
+            key={variable.token}
+            type="button"
+            draggable
+            onClick={() => onInsert(variable.token)}
+            onDragStart={(event) => {
+              event.dataTransfer.setData(VARIABLE_DRAG_MIME, variable.token);
+              event.dataTransfer.setData("text/plain", variable.token);
+              event.dataTransfer.effectAllowed = "copy";
+            }}
+            className="cursor-grab rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-xs font-medium text-cyan-900 shadow-sm transition-colors hover:border-cyan-400 hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 active:cursor-grabbing"
+            title={`Inserir ${variable.token}`}
+          >
+            {variable.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const escapeHtml = (value) =>
   String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -179,6 +264,9 @@ export default function Settings() {
   const [isCertificateEditorOpen, setIsCertificateEditorOpen] = useState(true);
   const [isCertificatePreviewOpen, setIsCertificatePreviewOpen] = useState(true);
   const [isEmailSettingsOpen, setIsEmailSettingsOpen] = useState(false);
+  const [activeVariableTarget, setActiveVariableTarget] = useState("certificateBody");
+  const certificateBodyEditorRef = useRef(null);
+  const textInputRefs = useRef({});
   const queryClient = useQueryClient();
 
   // Histórico de alterações
@@ -1069,6 +1157,105 @@ export default function Settings() {
     }));
   };
 
+  const registerTextInputRef = (key) => (node) => {
+    if (node) {
+      textInputRefs.current[key] = node;
+    }
+  };
+
+  const getActiveVariableTargetLabel = (target) => {
+    const labels = {
+      certificateTitle: "Título",
+      certificateBody: "Texto do certificado",
+      certificateFooter: "Rodapé",
+      emailSubject: "Assunto do e-mail",
+      emailBody: "Mensagem do e-mail",
+    };
+    return labels[target] || "campo ativo";
+  };
+
+  const insertAtCursor = (value, token, inputElement) => {
+    const current = String(value || "");
+    const start = Number.isFinite(inputElement?.selectionStart)
+      ? inputElement.selectionStart
+      : current.length;
+    const end = Number.isFinite(inputElement?.selectionEnd)
+      ? inputElement.selectionEnd
+      : start;
+    const next = `${current.slice(0, start)}${token}${current.slice(end)}`;
+    window.requestAnimationFrame(() => {
+      inputElement?.focus?.();
+      inputElement?.setSelectionRange?.(start + token.length, start + token.length);
+    });
+    return next;
+  };
+
+  const insertVariableIntoTarget = (target, token) => {
+    if (!token) return;
+    if (target === "certificateBody") {
+      const editor = certificateBodyEditorRef.current?.getEditor?.();
+      if (!editor) {
+        handleCertificateChange("body", `${certificateTemplate.body || ""}${token}`);
+        return;
+      }
+      const range = editor.getSelection(true);
+      const index = Number.isFinite(range?.index) ? range.index : editor.getLength();
+      editor.insertText(index, token, "user");
+      editor.setSelection(index + token.length, 0, "user");
+      handleCertificateChange("body", editor.root.innerHTML);
+      return;
+    }
+
+    if (target === "certificateTitle") {
+      const input = textInputRefs.current.certificateTitle;
+      handleCertificateChange(
+        "title",
+        insertAtCursor(certificateTemplate.title, token, input)
+      );
+      return;
+    }
+
+    if (target === "certificateFooter") {
+      const input = textInputRefs.current.certificateFooter;
+      handleCertificateChange(
+        "footer",
+        insertAtCursor(certificateTemplate.footer, token, input)
+      );
+      return;
+    }
+
+    if (target === "emailSubject") {
+      const input = textInputRefs.current.emailSubject;
+      handleEmailTemplateChange(
+        "subject",
+        insertAtCursor(certificateEmailTemplate.subject, token, input)
+      );
+      return;
+    }
+
+    if (target === "emailBody") {
+      const input = textInputRefs.current.emailBody;
+      handleEmailTemplateChange(
+        "body",
+        insertAtCursor(certificateEmailTemplate.body, token, input)
+      );
+    }
+  };
+
+  const handleVariableDrop = (event, target) => {
+    event.preventDefault();
+    const token =
+      event.dataTransfer.getData(VARIABLE_DRAG_MIME) ||
+      event.dataTransfer.getData("text/plain");
+    setActiveVariableTarget(target);
+    insertVariableIntoTarget(target, token);
+  };
+
+  const allowVariableDrop = (event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
   const handleSaveEmailTemplate = async () => {
     try {
       await saveCertificateEmailTemplateToStorage(certificateEmailTemplate);
@@ -1885,20 +2072,11 @@ export default function Settings() {
                 </div>
               </div>
 
-              <Alert>
-                <AlertDescription>
-                  Variáveis disponíveis: {"{{nome}}"}, {"{{documento}}"}, {"{{rg}}"},
-                  {"{{cpf}}"}, {"{{documento_tipo}}"}, {"{{documento_numero}}"},
-                  {"{{treinamento}}"}, {"{{carga_horaria}}"}, {"{{data}}"}, {"{{entidade}}"},
-                  {"{{coordenador}}"}, {"{{instrutor}}"}, {"{{funcao}}"},
-                  {"{{tipo_certificado}}"}, {"{{aula}}"}, {"{{data_aula}}"},
-                  {"{{horario_aula}}"}, {"{{periodo_aula}}"}, {"{{detalhes_aula}}"},
-                  {"{{periodo_treinamento}}"},
-                  {"{{dias_treinamento}}"}, {"{{nota}}"}, {"{{nota_percentual}}"},
-                  {"{{kappa}}"}, {"{{nota_texto}}"}, {"{{municipio}}"} (município do
-                  treinamento presencial) e {"{{local}}"} (município + GVE).
-                </AlertDescription>
-              </Alert>
+              <VariablePalette
+                variables={CERTIFICATE_VARIABLES}
+                activeTargetLabel={getActiveVariableTargetLabel(activeVariableTarget)}
+                onInsert={(token) => insertVariableIntoTarget(activeVariableTarget, token)}
+              />
 
               <Accordion
                 type="multiple"
@@ -1920,7 +2098,11 @@ export default function Settings() {
                       <div className="space-y-2">
                         <Label>Título</Label>
                         <Input
+                          ref={registerTextInputRef("certificateTitle")}
                           value={certificateTemplate.title}
+                          onFocus={() => setActiveVariableTarget("certificateTitle")}
+                          onDragOver={allowVariableDrop}
+                          onDrop={(event) => handleVariableDrop(event, "certificateTitle")}
                           onChange={(e) => handleCertificateChange("title", e.target.value)}
                         />
                       </div>
@@ -2006,8 +2188,12 @@ export default function Settings() {
                           </span>
                         </div>
                         <ReactQuill
+                          ref={certificateBodyEditorRef}
                           theme="snow"
                           value={editorBodyValue}
+                          onFocus={() => setActiveVariableTarget("certificateBody")}
+                          onDragOver={allowVariableDrop}
+                          onDrop={(event) => handleVariableDrop(event, "certificateBody")}
                           onChange={(value) => handleCertificateChange("body", value)}
                           modules={CERTIFICATE_BODY_EDITOR_MODULES}
                           formats={CERTIFICATE_BODY_EDITOR_FORMATS}
@@ -2124,7 +2310,11 @@ export default function Settings() {
                     <div className="space-y-2">
                       <Label>Rodapé (cidade/data)</Label>
                       <Input
+                        ref={registerTextInputRef("certificateFooter")}
                         value={certificateTemplate.footer}
+                        onFocus={() => setActiveVariableTarget("certificateFooter")}
+                        onDragOver={allowVariableDrop}
+                        onDrop={(event) => handleVariableDrop(event, "certificateFooter")}
                         onChange={(e) => handleCertificateChange("footer", e.target.value)}
                       />
                     </div>
@@ -2910,20 +3100,21 @@ export default function Settings() {
               </p>
             </div>
 
-            <Alert>
-              <AlertDescription>
-                Variáveis disponíveis: {"{{nome}}"}, {"{{documento}}"}, {"{{rg}}"}, {"{{treinamento}}"},
-                {"{{tipo_certificado}}"}, {"{{funcao}}"}, {"{{aula}}"},
-                {"{{periodo_treinamento}}"}, {"{{dias_treinamento}}"},
-                {"{{data}}"}, {"{{carga_horaria}}"}, {"{{coordenador}}"} e {"{{instrutor}}"}.
-              </AlertDescription>
-            </Alert>
+            <VariablePalette
+              variables={EMAIL_TEMPLATE_VARIABLES}
+              activeTargetLabel={getActiveVariableTargetLabel(activeVariableTarget)}
+              onInsert={(token) => insertVariableIntoTarget(activeVariableTarget, token)}
+            />
 
             <div className="space-y-2">
               <Label htmlFor="email-template-subject">Assunto do e-mail</Label>
               <Input
                 id="email-template-subject"
+                ref={registerTextInputRef("emailSubject")}
                 value={certificateEmailTemplate.subject}
+                onFocus={() => setActiveVariableTarget("emailSubject")}
+                onDragOver={allowVariableDrop}
+                onDrop={(event) => handleVariableDrop(event, "emailSubject")}
                 onChange={(e) => handleEmailTemplateChange("subject", e.target.value)}
               />
             </div>
@@ -2932,8 +3123,12 @@ export default function Settings() {
               <Label htmlFor="email-template-body">Mensagem (HTML)</Label>
               <Textarea
                 id="email-template-body"
+                ref={registerTextInputRef("emailBody")}
                 rows={6}
                 value={certificateEmailTemplate.body}
+                onFocus={() => setActiveVariableTarget("emailBody")}
+                onDragOver={allowVariableDrop}
+                onDrop={(event) => handleVariableDrop(event, "emailBody")}
                 onChange={(e) => handleEmailTemplateChange("body", e.target.value)}
               />
               <p className="text-xs text-slate-500">
