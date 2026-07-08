@@ -75,6 +75,8 @@ create table if not exists training_participants (
   certificate_issued boolean default false,
   certificate_sent_date timestamptz,
   certificate_url text,
+  certificate_number text,
+  certificate_issue_metadata jsonb,
   validity_date date,
   created_at timestamptz default now()
 );

@@ -167,6 +167,15 @@ export default function CertificatesPanel({ professional, entries = null }) {
                             </span>
                           </div>
                         )}
+
+                        {cert.certificate_number && (
+                          <div className="flex items-center gap-2">
+                            <Award className="h-3 w-3" />
+                            <span className="font-mono text-xs">
+                              {cert.certificate_number}
+                            </span>
+                          </div>
+                        )}
                         
                         {cert.validity_date && (
                           <div className="flex items-center gap-2">

@@ -105,6 +105,8 @@ const CERTIFICATE_BODY_EDITOR_FORMATS = [
 
 const CERTIFICATE_VARIABLES = [
   { token: "{{nome}}", label: "Nome" },
+  { token: "{{numero_certificado}}", label: "N cert." },
+  { token: "{{codigo_certificado}}", label: "Codigo cert." },
   { token: "{{documento}}", label: "Documento" },
   { token: "{{rg}}", label: "RG" },
   { token: "{{cpf}}", label: "CPF" },
@@ -135,6 +137,7 @@ const CERTIFICATE_VARIABLES = [
 
 const EMAIL_TEMPLATE_VARIABLES = [
   { token: "{{nome}}", label: "Nome" },
+  { token: "{{numero_certificado}}", label: "N cert." },
   { token: "{{documento}}", label: "Documento" },
   { token: "{{rg}}", label: "RG/CPF" },
   { token: "{{treinamento}}", label: "Treinamento" },
@@ -1335,8 +1338,15 @@ export default function Settings() {
     );
 
   const previewData = {
+    numero_certificado: "CERT-2026-000123",
+    codigo_certificado: "CERT-2026-000123",
+    certificado_numero: "CERT-2026-000123",
     nome: "Nome do Participante",
     rg: "RG 00.000.000-0",
+    documento: "RG 00.000.000-0",
+    documento_tipo: "RG",
+    documento_numero: "00.000.000-0",
+    cpf: "CPF 000.000.000-00",
     treinamento: "Treinamento de Exemplo",
     carga_horaria: "8",
     data: format(new Date(), "dd/MM/yyyy"),
@@ -1346,6 +1356,10 @@ export default function Settings() {
     funcao: "participante",
     tipo_certificado: "participante",
     aula: "Aula de Exemplo",
+    data_aula: "10/02/2026",
+    horario_aula: "08:00 - 10:00",
+    periodo_aula: "10/02/2026, 08:00 - 10:00",
+    detalhes_aula: "10/02/2026 - 08:00 - 10:00 - Aula de Exemplo",
     periodo_treinamento: "de 10/02/2026 a 12/02/2026",
     dias_treinamento: "10/02/2026, 11/02/2026, 12/02/2026",
     nota: "82,0",
@@ -1365,6 +1379,7 @@ export default function Settings() {
     nome: previewData.nome,
     rg: normalizeRgValue(previewData.rg),
     role: "participant",
+    numero_certificado: previewData.numero_certificado,
   });
 
   const previewEmailSubject = interpolateEmailTemplate(

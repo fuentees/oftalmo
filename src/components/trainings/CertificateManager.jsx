@@ -89,6 +89,8 @@ const STAFF_ROLE_LABELS = {
   monitor: "Monitor",
   palestrante: "Palestrante",
 };
+const SPEAKER_CERTIFICATE_MODE_PER_SESSION = "per-session";
+const SPEAKER_CERTIFICATE_MODE_CONSOLIDATED = "consolidated";
 const EMAIL_SPLIT_REGEX = /[;,\n]+/;
 const SIMPLE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const normalizeEmailToken = (value) => {
@@ -108,6 +110,19 @@ const toSafeFileName = (value, fallback = "certificado") => {
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
   return normalized || fallback;
+};
+const resolveCertificateSequenceFromNumber = (value) => {
+  const match = String(value || "").match(/(\d{4,})$/);
+  if (!match) return 0;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const buildCertificateNumber = (sequence, date = new Date()) => {
+  const parsedDate = date instanceof Date ? date : new Date(date);
+  const year = Number.isNaN(parsedDate.getTime())
+    ? new Date().getFullYear()
+    : parsedDate.getFullYear();
+  return `CERT-${year}-${String(sequence).padStart(6, "0")}`;
 };
 const downloadBlob = (blob, fileName) => {
   const url = window.URL.createObjectURL(blob);
@@ -235,6 +250,9 @@ export default function CertificateManager({ training, participants = [], onClos
   const [previewTeamRecipientId, setPreviewTeamRecipientId] = useState("");
   const [selectedTemplateScope, setSelectedTemplateScope] = useState(
     CERT_TEMPLATE_SCOPE_GLOBAL
+  );
+  const [speakerCertificateMode, setSpeakerCertificateMode] = useState(
+    SPEAKER_CERTIFICATE_MODE_PER_SESSION
   );
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
@@ -371,6 +389,7 @@ export default function CertificateManager({ training, participants = [], onClos
     );
     return {
       ...recipient,
+      lecture_sessions: sessions,
       lecture: String(recipient?.lecture || "").trim() || lectureTitles.join("; "),
       lecture_date: dates.join(", "),
       lecture_time: times.join(", "),
@@ -578,7 +597,75 @@ export default function CertificateManager({ training, participants = [], onClos
     document: String(recipient?.document || "").trim(),
     professional_id: String(recipient?.professional_id || "").trim(),
     lecture: String(recipient?.lecture || "").trim(),
+    certificate_number: String(recipient?.certificate_number || "").trim(),
+    certificateScheduleEntry: recipient?.certificateScheduleEntry || null,
   });
+
+  const buildStaffCertificateVariants = (recipient, mode = speakerCertificateMode) => {
+    const role = String(recipient?.role || "").trim();
+    if (role !== "palestrante" || mode !== SPEAKER_CERTIFICATE_MODE_PER_SESSION) {
+      return [recipient];
+    }
+    const sessions = Array.isArray(recipient?.lecture_sessions)
+      ? recipient.lecture_sessions.filter(Boolean)
+      : [];
+    if (sessions.length === 0) return [recipient];
+    return sessions.map((session, index) => ({
+      ...recipient,
+      id: `${recipient.id}-aula-${index + 1}`,
+      lecture: session.title || recipient.lecture || "",
+      lecture_date: formatTrainingDateLabel(session.date),
+      lecture_time: formatTimeRange(session.start_time, session.end_time),
+      lecture_details: [
+        formatTrainingDateLabel(session.date),
+        formatTimeRange(session.start_time, session.end_time),
+        session.title,
+      ]
+        .filter(Boolean)
+        .join(" - "),
+      certificateScheduleEntry: {
+        date: session.date,
+        start_time: session.start_time,
+        end_time: session.end_time,
+        title: session.title || recipient.lecture || "",
+        speaker_name: recipient.name || "",
+        professional_id: recipient.professional_id || "",
+        professional_email: recipient.email || "",
+      },
+    }));
+  };
+
+  const maxExistingCertificateSequence = useMemo(() => {
+    const sequences = safeParticipants.map((participant) =>
+      resolveCertificateSequenceFromNumber(participant?.certificate_number)
+    );
+    const maxStored = sequences.length > 0 ? Math.max(...sequences) : 0;
+    const alreadyIssued = safeParticipants.filter(
+      (participant) => participant?.certificate_issued || participant?.certificate_url
+    ).length;
+    return Math.max(maxStored, alreadyIssued);
+  }, [safeParticipants]);
+
+  const updateParticipantCertificateRecord = async (participantId, payload) => {
+    try {
+      return await dataClient.entities.TrainingParticipant.update(participantId, payload);
+    } catch (error) {
+      const message = String(error?.message || "").toLowerCase();
+      const hasCertificateNumberColumnError =
+        message.includes("certificate_number") ||
+        message.includes("certificate_issue_metadata");
+      if (!hasCertificateNumberColumnError) throw error;
+      const {
+        certificate_number: _certificateNumber,
+        certificate_issue_metadata: _certificateIssueMetadata,
+        ...fallbackPayload
+      } = payload;
+      return dataClient.entities.TrainingParticipant.update(
+        participantId,
+        fallbackPayload
+      );
+    }
+  };
 
   const resolveTeamWordGenerator = (role) => {
     if (role === "coordenador") return generateCoordinatorCertificateWordBlob;
@@ -606,6 +693,7 @@ export default function CertificateManager({ training, participants = [], onClos
     emailRole,
     filePrefix,
     generator,
+    splitByLectureSessions = false,
   }) => {
     if (!training) {
       throw new Error("Treinamento inválido para emissão de certificados.");
@@ -618,26 +706,45 @@ export default function CertificateManager({ training, participants = [], onClos
     setResult(null);
     const templateOverride = await resolveSelectedTemplateOverride();
     const results = [];
+    let certificateSequence = maxExistingCertificateSequence + 1;
 
     for (const recipient of recipients) {
-      const recipientName = String(recipient?.name || "").trim();
-      if (!recipientName) continue;
-      const recipientEmailInfo = resolveSingleRecipientEmail(recipient?.email);
-      const recipientEmail = recipientEmailInfo.email;
-      const recipientRg = String(recipient?.rg || "").trim();
-      const recipientCpf = String(recipient?.cpf || "").trim();
-      const recipientDocument = String(recipient?.document || "").trim();
-      const recipientLecture = String(recipient?.lecture || "").trim();
+      const variants = splitByLectureSessions
+        ? buildStaffCertificateVariants(recipient, SPEAKER_CERTIFICATE_MODE_PER_SESSION)
+        : [recipient];
 
-      try {
+      for (const variant of variants) {
+        const recipientName = String(variant?.name || "").trim();
+        if (!recipientName) continue;
+        const recipientEmailInfo = resolveSingleRecipientEmail(variant?.email);
+        const recipientEmail = recipientEmailInfo.email;
+        const recipientRg = String(variant?.rg || "").trim();
+        const recipientCpf = String(variant?.cpf || "").trim();
+        const recipientDocument = String(variant?.document || "").trim();
+        const recipientLecture = String(variant?.lecture || "").trim();
+        const certificateNumber = buildCertificateNumber(certificateSequence);
+        certificateSequence += 1;
+
+        try {
         const pdf = generator(
-          buildStaffCertificatePayload(recipient, recipientEmail),
+          buildStaffCertificatePayload(
+            { ...variant, certificate_number: certificateNumber },
+            recipientEmail
+          ),
           training,
           templateOverride
         );
         const pdfBlob = pdf.output("blob");
         const safeName = recipientName.replace(/\s+/g, "_");
-        const pdfFileName = `${filePrefix}-${safeName}.pdf`;
+        const certificateSuffix = [
+          certificateNumber,
+          variant?.lecture_date,
+          variant?.lecture,
+        ]
+          .filter(Boolean)
+          .map((item) => toSafeFileName(item, "certificado"))
+          .join("-");
+        const pdfFileName = `${filePrefix}-${safeName}-${certificateSuffix}.pdf`;
         const pdfFile = new File([pdfBlob], pdfFileName, {
           type: "application/pdf",
         });
@@ -670,7 +777,8 @@ export default function CertificateManager({ training, participants = [], onClos
               nome: recipientName,
               rg: recipientRg || recipientCpf || recipientDocument,
               role: emailRole,
-              aula: recipientLecture || recipient?.lecture_details || "",
+              aula: recipientLecture || variant?.lecture_details || "",
+              numero_certificado: certificateNumber,
             });
             const emailContent = resolveEmailContent(emailData);
             await dataClient.integrations.Core.SendEmail({
@@ -691,6 +799,8 @@ export default function CertificateManager({ training, participants = [], onClos
         if (emailError) {
           results.push({
             name: recipientName,
+            certificateNumber,
+            lecture: variant?.lecture_details || recipientLecture,
             status: "error",
             error: emailError,
             warning: warnings.join(" "),
@@ -698,6 +808,8 @@ export default function CertificateManager({ training, participants = [], onClos
         } else {
           results.push({
             name: recipientName,
+            certificateNumber,
+            lecture: variant?.lecture_details || recipientLecture,
             status: warnings.length > 0 ? "warning" : "success",
             warning: warnings.join(" "),
           });
@@ -708,6 +820,7 @@ export default function CertificateManager({ training, participants = [], onClos
           status: "error",
           error: error.message,
         });
+      }
       }
     }
 
@@ -760,6 +873,8 @@ export default function CertificateManager({ training, participants = [], onClos
         emailRole: "speaker",
         filePrefix: "certificado-palestrante",
         generator: generateSpeakerCertificate,
+        splitByLectureSessions:
+          speakerCertificateMode === SPEAKER_CERTIFICATE_MODE_PER_SESSION,
       }),
     onSuccess: (results) => {
       setProcessing(false);
@@ -888,8 +1003,14 @@ export default function CertificateManager({ training, participants = [], onClos
       }
 
       const templateOverride = await resolveSelectedTemplateOverride();
+      const previewRecipient =
+        buildStaffCertificateVariants(recipient, speakerCertificateMode)[0] ||
+        recipient;
       const pdf = generator(
-        buildStaffCertificatePayload(recipient),
+        buildStaffCertificatePayload({
+          ...previewRecipient,
+          certificate_number: `PREVIA-${new Date().getFullYear()}`,
+        }),
         training,
         templateOverride
       );
@@ -906,7 +1027,7 @@ export default function CertificateManager({ training, participants = [], onClos
         window.URL.revokeObjectURL(url);
       }, 60000);
       return {
-        name: String(recipient?.name || "").trim() || "membro da equipe",
+        name: String(previewRecipient?.name || "").trim() || "membro da equipe",
         roleLabel: STAFF_ROLE_LABELS[role] || "Equipe",
       };
     },
@@ -999,23 +1120,30 @@ export default function CertificateManager({ training, participants = [], onClos
       }
 
       const templateOverride = await resolveSelectedTemplateOverride();
-      recipientsToDownload.forEach((recipient) => {
+      const certificateVariants = recipientsToDownload.flatMap((recipient) =>
+        buildStaffCertificateVariants(recipient, speakerCertificateMode)
+      );
+      certificateVariants.forEach((recipient) => {
         const role = String(recipient?.role || "").trim();
         const generator = resolveTeamWordGenerator(role);
         if (!generator) return;
         const blob = generator(
-          buildStaffCertificatePayload(recipient),
+          buildStaffCertificatePayload({
+            ...recipient,
+            certificate_number: `PREVIA-${new Date().getFullYear()}`,
+          }),
           training,
           templateOverride
         );
         const roleLabel = STAFF_ROLE_LABELS[role] || "equipe";
-        const fileName = `certificado-${toSafeFileName(roleLabel)}-${toSafeFileName(
-          recipient.name,
-          "membro"
-        )}.doc`;
+        const suffix = [roleLabel, recipient.name, recipient.lecture_date, recipient.lecture]
+          .filter(Boolean)
+          .map((item) => toSafeFileName(item, "certificado"))
+          .join("-");
+        const fileName = `certificado-previa-${suffix || "equipe"}.doc`;
         downloadBlob(blob, fileName);
       });
-      return recipientsToDownload.length;
+      return certificateVariants.length;
     },
     onSuccess: (count) => {
       setResult({
@@ -1045,11 +1173,16 @@ export default function CertificateManager({ training, participants = [], onClos
 
       const results = [];
       const templateOverride = await resolveSelectedTemplateOverride();
+      let certificateSequence = maxExistingCertificateSequence + 1;
 
       for (const participant of participantsToIssue) {
         try {
-          const participantWithMetrics =
-            buildParticipantWithCertificateMetrics(participant);
+          const certificateNumber = buildCertificateNumber(certificateSequence);
+          certificateSequence += 1;
+          const participantWithMetrics = {
+            ...buildParticipantWithCertificateMetrics(participant),
+            certificate_number: certificateNumber,
+          };
           // Generate PDF
           const pdf = generateParticipantCertificate(
             participantWithMetrics,
@@ -1057,7 +1190,10 @@ export default function CertificateManager({ training, participants = [], onClos
             templateOverride
           );
           const pdfBlob = pdf.output('blob');
-          const pdfFileName = `certificado-${participant.professional_name}.pdf`;
+          const pdfFileName = `certificado-${toSafeFileName(
+            participant.professional_name,
+            "participante"
+          )}-${toSafeFileName(certificateNumber)}.pdf`;
           const pdfFile = new File([pdfBlob], pdfFileName, { type: 'application/pdf' });
           const attachmentBase64 = await blobToBase64(pdfBlob);
           if (!attachmentBase64) {
@@ -1096,6 +1232,7 @@ export default function CertificateManager({ training, participants = [], onClos
                 nome: participant.professional_name,
                 rg: participant.professional_rg || participant.professional_cpf,
                 role: "participant",
+                numero_certificado: certificateNumber,
               });
               const emailContent = resolveEmailContent(emailData);
               await dataClient.integrations.Core.SendEmail({
@@ -1122,6 +1259,15 @@ export default function CertificateManager({ training, participants = [], onClos
           /** @type {any} */
           const participantUpdatePayload = {
             certificate_url: file_url,
+            certificate_number: certificateNumber,
+            certificate_issue_metadata: {
+              number: certificateNumber,
+              training_id: training?.id || null,
+              training_title: training?.title || "",
+              type: "participante",
+              issued_at: new Date().toISOString(),
+              file_name: pdfFileName,
+            },
             validity_date: validityDate,
             ...(useRepadScoreCriteria &&
             Number.isFinite(participantWithMetrics?.certificate_score)
@@ -1133,7 +1279,7 @@ export default function CertificateManager({ training, participants = [], onClos
             participantUpdatePayload.certificate_sent_date = new Date().toISOString();
           }
 
-          await dataClient.entities.TrainingParticipant.update(
+          await updateParticipantCertificateRecord(
             participant.id,
             participantUpdatePayload
           );
@@ -1141,6 +1287,7 @@ export default function CertificateManager({ training, participants = [], onClos
           if (!emailSent) {
             results.push({
               name: participant.professional_name,
+              certificateNumber,
               success: false,
               error:
                 emailError ||
@@ -1152,6 +1299,7 @@ export default function CertificateManager({ training, participants = [], onClos
 
           results.push({
             name: participant.professional_name,
+            certificateNumber,
             success: true,
             warnings,
           });
@@ -1532,13 +1680,23 @@ export default function CertificateManager({ training, participants = [], onClos
 
   const handleExportApprovedCSV = () => {
     if (printableEligibleParticipants.length === 0) return;
-    const headers = ["Nome", "RG/CPF", "Município", "GVE", "Email", "Certificado emitido", "Data de envio"];
+    const headers = [
+      "Nome",
+      "RG/CPF",
+      "Municipio",
+      "GVE",
+      "Email",
+      "Numero do certificado",
+      "Certificado emitido",
+      "Data de envio",
+    ];
     const rows = printableEligibleParticipants.map((p) => [
       p.professional_name || "",
       p.professional_rg || p.professional_cpf || "",
       p.municipality || "",
       p.health_region || "",
       p.professional_email || "",
+      p.certificate_number || "",
       p.certificate_issued ? "Sim" : "Não",
       p.certificate_sent_date ? format(new Date(p.certificate_sent_date), "dd/MM/yyyy") : "",
     ]);
@@ -1874,6 +2032,7 @@ export default function CertificateManager({ training, participants = [], onClos
                   <TableHead>Email</TableHead>
                   {useRepadScoreCriteria && <TableHead>Nota (Kappa x100)</TableHead>}
                   <TableHead>Status</TableHead>
+                  <TableHead>N cert.</TableHead>
                   <TableHead>Certificado</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1881,7 +2040,7 @@ export default function CertificateManager({ training, participants = [], onClos
                 {sortedEligibleParticipants.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={useRepadScoreCriteria ? 9 : 8}
+                      colSpan={useRepadScoreCriteria ? 10 : 9}
                       className="text-center py-8 text-slate-500"
                     >
                       Nenhum participante elegível para certificado
@@ -1933,6 +2092,17 @@ export default function CertificateManager({ training, participants = [], onClos
                         </Badge>
                       </TableCell>
                       <TableCell>
+                        {participant.certificate_number ? (
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {participant.certificate_number}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-slate-500">
+                            Sera gerado
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         {participant.certificate_issued ? (
                           <div className="flex items-center gap-1 text-sm text-green-600">
                             <CheckCircle className="h-4 w-4" />
@@ -1978,7 +2148,7 @@ export default function CertificateManager({ training, participants = [], onClos
           </div>
 
           <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="certificate-template-scope-team">Modelo do certificado</Label>
                 <Select
@@ -1998,6 +2168,31 @@ export default function CertificateManager({ training, participants = [], onClos
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-600">{selectedTemplateDescription}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="speaker-certificate-mode">
+                  Certificado de palestrante
+                </Label>
+                <Select
+                  value={speakerCertificateMode}
+                  onValueChange={setSpeakerCertificateMode}
+                >
+                  <SelectTrigger id="speaker-certificate-mode">
+                    <SelectValue placeholder="Modo de emissao" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={SPEAKER_CERTIFICATE_MODE_PER_SESSION}>
+                      Um por aula/dia
+                    </SelectItem>
+                    <SelectItem value={SPEAKER_CERTIFICATE_MODE_CONSOLIDATED}>
+                      Um consolidado
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-600">
+                  Por aula/dia evita texto espremido quando ha logos e assinaturas.
+                </p>
               </div>
 
               <div className="space-y-2">

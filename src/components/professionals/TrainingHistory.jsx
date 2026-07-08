@@ -208,6 +208,13 @@ export default function TrainingHistory({ professional, entries }) {
                       <span>{participant.grade}</span>
                     </div>
                   )}
+
+                  {participant.certificate_number && (
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <span className="font-medium">N cert.:</span>
+                      <span className="font-mono text-xs">{participant.certificate_number}</span>
+                    </div>
+                  )}
                   
                   {participant.validity_date && (
                     <div className="flex items-center gap-2 text-slate-600">

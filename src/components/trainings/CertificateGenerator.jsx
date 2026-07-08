@@ -48,6 +48,14 @@ const formatCpf = (value) => {
   return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
 };
 
+const resolveCertificateNumber = (source) =>
+  String(
+    source?.certificate_number ||
+      source?.certificateNumber ||
+      source?.numero_certificado ||
+      ""
+  ).trim();
+
 const resolveDocumentInfo = ({ rg, cpf, document = "" }) => {
   const rawRg = String(rg || "").trim();
   const rawCpf = String(cpf || "").trim();
@@ -139,7 +147,8 @@ const formatScheduleDate = (value) => {
 };
 
 const resolveStaffScheduleDetails = (staff, training) => {
-  const entries = getTrainingScheduleEntries(training);
+  const explicitEntry = staff?.certificateScheduleEntry;
+  const entries = explicitEntry ? [explicitEntry] : getTrainingScheduleEntries(training);
   const staffName = normalizeComparableText(staff?.name);
   const staffEmail = String(staff?.email || "").trim().toLowerCase();
   const staffProfessionalId = String(staff?.professional_id || "").trim();
@@ -192,6 +201,15 @@ const resolveStaffScheduleDetails = (staff, training) => {
     dates: dates.join(", "),
     times: times.join(", "),
     details: details.join("; "),
+  };
+};
+
+const buildCertificateControlData = (source) => {
+  const certificateNumber = resolveCertificateNumber(source);
+  return {
+    numero_certificado: certificateNumber,
+    codigo_certificado: certificateNumber,
+    certificado_numero: certificateNumber,
   };
 };
 
@@ -828,6 +846,7 @@ const buildParticipantCertificateTextData = (participant, training, template) =>
   });
 
   return {
+    ...buildCertificateControlData(participant),
     nome: participant?.professional_name || "",
     rg: documentInfo.label,
     cpf: participant?.professional_cpf ? `CPF ${formatCpf(participant.professional_cpf)}` : "",
@@ -877,6 +896,7 @@ const buildStaffCertificateTextData = (staff, training, template, roleKey) => {
   const scheduleDetails = resolveStaffScheduleDetails(staff, training);
 
   return {
+    ...buildCertificateControlData(staff),
     nome: staff?.name || "",
     rg: documentInfo.label,
     cpf: staff?.cpf ? `CPF ${formatCpf(staff.cpf)}` : "",
@@ -907,6 +927,18 @@ const buildStaffCertificateTextData = (staff, training, template, roleKey) => {
     kappa: "",
     nota_texto: "",
   };
+};
+
+const drawCertificateControlLine = (pdf, textData, pageWidth, pageHeight, fontFamily) => {
+  const certificateNumber = String(textData?.numero_certificado || "").trim();
+  if (!certificateNumber) return;
+  pdf.setFont(fontFamily, "normal");
+  pdf.setFontSize(7);
+  pdf.setTextColor(71, 85, 105);
+  pdf.text(`Certificado no ${certificateNumber}`, pageWidth / 2, pageHeight - 12, {
+    align: "center",
+  });
+  pdf.setTextColor(0, 0, 0);
 };
 
 const escapeWordHtml = (value) =>
@@ -1058,6 +1090,12 @@ const createCertificateWordBlob = ({ template, training, textData }) => {
             font-size: ${Number(fonts.signatureRoleSize) || 9}pt;
             color: #475569;
           }
+          .control {
+            margin-top: .5cm;
+            font-size: 7pt;
+            color: #475569;
+            text-align: center;
+          }
         </style>
       </head>
       <body>
@@ -1070,6 +1108,11 @@ const createCertificateWordBlob = ({ template, training, textData }) => {
           <div class="body">${renderWordBody(template, textData)}</div>
           ${footer ? `<div class="footer">${footer}</div>` : ""}
           ${signatureHtml ? `<div class="signatures">${signatureHtml}</div>` : ""}
+          ${
+            textData?.numero_certificado
+              ? `<div class="control">Certificado no ${escapeWordHtml(textData.numero_certificado)}</div>`
+              : ""
+          }
         </div>
       </body>
     </html>
@@ -1168,6 +1211,7 @@ export const generateParticipantCertificate = (participant, training, templateOv
   });
 
   const textData = {
+    ...buildCertificateControlData(participant),
     nome: participant.professional_name || "",
     rg: documentInfo.label,
     cpf: participant.professional_cpf ? `CPF ${formatCpf(participant.professional_cpf)}` : "",
@@ -1280,6 +1324,8 @@ export const generateParticipantCertificate = (participant, training, templateOv
     pdf.setFontSize(sizes.signature);
   }
 
+  drawCertificateControlLine(pdf, textData, pageWidth, pageHeight, fontFamily);
+
   return pdf;
 };
 
@@ -1383,6 +1429,7 @@ const generateStaffCertificate = ({
   const scheduleDetails = resolveStaffScheduleDetails(staff, training);
 
   const textData = {
+    ...buildCertificateControlData(staff),
     nome: staff.name || "",
     rg: documentInfo.label,
     cpf: staff.cpf ? `CPF ${formatCpf(staff.cpf)}` : "",
@@ -1494,6 +1541,8 @@ const generateStaffCertificate = ({
     pdf.text(signature2.role || "", pos.x, pos.y + 10, { align: "center" });
     pdf.setFontSize(sizes.signature);
   }
+
+  drawCertificateControlLine(pdf, textData, pageWidth, pageHeight, fontFamily);
 
   return pdf;
 };

@@ -216,6 +216,7 @@ export const buildCertificateEmailData = ({
   instrutor = "",
   role = "participant",
   aula = "",
+  numero_certificado = "",
 }) => {
   const roleLabels = EMAIL_ROLE_LABELS[role] || EMAIL_ROLE_LABELS.participant;
   const trainingDates = getTrainingDates(training);
@@ -224,6 +225,9 @@ export const buildCertificateEmailData = ({
     nome: nome || "",
     rg: documentLabel,
     documento: documentLabel,
+    numero_certificado,
+    codigo_certificado: numero_certificado,
+    certificado_numero: numero_certificado,
     treinamento: training?.title || "",
     carga_horaria: carga_horaria || training?.duration_hours || "",
     data: trainingDates[0] || "",
