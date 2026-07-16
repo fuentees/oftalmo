@@ -12,5 +12,17 @@ export default defineConfig({
   },
   plugins: [
     react(),
-  ]
+  ],
+  optimizeDeps: {
+    include: ['@hello-pangea/dnd'],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-dnd': ['@hello-pangea/dnd'],
+        },
+      },
+    },
+  },
 });
