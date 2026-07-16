@@ -72,13 +72,13 @@ import {
 } from "@/lib/trainingFeedbackSchema";
 import { useNavigate } from "react-router-dom";
 
-const createDefaultQuestion = (trainingId) => ({
+const createDefaultQuestion = (trainingId, nextOrder = 1) => ({
   training_id: trainingId || null,
   question_text: "",
   question_type: "rating",
   question_options_text: "",
   required: true,
-  order: 0,
+  order: nextOrder,
   is_active: true,
 });
 
@@ -975,7 +975,10 @@ export default function TrainingFeedbackPage({
                   onClick={() => {
                     setQuestionActionStatus(null);
                     setEditingQuestion(null);
-                    setQuestionFormData(createDefaultQuestion(trainingId));
+                    const nextOrder = questionsData?.length
+                      ? Math.max(...questionsData.map((q) => q.order ?? 0)) + 1
+                      : 1;
+                    setQuestionFormData(createDefaultQuestion(trainingId, nextOrder));
                     setQuestionFormOpen(true);
                   }}
                 >
