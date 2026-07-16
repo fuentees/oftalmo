@@ -920,31 +920,8 @@ export default function TrainingFeedbackPage({
       ? training.dates[0]?.date
       : training.date;
 
-  return (
-    <div className="space-y-6">
-      {renderBackButton()}
-      {showHeader && (
-        <PageHeader
-          title={`Avaliacao - ${training.title}`}
-          subtitle="Configure a mascara e visualize o formulario de avaliacao"
-        />
-      )}
-
-      <Card>
-        {showHeader && (
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-blue-600" />
-              Configuracao da Avaliacao
-            </CardTitle>
-            <p className="text-sm text-slate-500">
-              {formatDateSafe(firstTrainingDate) || "Data a definir"}
-              {training.coordinator ? ` | Coord.: ${training.coordinator}` : ""}
-            </p>
-          </CardHeader>
-        )}
-        <CardContent className={showHeader ? undefined : "pt-4"}>
-          <Tabs
+  const tabsNode = (
+        <Tabs
             value={activeTab}
             onValueChange={(value) => {
               setActiveTab(value);
@@ -1408,8 +1385,33 @@ export default function TrainingFeedbackPage({
               </TabsContent>
             )}
           </Tabs>
-        </CardContent>
-      </Card>
+  );
+
+  return (
+    <div className="space-y-6">
+      {renderBackButton()}
+      {showHeader && (
+        <PageHeader
+          title={`Avaliacao - ${training.title}`}
+          subtitle="Configure a mascara e visualize o formulario de avaliacao"
+        />
+      )}
+
+      {showHeader ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-blue-600" />
+              Configuracao da Avaliacao
+            </CardTitle>
+            <p className="text-sm text-slate-500">
+              {formatDateSafe(firstTrainingDate) || "Data a definir"}
+              {training.coordinator ? ` | Coord.: ${training.coordinator}` : ""}
+            </p>
+          </CardHeader>
+          <CardContent>{tabsNode}</CardContent>
+        </Card>
+      ) : tabsNode}
 
       <Dialog
         open={questionFormOpen}
