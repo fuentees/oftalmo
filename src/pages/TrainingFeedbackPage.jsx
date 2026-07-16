@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { toast } from "@/components/ui/use-toast";
@@ -39,11 +40,14 @@ import {
   AlertCircle,
   ArrowLeft,
   Copy,
+  Download,
   ExternalLink,
   GripVertical,
+  Link2,
   Loader2,
   MessageSquare,
   Plus,
+  QrCode,
   RefreshCw,
 } from "lucide-react";
 import {
@@ -83,6 +87,14 @@ const createDefaultQuestion = (trainingId, nextOrder = 1) => ({
 });
 
 const CHART_COLORS = ["#2563eb", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6"];
+
+const toSafeFileName = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 
 const normalizeQuestionKey = (label, type) =>
   `${String(label || "").trim().toLowerCase()}::${String(type || "")
@@ -224,6 +236,8 @@ export default function TrainingFeedbackPage({
   const [localOrdering, setLocalOrdering] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
   const [dragOverId, setDragOverId] = useState(null);
+  const [showQrDialog, setShowQrDialog] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const dragSourceId = React.useRef(null);
 
   React.useEffect(() => {
@@ -801,6 +815,34 @@ export default function TrainingFeedbackPage({
     toast({ title: "Link copiado!", description: "Link de avaliação copiado para a área de transferência." });
   };
 
+  const handleShowQrCode = async () => {
+    if (!feedbackLink) return;
+    try {
+      const dataUrl = await QRCode.toDataURL(feedbackLink, {
+        width: 400,
+        margin: 2,
+      });
+      setQrDataUrl(dataUrl);
+      setShowQrDialog(true);
+    } catch {
+      toast({
+        title: "Erro ao gerar QR Code",
+        description: "Nao foi possivel gerar o QR Code da avaliacao.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDownloadQr = () => {
+    if (!qrDataUrl) return;
+    const link = document.createElement("a");
+    link.href = qrDataUrl;
+    link.download = `qrcode-avaliacao-${
+      toSafeFileName(training?.title || trainingId) || "treinamento"
+    }.png`;
+    link.click();
+  };
+
   const handleCopyQuestion = async (question) => {
     if (!question) return;
     const questionMeta = extractQuestionMeta(question);
@@ -943,6 +985,10 @@ export default function TrainingFeedbackPage({
                 <Button type="button" variant="outline" onClick={handleCopyFeedbackLink}>
                   <Copy className="h-4 w-4 mr-2" />
                   Copiar Link da Avaliacao
+                </Button>
+                <Button type="button" variant="outline" onClick={handleShowQrCode}>
+                  <QrCode className="h-4 w-4 mr-2" />
+                  QR Code
                 </Button>
                 <Button
                   type="button"
@@ -1427,6 +1473,10 @@ export default function TrainingFeedbackPage({
                   <Copy className="h-4 w-4 mr-2" />
                   Copiar Link da Avaliacao
                 </Button>
+                <Button type="button" variant="outline" onClick={handleShowQrCode}>
+                  <QrCode className="h-4 w-4 mr-2" />
+                  QR Code
+                </Button>
                 <Button type="button" variant="outline" onClick={refreshPreview}>
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Atualizar Visualizacao
@@ -1673,6 +1723,47 @@ export default function TrainingFeedbackPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showQrDialog} onOpenChange={setShowQrDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>QR Code - Link da Avaliacao</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4">
+            {qrDataUrl && (
+              <img
+                src={qrDataUrl}
+                alt="QR Code da avaliacao"
+                className="w-64 h-64 rounded-lg border"
+              />
+            )}
+            <p className="text-xs text-slate-500 text-center">
+              Aponte a camera do celular para acessar o formulario publico de
+              avaliacao.
+            </p>
+            <div className="flex gap-3 w-full">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={handleDownloadQr}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Baixar PNG
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={handleCopyFeedbackLink}
+              >
+                <Link2 className="h-4 w-4 mr-2" />
+                Copiar Link
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
