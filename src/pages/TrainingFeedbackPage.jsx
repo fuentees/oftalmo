@@ -157,6 +157,7 @@ export default function TrainingFeedbackPage({
   allowedTabs = null,
   initialTab = null,
   showBackButton = true,
+  showHeader = true,
 } = {}) {
   const navigate = useNavigate();
   const queryString =
@@ -922,23 +923,27 @@ export default function TrainingFeedbackPage({
   return (
     <div className="space-y-6">
       {renderBackButton()}
-      <PageHeader
-        title={`Avaliacao - ${training.title}`}
-        subtitle="Configure a mascara e visualize o formulario de avaliacao"
-      />
+      {showHeader && (
+        <PageHeader
+          title={`Avaliacao - ${training.title}`}
+          subtitle="Configure a mascara e visualize o formulario de avaliacao"
+        />
+      )}
 
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <MessageSquare className="h-5 w-5 text-blue-600" />
-            Configuracao da Avaliacao
-          </CardTitle>
-          <p className="text-sm text-slate-500">
-            {formatDateSafe(firstTrainingDate) || "Data a definir"}
-            {training.coordinator ? ` | Coord.: ${training.coordinator}` : ""}
-          </p>
-        </CardHeader>
-        <CardContent>
+        {showHeader && (
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-blue-600" />
+              Configuracao da Avaliacao
+            </CardTitle>
+            <p className="text-sm text-slate-500">
+              {formatDateSafe(firstTrainingDate) || "Data a definir"}
+              {training.coordinator ? ` | Coord.: ${training.coordinator}` : ""}
+            </p>
+          </CardHeader>
+        )}
+        <CardContent className={showHeader ? undefined : "pt-4"}>
           <Tabs
             value={activeTab}
             onValueChange={(value) => {
