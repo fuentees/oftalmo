@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { dataClient } from "@/api/dataClient";
 import { useAuth } from "@/lib/AuthContext";
 import { useLocation } from "react-router-dom";
@@ -229,7 +228,7 @@ function TaskListCard({ task, onSelect, onToggleComplete, onEdit, onDelete, canM
   );
 }
 
-function KanbanCard({ task, dragHandleProps, onSelect }) {
+function KanbanCard({ task, canDrag, onSelect }) {
   const overdue = isOverdue(task);
   const priority = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.media;
   const dueDateObj = task.due_date ? parseISO(task.due_date) : null;
@@ -241,7 +240,10 @@ function KanbanCard({ task, dragHandleProps, onSelect }) {
     >
       <div className="p-3">
         <div className="flex items-start gap-2 mb-2">
-          <div {...dragHandleProps} className="mt-0.5 shrink-0 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing" onClick={(e) => e.stopPropagation()}>
+          <div
+            className={`mt-0.5 shrink-0 ${canDrag ? "text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing" : "text-slate-200 cursor-not-allowed"}`}
+            onClick={(e) => e.stopPropagation()}
+          >
             <GripVertical className="h-4 w-4" />
           </div>
           <p className="font-medium text-slate-800 text-sm leading-snug flex-1">{task.title}</p>
@@ -702,11 +704,33 @@ export default function Tasks() {
     });
   };
 
-  const handleDragEnd = (result) => {
-    if (!result.destination) return;
-    const { draggableId, destination, source } = result;
-    if (destination.droppableId === source.droppableId) return;
-    moveTaskMutation.mutate({ id: draggableId, status: destination.droppableId });
+  const [dragOverColId, setDragOverColId] = useState(null);
+  const kanbanDragId = React.useRef(null);
+
+  const handleKanbanDragStart = (taskId) => {
+    kanbanDragId.current = taskId;
+  };
+
+  const handleKanbanDragOver = (e, colId) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverColId !== colId) setDragOverColId(colId);
+  };
+
+  const handleKanbanDrop = (e, colId) => {
+    e.preventDefault();
+    setDragOverColId(null);
+    const taskId = kanbanDragId.current;
+    kanbanDragId.current = null;
+    if (!taskId) return;
+    const task = filteredTasks.find((t) => t.id === taskId);
+    if (!task || task.status === colId) return;
+    moveTaskMutation.mutate({ id: taskId, status: colId });
+  };
+
+  const handleKanbanDragEnd = () => {
+    kanbanDragId.current = null;
+    setDragOverColId(null);
   };
 
   // ── KPI ──────────────────────────────────────────────────────────────────
@@ -845,50 +869,49 @@ export default function Tasks() {
 
       {/* ── Kanban view ── */}
       {view === "kanban" && (
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {KANBAN_COLUMNS.map((col) => {
-              const colTasks = filteredTasks.filter((t) => t.status === col.id);
-              return (
-                <div key={col.id} className="flex flex-col gap-2">
-                  <div className={`flex items-center justify-between px-3 py-2 rounded-lg border ${col.bg} ${col.border}`}>
-                    <span className={`font-semibold text-sm ${col.color}`}>{col.label}</span>
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/70 ${col.color}`}>{colTasks.length}</span>
-                  </div>
-                  <Droppable droppableId={col.id}>
-                    {(provided, snapshot) => (
-                      <div ref={provided.innerRef} {...provided.droppableProps}
-                        className={`flex-1 min-h-[180px] space-y-2 p-1 rounded-xl transition-colors duration-150 ${snapshot.isDraggingOver ? "bg-blue-50/60 ring-2 ring-blue-200" : ""}`}
-                      >
-                        {colTasks.map((task, index) => (
-                          <Draggable key={task.id} draggableId={task.id} index={index}
-                            isDragDisabled={!(!task.created_by_id || task.created_by_id === user?.id)}>
-                            {(provided, snapshot) => (
-                              <div ref={provided.innerRef} {...provided.draggableProps}
-                                className={snapshot.isDragging ? "opacity-90 shadow-2xl rotate-1 scale-105" : ""}>
-                                <KanbanCard
-                                  task={task}
-                                  dragHandleProps={provided.dragHandleProps}
-                                  onSelect={(t) => { setSelectedTask(t); setDetailTab("subtarefas"); }}
-                                />
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                        {colTasks.length === 0 && !snapshot.isDraggingOver && (
-                          <div className="h-20 flex items-center justify-center text-slate-300 text-sm rounded-lg border-2 border-dashed border-slate-200">
-                            Arraste aqui
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </Droppable>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {KANBAN_COLUMNS.map((col) => {
+            const colTasks = filteredTasks.filter((t) => t.status === col.id);
+            const isDragOver = dragOverColId === col.id;
+            return (
+              <div key={col.id} className="flex flex-col gap-2">
+                <div className={`flex items-center justify-between px-3 py-2 rounded-lg border ${col.bg} ${col.border}`}>
+                  <span className={`font-semibold text-sm ${col.color}`}>{col.label}</span>
+                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/70 ${col.color}`}>{colTasks.length}</span>
                 </div>
-              );
-            })}
-          </div>
-        </DragDropContext>
+                <div
+                  onDragOver={(e) => handleKanbanDragOver(e, col.id)}
+                  onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverColId(null); }}
+                  onDrop={(e) => handleKanbanDrop(e, col.id)}
+                  className={`flex-1 min-h-[180px] space-y-2 p-1 rounded-xl transition-colors duration-150 ${isDragOver ? "bg-blue-50 ring-2 ring-blue-200" : ""}`}
+                >
+                  {colTasks.map((task) => {
+                    const canModify = !task.created_by_id || task.created_by_id === user?.id;
+                    return (
+                      <div
+                        key={task.id}
+                        draggable={canModify}
+                        onDragStart={canModify ? () => handleKanbanDragStart(task.id) : undefined}
+                        onDragEnd={handleKanbanDragEnd}
+                      >
+                        <KanbanCard
+                          task={task}
+                          canDrag={canModify}
+                          onSelect={(t) => { setSelectedTask(t); setDetailTab("subtarefas"); }}
+                        />
+                      </div>
+                    );
+                  })}
+                  {colTasks.length === 0 && !isDragOver && (
+                    <div className="h-20 flex items-center justify-center text-slate-300 text-sm rounded-lg border-2 border-dashed border-slate-200">
+                      Arraste aqui
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {/* ── Task detail dialog ── */}
