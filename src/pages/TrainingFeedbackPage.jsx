@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { toast } from "@/components/ui/use-toast";
 import PageHeader from "@/components/common/PageHeader";
-import DataTable from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +40,7 @@ import {
   ArrowLeft,
   Copy,
   ExternalLink,
+  GripVertical,
   Loader2,
   MessageSquare,
   Plus,
@@ -71,6 +71,7 @@ import {
   normalizeChoiceOptions,
 } from "@/lib/trainingFeedbackSchema";
 import { useNavigate } from "react-router-dom";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
 const createDefaultQuestion = (trainingId, nextOrder = 1) => ({
   training_id: trainingId || null,
@@ -221,6 +222,8 @@ export default function TrainingFeedbackPage({
   const [questionFormData, setQuestionFormData] = useState(
     createDefaultQuestion(trainingId)
   );
+  const [localOrdering, setLocalOrdering] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
 
   React.useEffect(() => {
     setQuestionFormData(createDefaultQuestion(trainingId));
@@ -228,6 +231,10 @@ export default function TrainingFeedbackPage({
     setActiveTab(resolvedInitialTab);
     setPreviewVersion(0);
   }, [trainingId, resolvedInitialTab]);
+
+  React.useEffect(() => {
+    setLocalOrdering(null);
+  }, [questionsData]);
 
   const refreshPreview = React.useCallback(() => {
     setPreviewVersion((value) => value + 1);
@@ -524,6 +531,32 @@ export default function TrainingFeedbackPage({
     setQuestionFormOpen(false);
   };
 
+  const handleDragEnd = async (result) => {
+    if (!result.destination) return;
+    if (result.source.index === result.destination.index) return;
+
+    const reordered = Array.from(filteredQuestions);
+    const [moved] = reordered.splice(result.source.index, 1);
+    reordered.splice(result.destination.index, 0, moved);
+
+    setLocalOrdering(reordered.map((q) => q.id));
+    setSavingOrder(true);
+    try {
+      await Promise.all(
+        reordered.map((q, i) =>
+          dataClient.entities.TrainingFeedbackQuestion.update(q.id, { order: i + 1 })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["training-feedback-questions"] });
+      refreshPreview();
+    } catch {
+      toast({ title: "Erro ao salvar ordem", variant: "destructive" });
+      setLocalOrdering(null);
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
   const createQuestion = useMutation({
     mutationFn: (payload) => dataClient.entities.TrainingFeedbackQuestion.create(payload),
     onSuccess: () => {
@@ -775,94 +808,19 @@ export default function TrainingFeedbackPage({
 
   const filteredQuestions = useMemo(() => {
     const searchTerm = questionSearch.trim().toLowerCase();
-    return [...questionsData]
-      .filter((question) => {
-        if (!showInactiveQuestions && !question.is_active) return false;
-        if (!searchTerm) return true;
-        const label = extractQuestionMeta(question).label || question.question_text;
-        return String(label || "").toLowerCase().includes(searchTerm);
-      })
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [questionsData, questionSearch, showInactiveQuestions]);
+    const base = [...questionsData].filter((question) => {
+      if (!showInactiveQuestions && !question.is_active) return false;
+      if (!searchTerm) return true;
+      const label = extractQuestionMeta(question).label || question.question_text;
+      return String(label || "").toLowerCase().includes(searchTerm);
+    });
+    if (localOrdering) {
+      const indexMap = new Map(localOrdering.map((id, i) => [id, i]));
+      return base.sort((a, b) => (indexMap.get(a.id) ?? 999) - (indexMap.get(b.id) ?? 999));
+    }
+    return base.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [questionsData, questionSearch, showInactiveQuestions, localOrdering]);
 
-  const questionColumns = [
-    {
-      header: "Ordem",
-      accessor: "order",
-      cellClassName: "font-mono text-center",
-    },
-    {
-      header: "Pergunta",
-      cellClassName: "font-medium",
-      render: (row) => {
-        const meta = extractQuestionMeta(row);
-        return (
-          <div>
-            <p className="font-medium">{meta.label || row.question_text}</p>
-            {row.question_type === "choice" && meta.options.length > 0 && (
-              <p className="text-xs text-slate-500">
-                Opcoes: {meta.options.join(" | ")}
-              </p>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      header: "Tipo",
-      render: (row) => {
-        return questionTypeLabels[row.question_type] || row.question_type;
-      },
-    },
-    {
-      header: "Obrigatoria",
-      cellClassName: "text-center",
-      render: (row) => (row.required ? "Sim" : "-"),
-    },
-    {
-      header: "Status",
-      render: (row) => (
-        <Badge
-          className={
-            row.is_active
-              ? "bg-green-100 text-green-700"
-              : "bg-slate-100 text-slate-700"
-          }
-        >
-          {row.is_active ? "Ativa" : "Inativa"}
-        </Badge>
-      ),
-    },
-    {
-      header: "Acoes",
-      sortable: false,
-      cellClassName: "text-right",
-      render: (row) => (
-        <div className="flex justify-end gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => handleCopyQuestion(row)}
-          >
-            <Copy className="h-4 w-4 mr-1" />
-            Copiar
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => handleEditQuestion(row)}>
-            Editar
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-red-600 hover:text-red-700"
-            onClick={() => setQuestionDeleteConfirm(row)}
-          >
-            Excluir
-          </Button>
-        </div>
-      ),
-    },
-  ];
 
   const objectiveQuestionInsights = feedbackAnalytics.questionInsights.filter((item) =>
     ["rating", "choice", "yesno"].includes(item.type)
@@ -1046,12 +1004,114 @@ export default function TrainingFeedbackPage({
                       </Label>
                     </div>
                   </div>
-                  <DataTable
-                    columns={questionColumns}
-                    data={filteredQuestions}
-                    isLoading={questionsLoadingState}
-                    emptyMessage="Nenhuma pergunta cadastrada"
-                  />
+                  <DragDropContext onDragEnd={handleDragEnd}>
+                    <div className="rounded-md border overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 border-b">
+                          <tr>
+                            <th className="w-8 px-2 py-3" />
+                            <th className="px-3 py-3 text-left font-medium text-slate-700">Ordem</th>
+                            <th className="px-3 py-3 text-left font-medium text-slate-700">Pergunta</th>
+                            <th className="px-3 py-3 text-left font-medium text-slate-700">Tipo</th>
+                            <th className="px-3 py-3 text-left font-medium text-slate-700">Obrigatória</th>
+                            <th className="px-3 py-3 text-left font-medium text-slate-700">Status</th>
+                            <th className="px-3 py-3 text-right font-medium text-slate-700">Ações</th>
+                          </tr>
+                        </thead>
+                        <Droppable droppableId="questions" isDropDisabled={!!questionSearch.trim() || savingOrder}>
+                          {(provided) => (
+                            <tbody ref={provided.innerRef} {...provided.droppableProps}>
+                              {questionsLoadingState ? (
+                                <tr>
+                                  <td colSpan={7} className="py-8 text-center text-slate-500">
+                                    <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                                    Carregando...
+                                  </td>
+                                </tr>
+                              ) : filteredQuestions.length === 0 ? (
+                                <tr>
+                                  <td colSpan={7} className="py-8 text-center text-slate-500">
+                                    Nenhuma pergunta cadastrada
+                                  </td>
+                                </tr>
+                              ) : (
+                                filteredQuestions.map((row, index) => {
+                                  const meta = extractQuestionMeta(row);
+                                  return (
+                                    <Draggable
+                                      key={String(row.id)}
+                                      draggableId={String(row.id)}
+                                      index={index}
+                                      isDragDisabled={!!questionSearch.trim() || savingOrder}
+                                    >
+                                      {(provided, snapshot) => (
+                                        <tr
+                                          ref={provided.innerRef}
+                                          {...provided.draggableProps}
+                                          className={`border-b last:border-0 transition-colors ${snapshot.isDragging ? "bg-blue-50 shadow-lg" : "hover:bg-slate-50"}`}
+                                        >
+                                          <td className="px-2 py-3">
+                                            <div
+                                              {...provided.dragHandleProps}
+                                              className={`flex items-center justify-center ${questionSearch.trim() || savingOrder ? "opacity-20 cursor-not-allowed" : "cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600"}`}
+                                              title="Arraste para reordenar"
+                                            >
+                                              <GripVertical className="h-4 w-4" />
+                                            </div>
+                                          </td>
+                                          <td className="px-3 py-3 font-mono text-center text-slate-600">
+                                            {savingOrder ? (
+                                              <Loader2 className="h-3 w-3 animate-spin inline" />
+                                            ) : (
+                                              row.order
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-3">
+                                            <p className="font-medium">{meta.label || row.question_text}</p>
+                                            {row.question_type === "choice" && meta.options.length > 0 && (
+                                              <p className="text-xs text-slate-500">
+                                                Opções: {meta.options.join(" | ")}
+                                              </p>
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-3 text-slate-600">
+                                            {questionTypeLabels[row.question_type] || row.question_type}
+                                          </td>
+                                          <td className="px-3 py-3 text-center text-slate-600">
+                                            {row.required ? "Sim" : "-"}
+                                          </td>
+                                          <td className="px-3 py-3">
+                                            <Badge className={row.is_active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700"}>
+                                              {row.is_active ? "Ativa" : "Inativa"}
+                                            </Badge>
+                                          </td>
+                                          <td className="px-3 py-3">
+                                            <div className="flex justify-end gap-2">
+                                              <Button type="button" variant="ghost" size="sm" onClick={() => handleCopyQuestion(row)}>
+                                                <Copy className="h-4 w-4 mr-1" />
+                                                Copiar
+                                              </Button>
+                                              <Button variant="ghost" size="sm" onClick={() => handleEditQuestion(row)}>
+                                                Editar
+                                              </Button>
+                                              <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setQuestionDeleteConfirm(row)}>
+                                                Excluir
+                                              </Button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </Draggable>
+                                  );
+                                })
+                              )}
+                              {provided.placeholder}
+                            </tbody>
+                          )}
+                        </Droppable>
+                      </table>
+                    </div>
+                  </DragDropContext>
                 </CardContent>
               </Card>
               </TabsContent>
