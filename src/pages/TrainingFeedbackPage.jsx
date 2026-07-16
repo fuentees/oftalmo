@@ -233,10 +233,6 @@ export default function TrainingFeedbackPage({
     setPreviewVersion(0);
   }, [trainingId, resolvedInitialTab]);
 
-  React.useEffect(() => {
-    setLocalOrdering(null);
-  }, [questionsData]);
-
   const refreshPreview = React.useCallback(() => {
     setPreviewVersion((value) => value + 1);
   }, []);
@@ -265,6 +261,11 @@ export default function TrainingFeedbackPage({
     enabled: !!trainingId,
   });
   const questionsData = questionsQuery.data || [];
+
+  React.useEffect(() => {
+    setLocalOrdering(null);
+  }, [questionsData]);
+
   const questionsLoadingState = questionsQuery.isLoading;
   const questionsError = questionsQuery.error;
   const hasQuestionsError = questionsQuery.isError;
