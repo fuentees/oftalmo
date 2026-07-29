@@ -635,7 +635,7 @@ export default function TrainingWorkspace() {
         <TabsContent value="feedback_page" className="mt-6">
           <TrainingFeedbackPage
             showBackButton={false}
-            allowedTabs={["analytics"]}
+            showHeader={false}
             initialTab="analytics"
           />
         </TabsContent>

@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { toast } from "@/components/ui/use-toast";
 import PageHeader from "@/components/common/PageHeader";
-import DataTable from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,10 +40,14 @@ import {
   AlertCircle,
   ArrowLeft,
   Copy,
+  Download,
   ExternalLink,
+  GripVertical,
+  Link2,
   Loader2,
   MessageSquare,
   Plus,
+  QrCode,
   RefreshCw,
 } from "lucide-react";
 import {
@@ -72,17 +76,25 @@ import {
 } from "@/lib/trainingFeedbackSchema";
 import { useNavigate } from "react-router-dom";
 
-const createDefaultQuestion = (trainingId) => ({
+const createDefaultQuestion = (trainingId, nextOrder = 1) => ({
   training_id: trainingId || null,
   question_text: "",
   question_type: "rating",
   question_options_text: "",
   required: true,
-  order: 0,
+  order: nextOrder,
   is_active: true,
 });
 
 const CHART_COLORS = ["#2563eb", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6"];
+
+const toSafeFileName = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 
 const normalizeQuestionKey = (label, type) =>
   `${String(label || "").trim().toLowerCase()}::${String(type || "")
@@ -157,6 +169,7 @@ export default function TrainingFeedbackPage({
   allowedTabs = null,
   initialTab = null,
   showBackButton = true,
+  showHeader = true,
 } = {}) {
   const navigate = useNavigate();
   const queryString =
@@ -220,6 +233,12 @@ export default function TrainingFeedbackPage({
   const [questionFormData, setQuestionFormData] = useState(
     createDefaultQuestion(trainingId)
   );
+  const [localOrdering, setLocalOrdering] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [dragOverId, setDragOverId] = useState(null);
+  const [showQrDialog, setShowQrDialog] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const dragSourceId = React.useRef(null);
 
   React.useEffect(() => {
     setQuestionFormData(createDefaultQuestion(trainingId));
@@ -256,6 +275,11 @@ export default function TrainingFeedbackPage({
     enabled: !!trainingId,
   });
   const questionsData = questionsQuery.data || [];
+
+  React.useEffect(() => {
+    setLocalOrdering(null);
+  }, [questionsData]);
+
   const questionsLoadingState = questionsQuery.isLoading;
   const questionsError = questionsQuery.error;
   const hasQuestionsError = questionsQuery.isError;
@@ -523,6 +547,55 @@ export default function TrainingFeedbackPage({
     setQuestionFormOpen(false);
   };
 
+  const handleRowDragStart = (e, id) => {
+    dragSourceId.current = id;
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleRowDragOver = (e, id) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverId !== id) setDragOverId(id);
+  };
+
+  const handleRowDrop = async (e, targetId) => {
+    e.preventDefault();
+    setDragOverId(null);
+    const sourceId = dragSourceId.current;
+    dragSourceId.current = null;
+    if (!sourceId || sourceId === targetId) return;
+
+    const reordered = Array.from(filteredQuestions);
+    const sourceIndex = reordered.findIndex((q) => q.id === sourceId);
+    const targetIndex = reordered.findIndex((q) => q.id === targetId);
+    if (sourceIndex === -1 || targetIndex === -1) return;
+
+    const [moved] = reordered.splice(sourceIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+
+    setLocalOrdering(reordered.map((q) => q.id));
+    setSavingOrder(true);
+    try {
+      await Promise.all(
+        reordered.map((q, i) =>
+          dataClient.entities.TrainingFeedbackQuestion.update(q.id, { order: i + 1 })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["training-feedback-questions"] });
+      refreshPreview();
+    } catch {
+      toast({ title: "Erro ao salvar ordem", variant: "destructive" });
+      setLocalOrdering(null);
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const handleRowDragEnd = () => {
+    dragSourceId.current = null;
+    setDragOverId(null);
+  };
+
   const createQuestion = useMutation({
     mutationFn: (payload) => dataClient.entities.TrainingFeedbackQuestion.create(payload),
     onSuccess: () => {
@@ -742,6 +815,34 @@ export default function TrainingFeedbackPage({
     toast({ title: "Link copiado!", description: "Link de avaliação copiado para a área de transferência." });
   };
 
+  const handleShowQrCode = async () => {
+    if (!feedbackLink) return;
+    try {
+      const dataUrl = await QRCode.toDataURL(feedbackLink, {
+        width: 400,
+        margin: 2,
+      });
+      setQrDataUrl(dataUrl);
+      setShowQrDialog(true);
+    } catch {
+      toast({
+        title: "Erro ao gerar QR Code",
+        description: "Nao foi possivel gerar o QR Code da avaliacao.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDownloadQr = () => {
+    if (!qrDataUrl) return;
+    const link = document.createElement("a");
+    link.href = qrDataUrl;
+    link.download = `qrcode-avaliacao-${
+      toSafeFileName(training?.title || trainingId) || "treinamento"
+    }.png`;
+    link.click();
+  };
+
   const handleCopyQuestion = async (question) => {
     if (!question) return;
     const questionMeta = extractQuestionMeta(question);
@@ -774,94 +875,19 @@ export default function TrainingFeedbackPage({
 
   const filteredQuestions = useMemo(() => {
     const searchTerm = questionSearch.trim().toLowerCase();
-    return [...questionsData]
-      .filter((question) => {
-        if (!showInactiveQuestions && !question.is_active) return false;
-        if (!searchTerm) return true;
-        const label = extractQuestionMeta(question).label || question.question_text;
-        return String(label || "").toLowerCase().includes(searchTerm);
-      })
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [questionsData, questionSearch, showInactiveQuestions]);
+    const base = [...questionsData].filter((question) => {
+      if (!showInactiveQuestions && !question.is_active) return false;
+      if (!searchTerm) return true;
+      const label = extractQuestionMeta(question).label || question.question_text;
+      return String(label || "").toLowerCase().includes(searchTerm);
+    });
+    if (localOrdering) {
+      const indexMap = new Map(localOrdering.map((id, i) => [id, i]));
+      return base.sort((a, b) => (indexMap.get(a.id) ?? 999) - (indexMap.get(b.id) ?? 999));
+    }
+    return base.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [questionsData, questionSearch, showInactiveQuestions, localOrdering]);
 
-  const questionColumns = [
-    {
-      header: "Ordem",
-      accessor: "order",
-      cellClassName: "font-mono text-center",
-    },
-    {
-      header: "Pergunta",
-      cellClassName: "font-medium",
-      render: (row) => {
-        const meta = extractQuestionMeta(row);
-        return (
-          <div>
-            <p className="font-medium">{meta.label || row.question_text}</p>
-            {row.question_type === "choice" && meta.options.length > 0 && (
-              <p className="text-xs text-slate-500">
-                Opcoes: {meta.options.join(" | ")}
-              </p>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      header: "Tipo",
-      render: (row) => {
-        return questionTypeLabels[row.question_type] || row.question_type;
-      },
-    },
-    {
-      header: "Obrigatoria",
-      cellClassName: "text-center",
-      render: (row) => (row.required ? "Sim" : "-"),
-    },
-    {
-      header: "Status",
-      render: (row) => (
-        <Badge
-          className={
-            row.is_active
-              ? "bg-green-100 text-green-700"
-              : "bg-slate-100 text-slate-700"
-          }
-        >
-          {row.is_active ? "Ativa" : "Inativa"}
-        </Badge>
-      ),
-    },
-    {
-      header: "Acoes",
-      sortable: false,
-      cellClassName: "text-right",
-      render: (row) => (
-        <div className="flex justify-end gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => handleCopyQuestion(row)}
-          >
-            <Copy className="h-4 w-4 mr-1" />
-            Copiar
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => handleEditQuestion(row)}>
-            Editar
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-red-600 hover:text-red-700"
-            onClick={() => setQuestionDeleteConfirm(row)}
-          >
-            Excluir
-          </Button>
-        </div>
-      ),
-    },
-  ];
 
   const objectiveQuestionInsights = feedbackAnalytics.questionInsights.filter((item) =>
     ["rating", "choice", "yesno"].includes(item.type)
@@ -919,27 +945,8 @@ export default function TrainingFeedbackPage({
       ? training.dates[0]?.date
       : training.date;
 
-  return (
-    <div className="space-y-6">
-      {renderBackButton()}
-      <PageHeader
-        title={`Avaliacao - ${training.title}`}
-        subtitle="Configure a mascara e visualize o formulario de avaliacao"
-      />
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <MessageSquare className="h-5 w-5 text-blue-600" />
-            Configuracao da Avaliacao
-          </CardTitle>
-          <p className="text-sm text-slate-500">
-            {formatDateSafe(firstTrainingDate) || "Data a definir"}
-            {training.coordinator ? ` | Coord.: ${training.coordinator}` : ""}
-          </p>
-        </CardHeader>
-        <CardContent>
-          <Tabs
+  const tabsNode = (
+        <Tabs
             value={activeTab}
             onValueChange={(value) => {
               setActiveTab(value);
@@ -979,6 +986,10 @@ export default function TrainingFeedbackPage({
                   <Copy className="h-4 w-4 mr-2" />
                   Copiar Link da Avaliacao
                 </Button>
+                <Button type="button" variant="outline" onClick={handleShowQrCode}>
+                  <QrCode className="h-4 w-4 mr-2" />
+                  QR Code
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -993,7 +1004,10 @@ export default function TrainingFeedbackPage({
                   onClick={() => {
                     setQuestionActionStatus(null);
                     setEditingQuestion(null);
-                    setQuestionFormData(createDefaultQuestion(trainingId));
+                    const nextOrder = questionsData?.length
+                      ? Math.max(...questionsData.map((q) => q.order ?? 0)) + 1
+                      : 1;
+                    setQuestionFormData(createDefaultQuestion(trainingId, nextOrder));
                     setQuestionFormOpen(true);
                   }}
                 >
@@ -1061,12 +1075,102 @@ export default function TrainingFeedbackPage({
                       </Label>
                     </div>
                   </div>
-                  <DataTable
-                    columns={questionColumns}
-                    data={filteredQuestions}
-                    isLoading={questionsLoadingState}
-                    emptyMessage="Nenhuma pergunta cadastrada"
-                  />
+                  <div className="rounded-md border overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 border-b">
+                        <tr>
+                          <th className="w-8 px-2 py-3" />
+                          <th className="px-3 py-3 text-left font-medium text-slate-700">Ordem</th>
+                          <th className="px-3 py-3 text-left font-medium text-slate-700">Pergunta</th>
+                          <th className="px-3 py-3 text-left font-medium text-slate-700">Tipo</th>
+                          <th className="px-3 py-3 text-left font-medium text-slate-700">Obrigatória</th>
+                          <th className="px-3 py-3 text-left font-medium text-slate-700">Status</th>
+                          <th className="px-3 py-3 text-right font-medium text-slate-700">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {questionsLoadingState ? (
+                          <tr>
+                            <td colSpan={7} className="py-8 text-center text-slate-500">
+                              <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                              Carregando...
+                            </td>
+                          </tr>
+                        ) : filteredQuestions.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="py-8 text-center text-slate-500">
+                              Nenhuma pergunta cadastrada
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredQuestions.map((row) => {
+                            const meta = extractQuestionMeta(row);
+                            const canDrag = !questionSearch.trim() && !savingOrder;
+                            return (
+                              <tr
+                                key={row.id}
+                                draggable={canDrag}
+                                onDragStart={canDrag ? (e) => handleRowDragStart(e, row.id) : undefined}
+                                onDragOver={(e) => handleRowDragOver(e, row.id)}
+                                onDrop={(e) => handleRowDrop(e, row.id)}
+                                onDragEnd={handleRowDragEnd}
+                                className={`border-b last:border-0 transition-colors ${dragOverId === row.id ? "bg-blue-50 border-t-2 border-t-blue-400" : "hover:bg-slate-50"}`}
+                              >
+                                <td className="px-2 py-3">
+                                  <div
+                                    className={`flex items-center justify-center ${canDrag ? "text-slate-400 hover:text-slate-600 cursor-grab" : "text-slate-200 cursor-not-allowed"}`}
+                                    title={questionSearch.trim() ? "Limpe a busca para reordenar" : "Arraste para reordenar"}
+                                  >
+                                    <GripVertical className="h-4 w-4" />
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 font-mono text-center text-slate-600">
+                                  {savingOrder ? (
+                                    <Loader2 className="h-3 w-3 animate-spin inline" />
+                                  ) : (
+                                    row.order
+                                  )}
+                                </td>
+                                <td className="px-3 py-3">
+                                  <p className="font-medium">{meta.label || row.question_text}</p>
+                                  {row.question_type === "choice" && meta.options.length > 0 && (
+                                    <p className="text-xs text-slate-500">
+                                      Opções: {meta.options.join(" | ")}
+                                    </p>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3 text-slate-600">
+                                  {questionTypeLabels[row.question_type] || row.question_type}
+                                </td>
+                                <td className="px-3 py-3 text-center text-slate-600">
+                                  {row.required ? "Sim" : "-"}
+                                </td>
+                                <td className="px-3 py-3">
+                                  <Badge className={row.is_active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700"}>
+                                    {row.is_active ? "Ativa" : "Inativa"}
+                                  </Badge>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <div className="flex justify-end gap-2">
+                                    <Button type="button" variant="ghost" size="sm" onClick={() => handleCopyQuestion(row)}>
+                                      <Copy className="h-4 w-4 mr-1" />
+                                      Copiar
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={() => handleEditQuestion(row)}>
+                                      Editar
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setQuestionDeleteConfirm(row)}>
+                                      Excluir
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </CardContent>
               </Card>
               </TabsContent>
@@ -1369,6 +1473,10 @@ export default function TrainingFeedbackPage({
                   <Copy className="h-4 w-4 mr-2" />
                   Copiar Link da Avaliacao
                 </Button>
+                <Button type="button" variant="outline" onClick={handleShowQrCode}>
+                  <QrCode className="h-4 w-4 mr-2" />
+                  QR Code
+                </Button>
                 <Button type="button" variant="outline" onClick={refreshPreview}>
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Atualizar Visualizacao
@@ -1403,8 +1511,33 @@ export default function TrainingFeedbackPage({
               </TabsContent>
             )}
           </Tabs>
-        </CardContent>
-      </Card>
+  );
+
+  return (
+    <div className="space-y-6">
+      {renderBackButton()}
+      {showHeader && (
+        <PageHeader
+          title={`Avaliacao - ${training.title}`}
+          subtitle="Configure a mascara e visualize o formulario de avaliacao"
+        />
+      )}
+
+      {showHeader ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-blue-600" />
+              Configuracao da Avaliacao
+            </CardTitle>
+            <p className="text-sm text-slate-500">
+              {formatDateSafe(firstTrainingDate) || "Data a definir"}
+              {training.coordinator ? ` | Coord.: ${training.coordinator}` : ""}
+            </p>
+          </CardHeader>
+          <CardContent>{tabsNode}</CardContent>
+        </Card>
+      ) : tabsNode}
 
       <Dialog
         open={questionFormOpen}
@@ -1590,6 +1723,47 @@ export default function TrainingFeedbackPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showQrDialog} onOpenChange={setShowQrDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>QR Code - Link da Avaliacao</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4">
+            {qrDataUrl && (
+              <img
+                src={qrDataUrl}
+                alt="QR Code da avaliacao"
+                className="w-64 h-64 rounded-lg border"
+              />
+            )}
+            <p className="text-xs text-slate-500 text-center">
+              Aponte a camera do celular para acessar o formulario publico de
+              avaliacao.
+            </p>
+            <div className="flex gap-3 w-full">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={handleDownloadQr}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Baixar PNG
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={handleCopyFeedbackLink}
+              >
+                <Link2 className="h-4 w-4 mr-2" />
+                Copiar Link
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
