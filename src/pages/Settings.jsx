@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import DOMPurify from "dompurify";
 import { applyThemeColor, THEME_STORAGE_KEY } from "@/lib/themeColors";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -2921,7 +2922,7 @@ export default function Settings() {
                                       ? `${Math.max(0, effectiveBodyMaxWordSpacingValue - 1) * 0.06}em`
                                       : undefined,
                                   }}
-                                  dangerouslySetInnerHTML={{ __html: previewBodyHtml }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewBodyHtml) }}
                                 />
                               </div>
                             </div>
@@ -3167,7 +3168,7 @@ export default function Settings() {
               <p className="font-semibold mb-2">{previewEmailSubject}</p>
               <div
                 className="prose prose-sm max-w-none text-slate-700"
-                dangerouslySetInnerHTML={{ __html: previewEmailBody }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewEmailBody) }}
               />
             </div>
 

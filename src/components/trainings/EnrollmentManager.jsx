@@ -11,7 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { UserPlus, CheckCircle, XCircle, Loader2, Copy, Check } from "lucide-react";
+import { UserPlus, CheckCircle, XCircle, Loader2, Copy, Check, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { addMonths, format } from "date-fns";
 import { parseDateSafe } from "@/lib/date";
 import {
@@ -116,9 +117,25 @@ export default function EnrollmentManager({ training, professionals, existingPar
 
   const enrollParticipant = useMutation({
     mutationFn: async (/** @type {any} */ professionalId) => {
+      if (
+        training.max_participants &&
+        existingParticipants.filter((p) => p.enrollment_status !== "cancelado").length >=
+          training.max_participants
+      ) {
+        throw new Error("Treinamento com vagas esgotadas.");
+      }
       const professional = professionals.find((p) => p.id === professionalId);
       const participant = buildParticipantPayload(professional);
-      const createdParticipant = await dataClient.entities.TrainingParticipant.create(participant);
+      let createdParticipant;
+      try {
+        createdParticipant = await dataClient.entities.TrainingParticipant.create(participant);
+      } catch (error) {
+        throw new Error(
+          error?.message?.includes("capac") || error?.code === "23514"
+            ? "Treinamento com vagas esgotadas."
+            : error?.message || "Não foi possível inscrever o profissional."
+        );
+      }
       await syncEnrollmentCalendar({
         participant: createdParticipant || participant,
         professional,
@@ -148,7 +165,16 @@ export default function EnrollmentManager({ training, professionals, existingPar
         professional_email: professional?.email || email || null,
       });
 
-      const createdParticipant = await dataClient.entities.TrainingParticipant.create(participant);
+      let createdParticipant;
+      try {
+        createdParticipant = await dataClient.entities.TrainingParticipant.create(participant);
+      } catch (error) {
+        throw new Error(
+          error?.message?.includes("capac") || error?.code === "23514"
+            ? "Treinamento com vagas esgotadas."
+            : error?.message || "Não foi possível inscrever."
+        );
+      }
       if (professional) {
         await syncEnrollmentCalendar({
           participant: createdParticipant || participant,
@@ -275,6 +301,14 @@ export default function EnrollmentManager({ training, professionals, existingPar
               );
             })}
           </div>
+          {enrollStaffMember.error && (
+            <Alert className="border-red-200 bg-red-50 mt-3">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800">
+                {enrollStaffMember.error.message}
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
       )}
 
@@ -307,6 +341,14 @@ export default function EnrollmentManager({ training, professionals, existingPar
             Inscrever
           </Button>
         </div>
+        {enrollParticipant.error && (
+          <Alert className="border-red-200 bg-red-50 mt-3">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-800">
+              {enrollParticipant.error.message}
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       {/* Enrolled Participants */}

@@ -1,6 +1,135 @@
 import { serve } from "https://deno.land/std/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export const config = { verify_jwt: false };
+
+// Esta função é chamada por páginas públicas sem login (confirmação de inscrição,
+// presença, etc.), então não pode exigir um JWT de usuário. Em vez disso, aplicamos
+// limites de payload e rate limiting por destinatário/IP para reduzir o risco de
+// abuso (spam/phishing usando o domínio e o crédito de e-mail do projeto).
+const MAX_SUBJECT_LENGTH = 200;
+const MAX_HTML_LENGTH = 500_000;
+const MAX_ATTACHMENTS = 5;
+const MAX_ATTACHMENT_BASE64_LENGTH = 8_000_000; // ~6MB decodificado
+const MAX_RECIPIENTS = 5;
+const RATE_LIMIT_WINDOW_MINUTES = 60;
+const RATE_LIMIT_MAX_PER_RECIPIENT = 20;
+const RATE_LIMIT_MAX_PER_IP = 40;
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+const getServiceClient = () => {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+};
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const normalizeRecipients = (to: unknown): string[] => {
+  const list = Array.isArray(to) ? to : [to];
+  return list
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter(Boolean);
+};
+
+const validatePayload = (payload: Record<string, unknown>): string | null => {
+  const recipients = normalizeRecipients(payload.to);
+  if (recipients.length === 0) return "Destinatário (to) é obrigatório.";
+  if (recipients.length > MAX_RECIPIENTS) {
+    return `No máximo ${MAX_RECIPIENTS} destinatário(s) por envio.`;
+  }
+  if (recipients.some((email) => !EMAIL_PATTERN.test(email))) {
+    return "Destinatário inválido.";
+  }
+
+  const subject = String(payload.subject ?? "").trim();
+  if (!subject) return "Assunto (subject) é obrigatório.";
+  if (subject.length > MAX_SUBJECT_LENGTH) {
+    return `Assunto excede o limite de ${MAX_SUBJECT_LENGTH} caracteres.`;
+  }
+
+  const html = String(payload.html ?? "");
+  if (!html.trim()) return "Corpo do e-mail (html) é obrigatório.";
+  if (html.length > MAX_HTML_LENGTH) {
+    return "Corpo do e-mail excede o tamanho máximo permitido.";
+  }
+
+  const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
+  if (attachments.length > MAX_ATTACHMENTS) {
+    return `No máximo ${MAX_ATTACHMENTS} anexo(s) por e-mail.`;
+  }
+  for (const attachment of attachments) {
+    const content = String((attachment as { content?: unknown })?.content ?? "");
+    if (content.length > MAX_ATTACHMENT_BASE64_LENGTH) {
+      return "Anexo excede o tamanho máximo permitido.";
+    }
+  }
+
+  return null;
+};
+
+const getClientIp = (req: Request) =>
+  req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+  req.headers.get("cf-connecting-ip") ||
+  "unknown";
+
+/**
+ * Rate limit best-effort: se a tabela de log não existir ou a checagem falhar,
+ * deixamos o envio prosseguir (evita que um problema de infraestrutura no rate
+ * limiter derrube um fluxo crítico como confirmação de inscrição).
+ */
+const checkRateLimit = async (
+  recipients: string[],
+  ip: string
+): Promise<string | null> => {
+  const client = getServiceClient();
+  if (!client) return null;
+
+  try {
+    const since = new Date(
+      Date.now() - RATE_LIMIT_WINDOW_MINUTES * 60 * 1000
+    ).toISOString();
+
+    const { count: ipCount } = await client
+      .from("email_send_log")
+      .select("id", { count: "exact", head: true })
+      .eq("client_ip", ip)
+      .gte("created_at", since);
+    if ((ipCount ?? 0) >= RATE_LIMIT_MAX_PER_IP) {
+      return "Limite de envios por IP atingido. Tente novamente mais tarde.";
+    }
+
+    for (const recipient of recipients) {
+      const { count: recipientCount } = await client
+        .from("email_send_log")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient", recipient)
+        .gte("created_at", since);
+      if ((recipientCount ?? 0) >= RATE_LIMIT_MAX_PER_RECIPIENT) {
+        return "Limite de envios para este destinatário atingido. Tente novamente mais tarde.";
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
+const recordSendAttempt = async (recipients: string[], ip: string) => {
+  const client = getServiceClient();
+  if (!client) return;
+  try {
+    await client
+      .from("email_send_log")
+      .insert(recipients.map((recipient) => ({ recipient, client_ip: ip })));
+  } catch {
+    // Log é best-effort — não deve impedir o envio do e-mail.
+  }
+};
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "";
@@ -100,7 +229,27 @@ serve(async (req) => {
   }
 
   try {
-    const { to, subject, html, from, attachments } = await req.json();
+    const requestBody = await req.json();
+    const validationError = validatePayload(requestBody);
+    if (validationError) {
+      return new Response(JSON.stringify({ error: validationError }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { to, subject, html, from, attachments } = requestBody;
+    const recipients = normalizeRecipients(to);
+    const clientIp = getClientIp(req);
+
+    const rateLimitError = await checkRateLimit(recipients, clientIp);
+    if (rateLimitError) {
+      return new Response(JSON.stringify({ error: rateLimitError }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const requestedFromEmail = normalizeRequestedFromEmail(
       normalizeEmail(from?.email)
     );

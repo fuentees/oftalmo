@@ -33,13 +33,14 @@ export const ADMIN_ONLY_PAGES = new Set(["Settings", "AuditLogs"]);
 export const isAdminEmail = (email) => ADMIN_EMAILS.has(normalizeText(email));
 
 export const resolveUserRole = ({ email, userMetadata, appMetadata }) => {
+  // user_metadata is editable by the user themselves (auth.updateUser), so it must
+  // never be trusted to grant the admin role — only app_metadata (set server-side) can.
   const appRole = normalizeRoleValue(appMetadata?.role);
   const userRole = normalizeRoleValue(userMetadata?.role);
 
   if (isAdminEmail(email)) return "admin";
   if (appRole === "admin") return "admin";
-  if (userRole === "admin") return "admin";
   if (appRole !== "usuario") return appRole;
-  if (userRole !== "usuario") return userRole;
+  if (userRole !== "usuario" && userRole !== "admin") return userRole;
   return "usuario";
 };

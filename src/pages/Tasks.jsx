@@ -9,7 +9,7 @@ import {
   CheckCheck, Circle, Clock, AlertTriangle, Trash2, Edit,
   Loader2, User, Calendar, ListTodo, MessageSquare,
   LayoutGrid, List, Plus, Send, Tag, GripVertical,
-  CheckSquare, Square, X,
+  CheckSquare, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,8 +20,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,

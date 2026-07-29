@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { dataClient } from "@/api/dataClient";
-import { format } from "date-fns";
 import {
   CheckCircle2, XCircle, Loader2, AlertTriangle, User, Search,
 } from "lucide-react";
@@ -9,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 
 const LOGO_URL = "/logo.svg";
 

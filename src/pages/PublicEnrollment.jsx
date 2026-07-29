@@ -627,7 +627,7 @@ export default function PublicEnrollment() {
         throw error;
       }
 
-      let warningMessage = null;
+      const warnings = [];
       let emailSent = false;
 
       // E-mail de confirmação — não bloqueia o fluxo mas registra o resultado
@@ -657,21 +657,27 @@ export default function PublicEnrollment() {
             `,
           });
           emailSent = true;
-        } catch {
-          // E-mail falhou, mas a inscrição foi registrada
+        } catch (error) {
+          console.error("Falha ao enviar e-mail de confirmação de inscrição:", error);
+          warnings.push("Não conseguimos enviar o e-mail de confirmação.");
         }
       }
 
       // Sincronização com Google — não pode bloquear a confirmação de inscrição
       try {
-        await syncParticipantWithGoogleCalendar(createdParticipant);
-      } catch {
-        // Inscrição já registrada — falha no Google não impede a confirmação
+        const calendarError = await syncParticipantWithGoogleCalendar(createdParticipant);
+        if (calendarError) {
+          console.error("Falha ao sincronizar Google Agenda:", calendarError);
+          warnings.push("Não conseguimos sincronizar o evento na sua agenda do Google.");
+        }
+      } catch (error) {
+        console.error("Falha ao sincronizar Google Agenda:", error);
+        warnings.push("Não conseguimos sincronizar o evento na sua agenda do Google.");
       }
 
       return {
         alreadyEnrolled: false,
-        warningMessage,
+        warningMessage: warnings.length > 0 ? warnings.join(" ") : null,
         emailSent,
         recipientEmail,
       };

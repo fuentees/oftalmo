@@ -6,8 +6,8 @@ import { format, isPast, isToday, parseISO } from "date-fns";
 import { createPageUrl } from "@/utils";
 import { Link } from "react-router-dom";
 import {
-  Plus, CheckCheck, AlertTriangle, Calendar, User,
-  Loader2, ListTodo, ArrowUpRight, Trash2, Circle, Edit,
+  Plus, CheckCheck, AlertTriangle, Calendar,
+  Loader2, ListTodo, ArrowUpRight, Trash2, Edit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";

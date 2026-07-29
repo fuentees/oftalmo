@@ -156,7 +156,9 @@ const requireAdminUser = async (req: Request) => {
   if (!user) {
     throw new ApiError(401, "Invalid authentication token.");
   }
-  const role = normalizeRole(user.app_metadata?.role || user.user_metadata?.role);
+  // IMPORTANT: only app_metadata is authoritative for role — user_metadata can be
+  // edited by the user themselves via auth.updateUser() and must never grant admin.
+  const role = normalizeRole(user.app_metadata?.role);
   const email = normalizeText(user.email);
   const isAdmin = role === "admin" || ADMIN_EMAILS.has(email);
   if (!isAdmin) {
@@ -178,7 +180,7 @@ const mapManagedUser = (user: any) => {
         user?.email ||
         ""
     ),
-    role: normalizeRole(user?.app_metadata?.role || user?.user_metadata?.role),
+    role: normalizeRole(user?.app_metadata?.role),
     is_active: isActive,
     created_at: user?.created_at || null,
     last_sign_in_at: user?.last_sign_in_at || null,

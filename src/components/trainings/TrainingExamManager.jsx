@@ -9,7 +9,7 @@ import {
 } from "recharts";
 import {
   Plus, Trash2, Edit, Loader2, Image, X, Copy, CheckCircle2,
-  ClipboardCheck, Save, ToggleLeft, ToggleRight, AlignLeft,
+  ClipboardCheck, Save, ToggleLeft, ToggleRight,
   List, Search, Download, Users, BarChart2, Clock,
   ChevronDown, ChevronUp, FileBarChart2,
 } from "lucide-react";

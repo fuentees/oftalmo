@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { createPageUrl } from "@/utils";
-import { format } from "date-fns";
 import {
   Plus, Trash2, Edit, ChevronLeft, Loader2, Image, X,
-  Copy, CheckCircle2, ClipboardCheck, GripVertical, Save,
-  Eye, ToggleLeft, ToggleRight, AlignLeft, List, CheckSquare,
+  Copy, CheckCircle2, ClipboardCheck, Save, ToggleLeft, ToggleRight, AlignLeft, List,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

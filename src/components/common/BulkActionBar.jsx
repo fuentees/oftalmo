@@ -1,5 +1,5 @@
 import React from "react";
-import { X, Trash2, Mail, Download, CheckSquare } from "lucide-react";
+import { X, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**

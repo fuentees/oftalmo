@@ -2,14 +2,12 @@ import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell,
 } from "recharts";
 import {
-  Loader2, BarChart2, Users, CheckCircle2, XCircle, Download,
-  ChevronDown, Search,
+  Loader2, BarChart2, Users, Download, Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

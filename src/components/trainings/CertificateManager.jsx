@@ -646,10 +646,17 @@ export default function CertificateManager({ training, participants = [], onClos
     return Math.max(maxStored, alreadyIssued);
   }, [safeParticipants]);
 
+  const isUniqueCertificateNumberViolation = (error) =>
+    error?.code === "23505" &&
+    String(error?.message || "").toLowerCase().includes("certificate_number");
+
   const updateParticipantCertificateRecord = async (participantId, payload) => {
     try {
       return await dataClient.entities.TrainingParticipant.update(participantId, payload);
     } catch (error) {
+      // Colisão de numeração precisa propagar para quem chamou decidir (tentar
+      // o próximo número) — nunca deve ser mascarada silenciosamente.
+      if (isUniqueCertificateNumberViolation(error)) throw error;
       const message = String(error?.message || "").toLowerCase();
       const hasCertificateNumberColumnError =
         message.includes("certificate_number") ||
@@ -665,6 +672,38 @@ export default function CertificateManager({ training, participants = [], onClos
         fallbackPayload
       );
     }
+  };
+
+  /**
+   * Reserva um número de certificado ANTES de gerar o PDF/enviar o e-mail:
+   * se a numeração colidir (corrida entre duas emissões concorrentes), tenta
+   * o próximo número em vez de deixar um e-mail já enviado ficar com número
+   * duplicado ou órfão.
+   */
+  const reserveCertificateNumber = async (
+    participantId,
+    startingSequence,
+    buildPayload
+  ) => {
+    const maxAttempts = 5;
+    let sequence = startingSequence;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const certificateNumber = buildCertificateNumber(sequence);
+      try {
+        await updateParticipantCertificateRecord(
+          participantId,
+          buildPayload(certificateNumber)
+        );
+        return { certificateNumber, nextSequence: sequence + 1 };
+      } catch (error) {
+        if (isUniqueCertificateNumberViolation(error) && attempt < maxAttempts - 1) {
+          sequence += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error("Não foi possível reservar um número de certificado único.");
   };
 
   const resolveTeamWordGenerator = (role) => {
@@ -1177,8 +1216,30 @@ export default function CertificateManager({ training, participants = [], onClos
 
       for (const participant of participantsToIssue) {
         try {
-          const certificateNumber = buildCertificateNumber(certificateSequence);
-          certificateSequence += 1;
+          const validityDateForReservation = training.validity_months
+            ? format(addMonths(new Date(), training.validity_months), "yyyy-MM-dd")
+            : null;
+
+          // Reserva o número no banco ANTES de gerar o PDF/enviar o e-mail: se
+          // colidir com outra emissão concorrente, tenta o próximo número aqui
+          // — nunca depois de já ter mandado um e-mail com o número errado.
+          const { certificateNumber, nextSequence } = await reserveCertificateNumber(
+            participant.id,
+            certificateSequence,
+            (number) => ({
+              certificate_number: number,
+              certificate_issue_metadata: {
+                number,
+                training_id: training?.id || null,
+                training_title: training?.title || "",
+                type: "participante",
+                issued_at: new Date().toISOString(),
+              },
+              validity_date: validityDateForReservation,
+            })
+          );
+          certificateSequence = nextSequence;
+
           const participantWithMetrics = {
             ...buildParticipantWithCertificateMetrics(participant),
             certificate_number: certificateNumber,
@@ -1252,14 +1313,12 @@ export default function CertificateManager({ training, participants = [], onClos
             emailError = "Participante sem e-mail cadastrado para envio.";
           }
 
-          // Update participant with validity date
-          const validityDate = training.validity_months
-            ? format(addMonths(new Date(), training.validity_months), "yyyy-MM-dd")
-            : null;
+          // Segunda atualização: só os campos que dependem do PDF/e-mail já
+          // terem sido gerados/enviados. certificate_number/validity_date já
+          // foram persistidos com sucesso em reserveCertificateNumber acima.
           /** @type {any} */
           const participantUpdatePayload = {
             certificate_url: file_url,
-            certificate_number: certificateNumber,
             certificate_issue_metadata: {
               number: certificateNumber,
               training_id: training?.id || null,
@@ -1268,7 +1327,6 @@ export default function CertificateManager({ training, participants = [], onClos
               issued_at: new Date().toISOString(),
               file_name: pdfFileName,
             },
-            validity_date: validityDate,
             ...(useRepadScoreCriteria &&
             Number.isFinite(participantWithMetrics?.certificate_score)
               ? { grade: formatScore(participantWithMetrics.certificate_score, 1) }

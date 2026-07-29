@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { supabase } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,7 @@ import { isRepadronizacaoTraining } from "@/lib/trainingType";
 export default function CheckIn() {
   const [rgPrefix, setRgPrefix] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [emailSendFailed, setEmailSendFailed] = useState(false);
   
   const urlParams = new URLSearchParams(window.location.search);
   const token = urlParams.get("token");
@@ -29,19 +31,21 @@ export default function CheckIn() {
     queryKey: ["attendanceLink", token],
     queryFn: async () => {
       if (!token) throw new Error("Token não fornecido");
-      
-      const links = await dataClient.entities.AttendanceLink.filter({ token });
-      if (links.length === 0) throw new Error("Link inválido");
-      
-      const link = links[0];
-      
-      if (!link.is_active) throw new Error("Link desativado");
-      
-      const now = new Date();
-      const expiresAt = new Date(link.expires_at);
-      if (now > expiresAt) throw new Error("Link expirado");
-      
-      return link;
+
+      // Usa RPC (não a tabela diretamente): o token é o segredo do link, então
+      // o lookup precisa ser um match exato no banco, não uma leitura ampla da
+      // tabela filtrada no cliente (que permitiria descobrir tokens de outras
+      // turmas via API REST).
+      const { data: links, error } = await supabase.rpc(
+        "get_attendance_link_by_token",
+        { p_token: token }
+      );
+      if (error) throw new Error("Erro ao validar link.");
+      if (!links || links.length === 0) {
+        throw new Error("Link inválido, desativado ou expirado");
+      }
+
+      return links[0];
     },
     enabled: !!token,
     retry: false,
@@ -123,14 +127,15 @@ export default function CheckIn() {
 
       // Atualização do contador do link: não-crítica, não pode bloquear a confirmação
       try {
-        await dataClient.entities.AttendanceLink.update(linkData.id, {
-          check_ins_count: (linkData.check_ins_count || 0) + 1,
+        await supabase.rpc("increment_attendance_link_checkins", {
+          p_token: token,
         });
-      } catch {
-        // Presença já registrada acima — falha no contador não impede a confirmação
+      } catch (error) {
+        console.error("Falha ao incrementar contador de check-in:", error);
       }
 
       // Confirmação de presença por e-mail — não bloqueia o fluxo
+      let emailSent = null;
       const participantEmail = String(participant.professional_email || "").trim();
       if (participantEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(participantEmail)) {
         const checkInTime = format(new Date(), "HH:mm");
@@ -154,14 +159,17 @@ export default function CheckIn() {
               </div>
             `,
           });
-        } catch {
-          // E-mail falhou, mas a presença já foi registrada
+          emailSent = true;
+        } catch (error) {
+          console.error("Falha ao enviar e-mail de confirmação de presença:", error);
+          emailSent = false;
         }
       }
 
-      return { participant, percentage };
+      return { participant, percentage, emailSent };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      setEmailSendFailed(data?.emailSent === false);
       setSubmitted(true);
     },
   });
@@ -238,6 +246,14 @@ export default function CheckIn() {
             <p className="text-sm font-medium text-green-600">
               ✅ Guarde esta tela como comprovante de presença.
             </p>
+            {emailSendFailed && (
+              <Alert className="border-amber-200 bg-amber-50 text-left">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800">
+                  Não conseguimos enviar o e-mail de confirmação, mas sua presença já foi registrada normalmente.
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
       </div>

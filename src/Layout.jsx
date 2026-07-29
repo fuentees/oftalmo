@@ -23,8 +23,6 @@ import {
   Loader2,
   ClipboardList,
   Send,
-  ClipboardCheck,
-  BarChart2,
   ListTodo,
   Sun,
   Moon,

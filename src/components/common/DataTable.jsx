@@ -120,11 +120,28 @@ export default function DataTable({
             <TableRow className="bg-slate-50 hover:bg-slate-50 border-slate-200">
               {columns.map((col, i) => {
                 const isSortable = col.sortable !== false;
+                const key = col.accessor || col.header;
+                const ariaSort =
+                  sortConfig.key === key
+                    ? sortConfig.direction === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none";
                 return (
                   <TableHead
                     key={i}
                     className={`text-xs font-semibold text-slate-500 uppercase tracking-wide ${col.className || ""} ${isSortable ? "cursor-pointer hover:text-slate-700 select-none" : ""}`}
                     onClick={() => isSortable && handleSort(col)}
+                    tabIndex={isSortable ? 0 : undefined}
+                    role={isSortable ? "button" : undefined}
+                    aria-sort={isSortable ? ariaSort : undefined}
+                    onKeyDown={(event) => {
+                      if (!isSortable) return;
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleSort(col);
+                      }
+                    }}
                   >
                     <div className="flex items-center gap-1.5">
                       {col.header}
@@ -149,6 +166,15 @@ export default function DataTable({
                   .filter(Boolean)
                   .join(" ")}
                 onClick={() => onRowClick && onRowClick(row)}
+                tabIndex={onRowClick ? 0 : undefined}
+                role={onRowClick ? "button" : undefined}
+                onKeyDown={(event) => {
+                  if (!onRowClick) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onRowClick(row);
+                  }
+                }}
               >
                 {columns.map((col, colIndex) => (
                   <TableCell key={colIndex} className={col.cellClassName}>

@@ -12,8 +12,6 @@ import {
   endOfMonth,
   isWithinInterval,
   subMonths,
-  isFuture,
-  isPast,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import jsPDF from "jspdf";
@@ -185,7 +183,7 @@ export default function Reports() {
         }
         return true;
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [participants, sectorFilter, periodFilter, customStartDate, customEndDate]
   );
 
@@ -208,7 +206,7 @@ export default function Reports() {
         }
         return true;
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [trainings, categoryFilter, periodFilter, customStartDate, customEndDate]
   );
 
@@ -378,7 +376,7 @@ export default function Reports() {
           (a, b) =>
             new Date(a.start_date ?? a.date) - new Date(b.start_date ?? b.date)
         ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [events]
   );
 
@@ -388,7 +386,7 @@ export default function Reports() {
         const d = toValidDate(e.start_date ?? e.date);
         return d && d < now;
       }).length,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [events]
   );
 

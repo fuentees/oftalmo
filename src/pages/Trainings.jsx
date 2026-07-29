@@ -8,6 +8,7 @@ import {
   getTrainingDateItems,
 } from "@/lib/statusRules";
 import { resolveTrainingParticipantMatch } from "@/lib/trainingParticipantMatch";
+import { parseDateSafe } from "@/lib/date";
 import {
   TRACOMA_TOTAL_QUESTIONS,
   buildAnswerKeyCollections,
@@ -111,6 +112,7 @@ export default function Trainings() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [yearFilter, setYearFilter] = useState(currentYearValue);
+  const [monthFilter, setMonthFilter] = useState("all");
   
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -1129,6 +1131,16 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     return parsed.getFullYear();
   };
 
+  const getTrainingMonth = (training) => {
+    if (!training) return null;
+    const firstDateItem = getTrainingDateItems(training)[0] || null;
+    const value = firstDateItem?.date || training.start_date || training.date;
+    if (!value) return null;
+    const parsed = parseDateSafe(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.getMonth() + 1;
+  };
+
   const yearOptions = React.useMemo(() => {
     const years = new Set([Number(currentYearValue)]);
     trainings.forEach((training) => {
@@ -1139,6 +1151,21 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
       .sort((a, b) => b - a)
       .map((year) => ({ value: String(year), label: String(year) }));
   }, [trainings, currentYearValue]);
+
+  const monthOptions = [
+    { value: "1", label: "Janeiro" },
+    { value: "2", label: "Fevereiro" },
+    { value: "3", label: "Março" },
+    { value: "4", label: "Abril" },
+    { value: "5", label: "Maio" },
+    { value: "6", label: "Junho" },
+    { value: "7", label: "Julho" },
+    { value: "8", label: "Agosto" },
+    { value: "9", label: "Setembro" },
+    { value: "10", label: "Outubro" },
+    { value: "11", label: "Novembro" },
+    { value: "12", label: "Dezembro" },
+  ];
 
   const typeOptions = React.useMemo(() => {
     const knownOptions = KNOWN_TRAINING_TYPE_ORDER.map((value) => ({
@@ -1175,7 +1202,9 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
         normalizeTrainingTypeValue(t.type) === typeFilter;
       const trainingYear = getTrainingYear(t);
       const matchesYear = yearFilter === "all" || String(trainingYear || "") === yearFilter;
-      return matchesSearch && matchesStatus && matchesType && matchesYear;
+      const trainingMonth = getTrainingMonth(t);
+      const matchesMonth = monthFilter === "all" || String(trainingMonth || "") === monthFilter;
+      return matchesSearch && matchesStatus && matchesType && matchesYear && matchesMonth;
     })
     .map((training) => {
       const rows = getTrainingParticipants(training);
@@ -1231,23 +1260,6 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
     if (Number.isNaN(parsed.getTime())) return "-";
     return format(parsed, "dd/MM/yyyy");
   };
-
-  function parseDateSafe(value) {
-    if (!value) return new Date(NaN);
-    if (value instanceof Date) return new Date(value.getTime());
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (match) {
-        const year = Number(match[1]);
-        const month = Number(match[2]);
-        const day = Number(match[3]);
-        return new Date(year, month - 1, day);
-      }
-      return new Date(trimmed);
-    }
-    return new Date(value);
-  }
 
   const columns = [
     {
@@ -1564,6 +1576,13 @@ NR-10,TR-001,teorico,Segurança,2025-02-10,2025-02-10;2025-02-11,8,Sala 1,,Maria
                 placeholder: "Ano",
                 allLabel: "Todos os anos",
                 options: yearOptions,
+              },
+              {
+                value: monthFilter,
+                onChange: setMonthFilter,
+                placeholder: "Mês",
+                allLabel: "Todos os meses",
+                options: monthOptions,
               },
               {
                 value: statusFilter,
