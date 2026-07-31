@@ -711,7 +711,6 @@ export default function TrainingWorkspace() {
             <TrainingExamManager
               trainingId={trainingId}
               trainingTitle={training?.title}
-              training={training}
             />
           </TabsContent>
         )}

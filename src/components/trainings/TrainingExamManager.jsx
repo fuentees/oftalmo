@@ -72,19 +72,37 @@ const isPresentAttendanceRecord = (record) => {
   return status === "presente";
 };
 
-/** Conta quantos dias de treinamento o participante tem presença marcada. */
-function getAttendanceSummary(participant, training) {
-  const totalDates = Array.isArray(training?.dates)
-    ? training.dates.filter((item) => item?.date).length
-    : 0;
+/** Extrai a data (yyyy-MM-dd, fuso local) de um timestamp de submissão da prova. */
+function getSubmissionDayKey(submittedAt) {
+  if (!submittedAt) return "";
+  const parsed = new Date(submittedAt);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return format(parsed, "yyyy-MM-dd");
+}
+
+/**
+ * Verifica se o participante tem presença assinada especificamente no dia em
+ * que respondeu a prova (não no treinamento como um todo).
+ */
+function getAttendanceOnDay(participant, dayKey) {
+  if (!dayKey) return { dayKey, found: false, present: false };
   const records = Array.isArray(participant?.attendance_records)
     ? participant.attendance_records
     : [];
-  const presentCount = records.filter(isPresentAttendanceRecord).length;
-  return { presentCount, totalDates };
+  const record = records.find((r) => String(r?.date || "").slice(0, 10) === dayKey);
+  if (!record) return { dayKey, found: false, present: false };
+  return { dayKey, found: true, present: isPresentAttendanceRecord(record) };
 }
 
-export default function TrainingExamManager({ trainingId, trainingTitle, training }) {
+/** Formata uma chave "yyyy-MM-dd" para exibição (dd/MM/yyyy). */
+function formatDayKey(dayKey) {
+  if (!dayKey) return "-";
+  const [year, month, day] = dayKey.split("-");
+  if (!year || !month || !day) return dayKey;
+  return `${day}/${month}/${year}`;
+}
+
+export default function TrainingExamManager({ trainingId, trainingTitle }) {
   const qc = useQueryClient();
 
   const [expandedQuestions, setExpandedQuestions] = useState(new Set());
@@ -427,6 +445,7 @@ export default function TrainingExamManager({ trainingId, trainingTitle, trainin
     // Enrolled participants merged with their submission
     const withStatus = enrolledParticipants.map((p) => {
       const sub = submissionByParticipant.get(p.id);
+      const examDayKey = sub ? getSubmissionDayKey(sub.submitted_at) : "";
       return {
         id: p.id,
         name: p.professional_name || "—",
@@ -436,7 +455,7 @@ export default function TrainingExamManager({ trainingId, trainingTitle, trainin
         status: sub ? (sub.passed ? "aprovado" : "reprovado") : "pendente",
         percentage: sub ? Math.round(Number(sub.percentage || 0)) : null,
         submittedAt: sub?.submitted_at || null,
-        attendance: getAttendanceSummary(p, training),
+        attendance: sub ? getAttendanceOnDay(p, examDayKey) : null,
       };
     });
     // Also add anonymous submissions (no training_participant_id) — sem
@@ -454,7 +473,7 @@ export default function TrainingExamManager({ trainingId, trainingTitle, trainin
       attendance: null,
     }));
     return [...withStatus, ...anonRows];
-  }, [enrolledParticipants, submissions, resultsExamId, training]);
+  }, [enrolledParticipants, submissions, resultsExamId]);
 
   const filteredParticipants = useMemo(() => {
     const q = searchSub.trim().toLowerCase();
@@ -477,7 +496,8 @@ export default function TrainingExamManager({ trainingId, trainingTitle, trainin
         return sortDir === "asc" ? valA - valB : valB - valA;
       }
       if (sortCol === "attendance") {
-        valA = a.attendance?.presentCount ?? -1; valB = b.attendance?.presentCount ?? -1;
+        const rank = (att) => (!att || !att.found ? -1 : att.present ? 1 : 0);
+        valA = rank(a.attendance); valB = rank(b.attendance);
         return sortDir === "asc" ? valA - valB : valB - valA;
       }
       return 0;
@@ -487,9 +507,9 @@ export default function TrainingExamManager({ trainingId, trainingTitle, trainin
   const pendingCount  = allParticipantsWithStatus.filter((p) => p.status === "pendente").length;
   const approvedCount = allParticipantsWithStatus.filter((p) => p.status === "aprovado").length;
   const rejectedCount = allParticipantsWithStatus.filter((p) => p.status === "reprovado").length;
-  // Responderam a prova mas não têm nenhuma presença registrada no treinamento.
+  // Responderam a prova mas não têm presença assinada no dia em que fizeram a prova.
   const noAttendanceCount = allParticipantsWithStatus.filter(
-    (p) => p.submission && p.attendance && p.attendance.presentCount === 0
+    (p) => p.submission && p.attendance && !p.attendance.present
   ).length;
 
   // Detailed per-question report
@@ -535,12 +555,18 @@ export default function TrainingExamManager({ trainingId, trainingTitle, trainin
 
   const exportCSV = () => {
     const rows = [
-      ["Nome","Município","GVE","Nota (%)","Resultado","Presença","Data"],
+      ["Nome","Município","GVE","Nota (%)","Resultado","Presença no dia da prova","Data"],
       ...allParticipantsWithStatus.map((p) => [
         p.name, p.municipality, p.gve,
         p.percentage !== null ? p.percentage : "",
         p.status === "aprovado" ? "Aprovado" : p.status === "reprovado" ? "Reprovado" : "Pendente",
-        p.attendance ? `${p.attendance.presentCount}/${p.attendance.totalDates}` : "—",
+        !p.attendance
+          ? "—"
+          : !p.attendance.found
+          ? "Sem registro nessa data"
+          : p.attendance.present
+          ? "Assinou"
+          : "Não assinou",
         p.submittedAt ? format(new Date(p.submittedAt),"dd/MM/yyyy HH:mm") : "",
       ]),
     ];
@@ -1045,9 +1071,9 @@ export default function TrainingExamManager({ trainingId, trainingTitle, trainin
                                 {noAttendanceCount > 0 && (
                                   <Badge
                                     className="bg-red-100 text-red-700 text-xs gap-1"
-                                    title="Responderam a prova mas não têm nenhuma presença registrada"
+                                    title="Responderam a prova mas não assinaram presença no dia em que fizeram a prova"
                                   >
-                                    <Users className="h-3 w-3" />{noAttendanceCount} sem presença
+                                    <Users className="h-3 w-3" />{noAttendanceCount} sem presença no dia
                                   </Badge>
                                 )}
                               </div>
@@ -1136,20 +1162,25 @@ export default function TrainingExamManager({ trainingId, trainingTitle, trainin
                                         {p.attendance ? (
                                           <Badge
                                             className={
-                                              p.attendance.presentCount === 0
-                                                ? "bg-red-100 text-red-700"
-                                                : p.attendance.totalDates > 0 &&
-                                                  p.attendance.presentCount < p.attendance.totalDates
-                                                ? "bg-amber-100 text-amber-700"
-                                                : "bg-green-100 text-green-700"
+                                              !p.attendance.found
+                                                ? "bg-slate-100 text-slate-500"
+                                                : p.attendance.present
+                                                ? "bg-green-100 text-green-700"
+                                                : "bg-red-100 text-red-700"
                                             }
                                             title={
-                                              p.attendance.presentCount === 0
-                                                ? "Respondeu a prova, mas não tem nenhuma presença registrada"
-                                                : undefined
+                                              !p.attendance.found
+                                                ? `Sem registro de presença em ${formatDayKey(p.attendance.dayKey)}`
+                                                : p.attendance.present
+                                                ? `Presença assinada em ${formatDayKey(p.attendance.dayKey)}`
+                                                : `Respondeu a prova em ${formatDayKey(p.attendance.dayKey)}, mas não assinou presença nesse dia`
                                             }
                                           >
-                                            {p.attendance.presentCount}/{p.attendance.totalDates || "—"}
+                                            {!p.attendance.found
+                                              ? "Sem registro"
+                                              : p.attendance.present
+                                              ? "Assinou"
+                                              : "Não assinou"}
                                           </Badge>
                                         ) : (
                                           <span className="text-slate-400 text-xs">—</span>
