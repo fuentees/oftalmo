@@ -66,7 +66,25 @@ function StatCard({ label, value, sub, color = "slate" }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-export default function TrainingExamManager({ trainingId, trainingTitle }) {
+const isPresentAttendanceRecord = (record) => {
+  if (!record || typeof record !== "object") return false;
+  const status = String(record.status || "").trim().toLowerCase();
+  return status === "presente";
+};
+
+/** Conta quantos dias de treinamento o participante tem presença marcada. */
+function getAttendanceSummary(participant, training) {
+  const totalDates = Array.isArray(training?.dates)
+    ? training.dates.filter((item) => item?.date).length
+    : 0;
+  const records = Array.isArray(participant?.attendance_records)
+    ? participant.attendance_records
+    : [];
+  const presentCount = records.filter(isPresentAttendanceRecord).length;
+  return { presentCount, totalDates };
+}
+
+export default function TrainingExamManager({ trainingId, trainingTitle, training }) {
   const qc = useQueryClient();
 
   const [expandedQuestions, setExpandedQuestions] = useState(new Set());
@@ -418,9 +436,11 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
         status: sub ? (sub.passed ? "aprovado" : "reprovado") : "pendente",
         percentage: sub ? Math.round(Number(sub.percentage || 0)) : null,
         submittedAt: sub?.submitted_at || null,
+        attendance: getAttendanceSummary(p, training),
       };
     });
-    // Also add anonymous submissions (no training_participant_id)
+    // Also add anonymous submissions (no training_participant_id) — sem
+    // vínculo com um cadastro de participante, então não há presença a checar.
     const anonSubs = submissions.filter((s) => !s.training_participant_id);
     const anonRows = anonSubs.map((s) => ({
       id: s.id,
@@ -431,9 +451,10 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
       status: s.passed ? "aprovado" : "reprovado",
       percentage: Math.round(Number(s.percentage || 0)),
       submittedAt: s.submitted_at || null,
+      attendance: null,
     }));
     return [...withStatus, ...anonRows];
-  }, [enrolledParticipants, submissions, resultsExamId]);
+  }, [enrolledParticipants, submissions, resultsExamId, training]);
 
   const filteredParticipants = useMemo(() => {
     const q = searchSub.trim().toLowerCase();
@@ -455,6 +476,10 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
         valA = order[a.status] ?? 3; valB = order[b.status] ?? 3;
         return sortDir === "asc" ? valA - valB : valB - valA;
       }
+      if (sortCol === "attendance") {
+        valA = a.attendance?.presentCount ?? -1; valB = b.attendance?.presentCount ?? -1;
+        return sortDir === "asc" ? valA - valB : valB - valA;
+      }
       return 0;
     });
   }, [allParticipantsWithStatus, searchSub, sortCol, sortDir]);
@@ -462,6 +487,10 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
   const pendingCount  = allParticipantsWithStatus.filter((p) => p.status === "pendente").length;
   const approvedCount = allParticipantsWithStatus.filter((p) => p.status === "aprovado").length;
   const rejectedCount = allParticipantsWithStatus.filter((p) => p.status === "reprovado").length;
+  // Responderam a prova mas não têm nenhuma presença registrada no treinamento.
+  const noAttendanceCount = allParticipantsWithStatus.filter(
+    (p) => p.submission && p.attendance && p.attendance.presentCount === 0
+  ).length;
 
   // Detailed per-question report
   const questionReport = useMemo(() => {
@@ -506,11 +535,12 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
 
   const exportCSV = () => {
     const rows = [
-      ["Nome","Município","GVE","Nota (%)","Resultado","Data"],
+      ["Nome","Município","GVE","Nota (%)","Resultado","Presença","Data"],
       ...allParticipantsWithStatus.map((p) => [
         p.name, p.municipality, p.gve,
         p.percentage !== null ? p.percentage : "",
         p.status === "aprovado" ? "Aprovado" : p.status === "reprovado" ? "Reprovado" : "Pendente",
+        p.attendance ? `${p.attendance.presentCount}/${p.attendance.totalDates}` : "—",
         p.submittedAt ? format(new Date(p.submittedAt),"dd/MM/yyyy HH:mm") : "",
       ]),
     ];
@@ -1012,6 +1042,14 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                                 <Badge className="bg-amber-100 text-amber-700 text-xs gap-1">
                                   <Clock className="h-3 w-3" />{pendingCount} pendente{pendingCount !== 1 ? "s" : ""}
                                 </Badge>
+                                {noAttendanceCount > 0 && (
+                                  <Badge
+                                    className="bg-red-100 text-red-700 text-xs gap-1"
+                                    title="Responderam a prova mas não têm nenhuma presença registrada"
+                                  >
+                                    <Users className="h-3 w-3" />{noAttendanceCount} sem presença
+                                  </Badge>
+                                )}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1038,6 +1076,7 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                                     { col: "gve",          label: "GVE",           cls: "text-left hidden md:table-cell" },
                                     { col: "percentage",   label: "Nota",          cls: "text-center" },
                                     { col: "status",       label: "Resultado",     cls: "text-center" },
+                                    { col: "attendance",   label: "Presença",      cls: "text-center" },
                                   ].map(({ col, label, cls }) => (
                                     <TableHead key={col}
                                       className={`font-semibold text-xs cursor-pointer select-none hover:bg-slate-100 transition-colors ${cls}`}
@@ -1060,7 +1099,7 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                               <TableBody>
                                 {filteredParticipants.length === 0 ? (
                                   <TableRow>
-                                    <TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">
+                                    <TableCell colSpan={7} className="py-8 text-center text-slate-400 text-sm">
                                       Nenhum participante encontrado.
                                     </TableCell>
                                   </TableRow>
@@ -1092,6 +1131,29 @@ export default function TrainingExamManager({ trainingId, trainingTitle }) {
                                             : p.status === "reprovado" ? "Reprovado"
                                             : "Pendente"}
                                         </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        {p.attendance ? (
+                                          <Badge
+                                            className={
+                                              p.attendance.presentCount === 0
+                                                ? "bg-red-100 text-red-700"
+                                                : p.attendance.totalDates > 0 &&
+                                                  p.attendance.presentCount < p.attendance.totalDates
+                                                ? "bg-amber-100 text-amber-700"
+                                                : "bg-green-100 text-green-700"
+                                            }
+                                            title={
+                                              p.attendance.presentCount === 0
+                                                ? "Respondeu a prova, mas não tem nenhuma presença registrada"
+                                                : undefined
+                                            }
+                                          >
+                                            {p.attendance.presentCount}/{p.attendance.totalDates || "—"}
+                                          </Badge>
+                                        ) : (
+                                          <span className="text-slate-400 text-xs">—</span>
+                                        )}
                                       </TableCell>
                                       <TableCell className="text-right text-xs text-slate-400 hidden lg:table-cell">
                                         {p.submittedAt ? format(new Date(p.submittedAt), "dd/MM/yyyy HH:mm") : "—"}
