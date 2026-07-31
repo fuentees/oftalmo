@@ -754,21 +754,31 @@ export default function TrainingDetails({
         groups.set(gve, {
           gve,
           count: 0,
-          municipalities: new Set(),
+          // Chave normalizada (sem acento/case/espaços duplicados) → contador,
+          // para não tratar "Franco da Rocha" e "franco  da rocha" como
+          // municípios diferentes só por causa de digitação inconsistente.
+          municipalityCounts: new Map(),
         });
       }
       const entry = groups.get(gve);
       entry.count += 1;
       if (municipality) {
-        entry.municipalities.add(municipality);
+        const key = normalizeComparableText(municipality).replace(/\s+/g, " ");
+        const existing = entry.municipalityCounts.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          entry.municipalityCounts.set(key, { label: municipality, count: 1 });
+        }
       }
     });
     return Array.from(groups.values())
       .map((item) => ({
         ...item,
-        municipalitiesList: Array.from(item.municipalities).sort((a, b) =>
-          a.localeCompare(b, "pt-BR", { sensitivity: "base" })
-        ),
+        municipalitiesList: Array.from(item.municipalityCounts.values()).sort((a, b) => {
+          if (b.count !== a.count) return b.count - a.count;
+          return a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" });
+        }),
       }))
       .sort((a, b) => {
         if (b.count !== a.count) return b.count - a.count;
@@ -987,7 +997,9 @@ export default function TrainingDetails({
         ? approvedParticipantDistributionByGve
             .map((item) => {
               const municipalities = item.municipalitiesList.length
-                ? ` – municípios ${item.municipalitiesList.join(", ")}`
+                ? ` – ${item.municipalitiesList
+                    .map((m) => `${m.count} de ${m.label}`)
+                    .join(", ")}`
                 : "";
               return `<li>${item.count} ${pluralizeProfessionals(
                 item.count
