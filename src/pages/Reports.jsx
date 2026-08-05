@@ -177,13 +177,25 @@ export default function Reports() {
 
   const dateRange = getDateRange();
 
-  // === Relatório de Atividades (CVE) ===
   const TRAINING_TYPE_LABELS = {
     teorico: "Teórico",
     pratico: "Prático",
     teorico_pratico: "Teórico e Prático",
     repadronizacao: "Repadronização",
   };
+
+  const EVENT_TYPE_LABELS = {
+    viagem: "Viagem",
+    trabalho_campo: "Trabalho de Campo",
+    treinamento: "Treinamento",
+    supervisao: "Supervisão",
+    ferias: "Férias",
+    reuniao: "Reunião",
+    outro: "Outro",
+  };
+  const getEventTypeLabel = (type) => EVENT_TYPE_LABELS[type] || type || "Sem tipo";
+
+  // === Relatório de Atividades (CVE) ===
 
   const getTrainingSortedDates = (training) =>
     getTrainingDateItems(training)
@@ -431,14 +443,31 @@ export default function Reports() {
         }
         return true;
       }),
-     
+
     [participants, sectorFilter, periodFilter, customStartDate, customEndDate]
+  );
+
+  // Igual a filteredParticipants, mas sem o filtro de setor — usado em
+  // gráficos que já são "por setor" (aplicar o filtro de setor ali reduziria
+  // a comparação a uma única barra).
+  const periodFilteredParticipants = useMemo(
+    () =>
+      participants.filter((p) => {
+        if (dateRange.start && dateRange.end && p.enrollment_date) {
+          const enrollDate = new Date(p.enrollment_date);
+          if (!isWithinInterval(enrollDate, { start: dateRange.start, end: dateRange.end }))
+            return false;
+        }
+        return true;
+      }),
+
+    [participants, periodFilter, customStartDate, customEndDate]
   );
 
   const filteredTrainings = useMemo(
     () =>
       trainings.filter((t) => {
-        if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
+        if (categoryFilter !== "all" && String(t.type || "") !== categoryFilter) return false;
         if (
           dateRange.start &&
           dateRange.end &&
@@ -489,12 +518,12 @@ export default function Reports() {
       const sector = prof.sector || "Sem setor";
       if (!acc[sector]) acc[sector] = { sector, total: 0, trained: 0, approved: 0 };
       acc[sector].total++;
-      const profTrainings = participants.filter((p) => p.professional_id === prof.id);
+      const profTrainings = periodFilteredParticipants.filter((p) => p.professional_id === prof.id);
       if (profTrainings.length > 0) acc[sector].trained++;
       if (profTrainings.some((p) => p.approved)) acc[sector].approved++;
     });
     return Object.values(acc);
-  }, [professionals, participants]);
+  }, [professionals, periodFilteredParticipants]);
 
   const complianceData = useMemo(
     () =>
@@ -645,13 +674,16 @@ export default function Reports() {
       acc[type] = (acc[type] || 0) + 1;
     });
     return Object.entries(acc)
-      .map(([type, count]) => ({ type, count }))
+      .map(([type, count]) => ({ type, label: getEventTypeLabel(type), count }))
       .sort((a, b) => b.count - a.count);
   }, [events]);
 
   // === Misc ===
   const sectors = [...new Set(professionals.map((p) => p.sector).filter(Boolean))];
-  const categories = ["NR", "tecnico", "comportamental", "integracao", "reciclagem", "outros"];
+  // Tipos de treinamento realmente usados no cadastro (não existe campo
+  // "categoria" preenchível no formulário — o filtro antigo comparava com uma
+  // lista fixa que nunca batia com nenhum dado real).
+  const categories = [...new Set(trainings.map((t) => String(t.type || "").trim()).filter(Boolean))];
 
   const filteredMaterials = useMemo(() => {
     const q = materialSearch.trim().toLowerCase();
@@ -1125,16 +1157,16 @@ export default function Reports() {
             </div>
 
             <div>
-              <Label>Categoria de Treinamento</Label>
+              <Label>Tipo de Treinamento</Label>
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                   {categories.map((cat) => (
                     <SelectItem key={cat} value={cat}>
-                      {cat.toUpperCase()}
+                      {TRAINING_TYPE_LABELS[cat] || cat}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1258,7 +1290,7 @@ export default function Reports() {
                 inscritos: 0,
               };
             });
-            participants.forEach((p) => {
+            filteredParticipants.forEach((p) => {
               if (!p?.enrollment_date) return;
               const match = String(p.enrollment_date).match(/^(\d{4})-(\d{2})/);
               if (!match) return;
@@ -1428,7 +1460,7 @@ export default function Reports() {
                 inscritos: 0,
               };
             });
-            participants.forEach((p) => {
+            filteredParticipants.forEach((p) => {
               if (!p?.enrollment_date) return;
               const match = String(p.enrollment_date).match(/^(\d{4})-(\d{2})/);
               if (!match) return;
@@ -1438,7 +1470,7 @@ export default function Reports() {
               entry.inscritos += 1;
               if (p.approved) entry.aprovados += 1;
             });
-            trainings.forEach((t) => {
+            filteredTrainings.forEach((t) => {
               if (!Array.isArray(t.dates) || t.dates.length === 0) return;
               const d = toValidDate(t.dates[0]?.date);
               if (!d) return;
@@ -1455,7 +1487,7 @@ export default function Reports() {
               cancelado: "Cancelado",
             };
             const statusCounts = {};
-            trainings.forEach((t) => {
+            filteredTrainings.forEach((t) => {
               const s = getEffectiveTrainingStatus(t);
               statusCounts[s] = (statusCounts[s] || 0) + 1;
             });
@@ -1468,7 +1500,7 @@ export default function Reports() {
               .sort((a, b) => b.count - a.count);
 
             const munCounts = {};
-            participants.forEach((p) => {
+            filteredParticipants.forEach((p) => {
               if (!p.approved) return;
               const mun = String(p?.municipality || "").trim();
               if (!mun) return;
@@ -2074,7 +2106,7 @@ export default function Reports() {
                               )}
                               {e.type && (
                                 <Badge className="mt-1 text-xs bg-slate-100 text-slate-600">
-                                  {e.type}
+                                  {getEventTypeLabel(e.type)}
                                 </Badge>
                               )}
                             </div>
@@ -2124,7 +2156,7 @@ export default function Reports() {
                           <Pie
                             data={eventsByType}
                             dataKey="count"
-                            nameKey="type"
+                            nameKey="label"
                             cx="50%"
                             cy="50%"
                             outerRadius={70}
@@ -2147,7 +2179,7 @@ export default function Reports() {
                               className="h-3 w-3 rounded-full shrink-0"
                               style={{ backgroundColor: COLORS[i % COLORS.length] }}
                             />
-                            <span className="text-slate-700 flex-1">{item.type}</span>
+                            <span className="text-slate-700 flex-1">{item.label}</span>
                             <Badge className="bg-slate-100 text-slate-700">{item.count}</Badge>
                           </li>
                         ))}
