@@ -331,6 +331,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     status: "agendado",
     validity_months: "",
     notes: "",
+    meta_pes: "",
+    disease_or_event: "",
+    action_nature: "",
+    target_audience: "",
   });
   const [isOnlineTraining, setIsOnlineTraining] = useState(false);
   const [dateMode, setDateMode] = useState("range");
@@ -430,6 +434,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             ? ""
             : String(sourceTraining.validity_months),
         notes: sourceTraining.notes || "",
+        meta_pes: sourceTraining.meta_pes || "",
+        disease_or_event: sourceTraining.disease_or_event || "",
+        action_nature: sourceTraining.action_nature || "",
+        target_audience: sourceTraining.target_audience || "",
       });
       setIsOnlineTraining(Boolean(resolvedOnlineLink));
       setDateMode(scheduleFromTraining.mode);
@@ -466,6 +474,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       status: "agendado",
       validity_months: "",
       notes: "",
+      meta_pes: "",
+      disease_or_event: "",
+      action_nature: "",
+      target_audience: "",
     }));
     setInitializedTrainingKey("__new__");
   }, [
@@ -1083,6 +1095,51 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
           rows={2}
           className="text-sm"
         />
+      </div>
+
+      <div className="p-3 border rounded-lg bg-slate-50 space-y-3">
+        <Label className="text-sm">Dados para o Relatório de Atividades (CVE)</Label>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="meta_pes" className="text-xs">Meta PES Relacionada</Label>
+            <Input
+              id="meta_pes"
+              value={formData.meta_pes}
+              onChange={(e) => handleChange("meta_pes", e.target.value)}
+              placeholder="Ex: Meta 3.2"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="disease_or_event" className="text-xs">Doença/Agravo/Evento</Label>
+            <Input
+              id="disease_or_event"
+              value={formData.disease_or_event}
+              onChange={(e) => handleChange("disease_or_event", e.target.value)}
+              placeholder="Ex: Tracoma"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="action_nature" className="text-xs">Natureza da Ação</Label>
+            <Input
+              id="action_nature"
+              value={formData.action_nature}
+              onChange={(e) => handleChange("action_nature", e.target.value)}
+              placeholder="Ex: Capacitação"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="target_audience" className="text-xs">Público-Alvo</Label>
+            <Input
+              id="target_audience"
+              value={formData.target_audience}
+              onChange={(e) => handleChange("target_audience", e.target.value)}
+              placeholder="Ex: Profissionais de saúde do SUS"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-slate-500">
+          Usados para preencher automaticamente o Relatório de Atividades exportado na página de Relatórios.
+        </p>
       </div>
 
       <div className="space-y-2">

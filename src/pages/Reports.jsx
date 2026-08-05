@@ -33,8 +33,10 @@ import {
   Loader2,
   Star,
   RefreshCw,
+  FileSpreadsheet,
 } from "lucide-react";
-import { getEffectiveTrainingStatus } from "@/lib/statusRules";
+import { getEffectiveTrainingStatus, getTrainingDateItems } from "@/lib/statusRules";
+import { parseDateSafe } from "@/lib/date";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +102,10 @@ export default function Reports() {
   const [customEndDate, setCustomEndDate] = useState("");
   const [materialSearch, setMaterialSearch] = useState("");
   const [sendingReminders, setSendingReminders] = useState(false);
+  const [activityReportYear, setActivityReportYear] = useState(
+    String(new Date().getFullYear())
+  );
+  const [exportingActivityReport, setExportingActivityReport] = useState(false);
 
   const toValidDate = (value) => {
     if (!value) return null;
@@ -170,6 +176,210 @@ export default function Reports() {
   };
 
   const dateRange = getDateRange();
+
+  // === Relatório de Atividades (CVE) ===
+  const TRAINING_TYPE_LABELS = {
+    teorico: "Teórico",
+    pratico: "Prático",
+    teorico_pratico: "Teórico e Prático",
+    repadronizacao: "Repadronização",
+  };
+
+  const getTrainingSortedDates = (training) =>
+    getTrainingDateItems(training)
+      .map((item) => parseDateSafe(item?.date))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+  const activityReportYearOptions = useMemo(() => {
+    const years = new Set([new Date().getFullYear()]);
+    trainings.forEach((training) => {
+      const dates = getTrainingSortedDates(training);
+      if (dates.length > 0) years.add(dates[0].getFullYear());
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [trainings]);
+
+  const activityReportRows = useMemo(() => {
+    const rows = trainings
+      .map((training) => {
+        const sortedDates = getTrainingSortedDates(training);
+        if (sortedDates.length === 0) return null;
+        const firstDate = sortedDates[0];
+        if (String(firstDate.getFullYear()) !== activityReportYear) return null;
+        const lastDate = sortedDates[sortedDates.length - 1];
+
+        const monthLabel = format(firstDate, "MMMM", { locale: ptBR });
+        const capitalizedMonth =
+          monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+
+        const dateLabel =
+          format(firstDate, "dd/MM/yyyy") === format(lastDate, "dd/MM/yyyy")
+            ? format(firstDate, "dd/MM/yyyy")
+            : `${format(firstDate, "dd/MM/yyyy")} a ${format(lastDate, "dd/MM/yyyy")}`;
+
+        const capacitatedCount = participants.filter((p) => {
+          if (String(p?.training_id || "") !== String(training.id)) return false;
+          if (String(p?.enrollment_status || "").toLowerCase().startsWith("cancel")) {
+            return false;
+          }
+          return p?.approved === true || p?.certificate_issued === true;
+        }).length;
+
+        const typeKey = String(training?.type || "").trim();
+
+        return {
+          sortDate: firstDate.getTime(),
+          metaPes: String(training?.meta_pes || "").trim(),
+          diseaseOrEvent: String(training?.disease_or_event || "").trim(),
+          month: capitalizedMonth,
+          actionNature: String(training?.action_nature || "").trim(),
+          theme: String(training?.title || "").trim(),
+          promotedByGve: String(training?.coordinator || "").trim() ? "Sim" : "Não",
+          type: TRAINING_TYPE_LABELS[typeKey] || training?.type || "",
+          dateLabel,
+          targetAudience: String(training?.target_audience || "").trim(),
+          capacitatedCount,
+        };
+      })
+      .filter(Boolean);
+
+    return rows.sort((a, b) => a.sortDate - b.sortDate);
+  }, [trainings, participants, activityReportYear]);
+
+  const handleExportActivityReport = async () => {
+    setExportingActivityReport(true);
+    try {
+      const ExcelJSModule = await import("exceljs");
+      const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("Atividades");
+
+      const headers = [
+        "Nº",
+        "Meta PES Relacionada",
+        "Doença/Agravo/Evento",
+        "Mês",
+        "Natureza da Ação",
+        "Tema do Evento/Descrição da Atividade",
+        "Eventos - Promovido pela Divisão/GVE?",
+        "Eventos - Tipo",
+        "Eventos - Data",
+        "Eventos - Público-Alvo",
+        "Eventos - Nº de Profissionais do SUS Capacitados",
+      ];
+      const colCount = headers.length;
+
+      sheet.columns = [
+        { width: 5 },
+        { width: 20 },
+        { width: 22 },
+        { width: 12 },
+        { width: 18 },
+        { width: 42 },
+        { width: 18 },
+        { width: 16 },
+        { width: 18 },
+        { width: 24 },
+        { width: 22 },
+      ];
+
+      sheet.mergeCells(1, 1, 1, colCount);
+      const titleCell = sheet.getCell(1, 1);
+      titleCell.value = `RELATÓRIO DE ATIVIDADES ${activityReportYear} - CENTRO DE VIGILÂNCIA EPIDEMIOLÓGICA`;
+      titleCell.font = { bold: true, size: 14 };
+      titleCell.alignment = { vertical: "middle" };
+      sheet.getRow(1).height = 28;
+
+      const areaLabelCell = sheet.getCell(2, 1);
+      areaLabelCell.value = "Área:";
+      areaLabelCell.font = { bold: true };
+      sheet.mergeCells(2, 2, 2, colCount);
+      const areaValueCell = sheet.getCell(2, 2);
+      areaValueCell.value = "Centro de Oftalmologia Sanitária";
+      areaValueCell.font = { bold: true };
+      areaValueCell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFFFF59D" },
+      };
+      sheet.getRow(2).height = 20;
+
+      const headerRowIndex = 4;
+      const headerRow = sheet.getRow(headerRowIndex);
+      headers.forEach((label, index) => {
+        const cell = headerRow.getCell(index + 1);
+        cell.value = label;
+        cell.font = { bold: true, color: { argb: "FF1E293B" } };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFB7C9D6" },
+        };
+        cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FF94A3B8" } },
+          left: { style: "thin", color: { argb: "FF94A3B8" } },
+          bottom: { style: "thin", color: { argb: "FF94A3B8" } },
+          right: { style: "thin", color: { argb: "FF94A3B8" } },
+        };
+      });
+      headerRow.height = 34;
+      sheet.autoFilter = {
+        from: { row: headerRowIndex, column: 1 },
+        to: { row: headerRowIndex, column: colCount },
+      };
+      sheet.views = [{ state: "frozen", ySplit: headerRowIndex }];
+
+      activityReportRows.forEach((row, index) => {
+        const excelRow = sheet.getRow(headerRowIndex + 1 + index);
+        const values = [
+          index + 1,
+          row.metaPes,
+          row.diseaseOrEvent,
+          row.month,
+          row.actionNature,
+          row.theme,
+          row.promotedByGve,
+          row.type,
+          row.dateLabel,
+          row.targetAudience,
+          row.capacitatedCount,
+        ];
+        values.forEach((value, colIndex) => {
+          const cell = excelRow.getCell(colIndex + 1);
+          cell.value = value;
+          cell.alignment = { vertical: "middle", wrapText: colIndex === 5 };
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFE2E8F0" } },
+            left: { style: "thin", color: { argb: "FFE2E8F0" } },
+            bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+            right: { style: "thin", color: { argb: "FFE2E8F0" } },
+          };
+          if (index % 2 === 1) {
+            cell.fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFF1F5F9" },
+            };
+          }
+        });
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `relatorio_atividades_cve_${activityReportYear}.xlsx`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setExportingActivityReport(false);
+    }
+  };
 
   // === Filtered training data ===
   const filteredParticipants = useMemo(
@@ -940,6 +1150,7 @@ export default function Reports() {
           <TabsTrigger value="feedback">Feedback</TabsTrigger>
           <TabsTrigger value="estoque">Estoque</TabsTrigger>
           <TabsTrigger value="agenda">Agenda</TabsTrigger>
+          <TabsTrigger value="atividades">Relatório de Atividades (CVE)</TabsTrigger>
         </TabsList>
 
         {/* ===================== VISÃO GERAL ===================== */}
@@ -1909,6 +2120,98 @@ export default function Reports() {
               )}
             </>
           )}
+        </TabsContent>
+
+        <TabsContent value="atividades" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+                Relatório de Atividades (CVE)
+              </CardTitle>
+              <p className="text-sm text-slate-500">
+                Gera a planilha de atividades no modelo do Centro de Vigilância
+                Epidemiológica, uma linha por treinamento do ano selecionado.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="w-32">
+                  <Label className="text-xs">Ano</Label>
+                  <Select
+                    value={activityReportYear}
+                    onValueChange={setActivityReportYear}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activityReportYearOptions.map((year) => (
+                        <SelectItem key={year} value={String(year)}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={handleExportActivityReport}
+                  disabled={
+                    exportingActivityReport || activityReportRows.length === 0
+                  }
+                >
+                  {exportingActivityReport ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Exportar planilha (.xlsx)
+                </Button>
+              </div>
+
+              {activityReportRows.length === 0 ? (
+                <p className="text-sm text-slate-400 py-6 text-center">
+                  Nenhum treinamento com data em {activityReportYear}.
+                </p>
+              ) : (
+                <div className="border rounded-lg overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                        <th className="px-3 py-2">Mês</th>
+                        <th className="px-3 py-2">Tema do Evento</th>
+                        <th className="px-3 py-2">Tipo</th>
+                        <th className="px-3 py-2">Data</th>
+                        <th className="px-3 py-2">Promovido pela Divisão/GVE?</th>
+                        <th className="px-3 py-2 text-right">Capacitados</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {activityReportRows.map((row, index) => (
+                        <tr key={index}>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.month}</td>
+                          <td className="px-3 py-2">{row.theme}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.type}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.dateLabel}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.promotedByGve}</td>
+                          <td className="px-3 py-2 text-right">{row.capacitatedCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <p className="text-xs text-slate-500">
+                As colunas "Meta PES Relacionada", "Doença/Agravo/Evento",
+                "Natureza da Ação" e "Público-Alvo" saem em branco quando o
+                treinamento não tem esses dados preenchidos — edite o
+                treinamento e complete a seção "Dados para o Relatório de
+                Atividades (CVE)" para que a próxima exportação já venha
+                pronta.
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
