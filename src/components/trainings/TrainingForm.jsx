@@ -21,6 +21,11 @@ import {
 } from "@/components/ui/select";
 import { Loader2, X, Video, Plus, XCircle, Mic } from "lucide-react";
 import { format, addDays, addWeeks } from "date-fns";
+import {
+  ACTION_NATURE_OPTIONS,
+  EVENT_FORMAT_OPTIONS,
+  YES_NO_OPTIONS,
+} from "@/lib/activityReport";
 
 export default function TrainingForm({ training, onClose, professionals = [] }) {
   const buildDefaultRangeConfig = () => {
@@ -333,8 +338,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     notes: "",
     meta_pes: "",
     disease_or_event: "",
-    action_nature: "",
+    action_nature: ACTION_NATURE_OPTIONS[2],
     target_audience: "",
+    event_format: "Curso",
+    promoted_by_division: "Sim",
   });
   const [isOnlineTraining, setIsOnlineTraining] = useState(false);
   const [dateMode, setDateMode] = useState("range");
@@ -436,8 +443,12 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         notes: sourceTraining.notes || "",
         meta_pes: sourceTraining.meta_pes || "",
         disease_or_event: sourceTraining.disease_or_event || "",
-        action_nature: sourceTraining.action_nature || "",
+        action_nature:
+          ACTION_NATURE_OPTIONS.find((option) => option === sourceTraining.action_nature) ||
+          ACTION_NATURE_OPTIONS[2],
         target_audience: sourceTraining.target_audience || "",
+        event_format: sourceTraining.event_format || "Curso",
+        promoted_by_division: sourceTraining.promoted_by_division || "Sim",
       });
       setIsOnlineTraining(Boolean(resolvedOnlineLink));
       setDateMode(scheduleFromTraining.mode);
@@ -476,8 +487,10 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       notes: "",
       meta_pes: "",
       disease_or_event: "",
-      action_nature: "",
+      action_nature: ACTION_NATURE_OPTIONS[2],
       target_audience: "",
+      event_format: "Curso",
+      promoted_by_division: "Sim",
     }));
     setInitializedTrainingKey("__new__");
   }, [
@@ -1120,12 +1133,21 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
           </div>
           <div className="space-y-1">
             <Label htmlFor="action_nature" className="text-xs">Natureza da Ação</Label>
-            <Input
-              id="action_nature"
+            <Select
               value={formData.action_nature}
-              onChange={(e) => handleChange("action_nature", e.target.value)}
-              placeholder="Ex: Capacitação"
-            />
+              onValueChange={(v) => handleChange("action_nature", v)}
+            >
+              <SelectTrigger id="action_nature">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ACTION_NATURE_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label htmlFor="target_audience" className="text-xs">Público-Alvo</Label>
@@ -1135,6 +1157,44 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
               onChange={(e) => handleChange("target_audience", e.target.value)}
               placeholder="Ex: Profissionais de saúde do SUS"
             />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="event_format" className="text-xs">Eventos - Tipo</Label>
+            <Select
+              value={formData.event_format}
+              onValueChange={(v) => handleChange("event_format", v)}
+            >
+              <SelectTrigger id="event_format">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EVENT_FORMAT_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="promoted_by_division" className="text-xs">
+              Promovido pela Divisão/GVE?
+            </Label>
+            <Select
+              value={formData.promoted_by_division}
+              onValueChange={(v) => handleChange("promoted_by_division", v)}
+            >
+              <SelectTrigger id="promoted_by_division">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {YES_NO_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <p className="text-xs text-slate-500">

@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { getEffectiveTrainingStatus, getTrainingDateItems } from "@/lib/statusRules";
 import { parseDateSafe } from "@/lib/date";
+import { ACTION_NATURE_OPTIONS, getActivityReportQuarterAlert } from "@/lib/activityReport";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -106,6 +107,10 @@ export default function Reports() {
     String(new Date().getFullYear())
   );
   const [exportingActivityReport, setExportingActivityReport] = useState(false);
+  const activityReportQuarterAlert = useMemo(() => getActivityReportQuarterAlert(), []);
+  const [activeTab, setActiveTab] = useState(
+    () => new URLSearchParams(window.location.search).get("tab") || "geral"
+  );
 
   const toValidDate = (value) => {
     if (!value) return null;
@@ -220,7 +225,7 @@ export default function Reports() {
       if (dates.length > 0) years.add(dates[0].getFullYear());
     });
     events.forEach((event) => {
-      if (String(event?.type || "") !== "supervisao") return;
+      if (!event?.include_in_activity_report) return;
       const start = parseDateSafe(event?.start_date);
       if (!Number.isNaN(start.getTime())) years.add(start.getFullYear());
     });
@@ -244,17 +249,18 @@ export default function Reports() {
           return p?.approved === true || p?.certificate_issued === true;
         }).length;
 
-        const typeKey = String(training?.type || "").trim();
-
         return {
           sortDate: firstDate.getTime(),
           metaPes: String(training?.meta_pes || "").trim(),
           diseaseOrEvent: String(training?.disease_or_event || "").trim(),
           month: getMonthLabel(firstDate),
-          actionNature: String(training?.action_nature || "").trim(),
+          actionNature:
+            String(training?.action_nature || "").trim() || ACTION_NATURE_OPTIONS[2],
           theme: String(training?.title || "").trim(),
-          promotedByGve: String(training?.coordinator || "").trim() ? "Sim" : "Não",
-          type: TRAINING_TYPE_LABELS[typeKey] || training?.type || "",
+          promotedByGve:
+            String(training?.promoted_by_division || "").trim() ||
+            (String(training?.coordinator || "").trim() ? "Sim" : "Não"),
+          type: String(training?.event_format || "").trim() || "Curso",
           dateLabel: getDateRangeLabel(firstDate, lastDate),
           targetAudience: String(training?.target_audience || "").trim(),
           capacitatedCount,
@@ -262,12 +268,10 @@ export default function Reports() {
       })
       .filter(Boolean);
 
-    // Eventos de supervisão da Agenda também contam como atividade no
-    // relatório do CVE — sem campo próprio pra Meta PES/Doença/Público-Alvo,
-    // então saem em branco (mesmo tratamento dado aos treinamentos sem esses
-    // dados preenchidos).
-    const supervisionRows = events
-      .filter((event) => String(event?.type || "") === "supervisao")
+    // Qualquer evento da Agenda marcado com "Incluir no Relatório de
+    // Atividades (CVE)" entra como linha — não só supervisão.
+    const eventRows = events
+      .filter((event) => Boolean(event?.include_in_activity_report))
       .map((event) => {
         const firstDate = parseDateSafe(event?.start_date);
         if (Number.isNaN(firstDate.getTime())) return null;
@@ -280,21 +284,22 @@ export default function Reports() {
 
         return {
           sortDate: firstDate.getTime(),
-          metaPes: "",
-          diseaseOrEvent: "",
+          metaPes: String(event?.meta_pes || "").trim(),
+          diseaseOrEvent: String(event?.disease_or_event || "").trim(),
           month: getMonthLabel(firstDate),
-          actionNature: "Supervisão",
+          actionNature:
+            String(event?.action_nature || "").trim() || ACTION_NATURE_OPTIONS[1],
           theme: String(event?.title || "").trim(),
-          promotedByGve: linkedProfessionals.length > 0 ? "Sim" : "Não",
-          type: "Supervisão",
+          promotedByGve: String(event?.promoted_by_division || "").trim() || "Sim",
+          type: String(event?.event_format || "").trim() || "Reunião Técnica",
           dateLabel: getDateRangeLabel(firstDate, validLastDate),
-          targetAudience: "",
+          targetAudience: String(event?.target_audience || "").trim(),
           capacitatedCount: linkedProfessionals.length,
         };
       })
       .filter(Boolean);
 
-    return [...trainingRows, ...supervisionRows].sort((a, b) => a.sortDate - b.sortDate);
+    return [...trainingRows, ...eventRows].sort((a, b) => a.sortDate - b.sortDate);
   }, [trainings, events, participants, activityReportYear]);
 
   const handleExportActivityReport = async () => {
@@ -1211,7 +1216,7 @@ export default function Reports() {
         </div>
       )}
 
-      <Tabs defaultValue="geral" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="geral">Visão Geral</TabsTrigger>
           <TabsTrigger value="treinamentos">Treinamentos</TabsTrigger>
@@ -2193,6 +2198,22 @@ export default function Reports() {
         </TabsContent>
 
         <TabsContent value="atividades" className="space-y-6">
+          {activityReportQuarterAlert && (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800">
+                <strong>
+                  O {activityReportQuarterAlert.quarterLabel} de{" "}
+                  {activityReportQuarterAlert.year} ({activityReportQuarterAlert.monthsLabel})
+                  {" "}fecha em {activityReportQuarterAlert.daysRemaining === 0
+                    ? "hoje"
+                    : `${activityReportQuarterAlert.daysRemaining} dia(s)`}
+                </strong>
+                . Não esqueça de lançar esses dados no sistema oficial do CVE — a nossa
+                planilha já está pronta pra exportar logo abaixo.
+              </AlertDescription>
+            </Alert>
+          )}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -2201,8 +2222,9 @@ export default function Reports() {
               </CardTitle>
               <p className="text-sm text-slate-500">
                 Gera a planilha de atividades no modelo do Centro de Vigilância
-                Epidemiológica, uma linha por treinamento e por evento de
-                Supervisão (cadastrado na Agenda) do ano selecionado.
+                Epidemiológica: uma linha por treinamento, mais uma linha por
+                evento da Agenda marcado com "Incluir no Relatório de
+                Atividades (CVE)", do ano selecionado.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -2242,7 +2264,7 @@ export default function Reports() {
 
               {activityReportRows.length === 0 ? (
                 <p className="text-sm text-slate-400 py-6 text-center">
-                  Nenhum treinamento ou supervisão com data em {activityReportYear}.
+                  Nenhum treinamento ou evento marcado para o relatório com data em {activityReportYear}.
                 </p>
               ) : (
                 <div className="border rounded-lg overflow-x-auto">
@@ -2274,12 +2296,12 @@ export default function Reports() {
               )}
 
               <p className="text-xs text-slate-500">
-                As colunas "Meta PES Relacionada", "Doença/Agravo/Evento",
-                "Natureza da Ação" e "Público-Alvo" saem em branco quando o
-                treinamento não tem esses dados preenchidos — edite o
-                treinamento e complete a seção "Dados para o Relatório de
-                Atividades (CVE)" para que a próxima exportação já venha
-                pronta.
+                As colunas "Meta PES Relacionada", "Doença/Agravo/Evento" e
+                "Público-Alvo" saem em branco quando o treinamento ou evento
+                não tem esses dados preenchidos — complete a seção "Dados para
+                o Relatório de Atividades (CVE)" (no treinamento) ou marque
+                "Incluir no Relatório de Atividades (CVE)" (no evento da
+                Agenda) para que a próxima exportação já venha pronta.
               </p>
             </CardContent>
           </Card>

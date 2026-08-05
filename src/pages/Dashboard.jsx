@@ -10,6 +10,8 @@ import {
   getEventDateBounds,
 } from "@/lib/statusRules";
 import { extractTrainingIdFromEventNotes } from "@/lib/eventMetadata";
+import { getActivityReportQuarterAlert } from "@/lib/activityReport";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Package,
   GraduationCap,
@@ -38,6 +40,7 @@ import QueryError from "@/components/common/QueryError";
 
 export default function Dashboard() {
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
+  const activityReportQuarterAlert = useMemo(() => getActivityReportQuarterAlert(), []);
 
   const { data: materials = [], isLoading: loadingMaterials } = useQuery({
     queryKey: ["materials"],
@@ -498,6 +501,30 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {trainingsError && <QueryError message="Erro ao carregar dados dos treinamentos." onRetry={refetchTrainings} />}
+
+      {activityReportQuarterAlert && (
+        <Alert className="border-amber-200 bg-amber-50">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800 flex flex-wrap items-center justify-between gap-2">
+            <span>
+              <strong>
+                O {activityReportQuarterAlert.quarterLabel} de {activityReportQuarterAlert.year}
+              </strong>{" "}
+              fecha em{" "}
+              {activityReportQuarterAlert.daysRemaining === 0
+                ? "hoje"
+                : `${activityReportQuarterAlert.daysRemaining} dia(s)`}{" "}
+              — lembre de lançar os dados no sistema oficial do CVE.
+            </span>
+            <Link
+              to={createPageUrl("Reports?tab=atividades")}
+              className="text-xs font-medium text-amber-900 underline underline-offset-2 shrink-0"
+            >
+              Exportar planilha
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">

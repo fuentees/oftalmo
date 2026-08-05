@@ -17,6 +17,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Video, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import {
+  ACTION_NATURE_OPTIONS,
+  EVENT_FORMAT_OPTIONS,
+  YES_NO_OPTIONS,
+} from "@/lib/activityReport";
 
 export default function EventForm({ event, onClose, onSuccess, initialDate }) {
   const [formData, setFormData] = useState({
@@ -35,6 +40,13 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     status: "planejado",
     color: "#3b82f6",
     notes: "",
+    include_in_activity_report: false,
+    meta_pes: "",
+    disease_or_event: "",
+    action_nature: ACTION_NATURE_OPTIONS[1],
+    target_audience: "",
+    event_format: EVENT_FORMAT_OPTIONS[3],
+    promoted_by_division: "Sim",
   });
   const [repeatConfig, setRepeatConfig] = useState({
     enabled: false,
@@ -207,6 +219,17 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
         status: event.status || "planejado",
         color: event.color || "#3b82f6",
         notes: cleanNotes || "",
+        include_in_activity_report: Boolean(event.include_in_activity_report),
+        meta_pes: event.meta_pes || "",
+        disease_or_event: event.disease_or_event || "",
+        action_nature:
+          ACTION_NATURE_OPTIONS.find((option) => option === event.action_nature) ||
+          ACTION_NATURE_OPTIONS[1],
+        target_audience: event.target_audience || "",
+        event_format:
+          EVENT_FORMAT_OPTIONS.find((option) => option === event.event_format) ||
+          EVENT_FORMAT_OPTIONS[3],
+        promoted_by_division: event.promoted_by_division || "Sim",
       });
       setIsOnlineEvent(Boolean(link));
     }
@@ -701,6 +724,113 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             className="h-16"
           />
+        </div>
+
+        <div className="col-span-2 p-3 border rounded-lg bg-slate-50 space-y-3">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="include_in_activity_report"
+              checked={formData.include_in_activity_report}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, include_in_activity_report: Boolean(checked) })
+              }
+            />
+            <Label htmlFor="include_in_activity_report" className="text-sm">
+              Incluir no Relatório de Atividades (CVE)
+            </Label>
+          </div>
+
+          {formData.include_in_activity_report && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="meta_pes" className="text-xs">Meta PES Relacionada</Label>
+                <Input
+                  id="meta_pes"
+                  value={formData.meta_pes}
+                  onChange={(e) => setFormData({ ...formData, meta_pes: e.target.value })}
+                  placeholder="Ex: Meta 3.2"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="disease_or_event" className="text-xs">Doença/Agravo/Evento</Label>
+                <Input
+                  id="disease_or_event"
+                  value={formData.disease_or_event}
+                  onChange={(e) => setFormData({ ...formData, disease_or_event: e.target.value })}
+                  placeholder="Ex: Tracoma"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="action_nature" className="text-xs">Natureza da Ação</Label>
+                <Select
+                  value={formData.action_nature}
+                  onValueChange={(v) => setFormData({ ...formData, action_nature: v })}
+                >
+                  <SelectTrigger id="action_nature">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ACTION_NATURE_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="event_format" className="text-xs">Eventos - Tipo</Label>
+                <Select
+                  value={formData.event_format}
+                  onValueChange={(v) => setFormData({ ...formData, event_format: v })}
+                >
+                  <SelectTrigger id="event_format">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EVENT_FORMAT_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="target_audience" className="text-xs">Público-Alvo</Label>
+                <Input
+                  id="target_audience"
+                  value={formData.target_audience}
+                  onChange={(e) => setFormData({ ...formData, target_audience: e.target.value })}
+                  placeholder="Ex: Profissionais de saúde do SUS"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="promoted_by_division" className="text-xs">
+                  Promovido pela Divisão/GVE?
+                </Label>
+                <Select
+                  value={formData.promoted_by_division}
+                  onValueChange={(v) => setFormData({ ...formData, promoted_by_division: v })}
+                >
+                  <SelectTrigger id="promoted_by_division">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {YES_NO_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="col-span-2 text-xs text-slate-500">
+                O número de profissionais SUS capacitados sai automático, contando os
+                profissionais vinculados a este evento (seção "Profissionais Vinculados" acima).
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
