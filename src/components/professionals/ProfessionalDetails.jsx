@@ -38,6 +38,7 @@ const EVENT_TYPE_LABELS = {
   viagem: "Viagem",
   trabalho_campo: "Trabalho de Campo",
   treinamento: "Treinamento",
+  supervisao: "Supervisão",
   ferias: "Férias",
   reuniao: "Reunião",
   outro: "Outro",

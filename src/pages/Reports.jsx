@@ -191,32 +191,38 @@ export default function Reports() {
       .filter((date) => !Number.isNaN(date.getTime()))
       .sort((a, b) => a.getTime() - b.getTime());
 
+  const getMonthLabel = (date) => {
+    const monthLabel = format(date, "MMMM", { locale: ptBR });
+    return monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+  };
+
+  const getDateRangeLabel = (firstDate, lastDate) =>
+    format(firstDate, "dd/MM/yyyy") === format(lastDate, "dd/MM/yyyy")
+      ? format(firstDate, "dd/MM/yyyy")
+      : `${format(firstDate, "dd/MM/yyyy")} a ${format(lastDate, "dd/MM/yyyy")}`;
+
   const activityReportYearOptions = useMemo(() => {
     const years = new Set([new Date().getFullYear()]);
     trainings.forEach((training) => {
       const dates = getTrainingSortedDates(training);
       if (dates.length > 0) years.add(dates[0].getFullYear());
     });
+    events.forEach((event) => {
+      if (String(event?.type || "") !== "supervisao") return;
+      const start = parseDateSafe(event?.start_date);
+      if (!Number.isNaN(start.getTime())) years.add(start.getFullYear());
+    });
     return Array.from(years).sort((a, b) => b - a);
-  }, [trainings]);
+  }, [trainings, events]);
 
   const activityReportRows = useMemo(() => {
-    const rows = trainings
+    const trainingRows = trainings
       .map((training) => {
         const sortedDates = getTrainingSortedDates(training);
         if (sortedDates.length === 0) return null;
         const firstDate = sortedDates[0];
         if (String(firstDate.getFullYear()) !== activityReportYear) return null;
         const lastDate = sortedDates[sortedDates.length - 1];
-
-        const monthLabel = format(firstDate, "MMMM", { locale: ptBR });
-        const capitalizedMonth =
-          monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
-
-        const dateLabel =
-          format(firstDate, "dd/MM/yyyy") === format(lastDate, "dd/MM/yyyy")
-            ? format(firstDate, "dd/MM/yyyy")
-            : `${format(firstDate, "dd/MM/yyyy")} a ${format(lastDate, "dd/MM/yyyy")}`;
 
         const capacitatedCount = participants.filter((p) => {
           if (String(p?.training_id || "") !== String(training.id)) return false;
@@ -232,20 +238,52 @@ export default function Reports() {
           sortDate: firstDate.getTime(),
           metaPes: String(training?.meta_pes || "").trim(),
           diseaseOrEvent: String(training?.disease_or_event || "").trim(),
-          month: capitalizedMonth,
+          month: getMonthLabel(firstDate),
           actionNature: String(training?.action_nature || "").trim(),
           theme: String(training?.title || "").trim(),
           promotedByGve: String(training?.coordinator || "").trim() ? "Sim" : "Não",
           type: TRAINING_TYPE_LABELS[typeKey] || training?.type || "",
-          dateLabel,
+          dateLabel: getDateRangeLabel(firstDate, lastDate),
           targetAudience: String(training?.target_audience || "").trim(),
           capacitatedCount,
         };
       })
       .filter(Boolean);
 
-    return rows.sort((a, b) => a.sortDate - b.sortDate);
-  }, [trainings, participants, activityReportYear]);
+    // Eventos de supervisão da Agenda também contam como atividade no
+    // relatório do CVE — sem campo próprio pra Meta PES/Doença/Público-Alvo,
+    // então saem em branco (mesmo tratamento dado aos treinamentos sem esses
+    // dados preenchidos).
+    const supervisionRows = events
+      .filter((event) => String(event?.type || "") === "supervisao")
+      .map((event) => {
+        const firstDate = parseDateSafe(event?.start_date);
+        if (Number.isNaN(firstDate.getTime())) return null;
+        if (String(firstDate.getFullYear()) !== activityReportYear) return null;
+        const lastDate = event?.end_date ? parseDateSafe(event.end_date) : firstDate;
+        const validLastDate = Number.isNaN(lastDate.getTime()) ? firstDate : lastDate;
+        const linkedProfessionals = Array.isArray(event?.professional_names)
+          ? event.professional_names.filter(Boolean)
+          : [];
+
+        return {
+          sortDate: firstDate.getTime(),
+          metaPes: "",
+          diseaseOrEvent: "",
+          month: getMonthLabel(firstDate),
+          actionNature: "Supervisão",
+          theme: String(event?.title || "").trim(),
+          promotedByGve: linkedProfessionals.length > 0 ? "Sim" : "Não",
+          type: "Supervisão",
+          dateLabel: getDateRangeLabel(firstDate, validLastDate),
+          targetAudience: "",
+          capacitatedCount: linkedProfessionals.length,
+        };
+      })
+      .filter(Boolean);
+
+    return [...trainingRows, ...supervisionRows].sort((a, b) => a.sortDate - b.sortDate);
+  }, [trainings, events, participants, activityReportYear]);
 
   const handleExportActivityReport = async () => {
     setExportingActivityReport(true);
@@ -2131,7 +2169,8 @@ export default function Reports() {
               </CardTitle>
               <p className="text-sm text-slate-500">
                 Gera a planilha de atividades no modelo do Centro de Vigilância
-                Epidemiológica, uma linha por treinamento do ano selecionado.
+                Epidemiológica, uma linha por treinamento e por evento de
+                Supervisão (cadastrado na Agenda) do ano selecionado.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -2171,7 +2210,7 @@ export default function Reports() {
 
               {activityReportRows.length === 0 ? (
                 <p className="text-sm text-slate-400 py-6 text-center">
-                  Nenhum treinamento com data em {activityReportYear}.
+                  Nenhum treinamento ou supervisão com data em {activityReportYear}.
                 </p>
               ) : (
                 <div className="border rounded-lg overflow-x-auto">

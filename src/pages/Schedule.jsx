@@ -23,7 +23,8 @@ import {
   Umbrella,
   Users,
   Circle,
-  ExternalLink
+  ExternalLink,
+  ClipboardCheck
 } from "lucide-react";
 import {
   format,
@@ -278,6 +279,7 @@ export default function Schedule() {
     viagem: Plane,
     trabalho_campo: Briefcase,
     treinamento: GraduationCap,
+    supervisao: ClipboardCheck,
     ferias: Umbrella,
     reuniao: Users,
     outro: Circle,
@@ -287,6 +289,7 @@ export default function Schedule() {
     viagem: "#10b981",
     trabalho_campo: "#f59e0b",
     treinamento: "#3b82f6",
+    supervisao: "#8b5cf6",
     ferias: "#ec4899",
     reuniao: "#ef4444",
     outro: "#64748b",
@@ -296,6 +299,7 @@ export default function Schedule() {
     viagem: "Viagem",
     trabalho_campo: "Trabalho de Campo",
     treinamento: "Treinamento",
+    supervisao: "Supervisão",
     ferias: "Férias",
     reuniao: "Reunião",
     outro: "Outro",

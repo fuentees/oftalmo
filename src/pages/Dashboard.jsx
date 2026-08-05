@@ -354,6 +354,7 @@ export default function Dashboard() {
   const eventTypeOptions = [
     { value: "all", label: "Todos os tipos" },
     { value: "treinamento", label: "Treinamento" },
+    { value: "supervisao", label: "Supervisão" },
     { value: "ferias", label: "Férias" },
     { value: "reuniao", label: "Reunião" },
     { value: "viagem", label: "Viagem" },

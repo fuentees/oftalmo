@@ -344,6 +344,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     viagem: "#10b981",
     trabalho_campo: "#f59e0b",
     treinamento: "#3b82f6",
+    supervisao: "#8b5cf6",
     ferias: "#ec4899",
     reuniao: "#ef4444",
     outro: "#64748b",
@@ -396,6 +397,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
               <SelectItem value="viagem">Viagem</SelectItem>
               <SelectItem value="trabalho_campo">Trabalho de Campo</SelectItem>
               <SelectItem value="treinamento">Treinamento</SelectItem>
+              <SelectItem value="supervisao">Supervisão</SelectItem>
               <SelectItem value="ferias">Férias</SelectItem>
               <SelectItem value="reuniao">Reunião</SelectItem>
               <SelectItem value="outro">Outro</SelectItem>
