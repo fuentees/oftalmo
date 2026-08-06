@@ -38,6 +38,7 @@ import {
 import { getEffectiveTrainingStatus, getTrainingDateItems } from "@/lib/statusRules";
 import { parseDateSafe } from "@/lib/date";
 import { ACTION_NATURE_OPTIONS, getActivityReportQuarterAlert } from "@/lib/activityReport";
+import { buildParticipantsByTrainingMap } from "@/lib/trainingParticipantsMap";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -232,6 +233,15 @@ export default function Reports() {
     return Array.from(years).sort((a, b) => b - a);
   }, [trainings, events]);
 
+  // Muitos participantes antigos não têm training_id preenchido (só
+  // title/date da época da inscrição) — usar o mesmo matching robusto de
+  // Trainings.jsx, senão o "capacitados" do relatório fica bem menor que o
+  // "aprovados" real (o filtro por training_id puro perde essas inscrições).
+  const participantsByTrainingMap = useMemo(
+    () => buildParticipantsByTrainingMap(trainings, participants),
+    [trainings, participants]
+  );
+
   const activityReportRows = useMemo(() => {
     const trainingRows = trainings
       .map((training) => {
@@ -241,8 +251,8 @@ export default function Reports() {
         if (String(firstDate.getFullYear()) !== activityReportYear) return null;
         const lastDate = sortedDates[sortedDates.length - 1];
 
-        const capacitatedCount = participants.filter((p) => {
-          if (String(p?.training_id || "") !== String(training.id)) return false;
+        const trainingParticipants = participantsByTrainingMap.get(String(training.id)) || [];
+        const capacitatedCount = trainingParticipants.filter((p) => {
           if (String(p?.enrollment_status || "").toLowerCase().startsWith("cancel")) {
             return false;
           }
@@ -300,7 +310,7 @@ export default function Reports() {
       .filter(Boolean);
 
     return [...trainingRows, ...eventRows].sort((a, b) => a.sortDate - b.sortDate);
-  }, [trainings, events, participants, activityReportYear]);
+  }, [trainings, events, participantsByTrainingMap, activityReportYear]);
 
   const handleExportActivityReport = async () => {
     setExportingActivityReport(true);

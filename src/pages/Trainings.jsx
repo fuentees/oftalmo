@@ -8,6 +8,7 @@ import {
   getTrainingDateItems,
 } from "@/lib/statusRules";
 import { resolveTrainingParticipantMatch } from "@/lib/trainingParticipantMatch";
+import { buildParticipantsByTrainingMap } from "@/lib/trainingParticipantsMap";
 import { parseDateSafe } from "@/lib/date";
 import {
   TRACOMA_TOTAL_QUESTIONS,
@@ -190,81 +191,10 @@ export default function Trainings() {
     return `${year}-${month}-${day}`;
   };
 
-  const getTrainingDateKeys = (training) => {
-    const keys = new Set();
-    if (Array.isArray(training?.dates)) {
-      training.dates.forEach((item) => {
-        const dateValue = typeof item === "object" ? item?.date : item;
-        const normalized = normalizeDateKey(dateValue);
-        if (normalized) keys.add(normalized);
-      });
-    }
-    const baseDate = normalizeDateKey(training?.date);
-    if (baseDate) keys.add(baseDate);
-    const startDate = normalizeDateKey(training?.start_date);
-    if (startDate) keys.add(startDate);
-    return Array.from(keys);
-  };
-
-  const participantsByTrainingMap = React.useMemo(() => {
-    const map = new Map();
-    const trainingMeta = (trainings || [])
-      .map((training) => {
-        const trainingId = String(training?.id || "").trim();
-        if (!trainingId) return null;
-        const titleKey = normalizeComparisonText(training?.title);
-        const dateKeys = new Set(getTrainingDateKeys(training));
-        map.set(trainingId, []);
-        return { trainingId, titleKey, dateKeys };
-      })
-      .filter(Boolean);
-
-    const seenByTraining = new Map(
-      trainingMeta.map((meta) => [meta.trainingId, new Set()])
-    );
-
-    const getParticipantKey = (participant) => {
-      const participantId = String(participant?.id || "").trim();
-      if (participantId) return `id:${participantId}`;
-      const name = normalizeComparisonText(participant?.professional_name);
-      const email = normalizeComparisonText(participant?.professional_email);
-      const rg = normalizeComparisonText(
-        participant?.professional_rg || participant?.professional_cpf
-      );
-      const date = normalizeDateKey(participant?.enrollment_date);
-      return `legacy:${name}|${email}|${rg}|${date}`;
-    };
-
-    (participants || []).forEach((participant) => {
-      const participantTrainingId = String(participant?.training_id || "").trim();
-      const participantTitleKey = normalizeComparisonText(participant?.training_title);
-      const participantDateKey = normalizeDateKey(participant?.training_date);
-      const participantKey = getParticipantKey(participant);
-
-      trainingMeta.forEach((meta) => {
-        const linkedById = Boolean(
-          participantTrainingId && participantTrainingId === meta.trainingId
-        );
-
-        let linkedByLegacyTitleDate = false;
-        if (!participantTrainingId && participantTitleKey && participantTitleKey === meta.titleKey) {
-          linkedByLegacyTitleDate =
-            meta.dateKeys.size === 0 ||
-            !participantDateKey ||
-            meta.dateKeys.has(participantDateKey);
-        }
-
-        if (!linkedById && !linkedByLegacyTitleDate) return;
-
-        const seenSet = seenByTraining.get(meta.trainingId);
-        if (seenSet?.has(participantKey)) return;
-        seenSet?.add(participantKey);
-        map.get(meta.trainingId)?.push(participant);
-      });
-    });
-
-    return map;
-  }, [participants, trainings]);
+  const participantsByTrainingMap = React.useMemo(
+    () => buildParticipantsByTrainingMap(trainings, participants),
+    [participants, trainings]
+  );
 
   const getTrainingParticipants = (training) => {
     const trainingId = String(training?.id || "").trim();
