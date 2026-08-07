@@ -281,6 +281,17 @@ export default function Reports() {
   const getParticipantTrainingType = (p) =>
     String(trainingByParticipantId.get(String(p?.id || ""))?.type || "");
 
+  // Participantes "órfãos" (training_id/título não corresponde a nenhum
+  // treinamento que ainda existe — a mesma noção que a limpeza automática de
+  // Trainings.jsx trata como lixo) e inscrições canceladas não contam como
+  // aprovação real. Sem isso, "Aprovados" no topo da página não batia com a
+  // soma dos "aprovados" mostrados por treinamento em Trainings.jsx.
+  const isCancelledEnrollment = (p) =>
+    String(p?.enrollment_status || "").trim().toLowerCase().startsWith("cancel");
+
+  const isCountableParticipant = (p) =>
+    trainingByParticipantId.has(String(p?.id || "").trim()) && !isCancelledEnrollment(p);
+
   const activityReportRows = useMemo(() => {
     const trainingRows = trainings
       .map((training) => {
@@ -490,6 +501,7 @@ export default function Reports() {
   const filteredParticipants = useMemo(
     () =>
       participants.filter((p) => {
+        if (!isCountableParticipant(p)) return false;
         if (sectorFilter !== "all" && p.professional_sector !== sectorFilter) return false;
         if (categoryFilter !== "all" && getParticipantTrainingType(p) !== categoryFilter) {
           return false;
@@ -511,6 +523,7 @@ export default function Reports() {
   const periodFilteredParticipants = useMemo(
     () =>
       participants.filter((p) => {
+        if (!isCountableParticipant(p)) return false;
         if (categoryFilter !== "all" && getParticipantTrainingType(p) !== categoryFilter) {
           return false;
         }
@@ -566,7 +579,9 @@ export default function Reports() {
     [expiredTrainings]
   );
 
-  const approvedCount = filteredParticipants.filter((p) => p.approved).length;
+  const approvedCount = filteredParticipants.filter(
+    (p) => p.approved === true || p.certificate_issued === true
+  ).length;
   const approvalRate =
     filteredParticipants.length > 0
       ? Math.round((approvedCount / filteredParticipants.length) * 100)
@@ -581,7 +596,9 @@ export default function Reports() {
       acc[sector].total++;
       const profTrainings = periodFilteredParticipants.filter((p) => p.professional_id === prof.id);
       if (profTrainings.length > 0) acc[sector].trained++;
-      if (profTrainings.some((p) => p.approved)) acc[sector].approved++;
+      if (profTrainings.some((p) => p.approved === true || p.certificate_issued === true)) {
+        acc[sector].approved++;
+      }
     });
     return Object.values(acc);
   }, [professionals, periodFilteredParticipants]);
@@ -592,7 +609,9 @@ export default function Reports() {
         .filter((prof) => sectorFilter === "all" || prof.sector === sectorFilter)
         .map((prof) => {
           const profParticipants = filteredParticipants.filter(
-            (p) => p.professional_id === prof.id && p.approved
+            (p) =>
+              p.professional_id === prof.id &&
+              (p.approved === true || p.certificate_issued === true)
           );
           const validTrainings = profParticipants.filter(
             (p) => !p.validity_date || new Date(p.validity_date) > new Date()
@@ -1358,7 +1377,7 @@ export default function Reports() {
               const entry = months.find((m) => m.key === key);
               if (!entry) return;
               entry.inscritos += 1;
-              if (p.approved) entry.aprovados += 1;
+              if (p.approved === true || p.certificate_issued === true) entry.aprovados += 1;
             });
 
             return (
@@ -1527,7 +1546,7 @@ export default function Reports() {
               const entry = months.find((m) => m.key === key);
               if (!entry) return;
               entry.inscritos += 1;
-              if (p.approved) entry.aprovados += 1;
+              if (p.approved === true || p.certificate_issued === true) entry.aprovados += 1;
             });
             filteredTrainings.forEach((t) => {
               if (!Array.isArray(t.dates) || t.dates.length === 0) return;
@@ -1560,7 +1579,7 @@ export default function Reports() {
 
             const munCounts = {};
             filteredParticipants.forEach((p) => {
-              if (!p.approved) return;
+              if (p.approved !== true && p.certificate_issued !== true) return;
               const mun = String(p?.municipality || "").trim();
               if (!mun) return;
               munCounts[mun] = (munCounts[mun] || 0) + 1;
