@@ -261,6 +261,26 @@ export default function Reports() {
     [trainings, participants]
   );
 
+  // Participante não tem campo "type" — só o treinamento tem. Sem isso, o
+  // filtro "Tipo de Treinamento" no topo da página filtrava a lista de
+  // treinamentos mas não mudava nada nos cards "Aprovados"/"Taxa de
+  // Aprovação" nem nos gráficos baseados em participantes.
+  const trainingByParticipantId = useMemo(() => {
+    const trainingsById = new Map(trainings.map((t) => [String(t.id), t]));
+    const map = new Map();
+    participantsByTrainingMap.forEach((rows, trainingId) => {
+      const training = trainingsById.get(trainingId);
+      rows.forEach((p) => {
+        const pid = String(p?.id || "").trim();
+        if (pid) map.set(pid, training);
+      });
+    });
+    return map;
+  }, [participantsByTrainingMap, trainings]);
+
+  const getParticipantTrainingType = (p) =>
+    String(trainingByParticipantId.get(String(p?.id || ""))?.type || "");
+
   const activityReportRows = useMemo(() => {
     const trainingRows = trainings
       .map((training) => {
@@ -471,6 +491,9 @@ export default function Reports() {
     () =>
       participants.filter((p) => {
         if (sectorFilter !== "all" && p.professional_sector !== sectorFilter) return false;
+        if (categoryFilter !== "all" && getParticipantTrainingType(p) !== categoryFilter) {
+          return false;
+        }
         const activityDate = getParticipantActivityDate(p);
         if (dateRange.start && dateRange.end && activityDate) {
           if (!isWithinInterval(activityDate, { start: dateRange.start, end: dateRange.end }))
@@ -479,7 +502,7 @@ export default function Reports() {
         return true;
       }),
 
-    [participants, sectorFilter, periodFilter, customStartDate, customEndDate]
+    [participants, sectorFilter, categoryFilter, trainingByParticipantId, periodFilter, customStartDate, customEndDate]
   );
 
   // Igual a filteredParticipants, mas sem o filtro de setor — usado em
@@ -488,6 +511,9 @@ export default function Reports() {
   const periodFilteredParticipants = useMemo(
     () =>
       participants.filter((p) => {
+        if (categoryFilter !== "all" && getParticipantTrainingType(p) !== categoryFilter) {
+          return false;
+        }
         const activityDate = getParticipantActivityDate(p);
         if (dateRange.start && dateRange.end && activityDate) {
           if (!isWithinInterval(activityDate, { start: dateRange.start, end: dateRange.end }))
@@ -496,7 +522,7 @@ export default function Reports() {
         return true;
       }),
 
-    [participants, periodFilter, customStartDate, customEndDate]
+    [participants, categoryFilter, trainingByParticipantId, periodFilter, customStartDate, customEndDate]
   );
 
   const filteredTrainings = useMemo(
