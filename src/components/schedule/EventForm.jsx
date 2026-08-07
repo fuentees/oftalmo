@@ -21,6 +21,7 @@ import {
   ACTION_NATURE_OPTIONS,
   EVENT_FORMAT_OPTIONS,
   YES_NO_OPTIONS,
+  isAutoActivityReportEventType,
 } from "@/lib/activityReport";
 
 export default function EventForm({ event, onClose, onSuccess, initialDate }) {
@@ -392,6 +393,10 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
     }
   };
 
+  const isAutoReportedType = isAutoActivityReportEventType(formData.type);
+  const showActivityReportFields =
+    isAutoReportedType || formData.include_in_activity_report;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
@@ -727,20 +732,28 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
         </div>
 
         <div className="col-span-2 p-3 border rounded-lg bg-slate-50 space-y-3">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="include_in_activity_report"
-              checked={formData.include_in_activity_report}
-              onCheckedChange={(checked) =>
-                setFormData({ ...formData, include_in_activity_report: Boolean(checked) })
-              }
-            />
-            <Label htmlFor="include_in_activity_report" className="text-sm">
-              Incluir no Relatório de Atividades (CVE)
-            </Label>
-          </div>
+          {isAutoReportedType ? (
+            <p className="text-sm text-slate-600">
+              Eventos do tipo <strong>Supervisão</strong> e <strong>Trabalho de Campo</strong>{" "}
+              entram automaticamente no Relatório de Atividades (CVE). Complete os campos
+              abaixo para a linha já sair pronta.
+            </p>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="include_in_activity_report"
+                checked={formData.include_in_activity_report}
+                onCheckedChange={(checked) =>
+                  setFormData({ ...formData, include_in_activity_report: Boolean(checked) })
+                }
+              />
+              <Label htmlFor="include_in_activity_report" className="text-sm">
+                Incluir no Relatório de Atividades (CVE)
+              </Label>
+            </div>
+          )}
 
-          {formData.include_in_activity_report && (
+          {showActivityReportFields && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label htmlFor="meta_pes" className="text-xs">Meta PES Relacionada</Label>

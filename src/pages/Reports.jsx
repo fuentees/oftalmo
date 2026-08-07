@@ -37,7 +37,11 @@ import {
 } from "lucide-react";
 import { getEffectiveTrainingStatus, getTrainingDateItems } from "@/lib/statusRules";
 import { parseDateSafe } from "@/lib/date";
-import { ACTION_NATURE_OPTIONS, getActivityReportQuarterAlert } from "@/lib/activityReport";
+import {
+  ACTION_NATURE_OPTIONS,
+  getActivityReportQuarterAlert,
+  isAutoActivityReportEventType,
+} from "@/lib/activityReport";
 import { buildParticipantsByTrainingMap } from "@/lib/trainingParticipantsMap";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -219,6 +223,13 @@ export default function Reports() {
       ? format(firstDate, "dd/MM/yyyy")
       : `${format(firstDate, "dd/MM/yyyy")} a ${format(lastDate, "dd/MM/yyyy")}`;
 
+  // Supervisão e Trabalho de Campo sempre contam como atividade reportável
+  // (categoria "Supervisão, Assessoria e Consultoria"), independente de
+  // alguém ter marcado o checkbox manual no evento.
+  const isReportableEvent = (event) =>
+    Boolean(event?.include_in_activity_report) ||
+    isAutoActivityReportEventType(event?.type);
+
   const activityReportYearOptions = useMemo(() => {
     const years = new Set([new Date().getFullYear()]);
     trainings.forEach((training) => {
@@ -226,7 +237,7 @@ export default function Reports() {
       if (dates.length > 0) years.add(dates[0].getFullYear());
     });
     events.forEach((event) => {
-      if (!event?.include_in_activity_report) return;
+      if (!isReportableEvent(event)) return;
       const start = parseDateSafe(event?.start_date);
       if (!Number.isNaN(start.getTime())) years.add(start.getFullYear());
     });
@@ -279,9 +290,10 @@ export default function Reports() {
       .filter(Boolean);
 
     // Qualquer evento da Agenda marcado com "Incluir no Relatório de
-    // Atividades (CVE)" entra como linha — não só supervisão.
+    // Atividades (CVE)" entra como linha, além de Supervisão/Trabalho de
+    // Campo, que entram sempre.
     const eventRows = events
-      .filter((event) => Boolean(event?.include_in_activity_report))
+      .filter(isReportableEvent)
       .map((event) => {
         const firstDate = parseDateSafe(event?.start_date);
         if (Number.isNaN(firstDate.getTime())) return null;
@@ -2233,8 +2245,9 @@ export default function Reports() {
               <p className="text-sm text-slate-500">
                 Gera a planilha de atividades no modelo do Centro de Vigilância
                 Epidemiológica: uma linha por treinamento, mais uma linha por
-                evento da Agenda marcado com "Incluir no Relatório de
-                Atividades (CVE)", do ano selecionado.
+                evento de Supervisão ou Trabalho de Campo (sempre incluídos) e
+                por qualquer outro evento da Agenda marcado com "Incluir no
+                Relatório de Atividades (CVE)", do ano selecionado.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">

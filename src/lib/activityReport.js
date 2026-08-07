@@ -26,6 +26,15 @@ export const EVENT_FORMAT_OPTIONS = [
 
 export const YES_NO_OPTIONS = ["Sim", "Não"];
 
+// Tipos de evento da Agenda que contam como atividade de "Supervisão,
+// Assessoria e Consultoria" por natureza (supervisão e apoio técnico aos
+// municípios/GVE) — entram no Relatório de Atividades (CVE) automaticamente,
+// sem precisar marcar "Incluir no Relatório" evento por evento.
+export const AUTO_ACTIVITY_REPORT_EVENT_TYPES = ["supervisao", "trabalho_campo"];
+
+export const isAutoActivityReportEventType = (type) =>
+  AUTO_ACTIVITY_REPORT_EVENT_TYPES.includes(String(type || ""));
+
 // O Relatório de Atividades do CVE é compilado por trimestre (jan-mar,
 // abr-jun, jul-set, out-dez). Isso descreve, pra cada mês de fechamento, o
 // rótulo do trimestre e os meses que ele cobre — usado pra alertar antes do
