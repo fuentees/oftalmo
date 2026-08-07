@@ -123,6 +123,14 @@ export default function Reports() {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
 
+  // Data do treinamento em si (quando aconteceu), não a data em que o
+  // registro foi cadastrado/importado no sistema — uma migração/importação
+  // em lote grava enrollment_date do dia da importação, não da inscrição
+  // real, e isso inflava os filtros de período (Aprovados, Aprovados por
+  // Mês) com um pico artificial no mês em que os dados foram importados.
+  const getParticipantActivityDate = (p) =>
+    toValidDate(p?.training_date) || toValidDate(p?.enrollment_date);
+
   // === Queries ===
   const {
     data: participants = [],
@@ -463,9 +471,9 @@ export default function Reports() {
     () =>
       participants.filter((p) => {
         if (sectorFilter !== "all" && p.professional_sector !== sectorFilter) return false;
-        if (dateRange.start && dateRange.end && p.enrollment_date) {
-          const enrollDate = new Date(p.enrollment_date);
-          if (!isWithinInterval(enrollDate, { start: dateRange.start, end: dateRange.end }))
+        const activityDate = getParticipantActivityDate(p);
+        if (dateRange.start && dateRange.end && activityDate) {
+          if (!isWithinInterval(activityDate, { start: dateRange.start, end: dateRange.end }))
             return false;
         }
         return true;
@@ -480,9 +488,9 @@ export default function Reports() {
   const periodFilteredParticipants = useMemo(
     () =>
       participants.filter((p) => {
-        if (dateRange.start && dateRange.end && p.enrollment_date) {
-          const enrollDate = new Date(p.enrollment_date);
-          if (!isWithinInterval(enrollDate, { start: dateRange.start, end: dateRange.end }))
+        const activityDate = getParticipantActivityDate(p);
+        if (dateRange.start && dateRange.end && activityDate) {
+          if (!isWithinInterval(activityDate, { start: dateRange.start, end: dateRange.end }))
             return false;
         }
         return true;
@@ -1318,10 +1326,9 @@ export default function Reports() {
               };
             });
             filteredParticipants.forEach((p) => {
-              if (!p?.enrollment_date) return;
-              const match = String(p.enrollment_date).match(/^(\d{4})-(\d{2})/);
-              if (!match) return;
-              const key = `${match[1]}-${match[2]}`;
+              const activityDate = getParticipantActivityDate(p);
+              if (!activityDate) return;
+              const key = format(activityDate, "yyyy-MM");
               const entry = months.find((m) => m.key === key);
               if (!entry) return;
               entry.inscritos += 1;
@@ -1488,10 +1495,9 @@ export default function Reports() {
               };
             });
             filteredParticipants.forEach((p) => {
-              if (!p?.enrollment_date) return;
-              const match = String(p.enrollment_date).match(/^(\d{4})-(\d{2})/);
-              if (!match) return;
-              const key = `${match[1]}-${match[2]}`;
+              const activityDate = getParticipantActivityDate(p);
+              if (!activityDate) return;
+              const key = format(activityDate, "yyyy-MM");
               const entry = months.find((m) => m.key === key);
               if (!entry) return;
               entry.inscritos += 1;
