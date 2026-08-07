@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import { supabase } from "@/api/supabaseClient";
 import { format, addMonths } from "date-fns";
 import {
   generateParticipantCertificate,
@@ -635,16 +636,32 @@ export default function CertificateManager({ training, participants = [], onClos
     }));
   };
 
+  // O número do certificado é único no banco inteiro (não por treinamento) —
+  // por isso o "próximo número" precisa considerar TODOS os certificados já
+  // emitidos em qualquer treinamento, não só os deste. Calcular só a partir
+  // de safeParticipants (deste treinamento) fazia a contagem reiniciar do
+  // zero pra cada treinamento novo, colidindo direto com números que outros
+  // treinamentos já tinham usado no mesmo ano.
+  const allCertificateNumbersQuery = useQuery({
+    queryKey: ["all-certificate-numbers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("training_participants")
+        .select("certificate_number")
+        .not("certificate_number", "is", null);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 30000,
+  });
+
   const maxExistingCertificateSequence = useMemo(() => {
-    const sequences = safeParticipants.map((participant) =>
-      resolveCertificateSequenceFromNumber(participant?.certificate_number)
+    const rows = allCertificateNumbersQuery.data || [];
+    const sequences = rows.map((row) =>
+      resolveCertificateSequenceFromNumber(row?.certificate_number)
     );
-    const maxStored = sequences.length > 0 ? Math.max(...sequences) : 0;
-    const alreadyIssued = safeParticipants.filter(
-      (participant) => participant?.certificate_issued || participant?.certificate_url
-    ).length;
-    return Math.max(maxStored, alreadyIssued);
-  }, [safeParticipants]);
+    return sequences.length > 0 ? Math.max(...sequences) : 0;
+  }, [allCertificateNumbersQuery.data]);
 
   const isUniqueCertificateNumberViolation = (error) =>
     error?.code === "23505" &&
@@ -685,7 +702,7 @@ export default function CertificateManager({ training, participants = [], onClos
     startingSequence,
     buildPayload
   ) => {
-    const maxAttempts = 5;
+    const maxAttempts = 10;
     let sequence = startingSequence;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const certificateNumber = buildCertificateNumber(sequence);
@@ -699,6 +716,11 @@ export default function CertificateManager({ training, participants = [], onClos
         if (isUniqueCertificateNumberViolation(error) && attempt < maxAttempts - 1) {
           sequence += 1;
           continue;
+        }
+        if (isUniqueCertificateNumberViolation(error)) {
+          throw new Error(
+            "Não foi possível reservar um número de certificado único (provavelmente outra emissão aconteceu ao mesmo tempo). Tente emitir novamente."
+          );
         }
         throw error;
       }
@@ -739,6 +761,11 @@ export default function CertificateManager({ training, participants = [], onClos
     }
     if (!Array.isArray(recipients) || recipients.length === 0) {
       throw new Error(`Nenhum ${roleLabel} cadastrado para emissão.`);
+    }
+    if (allCertificateNumbersQuery.isLoading || !allCertificateNumbersQuery.isSuccess) {
+      throw new Error(
+        "Ainda carregando os números de certificado já emitidos. Aguarde um instante e tente novamente."
+      );
     }
 
     setProcessing(true);
@@ -1207,6 +1234,11 @@ export default function CertificateManager({ training, participants = [], onClos
       if (!training) {
         throw new Error("Treinamento inválido para emissão de certificados.");
       }
+      if (allCertificateNumbersQuery.isLoading || !allCertificateNumbersQuery.isSuccess) {
+        throw new Error(
+          "Ainda carregando os números de certificado já emitidos. Aguarde um instante e tente novamente."
+        );
+      }
       setProcessing(true);
       setResult(null);
 
@@ -1379,6 +1411,7 @@ export default function CertificateManager({ training, participants = [], onClos
     },
     onSuccess: (results) => {
       setProcessing(false);
+      queryClient.invalidateQueries({ queryKey: ["all-certificate-numbers"] });
       const successCount = results.filter((r) => r.success).length;
       const failedResults = results.filter((r) => !r.success);
       const failCount = failedResults.length;
