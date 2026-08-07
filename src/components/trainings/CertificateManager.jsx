@@ -991,9 +991,11 @@ export default function CertificateManager({ training, participants = [], onClos
           "Não foi possível abrir a visualização. Verifique o bloqueador de pop-up."
         );
       }
-      window.setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-      }, 60000);
+      // Não revoga a URL automaticamente: se a aba de pré-visualização demorar
+      // pra carregar (aba em segundo plano, máquina lenta) ou o usuário voltar
+      // pra ela depois de um tempo, revogar cedo demais quebra o preview com
+      // "ERR_FILE_NOT_FOUND". O navegador libera a blob sozinho quando esta
+      // aba (que a criou) for fechada ou recarregada.
       return participant.professional_name || "participante";
     },
     onSuccess: (participantName) => {
@@ -1062,9 +1064,11 @@ export default function CertificateManager({ training, participants = [], onClos
           "Não foi possível abrir a visualização. Verifique o bloqueador de pop-up."
         );
       }
-      window.setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-      }, 60000);
+      // Não revoga a URL automaticamente: se a aba de pré-visualização demorar
+      // pra carregar (aba em segundo plano, máquina lenta) ou o usuário voltar
+      // pra ela depois de um tempo, revogar cedo demais quebra o preview com
+      // "ERR_FILE_NOT_FOUND". O navegador libera a blob sozinho quando esta
+      // aba (que a criou) for fechada ou recarregada.
       return {
         name: String(previewRecipient?.name || "").trim() || "membro da equipe",
         roleLabel: STAFF_ROLE_LABELS[role] || "Equipe",
