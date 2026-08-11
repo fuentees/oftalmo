@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
+import ProfessionalPicker from "@/components/professionals/ProfessionalPicker";
 import { useGveMapping } from "@/hooks/useGveMapping";
 import { parseDateSafe } from "@/lib/date";
 import { getEffectiveTrainingStatus } from "@/lib/statusRules";
@@ -329,6 +330,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     online_link: "",
     coordinator: "",
     coordinator_email: "",
+    coordinator_professional_id: null,
     instructor: "",
     monitors: [],
     speakers: [],
@@ -426,6 +428,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         online_link: resolvedOnlineLink,
         coordinator: sourceTraining.coordinator || "",
         coordinator_email: sourceTraining.coordinator_email || "",
+        coordinator_professional_id: sourceTraining.coordinator_professional_id || null,
         instructor: sourceTraining.instructor || "",
         monitors: toArray(sourceTraining.monitors),
         speakers: toArray(sourceTraining.speakers),
@@ -478,6 +481,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       online_link: "",
       coordinator: "",
       coordinator_email: "",
+      coordinator_professional_id: null,
       instructor: "",
       monitors: [],
       speakers: [],
@@ -847,13 +851,6 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const normalizeText = (value) =>
-    String(value ?? "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-
   const activeProfessionals = useMemo(
     () => (professionals || []).filter(
       (prof) => String(prof?.status || "").trim().toLowerCase() !== "inativo"
@@ -887,16 +884,6 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     return "";
   };
 
-  const findProfessionalByName = (value) => {
-    const normalized = normalizeText(value);
-    if (!normalized) return null;
-    return (
-      activeProfessionals.find(
-        (prof) => normalizeText(prof.name) === normalized
-      ) || null
-    );
-  };
-
   const findProfessionalByEmail = (email) => {
     if (!email) return null;
     const normalized = email.trim().toLowerCase();
@@ -913,6 +900,65 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         String(prof.rg || "").replace(/\D/g, "") === normalized ||
         String(prof.cpf || "").replace(/\D/g, "") === normalized
     );
+  };
+
+  const createProfessionalMutation = useMutation({
+    mutationFn: (payload) => dataClient.entities.Professional.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["professionals"] });
+    },
+  });
+
+  const applyCoordinatorProfessional = (professional) => {
+    setFormData((prev) => ({
+      ...prev,
+      coordinator: professional.name || "",
+      coordinator_email: professional.email || prev.coordinator_email,
+      coordinator_professional_id: professional.id,
+    }));
+  };
+
+  const handleCoordinatorCreateNew = async (name) => {
+    const created = await createProfessionalMutation.mutateAsync({ name, status: "ativo" });
+    applyCoordinatorProfessional(created);
+  };
+
+  const applyMonitorProfessional = (index, professional) => {
+    setFormData((prev) => {
+      const newMonitors = [...prev.monitors];
+      newMonitors[index] = {
+        ...newMonitors[index],
+        name: professional.name || "",
+        email: professional.email || newMonitors[index]?.email || "",
+        professional_id: professional.id,
+      };
+      return { ...prev, monitors: newMonitors };
+    });
+  };
+
+  const handleMonitorCreateNew = async (index, name) => {
+    const created = await createProfessionalMutation.mutateAsync({ name, status: "ativo" });
+    applyMonitorProfessional(index, created);
+  };
+
+  const applySpeakerProfessional = (index, professional) => {
+    setFormData((prev) => {
+      const newSpeakers = [...prev.speakers];
+      newSpeakers[index] = {
+        ...newSpeakers[index],
+        name: professional.name || "",
+        email: professional.email || newSpeakers[index]?.email || "",
+        rg: professional.rg || newSpeakers[index]?.rg || "",
+        cpf: professional.cpf || newSpeakers[index]?.cpf || "",
+        professional_id: professional.id,
+      };
+      return { ...prev, speakers: newSpeakers };
+    });
+  };
+
+  const handleSpeakerCreateNew = async (index, name) => {
+    const created = await createProfessionalMutation.mutateAsync({ name, status: "ativo" });
+    applySpeakerProfessional(index, created);
   };
 
   const addDate = () => {
@@ -1486,20 +1532,13 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
 
       <div className="space-y-1.5">
         <Label htmlFor="coordinator">Coordenador</Label>
-        <Input
-          id="coordinator"
-          list="professionals-names"
-          value={formData.coordinator}
-          onChange={(e) => {
-            const nextValue = e.target.value;
-            const match = findProfessionalByName(nextValue);
-            setFormData((prev) => ({
-              ...prev,
-              coordinator: nextValue,
-              coordinator_email: prev.coordinator_email || match?.email || "",
-            }));
-          }}
-          placeholder="Nome do coordenador"
+        <ProfessionalPicker
+          professionals={activeProfessionals}
+          professionalId={formData.coordinator_professional_id}
+          displayName={formData.coordinator}
+          onSelect={applyCoordinatorProfessional}
+          onCreateNew={handleCoordinatorCreateNew}
+          placeholder="Buscar coordenador..."
         />
         <Input
           id="coordinator_email"
@@ -1526,7 +1565,12 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => handleChange("monitors", [...formData.monitors, { name: "", email: "" }])}
+            onClick={() =>
+              handleChange("monitors", [
+                ...formData.monitors,
+                { name: "", email: "", professional_id: null },
+              ])
+            }
           >
             <Plus className="h-4 w-4 mr-1" />
             Adicionar Monitor
@@ -1534,23 +1578,19 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         </div>
         {formData.monitors.map((monitor, index) => (
           <div key={index} className="flex gap-2 p-2 border rounded-lg">
-            <Input
-              value={monitor.name}
-              list="professionals-names"
-              onChange={(e) => {
-                const newMonitors = [...formData.monitors];
-                const nextValue = e.target.value;
-                const match = findProfessionalByName(nextValue);
-                newMonitors[index].name = nextValue;
-                if (!newMonitors[index].email && match?.email) {
-                  newMonitors[index].email = match.email;
-                }
-                handleChange("monitors", newMonitors);
-              }}
-              placeholder="Nome do monitor"
-            />
+            <div className="flex-1">
+              <ProfessionalPicker
+                professionals={activeProfessionals}
+                professionalId={monitor.professional_id}
+                displayName={monitor.name}
+                onSelect={(professional) => applyMonitorProfessional(index, professional)}
+                onCreateNew={(name) => handleMonitorCreateNew(index, name)}
+                placeholder="Buscar monitor..."
+              />
+            </div>
             <Input
               type="email"
+              className="flex-1"
               value={monitor.email}
               list="professionals-emails"
               onChange={(e) => {
@@ -1589,7 +1629,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             onClick={() =>
               handleChange("speakers", [
                 ...formData.speakers,
-                { name: "", rg: "", cpf: "", email: "", lecture: "" },
+                { name: "", rg: "", cpf: "", email: "", lecture: "", professional_id: null },
               ])
             }
           >
@@ -1599,26 +1639,13 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         </div>
         {formData.speakers.map((speaker, index) => (
           <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-2 border rounded-lg">
-            <Input
-              value={speaker.name}
-              list="professionals-names"
-              onChange={(e) => {
-                const nextValue = e.target.value;
-                const match = findProfessionalByName(nextValue);
-                const newSpeakers = [...formData.speakers];
-                newSpeakers[index].name = nextValue;
-                if (!newSpeakers[index].email && match?.email) {
-                  newSpeakers[index].email = match.email;
-                }
-                if (!newSpeakers[index].rg && (match?.rg || match?.cpf)) {
-                  newSpeakers[index].rg = match.rg || match.cpf;
-                }
-                if (!newSpeakers[index].cpf && match?.cpf) {
-                  newSpeakers[index].cpf = match.cpf;
-                }
-                handleChange("speakers", newSpeakers);
-              }}
-              placeholder="Nome do palestrante"
+            <ProfessionalPicker
+              professionals={activeProfessionals}
+              professionalId={speaker.professional_id}
+              displayName={speaker.name}
+              onSelect={(professional) => applySpeakerProfessional(index, professional)}
+              onCreateNew={(name) => handleSpeakerCreateNew(index, name)}
+              placeholder="Buscar palestrante..."
             />
             <Input
               value={speaker.rg}
@@ -1692,11 +1719,6 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         ))}
       </div>
 
-      <datalist id="professionals-names">
-        {activeProfessionals.map((prof) => (
-          <option key={prof.id} value={prof.name} />
-        ))}
-      </datalist>
       <datalist id="professionals-emails">
         {activeProfessionals
           .filter((prof) => prof.email)
