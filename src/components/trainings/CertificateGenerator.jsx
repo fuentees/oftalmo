@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { loadCertificateTemplate } from "@/lib/certificateTemplate";
 import { parseDateSafe, formatDateSafe } from "@/lib/date";
@@ -144,6 +145,124 @@ const formatScheduleDate = (value) => {
   const parsed = parseDateSafe(value);
   if (Number.isNaN(parsed.getTime())) return String(value || "").trim();
   return format(parsed, "dd/MM/yyyy");
+};
+
+const truncateText = (value, maxLength) => {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
+};
+
+// Do maior/mais legível pro menor. Tentamos cada um, na ordem, e medimos
+// quantas páginas o jsPDF realmente usou — nada de estimativa por conta
+// própria (fonte/preenchimento/quebra de linha interagem de um jeito difícil
+// de calcular de antemão com precisão).
+const SCHEDULE_TABLE_DENSITY_TIERS = [
+  { fontSize: 10, cellPadding: 2.4, titleMax: 90, speakerMax: 40 },
+  { fontSize: 9, cellPadding: 2, titleMax: 80, speakerMax: 36 },
+  { fontSize: 8, cellPadding: 1.6, titleMax: 70, speakerMax: 32 },
+  { fontSize: 7, cellPadding: 1.2, titleMax: 60, speakerMax: 28 },
+  { fontSize: 6, cellPadding: 0.9, titleMax: 50, speakerMax: 24 },
+  { fontSize: 5, cellPadding: 0.6, titleMax: 42, speakerMax: 20 },
+  { fontSize: 4.2, cellPadding: 0.4, titleMax: 34, speakerMax: 16 },
+];
+
+/**
+ * Desenha a programação do treinamento numa página nova do PDF (o "verso"
+ * do certificado, quando impresso em frente e verso). Tenta cada densidade
+ * de fonte/espaçamento, do maior pro menor, e mede o número real de páginas
+ * gerado pelo jsPDF; se vazar pra uma segunda página, descarta e tenta de
+ * novo com a próxima densidade — garante caber numa página só mesmo em
+ * treinamentos com muitas datas/sessões, sem depender de estimativa manual.
+ */
+const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
+  const rawEntries = getTrainingScheduleEntries(training).filter(
+    (entry) => entry?.date
+  );
+  if (rawEntries.length === 0) return;
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 15;
+  const tableStartY = margin + 22;
+
+  for (let tierIndex = 0; tierIndex < SCHEDULE_TABLE_DENSITY_TIERS.length; tierIndex += 1) {
+    const density = SCHEDULE_TABLE_DENSITY_TIERS[tierIndex];
+    const pageCountBefore = pdf.internal.getNumberOfPages();
+    pdf.addPage("a4", "landscape");
+
+    pdf.setDrawColor(0, 82, 204);
+    pdf.setLineWidth(0.5);
+    pdf.rect(10, 10, pageWidth - 20, pageHeight - 20);
+
+    pdf.setFont(fontFamily, "bold");
+    pdf.setFontSize(16);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text("PROGRAMAÇÃO DO TREINAMENTO", pageWidth / 2, margin + 8, {
+      align: "center",
+    });
+    pdf.setFont(fontFamily, "normal");
+    pdf.setFontSize(11);
+    pdf.text(truncateText(training?.title, 110), pageWidth / 2, margin + 15, {
+      align: "center",
+    });
+
+    let lastDateLabel = null;
+    const rows = rawEntries.map((entry) => {
+      const dateLabel = formatScheduleDate(entry.date);
+      const showDate = dateLabel !== lastDateLabel;
+      lastDateLabel = dateLabel;
+      return [
+        showDate ? dateLabel : "",
+        formatTimeRange(entry.start_time, entry.end_time),
+        truncateText(entry.title, density.titleMax) || "—",
+        truncateText(entry.speaker_name, density.speakerMax),
+      ];
+    });
+
+    autoTable(pdf, {
+      startY: tableStartY,
+      margin: { left: margin, right: margin, bottom: margin },
+      tableWidth: pageWidth - margin * 2,
+      head: [["Data", "Horário", "Atividade", "Responsável"]],
+      body: rows,
+      theme: "grid",
+      styles: {
+        font: fontFamily,
+        fontSize: density.fontSize,
+        cellPadding: density.cellPadding,
+        lineColor: [180, 190, 200],
+        lineWidth: 0.2,
+        textColor: [15, 23, 42],
+        valign: "middle",
+        overflow: "ellipsize",
+      },
+      headStyles: {
+        fillColor: [0, 82, 204],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        halign: "center",
+      },
+      columnStyles: {
+        0: { cellWidth: 28, halign: "center" },
+        1: { cellWidth: 32, halign: "center" },
+        2: { cellWidth: "auto" },
+        3: { cellWidth: 55 },
+      },
+    });
+
+    const pageCountAfter = pdf.internal.getNumberOfPages();
+    const isLastTier = tierIndex === SCHEDULE_TABLE_DENSITY_TIERS.length - 1;
+    if (pageCountAfter === pageCountBefore + 1 || isLastTier) {
+      return;
+    }
+
+    // Vazou pra mais de uma página: descarta e tenta com a próxima densidade.
+    while (pdf.internal.getNumberOfPages() > pageCountBefore) {
+      pdf.deletePage(pdf.internal.getNumberOfPages());
+    }
+    pdf.setPage(pageCountBefore);
+  }
 };
 
 const resolveStaffScheduleDetails = (staff, training) => {
@@ -1326,6 +1445,8 @@ export const generateParticipantCertificate = (participant, training, templateOv
 
   drawCertificateControlLine(pdf, textData, pageWidth, pageHeight, fontFamily);
 
+  addTrainingScheduleBackPage(pdf, training, fontFamily);
+
   return pdf;
 };
 
@@ -1543,6 +1664,8 @@ const generateStaffCertificate = ({
   }
 
   drawCertificateControlLine(pdf, textData, pageWidth, pageHeight, fontFamily);
+
+  addTrainingScheduleBackPage(pdf, training, fontFamily);
 
   return pdf;
 };
