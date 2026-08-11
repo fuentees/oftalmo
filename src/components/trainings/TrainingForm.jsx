@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, X, Video, Plus, XCircle, Mic } from "lucide-react";
+import { Loader2, X, Video, Plus, XCircle, Mic, Link2, Sparkles } from "lucide-react";
 import { format, addDays, addWeeks } from "date-fns";
 import {
   ACTION_NATURE_OPTIONS,
@@ -1017,6 +1017,131 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     applySpeakerProfessional(index, created);
   };
 
+  // Treinamentos ja cadastrados antes do ProfessionalPicker tem nome (e as
+  // vezes email/rg/cpf) mas nenhum professional_id. Em vez de obrigar a
+  // redigitar tudo no combobox, "Vincular" tenta achar o profissional pelo
+  // que ja esta preenchido na linha (email, RG/CPF ou nome) e, se nao achar,
+  // cadastra na hora com esses mesmos dados.
+  const findMatchingProfessional = ({ name, email, rg, cpf }) => {
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (normalizedEmail) {
+      const byEmail = activeProfessionals.find(
+        (prof) => String(prof.email || "").trim().toLowerCase() === normalizedEmail
+      );
+      if (byEmail) return byEmail;
+    }
+    const digits = String(rg || cpf || "").replace(/\D/g, "");
+    if (digits.length >= 5) {
+      const byDocument = activeProfessionals.find(
+        (prof) =>
+          String(prof.rg || "").replace(/\D/g, "") === digits ||
+          String(prof.cpf || "").replace(/\D/g, "") === digits
+      );
+      if (byDocument) return byDocument;
+    }
+    const normalizedName = normalizeComparisonText(name);
+    if (normalizedName) {
+      const byName = activeProfessionals.find(
+        (prof) => normalizeComparisonText(prof.name) === normalizedName
+      );
+      if (byName) return byName;
+    }
+    return null;
+  };
+
+  const linkOrCreateProfessional = async ({ name, email, rg, cpf }) => {
+    const trimmedName = String(name || "").trim();
+    if (!trimmedName) return null;
+    const match = findMatchingProfessional({ name: trimmedName, email, rg, cpf });
+    if (match) return match;
+    return createProfessionalMutation.mutateAsync({
+      name: trimmedName,
+      email: email || null,
+      rg: rg || null,
+      cpf: cpf || null,
+      status: "ativo",
+    });
+  };
+
+  const [linkingKey, setLinkingKey] = useState(null);
+
+  const withLinking = async (key, action) => {
+    setLinkingKey(key);
+    try {
+      await action();
+    } finally {
+      setLinkingKey((prev) => (prev === key ? null : prev));
+    }
+  };
+
+  const handleQuickLinkCoordinator = () =>
+    withLinking("coordinator", async () => {
+      const professional = await linkOrCreateProfessional({
+        name: formData.coordinator,
+        email: formData.coordinator_email,
+      });
+      if (professional) applyCoordinatorProfessional(professional);
+    });
+
+  const handleQuickLinkMonitor = (index) =>
+    withLinking(`monitor-${index}`, async () => {
+      const monitor = formData.monitors[index];
+      const professional = await linkOrCreateProfessional({
+        name: monitor?.name,
+        email: monitor?.email,
+      });
+      if (professional) applyMonitorProfessional(index, professional);
+    });
+
+  const handleQuickLinkSpeaker = (index) =>
+    withLinking(`speaker-${index}`, async () => {
+      const speaker = formData.speakers[index];
+      const professional = await linkOrCreateProfessional({
+        name: speaker?.name,
+        email: speaker?.email,
+        rg: speaker?.rg,
+        cpf: speaker?.cpf,
+      });
+      if (professional) applySpeakerProfessional(index, professional);
+    });
+
+  const unlinkedCoordinator = Boolean(formData.coordinator) && !formData.coordinator_professional_id;
+  const unlinkedMonitors = formData.monitors.filter((m) => m?.name && !m?.professional_id);
+  const unlinkedSpeakers = formData.speakers.filter((s) => s?.name && !s?.professional_id);
+  const unlinkedCount =
+    (unlinkedCoordinator ? 1 : 0) + unlinkedMonitors.length + unlinkedSpeakers.length;
+
+  const handleLinkAllProfessionals = () =>
+    withLinking("bulk", async () => {
+      if (unlinkedCoordinator) {
+        const professional = await linkOrCreateProfessional({
+          name: formData.coordinator,
+          email: formData.coordinator_email,
+        });
+        if (professional) applyCoordinatorProfessional(professional);
+      }
+      for (let index = 0; index < formData.monitors.length; index += 1) {
+        const monitor = formData.monitors[index];
+        if (!monitor?.name || monitor?.professional_id) continue;
+        const professional = await linkOrCreateProfessional({
+          name: monitor.name,
+          email: monitor.email,
+        });
+        if (professional) applyMonitorProfessional(index, professional);
+      }
+      for (let index = 0; index < formData.speakers.length; index += 1) {
+        const speaker = formData.speakers[index];
+        if (!speaker?.name || speaker?.professional_id) continue;
+        const professional = await linkOrCreateProfessional({
+          name: speaker.name,
+          email: speaker.email,
+          rg: speaker.rg,
+          cpf: speaker.cpf,
+        });
+        if (professional) applySpeakerProfessional(index, professional);
+      }
+    });
+
   const addDate = () => {
     setFormData((prev) => {
       const lastDate = prev.dates[prev.dates.length - 1]?.date;
@@ -1586,16 +1711,61 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         </>
       )}
 
+      {unlinkedCount > 0 && (
+        <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50">
+          <p className="text-sm text-blue-800">
+            {unlinkedCount} pessoa{unlinkedCount > 1 ? "s" : ""} nesse treinamento ainda não
+            {unlinkedCount > 1 ? " estão vinculadas" : " está vinculada"} ao cadastro de
+            Profissionais.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 bg-white"
+            onClick={handleLinkAllProfessionals}
+            disabled={linkingKey !== null}
+          >
+            {linkingKey === "bulk" ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-1.5" />
+            )}
+            Vincular automaticamente
+          </Button>
+        </div>
+      )}
+
       <div className="space-y-1.5">
         <Label htmlFor="coordinator">Coordenador</Label>
-        <ProfessionalPicker
-          professionals={activeProfessionals}
-          professionalId={formData.coordinator_professional_id}
-          displayName={formData.coordinator}
-          onSelect={applyCoordinatorProfessional}
-          onCreateNew={handleCoordinatorCreateNew}
-          placeholder="Buscar coordenador..."
-        />
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <ProfessionalPicker
+              professionals={activeProfessionals}
+              professionalId={formData.coordinator_professional_id}
+              displayName={formData.coordinator}
+              onSelect={applyCoordinatorProfessional}
+              onCreateNew={handleCoordinatorCreateNew}
+              placeholder="Buscar coordenador..."
+            />
+          </div>
+          {unlinkedCoordinator && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title="Vincular ao cadastro de Profissionais"
+              onClick={handleQuickLinkCoordinator}
+              disabled={linkingKey !== null}
+            >
+              {linkingKey === "coordinator" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Link2 className="h-4 w-4 text-blue-600" />
+              )}
+            </Button>
+          )}
+        </div>
         <Input
           id="coordinator_email"
           type="email"
@@ -1656,6 +1826,22 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
               }}
               placeholder="Email do monitor"
             />
+            {monitor.name && !monitor.professional_id && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                title="Vincular ao cadastro de Profissionais"
+                onClick={() => handleQuickLinkMonitor(index)}
+                disabled={linkingKey !== null}
+              >
+                {linkingKey === `monitor-${index}` ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Link2 className="h-4 w-4 text-blue-600" />
+                )}
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"
@@ -1695,14 +1881,34 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         </div>
         {formData.speakers.map((speaker, index) => (
           <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-2 border rounded-lg">
-            <ProfessionalPicker
-              professionals={activeProfessionals}
-              professionalId={speaker.professional_id}
-              displayName={speaker.name}
-              onSelect={(professional) => applySpeakerProfessional(index, professional)}
-              onCreateNew={(name) => handleSpeakerCreateNew(index, name)}
-              placeholder="Buscar palestrante..."
-            />
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <ProfessionalPicker
+                  professionals={activeProfessionals}
+                  professionalId={speaker.professional_id}
+                  displayName={speaker.name}
+                  onSelect={(professional) => applySpeakerProfessional(index, professional)}
+                  onCreateNew={(name) => handleSpeakerCreateNew(index, name)}
+                  placeholder="Buscar palestrante..."
+                />
+              </div>
+              {speaker.name && !speaker.professional_id && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  title="Vincular ao cadastro de Profissionais"
+                  onClick={() => handleQuickLinkSpeaker(index)}
+                  disabled={linkingKey !== null}
+                >
+                  {linkingKey === `speaker-${index}` ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Link2 className="h-4 w-4 text-blue-600" />
+                  )}
+                </Button>
+              )}
+            </div>
             <Input
               value={speaker.rg}
               list="professionals-documents"
