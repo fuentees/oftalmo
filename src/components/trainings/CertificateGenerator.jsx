@@ -205,9 +205,14 @@ const SCHEDULE_TABLE_DENSITY_TIERS = [
  * novo com a próxima densidade — garante caber numa página só mesmo em
  * treinamentos com muitas datas/sessões, sem depender de estimativa manual.
  */
+const isIntervalEntry = (entry) => {
+  const normalized = normalizeComparableText(entry?.title);
+  return normalized === "intervalo" || normalized.startsWith("intervalo ");
+};
+
 const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
   const rawEntries = getTrainingScheduleEntries(training).filter(
-    (entry) => entry?.date
+    (entry) => entry?.date && !isIntervalEntry(entry)
   );
   if (rawEntries.length === 0) return;
 
@@ -218,11 +223,10 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
 
   // Larguras fixas (não "auto"): assim sabemos exatamente quanto espaço de
   // texto cada coluna tem, pra cortar só o que realmente não cabe.
-  const dateColWidth = 26;
-  const timeColWidth = 30;
-  const speakerColWidth = 48;
+  const dateColWidth = 30;
+  const speakerColWidth = 55;
   const tableWidth = pageWidth - margin * 2;
-  const titleColWidth = tableWidth - dateColWidth - timeColWidth - speakerColWidth;
+  const titleColWidth = tableWidth - dateColWidth - speakerColWidth;
 
   for (let tierIndex = 0; tierIndex < SCHEDULE_TABLE_DENSITY_TIERS.length; tierIndex += 1) {
     const density = SCHEDULE_TABLE_DENSITY_TIERS[tierIndex];
@@ -261,7 +265,6 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
       lastDateLabel = dateLabel;
       return [
         showDate ? dateLabel : "",
-        formatTimeRange(entry.start_time, entry.end_time),
         fitTextToWidth(pdf, entry.title, titleMaxWidth) || "—",
         fitTextToWidth(pdf, entry.speaker_name, speakerMaxWidth),
       ];
@@ -271,7 +274,7 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
       startY: tableStartY,
       margin: { left: margin, right: margin, bottom: margin },
       tableWidth,
-      head: [["Data", "Horário", "Atividade", "Responsável"]],
+      head: [["Data", "Atividade", "Responsável"]],
       body: rows,
       theme: "grid",
       styles: {
@@ -292,9 +295,8 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
       },
       columnStyles: {
         0: { cellWidth: dateColWidth, halign: "center" },
-        1: { cellWidth: timeColWidth, halign: "center" },
-        2: { cellWidth: titleColWidth },
-        3: { cellWidth: speakerColWidth },
+        1: { cellWidth: titleColWidth },
+        2: { cellWidth: speakerColWidth },
       },
     });
 
