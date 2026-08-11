@@ -1871,7 +1871,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             onClick={() =>
               handleChange("speakers", [
                 ...formData.speakers,
-                { name: "", rg: "", cpf: "", email: "", lecture: "", professional_id: null },
+                { name: "", rg: "", cpf: "", email: "", professional_id: null },
               ])
             }
           >
@@ -1955,15 +1955,6 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
                 handleChange("speakers", newSpeakers);
               }}
               placeholder="Email do palestrante"
-            />
-            <Input
-              value={speaker.lecture}
-              onChange={(e) => {
-                const newSpeakers = [...formData.speakers];
-                newSpeakers[index].lecture = e.target.value;
-                handleChange("speakers", newSpeakers);
-              }}
-              placeholder="Aula/tema a ser ministrada"
             />
             <Button
               type="button"
