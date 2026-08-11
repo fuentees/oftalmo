@@ -147,24 +147,54 @@ const formatScheduleDate = (value) => {
   return format(parsed, "dd/MM/yyyy");
 };
 
-const truncateText = (value, maxLength) => {
+const truncateText = (value, maxLength = 300) => {
   const text = String(value || "").trim();
   if (text.length <= maxLength) return text;
   return `${text.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
 };
 
-// Do maior/mais legível pro menor. Tentamos cada um, na ordem, e medimos
-// quantas páginas o jsPDF realmente usou — nada de estimativa por conta
-// própria (fonte/preenchimento/quebra de linha interagem de um jeito difícil
-// de calcular de antemão com precisão).
+/**
+ * Corta o texto pro tamanho exato que cabe em maxWidthMm, medindo com a
+ * própria API do jsPDF (pdf.getTextWidth) na fonte/tamanho já configurados
+ * no pdf. Mais confiável que deixar o autoTable decidir sozinho quando a
+ * coluna é "auto": aqui sabemos exatamente quanto espaço cada coluna tem,
+ * então só corta quando o texto realmente não cabe — nunca menos que isso.
+ */
+const fitTextToWidth = (pdf, value, maxWidthMm) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (pdf.getTextWidth(text) <= maxWidthMm) return text;
+
+  const ellipsis = "…";
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const candidate = `${text.slice(0, mid).trimEnd()}${ellipsis}`;
+    if (pdf.getTextWidth(candidate) <= maxWidthMm) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
+  }
+  if (low <= 0) return ellipsis;
+  return `${text.slice(0, low).trimEnd()}${ellipsis}`;
+};
+
+// Do maior/mais legível pro menor, em passos finos — evita "pular" direto
+// pra uma fonte bem menor que o necessário quando um tamanho intermediário
+// já resolveria (isso deixava metade da página em branco). Tentamos cada
+// um, na ordem, e medimos quantas páginas o jsPDF realmente usou — nada de
+// estimativa por conta própria (fonte/preenchimento/quebra de linha
+// interagem de um jeito difícil de calcular de antemão com precisão).
 const SCHEDULE_TABLE_DENSITY_TIERS = [
-  { fontSize: 10, cellPadding: 2.4, titleMax: 90, speakerMax: 40 },
-  { fontSize: 9, cellPadding: 2, titleMax: 80, speakerMax: 36 },
-  { fontSize: 8, cellPadding: 1.6, titleMax: 70, speakerMax: 32 },
-  { fontSize: 7, cellPadding: 1.2, titleMax: 60, speakerMax: 28 },
-  { fontSize: 6, cellPadding: 0.9, titleMax: 50, speakerMax: 24 },
-  { fontSize: 5, cellPadding: 0.6, titleMax: 42, speakerMax: 20 },
-  { fontSize: 4.2, cellPadding: 0.4, titleMax: 34, speakerMax: 16 },
+  { fontSize: 10, cellPadding: 2.4 },
+  { fontSize: 9, cellPadding: 2 },
+  { fontSize: 8, cellPadding: 1.6 },
+  { fontSize: 7, cellPadding: 1.2 },
+  { fontSize: 6, cellPadding: 0.9 },
+  { fontSize: 5, cellPadding: 0.6 },
+  { fontSize: 4.2, cellPadding: 0.4 },
 ];
 
 /**
@@ -185,6 +215,14 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
   const pageHeight = pdf.internal.pageSize.getHeight();
   const margin = 15;
   const tableStartY = margin + 22;
+
+  // Larguras fixas (não "auto"): assim sabemos exatamente quanto espaço de
+  // texto cada coluna tem, pra cortar só o que realmente não cabe.
+  const dateColWidth = 26;
+  const timeColWidth = 30;
+  const speakerColWidth = 48;
+  const tableWidth = pageWidth - margin * 2;
+  const titleColWidth = tableWidth - dateColWidth - timeColWidth - speakerColWidth;
 
   for (let tierIndex = 0; tierIndex < SCHEDULE_TABLE_DENSITY_TIERS.length; tierIndex += 1) {
     const density = SCHEDULE_TABLE_DENSITY_TIERS[tierIndex];
@@ -207,6 +245,15 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
       align: "center",
     });
 
+    // Mede na fonte/tamanho exatos desta tentativa — a mesma largura de
+    // coluna cabe mais caracteres numa fonte menor, então o corte precisa
+    // ser recalculado a cada densidade, não fixo por linha.
+    pdf.setFont(fontFamily, "normal");
+    pdf.setFontSize(density.fontSize);
+    const cellTextPadding = density.cellPadding * 2 + 0.5;
+    const titleMaxWidth = titleColWidth - cellTextPadding;
+    const speakerMaxWidth = speakerColWidth - cellTextPadding;
+
     let lastDateLabel = null;
     const rows = rawEntries.map((entry) => {
       const dateLabel = formatScheduleDate(entry.date);
@@ -215,15 +262,15 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
       return [
         showDate ? dateLabel : "",
         formatTimeRange(entry.start_time, entry.end_time),
-        truncateText(entry.title, density.titleMax) || "—",
-        truncateText(entry.speaker_name, density.speakerMax),
+        fitTextToWidth(pdf, entry.title, titleMaxWidth) || "—",
+        fitTextToWidth(pdf, entry.speaker_name, speakerMaxWidth),
       ];
     });
 
     autoTable(pdf, {
       startY: tableStartY,
       margin: { left: margin, right: margin, bottom: margin },
-      tableWidth: pageWidth - margin * 2,
+      tableWidth,
       head: [["Data", "Horário", "Atividade", "Responsável"]],
       body: rows,
       theme: "grid",
@@ -235,7 +282,7 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
         lineWidth: 0.2,
         textColor: [15, 23, 42],
         valign: "middle",
-        overflow: "ellipsize",
+        overflow: "hidden",
       },
       headStyles: {
         fillColor: [0, 82, 204],
@@ -244,10 +291,10 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
         halign: "center",
       },
       columnStyles: {
-        0: { cellWidth: 28, halign: "center" },
-        1: { cellWidth: 32, halign: "center" },
-        2: { cellWidth: "auto" },
-        3: { cellWidth: 55 },
+        0: { cellWidth: dateColWidth, halign: "center" },
+        1: { cellWidth: timeColWidth, halign: "center" },
+        2: { cellWidth: titleColWidth },
+        3: { cellWidth: speakerColWidth },
       },
     });
 
