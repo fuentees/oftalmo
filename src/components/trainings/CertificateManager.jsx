@@ -1270,6 +1270,7 @@ export default function CertificateManager({ training, participants = [], onClos
                 training_title: training?.title || "",
                 type: "participante",
                 issued_at: new Date().toISOString(),
+                template_model_id: selectedTemplateScope,
               },
               validity_date: validityDateForReservation,
             })
@@ -1362,6 +1363,7 @@ export default function CertificateManager({ training, participants = [], onClos
               type: "participante",
               issued_at: new Date().toISOString(),
               file_name: pdfFileName,
+              template_model_id: selectedTemplateScope,
             },
             ...(useRepadScoreCriteria &&
             Number.isFinite(participantWithMetrics?.certificate_score)

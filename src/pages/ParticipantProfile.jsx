@@ -8,7 +8,10 @@ import {
   interpolateEmailTemplate,
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
-import { resolveCertificateTemplate } from "@/lib/certificateTemplate";
+import {
+  resolveCertificateTemplate,
+  resolveCertificateTemplateByModel,
+} from "@/lib/certificateTemplate";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -583,6 +586,16 @@ export default function ParticipantProfile() {
     return training;
   };
 
+  // Usa o mesmo modelo de certificado escolhido na emissão original (gravado
+  // em certificate_issue_metadata.template_model_id) — sem isso, baixar ou
+  // regenerar aqui podia trazer um modelo diferente do que foi realmente
+  // emitido, se o admin tivesse escolhido um modelo não-padrão na hora.
+  const resolveTemplateForParticipation = (participation, training) => {
+    const modelId = participation?.certificate_issue_metadata?.template_model_id;
+    if (modelId) return resolveCertificateTemplateByModel(modelId);
+    return resolveCertificateTemplate(training);
+  };
+
   const buildCertificateParticipantPayload = (participation, training) => {
     if (!participation) return participation;
     const trainingKey = buildTrainingKey(
@@ -617,7 +630,7 @@ export default function ParticipantProfile() {
       participation,
       training
     );
-    const templateOverride = await resolveCertificateTemplate(training);
+    const templateOverride = await resolveTemplateForParticipation(participation, training);
     const pdf = generateParticipantCertificate(
       participantPayload,
       training,
@@ -643,7 +656,7 @@ export default function ParticipantProfile() {
         participation,
         training
       );
-      const templateOverride = await resolveCertificateTemplate(training);
+      const templateOverride = await resolveTemplateForParticipation(participation, training);
       const pdf = generateParticipantCertificate(
         participantPayload,
         training,
@@ -717,7 +730,7 @@ export default function ParticipantProfile() {
         participation,
         training
       );
-      const templateOverride = await resolveCertificateTemplate(training);
+      const templateOverride = await resolveTemplateForParticipation(participation, training);
       const pdf = generateParticipantCertificate(
         participantPayload,
         training,
