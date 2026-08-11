@@ -330,6 +330,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     online_link: "",
     coordinator: "",
     coordinator_email: "",
+    coordinator_rg: "",
+    coordinator_cpf: "",
     coordinator_professional_id: null,
     instructor: "",
     monitors: [],
@@ -428,6 +430,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         online_link: resolvedOnlineLink,
         coordinator: sourceTraining.coordinator || "",
         coordinator_email: sourceTraining.coordinator_email || "",
+        coordinator_rg: sourceTraining.coordinator_rg || "",
+        coordinator_cpf: sourceTraining.coordinator_cpf || "",
         coordinator_professional_id: sourceTraining.coordinator_professional_id || null,
         instructor: sourceTraining.instructor || "",
         monitors: toArray(sourceTraining.monitors),
@@ -481,6 +485,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       online_link: "",
       coordinator: "",
       coordinator_email: "",
+      coordinator_rg: "",
+      coordinator_cpf: "",
       coordinator_professional_id: null,
       instructor: "",
       monitors: [],
@@ -740,11 +746,15 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     addUpdate(data.coordinator_professional_id, {
       name: data.coordinator,
       email: data.coordinator_email,
+      rg: data.coordinator_rg,
+      cpf: data.coordinator_cpf,
     });
     (data.monitors || []).forEach((monitor) => {
       addUpdate(monitor?.professional_id, {
         name: monitor?.name,
         email: monitor?.email,
+        rg: monitor?.rg,
+        cpf: monitor?.cpf,
       });
     });
     (data.speakers || []).forEach((speaker) => {
@@ -899,6 +909,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       max_participants: formData.max_participants ? Number(formData.max_participants) : null,
       validity_months: formData.validity_months ? Number(formData.validity_months) : null,
       coordinator_email: formData.coordinator_email || null,
+      coordinator_rg: formData.coordinator_rg || null,
+      coordinator_cpf: formData.coordinator_cpf || null,
     };
     saveTraining.mutate(dataToSave);
   };
@@ -970,6 +982,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       ...prev,
       coordinator: professional.name || "",
       coordinator_email: professional.email || prev.coordinator_email,
+      coordinator_rg: professional.rg || prev.coordinator_rg,
+      coordinator_cpf: professional.cpf || prev.coordinator_cpf,
       coordinator_professional_id: professional.id,
     }));
   };
@@ -986,6 +1000,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         ...newMonitors[index],
         name: professional.name || "",
         email: professional.email || newMonitors[index]?.email || "",
+        rg: professional.rg || newMonitors[index]?.rg || "",
+        cpf: professional.cpf || newMonitors[index]?.cpf || "",
         professional_id: professional.id,
       };
       return { ...prev, monitors: newMonitors };
@@ -1079,6 +1095,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       const professional = await linkOrCreateProfessional({
         name: formData.coordinator,
         email: formData.coordinator_email,
+        rg: formData.coordinator_rg,
+        cpf: formData.coordinator_cpf,
       });
       if (professional) applyCoordinatorProfessional(professional);
     });
@@ -1089,6 +1107,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
       const professional = await linkOrCreateProfessional({
         name: monitor?.name,
         email: monitor?.email,
+        rg: monitor?.rg,
+        cpf: monitor?.cpf,
       });
       if (professional) applyMonitorProfessional(index, professional);
     });
@@ -1117,6 +1137,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         const professional = await linkOrCreateProfessional({
           name: formData.coordinator,
           email: formData.coordinator_email,
+          rg: formData.coordinator_rg,
+          cpf: formData.coordinator_cpf,
         });
         if (professional) applyCoordinatorProfessional(professional);
       }
@@ -1126,6 +1148,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
         const professional = await linkOrCreateProfessional({
           name: monitor.name,
           email: monitor.email,
+          rg: monitor.rg,
+          cpf: monitor.cpf,
         });
         if (professional) applyMonitorProfessional(index, professional);
       }
@@ -1782,6 +1806,24 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
           }}
           placeholder="Email do coordenador (opcional)"
         />
+        <Input
+          id="coordinator_document"
+          list="professionals-documents"
+          value={formData.coordinator_rg}
+          onChange={(e) => {
+            const nextValue = e.target.value;
+            const match = findProfessionalByDocument(nextValue);
+            setFormData((prev) => ({
+              ...prev,
+              coordinator_rg: nextValue,
+              coordinator_cpf:
+                nextValue.replace(/\D/g, "").length === 11 ? nextValue : prev.coordinator_cpf,
+              coordinator: prev.coordinator || match?.name || "",
+              coordinator_email: prev.coordinator_email || match?.email || "",
+            }));
+          }}
+          placeholder="RG ou CPF do coordenador (opcional)"
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -1794,7 +1836,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             onClick={() =>
               handleChange("monitors", [
                 ...formData.monitors,
-                { name: "", email: "", professional_id: null },
+                { name: "", email: "", rg: "", cpf: "", professional_id: null },
               ])
             }
           >
@@ -1803,8 +1845,8 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
           </Button>
         </div>
         {formData.monitors.map((monitor, index) => (
-          <div key={index} className="flex gap-2 p-2 border rounded-lg">
-            <div className="flex-1">
+          <div key={index} className="flex flex-wrap gap-2 p-2 border rounded-lg">
+            <div className="flex-1 min-w-[160px]">
               <ProfessionalPicker
                 professionals={activeProfessionals}
                 professionalId={monitor.professional_id}
@@ -1816,7 +1858,7 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
             </div>
             <Input
               type="email"
-              className="flex-1"
+              className="flex-1 min-w-[160px]"
               value={monitor.email}
               list="professionals-emails"
               onChange={(e) => {
@@ -1825,6 +1867,32 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
                 handleChange("monitors", newMonitors);
               }}
               placeholder="Email do monitor"
+            />
+            <Input
+              className="flex-1 min-w-[160px]"
+              value={monitor.rg}
+              list="professionals-documents"
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                const match = findProfessionalByDocument(nextValue);
+                const newMonitors = [...formData.monitors];
+                newMonitors[index].rg = nextValue;
+                newMonitors[index].cpf =
+                  nextValue.replace(/\D/g, "").length === 11
+                    ? nextValue
+                    : newMonitors[index].cpf || "";
+                if (!newMonitors[index].name && match?.name) {
+                  newMonitors[index].name = match.name;
+                }
+                if (!newMonitors[index].email && match?.email) {
+                  newMonitors[index].email = match.email;
+                }
+                if (!newMonitors[index].cpf && match?.cpf) {
+                  newMonitors[index].cpf = match.cpf;
+                }
+                handleChange("monitors", newMonitors);
+              }}
+              placeholder="RG ou CPF do monitor (opcional)"
             />
             {monitor.name && !monitor.professional_id && (
               <Button

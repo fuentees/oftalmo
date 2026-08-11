@@ -298,6 +298,7 @@ export default function CertificateManager({ training, participants = [], onClos
     const name = String(training?.coordinator || "").trim();
     const email = String(training?.coordinator_email || "").trim();
     const rg = String(training?.coordinator_rg || "").trim();
+    const cpf = String(training?.coordinator_cpf || "").trim();
     const professionalId = String(training?.coordinator_professional_id || "").trim();
     if (!name) return null;
     return {
@@ -306,6 +307,7 @@ export default function CertificateManager({ training, participants = [], onClos
       name,
       email,
       rg,
+      cpf,
       lecture: "",
       professional_id: professionalId,
     };
@@ -313,6 +315,7 @@ export default function CertificateManager({ training, participants = [], onClos
     training?.coordinator,
     training?.coordinator_email,
     training?.coordinator_rg,
+    training?.coordinator_cpf,
     training?.coordinator_professional_id,
   ]);
 
