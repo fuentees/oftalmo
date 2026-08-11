@@ -719,8 +719,64 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
 
   const [saveError, setSaveError] = useState(null);
 
+  // Profissionais vinculados (professional_id) tem nome/email/rg/cpf digitados
+  // na linha do treinamento — precisa devolver isso pro cadastro em
+  // Profissionais, senao um monitor/palestrante criado na hora fica com
+  // RG/CPF/email preenchidos so naquele treinamento e vazios no cadastro.
+  const buildLinkedProfessionalUpdates = (data) => {
+    const updates = new Map();
+    const addUpdate = (professionalId, fields) => {
+      const id = String(professionalId || "").trim();
+      if (!id) return;
+      const cleanFields = Object.fromEntries(
+        Object.entries(fields).filter(
+          ([, value]) => value !== undefined && value !== null && String(value).trim() !== ""
+        )
+      );
+      if (Object.keys(cleanFields).length === 0) return;
+      updates.set(id, { ...(updates.get(id) || {}), ...cleanFields });
+    };
+
+    addUpdate(data.coordinator_professional_id, {
+      name: data.coordinator,
+      email: data.coordinator_email,
+    });
+    (data.monitors || []).forEach((monitor) => {
+      addUpdate(monitor?.professional_id, {
+        name: monitor?.name,
+        email: monitor?.email,
+      });
+    });
+    (data.speakers || []).forEach((speaker) => {
+      addUpdate(speaker?.professional_id, {
+        name: speaker?.name,
+        email: speaker?.email,
+        rg: speaker?.rg,
+        cpf: speaker?.cpf,
+      });
+    });
+
+    return updates;
+  };
+
+  const syncLinkedProfessionals = async (data) => {
+    const updates = buildLinkedProfessionalUpdates(data);
+    if (updates.size === 0) return;
+    try {
+      await Promise.all(
+        Array.from(updates.entries()).map(([id, fields]) =>
+          dataClient.entities.Professional.update(id, fields)
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["professionals"] });
+    } catch (error) {
+      console.error("Falha ao atualizar profissionais vinculados:", error);
+    }
+  };
+
   const saveTraining = useMutation({
     mutationFn: async (/** @type {any} */ data) => {
+      await syncLinkedProfessionals(data);
       if (training) {
         const updated = await dataClient.entities.Training.update(
           training.id,
