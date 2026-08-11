@@ -24,6 +24,7 @@ import {
 import DataTable from "@/components/common/DataTable";
 import TrainingHistory from "./TrainingHistory";
 import CertificatesPanel from "./CertificatesPanel";
+import StaffCertificatesPanel from "./StaffCertificatesPanel";
 import { dataClient } from "@/api/dataClient";
 import { connectGoogleCalendar, silentGoogleToken } from "@/lib/googleAuth";
 import {
@@ -90,6 +91,7 @@ export default function ProfessionalDetails({
   participations,
   trainings,
   events,
+  staffCertificates = [],
 }) {
   const normalizedName = normalizeText(professional?.name);
   const normalizedEmail = normalizeEmail(professional?.email);
@@ -200,9 +202,10 @@ export default function ProfessionalDetails({
   const approvedCount = participantTrainingEntries.filter(
     (item) => item.approved === true || item.certificate_issued
   ).length;
-  const certificatesCount = participantTrainingEntries.filter(
-    (item) => item.certificate_issued || item.certificate_url
-  ).length;
+  const certificatesCount =
+    participantTrainingEntries.filter(
+      (item) => item.certificate_issued || item.certificate_url
+    ).length + (staffCertificates || []).length;
   const averageAttendance = participantTrainingEntries.length
     ? (
         participantTrainingEntries.reduce((sum, item) => {
@@ -702,11 +705,17 @@ export default function ProfessionalDetails({
           <Card>
             <CardContent className="pt-4">
               <ScrollArea className="h-[65vh] pr-3">
-                <div className="pr-2">
+                <div className="pr-2 space-y-6">
                   <CertificatesPanel
                     professional={professional}
                     entries={participantTrainingEntries}
                   />
+                  {staffCertificates.length > 0 && (
+                    <StaffCertificatesPanel
+                      certificates={staffCertificates}
+                      trainings={trainings}
+                    />
+                  )}
                 </div>
               </ScrollArea>
             </CardContent>

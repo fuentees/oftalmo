@@ -170,6 +170,7 @@ const ENTITY_TABLES = {
   Training: "trainings",
   Professional: "professionals",
   TrainingParticipant: "training_participants",
+  TrainingStaffCertificate: "training_staff_certificates",
   Event: "events",
   Material: "materials",
   StockMovement: "stock_movements",

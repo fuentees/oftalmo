@@ -68,6 +68,13 @@ export default function ProfessionalProfile() {
     refetchOnWindowFocus: true,
   });
 
+  const { data: staffCertificates = [], isLoading: loadingStaffCertificates } = useQuery({
+    queryKey: ["training-staff-certificates"],
+    queryFn: () => dataClient.entities.TrainingStaffCertificate.list("-created_at"),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+  });
+
   const { data: googleEmailStore = { byProfessionalId: {}, byProfessionalEmail: {} } } =
     useQuery({
       queryKey: ["professional-google-email-store"],
@@ -114,6 +121,13 @@ export default function ProfessionalProfile() {
     );
   }, [participants, professional]);
 
+  const linkedStaffCertificates = useMemo(() => {
+    if (!professional) return [];
+    return (staffCertificates || []).filter((item) =>
+      matchesProfessionalRecord(item, professional)
+    );
+  }, [staffCertificates, professional]);
+
   const linkedEvents = useMemo(() => {
     if (!professional) return [];
     const normalizedName = normalizeText(professional?.name);
@@ -139,7 +153,11 @@ export default function ProfessionalProfile() {
   }, [events, professional]);
 
   const loading =
-    loadingProfessionals || loadingParticipants || loadingTrainings || loadingEvents;
+    loadingProfessionals ||
+    loadingParticipants ||
+    loadingTrainings ||
+    loadingEvents ||
+    loadingStaffCertificates;
 
   return (
     <div className="space-y-6">
@@ -183,6 +201,7 @@ export default function ProfessionalProfile() {
             participations={linkedParticipations}
             trainings={trainings}
             events={linkedEvents}
+            staffCertificates={linkedStaffCertificates}
           />
         </>
       )}

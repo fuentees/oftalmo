@@ -645,12 +645,19 @@ export default function CertificateManager({ training, participants = [], onClos
   const allCertificateNumbersQuery = useQuery({
     queryKey: ["all-certificate-numbers"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("training_participants")
-        .select("certificate_number")
-        .not("certificate_number", "is", null);
-      if (error) throw error;
-      return data || [];
+      const [participantRows, staffRows] = await Promise.all([
+        supabase
+          .from("training_participants")
+          .select("certificate_number")
+          .not("certificate_number", "is", null),
+        supabase
+          .from("training_staff_certificates")
+          .select("certificate_number")
+          .not("certificate_number", "is", null),
+      ]);
+      if (participantRows.error) throw participantRows.error;
+      if (staffRows.error) throw staffRows.error;
+      return [...(participantRows.data || []), ...(staffRows.data || [])];
     },
     staleTime: 30000,
   });
@@ -748,6 +755,36 @@ export default function CertificateManager({ training, participants = [], onClos
     };
   };
 
+  // Reserva o número de certificado de equipe criando o registro no banco
+  // ANTES de gerar o PDF/mandar e-mail — mesma lógica anti-colisão já usada
+  // pra participantes: se colidir com outra emissão concorrente, tenta o
+  // próximo número aqui, nunca depois de já ter mandado o e-mail.
+  const reserveStaffCertificateRecord = async (startingSequence, buildRecordPayload) => {
+    const maxAttempts = 10;
+    let sequence = startingSequence;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const certificateNumber = buildCertificateNumber(sequence);
+      try {
+        const created = await dataClient.entities.TrainingStaffCertificate.create(
+          buildRecordPayload(certificateNumber)
+        );
+        return { certificateNumber, nextSequence: sequence + 1, record: created };
+      } catch (error) {
+        if (isUniqueCertificateNumberViolation(error) && attempt < maxAttempts - 1) {
+          sequence += 1;
+          continue;
+        }
+        if (isUniqueCertificateNumberViolation(error)) {
+          throw new Error(
+            "Não foi possível reservar um número de certificado único (provavelmente outra emissão aconteceu ao mesmo tempo). Tente emitir novamente."
+          );
+        }
+        throw error;
+      }
+    }
+    throw new Error("Não foi possível reservar um número de certificado único.");
+  };
+
   const issueRoleCertificates = async ({
     recipients,
     roleLabel,
@@ -788,10 +825,34 @@ export default function CertificateManager({ training, participants = [], onClos
         const recipientCpf = String(variant?.cpf || "").trim();
         const recipientDocument = String(variant?.document || "").trim();
         const recipientLecture = String(variant?.lecture || "").trim();
-        const certificateNumber = buildCertificateNumber(certificateSequence);
-        certificateSequence += 1;
 
         try {
+        const { certificateNumber, nextSequence, record } = await reserveStaffCertificateRecord(
+          certificateSequence,
+          (number) => ({
+            training_id: training?.id || null,
+            training_title: training?.title || "",
+            professional_id: variant?.professional_id || null,
+            professional_name: recipientName,
+            professional_email: recipientEmail || null,
+            professional_rg: recipientRg || null,
+            professional_cpf: recipientCpf || null,
+            role: roleLabel,
+            lecture: recipientLecture || variant?.lecture_details || null,
+            lecture_date: variant?.lecture_date || null,
+            certificate_number: number,
+            certificate_issue_metadata: {
+              number,
+              training_id: training?.id || null,
+              training_title: training?.title || "",
+              type: roleLabel,
+              issued_at: new Date().toISOString(),
+              template_model_id: selectedTemplateScope,
+            },
+          })
+        );
+        certificateSequence = nextSequence;
+
         const pdf = generator(
           buildStaffCertificatePayload(
             { ...variant, certificate_number: certificateNumber },
@@ -824,7 +885,10 @@ export default function CertificateManager({ training, participants = [], onClos
           content: attachmentBase64,
         };
 
-        await dataClient.integrations.Core.UploadFile({ file: pdfFile });
+        const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
+        await dataClient.entities.TrainingStaffCertificate.update(record.id, {
+          certificate_url: file_url,
+        });
 
         const warnings = [];
         let emailError = "";
@@ -890,6 +954,7 @@ export default function CertificateManager({ training, participants = [], onClos
       }
     }
 
+    queryClient.invalidateQueries({ queryKey: ["all-certificate-numbers"] });
     return results;
   };
 
