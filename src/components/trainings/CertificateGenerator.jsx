@@ -221,12 +221,16 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
   const margin = 15;
   const tableStartY = margin + 22;
 
-  // Larguras fixas (não "auto"): assim sabemos exatamente quanto espaço de
-  // texto cada coluna tem, pra cortar só o que realmente não cabe.
+  // Data e Responsável têm largura fixa; Atividade se ajusta ao título mais
+  // longo de cada treinamento (medido de verdade, não "auto" do autoTable —
+  // isso deu resultado imprevisível junto com a lógica de tentativa/erro de
+  // página). maxTitleColWidth é só o teto, pra um título gigante não estourar
+  // a página; o valor final normalmente é bem menor que isso.
   const dateColWidth = 30;
   const speakerColWidth = 55;
-  const tableWidth = pageWidth - margin * 2;
-  const titleColWidth = tableWidth - dateColWidth - speakerColWidth;
+  const maxAvailableWidth = pageWidth - margin * 2;
+  const maxTitleColWidth = maxAvailableWidth - dateColWidth - speakerColWidth;
+  const minTitleColWidth = 35;
 
   for (let tierIndex = 0; tierIndex < SCHEDULE_TABLE_DENSITY_TIERS.length; tierIndex += 1) {
     const density = SCHEDULE_TABLE_DENSITY_TIERS[tierIndex];
@@ -255,9 +259,12 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
     pdf.setFont(fontFamily, "normal");
     pdf.setFontSize(density.fontSize);
     const cellTextPadding = density.cellPadding * 2 + 0.5;
-    const titleMaxWidth = titleColWidth - cellTextPadding;
+    const titleMaxTextWidth = maxTitleColWidth - cellTextPadding;
     const speakerMaxWidth = speakerColWidth - cellTextPadding;
 
+    // Primeiro corta cada título no teto (pra nenhum título gigante estourar
+    // a página), depois mede o mais largo dos já cortados — a coluna fica
+    // do tamanho do maior título de verdade, não do espaço máximo possível.
     let lastDateLabel = null;
     const rows = rawEntries.map((entry) => {
       const dateLabel = formatScheduleDate(entry.date);
@@ -265,10 +272,20 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
       lastDateLabel = dateLabel;
       return [
         showDate ? dateLabel : "",
-        fitTextToWidth(pdf, entry.title, titleMaxWidth) || "—",
+        fitTextToWidth(pdf, entry.title, titleMaxTextWidth) || "—",
         fitTextToWidth(pdf, entry.speaker_name, speakerMaxWidth),
       ];
     });
+
+    const widestTitleWidth = rows.reduce(
+      (max, row) => Math.max(max, pdf.getTextWidth(row[1])),
+      0
+    );
+    const titleColWidth = Math.min(
+      maxTitleColWidth,
+      Math.max(minTitleColWidth, widestTitleWidth + cellTextPadding)
+    );
+    const tableWidth = dateColWidth + titleColWidth + speakerColWidth;
 
     autoTable(pdf, {
       startY: tableStartY,
