@@ -286,10 +286,14 @@ const addTrainingScheduleBackPage = (pdf, training, fontFamily) => {
       Math.max(minTitleColWidth, widestTitleWidth + cellTextPadding)
     );
     const tableWidth = dateColWidth + titleColWidth + speakerColWidth;
+    // Centraliza a tabela: como as colunas se ajustam ao conteúdo, a largura
+    // final quase sempre sobra menor que o espaço disponível — sem isso a
+    // tabela ficava colada na margem esquerda com um vão vazio à direita.
+    const horizontalMargin = margin + Math.max(0, maxAvailableWidth - tableWidth) / 2;
 
     autoTable(pdf, {
       startY: tableStartY,
-      margin: { left: margin, right: margin, bottom: margin },
+      margin: { left: horizontalMargin, right: horizontalMargin, bottom: margin },
       tableWidth,
       head: [["Data", "Atividade", "Responsável"]],
       body: rows,
@@ -1305,7 +1309,12 @@ const createCertificateWordBlob = ({ template, training, textData }) => {
   return new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
 };
 
-export const generateParticipantCertificate = (participant, training, templateOverride) => {
+export const generateParticipantCertificate = (
+  participant,
+  training,
+  templateOverride,
+  options = {}
+) => {
   const template = templateOverride || loadCertificateTemplate();
   const pdf = new jsPDF({
     orientation: "landscape",
@@ -1511,7 +1520,9 @@ export const generateParticipantCertificate = (participant, training, templateOv
 
   drawCertificateControlLine(pdf, textData, pageWidth, pageHeight, fontFamily);
 
-  addTrainingScheduleBackPage(pdf, training, fontFamily);
+  if (options.includeSchedule !== false) {
+    addTrainingScheduleBackPage(pdf, training, fontFamily);
+  }
 
   return pdf;
 };
@@ -1521,6 +1532,7 @@ const generateStaffCertificate = ({
   training,
   templateOverride,
   roleKey,
+  options = {},
 }) => {
   const template = templateOverride || loadCertificateTemplate();
   const pdf = new jsPDF({
@@ -1731,7 +1743,9 @@ const generateStaffCertificate = ({
 
   drawCertificateControlLine(pdf, textData, pageWidth, pageHeight, fontFamily);
 
-  addTrainingScheduleBackPage(pdf, training, fontFamily);
+  if (options.includeSchedule !== false) {
+    addTrainingScheduleBackPage(pdf, training, fontFamily);
+  }
 
   return pdf;
 };
@@ -1739,29 +1753,33 @@ const generateStaffCertificate = ({
 export const generateCoordinatorCertificate = (
   coordinator,
   training,
-  templateOverride
+  templateOverride,
+  options
 ) =>
   generateStaffCertificate({
     staff: coordinator || {},
     training,
     templateOverride,
     roleKey: "coordenador",
+    options,
   });
 
-export const generateMonitorCertificate = (monitor, training, templateOverride) =>
+export const generateMonitorCertificate = (monitor, training, templateOverride, options) =>
   generateStaffCertificate({
     staff: monitor || {},
     training,
     templateOverride,
     roleKey: "monitor",
+    options,
   });
 
-export const generateSpeakerCertificate = (speaker, training, templateOverride) =>
+export const generateSpeakerCertificate = (speaker, training, templateOverride, options) =>
   generateStaffCertificate({
     staff: speaker || {},
     training,
     templateOverride,
     roleKey: "palestrante",
+    options,
   });
 
 export const generateParticipantCertificateWordBlob = (

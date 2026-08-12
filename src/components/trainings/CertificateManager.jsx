@@ -255,6 +255,8 @@ export default function CertificateManager({ training, participants = [], onClos
   const [speakerCertificateMode, setSpeakerCertificateMode] = useState(
     SPEAKER_CERTIFICATE_MODE_PER_SESSION
   );
+  const [includeScheduleBackPage, setIncludeScheduleBackPage] = useState(true);
+  const certificateGenerationOptions = { includeSchedule: includeScheduleBackPage };
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
   
@@ -869,7 +871,8 @@ export default function CertificateManager({ training, participants = [], onClos
             recipientEmail
           ),
           training,
-          templateOverride
+          templateOverride,
+          certificateGenerationOptions
         );
         const pdfBlob = pdf.output("blob");
         const safeName = recipientName.replace(/\s+/g, "_");
@@ -1082,7 +1085,8 @@ export default function CertificateManager({ training, participants = [], onClos
       const pdf = generateParticipantCertificate(
         participantWithMetrics,
         training,
-        templateOverride
+        templateOverride,
+        certificateGenerationOptions
       );
       const blob = pdf.output("blob");
       const url = window.URL.createObjectURL(blob);
@@ -1155,7 +1159,8 @@ export default function CertificateManager({ training, participants = [], onClos
           certificate_number: `PREVIA-${new Date().getFullYear()}`,
         }),
         training,
-        templateOverride
+        templateOverride,
+        certificateGenerationOptions
       );
       const blob = pdf.output("blob");
       const url = window.URL.createObjectURL(blob);
@@ -1360,7 +1365,8 @@ export default function CertificateManager({ training, participants = [], onClos
           const pdf = generateParticipantCertificate(
             participantWithMetrics,
             training,
-            templateOverride
+            templateOverride,
+            certificateGenerationOptions
           );
           const pdfBlob = pdf.output('blob');
           const pdfFileName = `certificado-${toSafeFileName(
@@ -2009,6 +2015,23 @@ export default function CertificateManager({ training, participants = [], onClos
           </div>
         );
       })()}
+
+      <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <Checkbox
+          id="certificate-include-schedule"
+          checked={includeScheduleBackPage}
+          onCheckedChange={(checked) => setIncludeScheduleBackPage(checked === true)}
+        />
+        <div className="space-y-1">
+          <Label htmlFor="certificate-include-schedule" className="cursor-pointer">
+            Incluir programação no verso do certificado
+          </Label>
+          <p className="text-xs text-slate-600">
+            Vale para participantes e equipe. Marcado, o certificado sai com 2 páginas (frente
+            + programação do treinamento). Desmarcado, sai só com 1 página.
+          </p>
+        </div>
+      </div>
 
       <Tabs defaultValue="participants" className="space-y-4">
         <TabsList className="grid w-full grid-cols-2">
