@@ -19,6 +19,7 @@ import {
 import { formatDateSafe, parseDateSafe } from "@/lib/date";
 import {
   getSupabaseErrorMessage,
+  isMissingSupabaseColumnError,
   isMissingSupabaseTableError,
 } from "@/lib/supabaseErrors";
 import { extractQuestionMeta } from "@/lib/trainingFeedbackSchema";
@@ -208,7 +209,7 @@ export default function TrainingFeedback() {
           .trim()
           .toLowerCase() === "nao";
 
-      await dataClient.entities.TrainingFeedback.create({
+      const payload = {
         training_id: trainingId,
         training_title: training.title,
         participant_id: null,
@@ -219,7 +220,20 @@ export default function TrainingFeedback() {
           ? normalizedWouldRecommend
           : null,
         answers: answersPayload,
-      });
+      };
+
+      try {
+        await dataClient.entities.TrainingFeedback.create(payload);
+      } catch (error) {
+        if (
+          isMissingSupabaseColumnError(error, "training_feedback", "answers")
+        ) {
+          const { answers, ...fallbackPayload } = payload;
+          await dataClient.entities.TrainingFeedback.create(fallbackPayload);
+          return;
+        }
+        throw error;
+      }
     },
     onSuccess: () => {
       setSubmitted(true);
