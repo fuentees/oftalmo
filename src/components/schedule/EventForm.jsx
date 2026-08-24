@@ -494,7 +494,7 @@ export default function EventForm({ event, onClose, onSuccess, initialDate }) {
           <div className="space-y-2">
             <Label>Período de Férias</Label>
             <div className="flex flex-wrap gap-2">
-              {[10, 20].map((days) => (
+              {[10, 15, 20, 30].map((days) => (
                 <Button
                   key={days}
                   type="button"
