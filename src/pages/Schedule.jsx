@@ -59,7 +59,26 @@ export default function Schedule() {
   const [deleteEvent, setDeleteEvent] = useState(null);
   const [deleteStatus, setDeleteStatus] = useState(null);
   const [prefillDate, setPrefillDate] = useState(null);
+  const [hideWeekends, setHideWeekends] = useState(() => {
+    try {
+      return localStorage.getItem("agenda-hide-weekends") === "true";
+    } catch {
+      return false;
+    }
+  });
   const statusUpdateRef = useRef(new Map());
+
+  const toggleHideWeekends = () => {
+    setHideWeekends((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("agenda-hide-weekends", String(next));
+      } catch {
+        // localStorage indisponível (modo privado, etc.) — só não persiste.
+      }
+      return next;
+    });
+  };
 
   const queryClient = useQueryClient();
 
@@ -274,6 +293,13 @@ export default function Schedule() {
     start: calendarStart,
     end: calendarEnd,
   });
+  const visibleDaysInMonth = hideWeekends
+    ? daysInMonth.filter((day) => day.getDay() !== 0 && day.getDay() !== 6)
+    : daysInMonth;
+  const weekdayLabels = hideWeekends
+    ? ["Seg", "Ter", "Qua", "Qui", "Sex"]
+    : ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const calendarGridColsClass = hideWeekends ? "grid-cols-5" : "grid-cols-7";
 
   const typeIcons = {
     viagem: Plane,
@@ -473,6 +499,13 @@ export default function Schedule() {
                   {format(currentDate, "MMMM yyyy", { locale: ptBR })}
                 </CardTitle>
                 <div className="flex gap-2">
+                  <Button
+                    variant={hideWeekends ? "default" : "outline"}
+                    size="sm"
+                    onClick={toggleHideWeekends}
+                  >
+                    Ocultar fins de semana
+                  </Button>
                   <Button variant="outline" size="sm" onClick={handleToday}>
                     Hoje
                   </Button>
@@ -486,8 +519,8 @@ export default function Schedule() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="grid grid-cols-7 border-b">
-                {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
+              <div className={`grid ${calendarGridColsClass} border-b`}>
+                {weekdayLabels.map((day) => (
                   <div
                     key={day}
                     className="p-2 text-center text-xs font-semibold text-slate-600 border-r last:border-r-0"
@@ -496,8 +529,8 @@ export default function Schedule() {
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-7">
-                {daysInMonth.map((day, index) => {
+              <div className={`grid ${calendarGridColsClass}`}>
+                {visibleDaysInMonth.map((day, index) => {
                   const dayEvents = getEventsForDate(day);
                   const isSelected = selectedDate && isSameDay(day, selectedDate);
                   const isTodayDate = isToday(day);
