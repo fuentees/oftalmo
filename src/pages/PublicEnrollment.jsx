@@ -265,6 +265,14 @@ export default function PublicEnrollment() {
 
   const normalizeCpf = (value) => String(value ?? "").replace(/\D/g, "");
 
+  const getEnrollmentErrorMessage = (/** @type {any} */ error) => {
+    const message = String(error?.message || "").toLowerCase();
+    if (message.includes("failed to fetch") || message.includes("network")) {
+      return "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente em alguns instantes.";
+    }
+    return error?.message || "Erro ao realizar inscrição.";
+  };
+
   const isDuplicateEnrollmentError = (error) => {
     const message = String(error?.message || "").toLowerCase();
     return (
@@ -612,11 +620,27 @@ export default function PublicEnrollment() {
         validity_date: validityDate,
       };
 
+      const isTransientNetworkError = (error) => {
+        const message = String(error?.message || error || "").toLowerCase();
+        return message.includes("failed to fetch") || message.includes("network");
+      };
+
       let createdParticipant = null;
       try {
-        createdParticipant = await dataClient.entities.TrainingParticipant.create(
-          participantPayload
-        );
+        try {
+          createdParticipant = await dataClient.entities.TrainingParticipant.create(
+            participantPayload
+          );
+        } catch (error) {
+          // Falha transitória de rede/CORS na borda do Supabase: a inscrição
+          // pode ou não ter sido gravada. Tenta de novo uma vez; se a primeira
+          // tentativa já tiver criado o registro, o retry cai no unique
+          // constraint de CPF e é tratado como "já inscrito" abaixo.
+          if (!isTransientNetworkError(error)) throw error;
+          createdParticipant = await dataClient.entities.TrainingParticipant.create(
+            participantPayload
+          );
+        }
       } catch (error) {
         if (isDuplicateEnrollmentError(error)) {
           return {
@@ -1180,7 +1204,7 @@ export default function PublicEnrollment() {
               <Alert className="border-red-200 bg-red-50">
                 <AlertCircle className="h-4 w-4 text-red-600" />
                 <AlertDescription className="text-red-800">
-                  {enrollMutation.error?.message || "Erro ao realizar inscricao."}
+                  {getEnrollmentErrorMessage(enrollMutation.error)}
                 </AlertDescription>
               </Alert>
             )}

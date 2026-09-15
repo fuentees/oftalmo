@@ -522,6 +522,10 @@ export default function Layout({ children, currentPageName }) {
               </AnimatePresence>
             </div>
           </main>
+
+          <footer className="px-5 lg:px-6 pb-4 text-center text-xs text-slate-400 dark:text-slate-500">
+            Desenvolvido por Roctiv Tecnologia Ltda · © {new Date().getFullYear()} ROCTIV. Todos os direitos reservados.
+          </footer>
         </div>
 
         {/* Profile Dialog */}
