@@ -529,11 +529,17 @@ export default function PublicEnrollment() {
     mutationFn: async (/** @type {Record<string, any>} */ data) => {
       const normalizedCpf = normalizeCpf(data.cpf);
       if (normalizedCpf) {
+        // Usuário anônimo só tem SELECT liberado num subconjunto de colunas
+        // (ver supabase/harden_rls_baseline.sql) — pedir "*" ou ordenar por
+        // uma coluna fora dessa lista (ex.: enrollment_date) derruba a
+        // consulta inteira com 401. Aqui só precisamos do CPF para o dedupe.
         const participants = await dataClient.entities.TrainingParticipant.filter(
           {
             training_id: trainingId,
           },
-          "-enrollment_date"
+          null,
+          null,
+          "training_id,professional_cpf"
         );
         const existing = (participants || []).filter(
           (participant) => normalizeCpf(participant?.professional_cpf) === normalizedCpf

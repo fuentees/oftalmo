@@ -64,9 +64,15 @@ export default function TracomaExaminerTest() {
   const enrolledParticipantsQuery = useQuery({
     queryKey: ["tracoma-exam-enrolled-public", trainingId],
     queryFn: () =>
+      // Usuário anônimo só tem SELECT liberado num subconjunto de colunas
+      // (ver supabase/harden_rls_baseline.sql) — select("*") ou ordenar por
+      // uma coluna fora dessa lista (enrollment_date não está nela) derruba
+      // a consulta inteira com 401. Pede só o que este fluxo usa.
       dataClient.entities.TrainingParticipant.filter(
         { training_id: trainingId },
-        "-enrollment_date"
+        null,
+        null,
+        "id,professional_rg,professional_cpf,professional_name,professional_email,grade"
       ),
     enabled: Boolean(trainingId),
   });

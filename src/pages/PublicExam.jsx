@@ -65,9 +65,17 @@ export default function PublicExam() {
         });
         setQuestions(shuffled);
 
-        // Load enrolled participants if training is linked
+        // Load enrolled participants if training is linked.
+        // Usuário anônimo só tem SELECT liberado num subconjunto de colunas
+        // (ver supabase/harden_rls_baseline.sql) — select("*") derruba a
+        // consulta inteira com 401. Pede só o que este fluxo usa.
         if (examObj.training_id) {
-          const pts = await dataClient.entities.TrainingParticipant.filter({ training_id: examObj.training_id });
+          const pts = await dataClient.entities.TrainingParticipant.filter(
+            { training_id: examObj.training_id },
+            null,
+            null,
+            "id,enrollment_status,professional_rg,professional_name,professional_cpf"
+          );
           setParticipants(Array.isArray(pts) ? pts.filter(p => p.enrollment_status !== "cancelado") : []);
         }
 

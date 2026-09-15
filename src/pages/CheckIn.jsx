@@ -64,8 +64,16 @@ export default function CheckIn() {
       // Busca participantes e dados do treinamento em paralelo para reduzir tempo sob carga
       let participants, selectedTraining;
       try {
+        // Usuário anônimo só tem SELECT liberado num subconjunto de colunas
+        // (ver supabase/harden_rls_baseline.sql) — select("*") derruba a
+        // consulta inteira com 401. Pede só o que este fluxo usa.
         const [participantRows, trainingRows] = await Promise.all([
-          dataClient.entities.TrainingParticipant.filter({ training_id: linkData.training_id }),
+          dataClient.entities.TrainingParticipant.filter(
+            { training_id: linkData.training_id },
+            null,
+            null,
+            "id,professional_rg,professional_cpf,enrollment_status,attendance_records,professional_email,professional_name"
+          ),
           dataClient.entities.Training.filter({ id: linkData.training_id }).catch(() => []),
         ]);
         participants = participantRows;

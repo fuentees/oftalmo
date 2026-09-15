@@ -202,8 +202,8 @@ const applyOrder = (query, order) => {
 
 const SUPABASE_PAGE_SIZE = 1000;
 
-const buildBaseSelectQuery = (table, filters, order) => {
-  let query = supabase.from(table).select("*");
+const buildBaseSelectQuery = (table, filters, order, columns) => {
+  let query = supabase.from(table).select(columns || "*");
   if (filters) query = query.match(filters);
   if (order) {
     query = applyOrder(query, order);
@@ -214,13 +214,13 @@ const buildBaseSelectQuery = (table, filters, order) => {
   return query;
 };
 
-const fetchAllRows = async (table, filters, order) => {
+const fetchAllRows = async (table, filters, order, columns) => {
   const allRows = [];
   let from = 0;
 
   while (true) {
     const to = from + SUPABASE_PAGE_SIZE - 1;
-    const query = buildBaseSelectQuery(table, filters, order).range(from, to);
+    const query = buildBaseSelectQuery(table, filters, order, columns).range(from, to);
     const { data, error } = await query;
     if (error) throw error;
     const rows = data || [];
@@ -232,26 +232,26 @@ const fetchAllRows = async (table, filters, order) => {
   return allRows;
 };
 
-const list = async (table, order, limit) => {
+const list = async (table, order, limit, columns) => {
   if (!limit) {
-    const rows = await fetchAllRows(table, null, order);
+    const rows = await fetchAllRows(table, null, order, columns);
     return normalizeEntityData(table, rows);
   }
 
-  let query = buildBaseSelectQuery(table, null, order);
+  let query = buildBaseSelectQuery(table, null, order, columns);
   query = query.limit(limit);
   const { data, error } = await query;
   if (error) throw error;
   return normalizeEntityData(table, data || []);
 };
 
-const filter = async (table, filters, order, limit) => {
+const filter = async (table, filters, order, limit, columns) => {
   if (!limit) {
-    const rows = await fetchAllRows(table, filters, order);
+    const rows = await fetchAllRows(table, filters, order, columns);
     return normalizeEntityData(table, rows);
   }
 
-  let query = buildBaseSelectQuery(table, filters, order);
+  let query = buildBaseSelectQuery(table, filters, order, columns);
   query = query.limit(limit);
   const { data, error } = await query;
   if (error) throw error;
@@ -320,8 +320,8 @@ const remove = async (table, id) => {
 const createEntityApi = (entityName) => {
   const table = ENTITY_TABLES[entityName] || toSnakeCase(entityName);
   return {
-    list: (order, limit) => list(table, order, limit),
-    filter: (filters, order, limit) => filter(table, filters, order, limit),
+    list: (order, limit, columns) => list(table, order, limit, columns),
+    filter: (filters, order, limit, columns) => filter(table, filters, order, limit, columns),
     create: (payload) => create(table, payload),
     bulkCreate: (payload) => bulkCreate(table, payload),
     update: (id, payload) => update(table, id, payload),
