@@ -631,21 +631,30 @@ export default function PublicEnrollment() {
         return message.includes("failed to fetch") || message.includes("network");
       };
 
+      // Usuário anônimo só tem SELECT liberado num subconjunto de colunas
+      // (ver supabase/harden_rls_baseline.sql). O create() por padrão pede a
+      // linha de volta com select("*") após o INSERT, o que cai na mesma
+      // restrição e derruba a gravação com 401. Pedimos só o "id" gerado e
+      // montamos o restante com o próprio payload que já enviamos.
       let createdParticipant = null;
       try {
         try {
-          createdParticipant = await dataClient.entities.TrainingParticipant.create(
-            participantPayload
+          const createdRow = await dataClient.entities.TrainingParticipant.create(
+            participantPayload,
+            "id"
           );
+          createdParticipant = { ...participantPayload, id: createdRow?.id };
         } catch (error) {
           // Falha transitória de rede/CORS na borda do Supabase: a inscrição
           // pode ou não ter sido gravada. Tenta de novo uma vez; se a primeira
           // tentativa já tiver criado o registro, o retry cai no unique
           // constraint de CPF e é tratado como "já inscrito" abaixo.
           if (!isTransientNetworkError(error)) throw error;
-          createdParticipant = await dataClient.entities.TrainingParticipant.create(
-            participantPayload
+          const createdRow = await dataClient.entities.TrainingParticipant.create(
+            participantPayload,
+            "id"
           );
+          createdParticipant = { ...participantPayload, id: createdRow?.id };
         }
       } catch (error) {
         if (isDuplicateEnrollmentError(error)) {

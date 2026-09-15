@@ -258,11 +258,11 @@ const filter = async (table, filters, order, limit, columns) => {
   return normalizeEntityData(table, data || []);
 };
 
-const create = async (table, payload) => {
+const create = async (table, payload, columns) => {
   const { data, error } = await supabase
     .from(table)
     .insert(payload)
-    .select()
+    .select(columns || "*")
     .single();
   if (error) throw error;
   return normalizeEntityData(table, data);
@@ -322,7 +322,7 @@ const createEntityApi = (entityName) => {
   return {
     list: (order, limit, columns) => list(table, order, limit, columns),
     filter: (filters, order, limit, columns) => filter(table, filters, order, limit, columns),
-    create: (payload) => create(table, payload),
+    create: (payload, columns) => create(table, payload, columns),
     bulkCreate: (payload) => bulkCreate(table, payload),
     update: (id, payload) => update(table, id, payload),
     delete: (id) => remove(table, id),
