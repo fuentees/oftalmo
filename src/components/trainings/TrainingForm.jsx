@@ -531,7 +531,23 @@ export default function TrainingForm({ training, onClose, professionals = [] }) 
     if (!generatedDates.length) return;
     setFormData((prev) => {
       if (areDateListsEqual(prev.dates || [], generatedDates)) return prev;
-      return { ...prev, dates: generatedDates };
+      // buildRangeDates só sabe gerar {date, start_time, end_time} — sem
+      // reaproveitar a programação (sessions) já digitada em cada dia, a
+      // regeneração apagaria a programação inteira mesmo quando só 1 dia
+      // muda (ex.: encurtar o período em 1 dia). Preserva sessions dos dias
+      // que continuam existindo, casando por data.
+      const sessionsByDate = new Map(
+        (prev.dates || [])
+          .filter((item) => item?.date && Array.isArray(item?.sessions) && item.sessions.length > 0)
+          .map((item) => [String(item.date), item.sessions])
+      );
+      const mergedDates = sessionsByDate.size
+        ? generatedDates.map((item) => {
+            const existingSessions = sessionsByDate.get(String(item.date));
+            return existingSessions ? { ...item, sessions: existingSessions } : item;
+          })
+        : generatedDates;
+      return { ...prev, dates: mergedDates };
     });
   }, [dateMode, rangeConfig, initializedTrainingKey]);
 
