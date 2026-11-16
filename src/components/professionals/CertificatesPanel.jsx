@@ -1,3 +1,4 @@
+import { downloadCertificate } from "@/lib/certificateArchive";
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
@@ -193,11 +194,11 @@ export default function CertificatesPanel({ professional, entries = null }) {
                         </Badge>
                       </div>
 
-                      {cert.certificate_url && (
+                      {(cert.certificate_url || cert.certificate_issued) && (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(cert.certificate_url, "_blank")}
+                          onClick={() => downloadCertificate(cert).catch((error) => window.alert(error.message))}
                           className="w-full mt-3"
                         >
                           <ExternalLink className="h-3 w-3 mr-2" />

@@ -59,7 +59,10 @@ export default function Dashboard() {
 
   const { data: participants = [], isLoading: loadingParticipants } = useQuery({
     queryKey: ["dashboard-participants"],
-    queryFn: () => dataClient.entities.TrainingParticipant.list(),
+    queryFn: () => dataClient.entities.TrainingParticipant.list(null, null,
+      "id,professional_name,professional_email,professional_rg,training_id,training_date,enrollment_status,certificate_issued,approved,grade,validity_date,municipality"
+    ),
+    staleTime: 60_000,
   });
 
   const { data: events = [], isLoading: loadingEvents } = useQuery({

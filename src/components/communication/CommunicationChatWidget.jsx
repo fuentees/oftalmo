@@ -106,7 +106,8 @@ export default function CommunicationChatWidget({ currentUser }) {
   const messagesQuery = useQuery({
     queryKey: ["communication-messages"],
     queryFn: () => dataClient.entities.CommunicationMessage.list("-created_at", 300),
-    refetchInterval: 15000,
+    refetchInterval: open ? 15000 : 60000,
+    staleTime: 15000,
   });
   const messages = messagesQuery.data || [];
 

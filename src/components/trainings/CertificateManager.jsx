@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
-import { supabase } from "@/api/supabaseClient";
+import { freezeCertificateTemplate, reserveCertificateIssue, getCertificateBlob } from "@/lib/certificateArchive";
+import { buildCertificateIssueMetadata } from "@/lib/certificateRecord";
 import { format, addMonths } from "date-fns";
 import {
   generateParticipantCertificate,
@@ -111,19 +112,6 @@ const toSafeFileName = (value, fallback = "certificado") => {
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
   return normalized || fallback;
-};
-const resolveCertificateSequenceFromNumber = (value) => {
-  const match = String(value || "").match(/(\d{4,})$/);
-  if (!match) return 0;
-  const parsed = Number(match[1]);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-const buildCertificateNumber = (sequence, date = new Date()) => {
-  const parsedDate = date instanceof Date ? date : new Date(date);
-  const year = Number.isNaN(parsedDate.getTime())
-    ? new Date().getFullYear()
-    : parsedDate.getFullYear();
-  return `CERT-${year}-${String(sequence).padStart(6, "0")}`;
 };
 const downloadBlob = (blob, fileName) => {
   const url = window.URL.createObjectURL(blob);
@@ -648,105 +636,6 @@ export default function CertificateManager({ training, participants = [], onClos
     }));
   };
 
-  // O número do certificado é único no banco inteiro (não por treinamento) —
-  // por isso o "próximo número" precisa considerar TODOS os certificados já
-  // emitidos em qualquer treinamento, não só os deste. Calcular só a partir
-  // de safeParticipants (deste treinamento) fazia a contagem reiniciar do
-  // zero pra cada treinamento novo, colidindo direto com números que outros
-  // treinamentos já tinham usado no mesmo ano.
-  const allCertificateNumbersQuery = useQuery({
-    queryKey: ["all-certificate-numbers"],
-    queryFn: async () => {
-      const [participantRows, staffRows] = await Promise.all([
-        supabase
-          .from("training_participants")
-          .select("certificate_number")
-          .not("certificate_number", "is", null),
-        supabase
-          .from("training_staff_certificates")
-          .select("certificate_number")
-          .not("certificate_number", "is", null),
-      ]);
-      if (participantRows.error) throw participantRows.error;
-      if (staffRows.error) throw staffRows.error;
-      return [...(participantRows.data || []), ...(staffRows.data || [])];
-    },
-    staleTime: 30000,
-  });
-
-  const maxExistingCertificateSequence = useMemo(() => {
-    const rows = allCertificateNumbersQuery.data || [];
-    const sequences = rows.map((row) =>
-      resolveCertificateSequenceFromNumber(row?.certificate_number)
-    );
-    return sequences.length > 0 ? Math.max(...sequences) : 0;
-  }, [allCertificateNumbersQuery.data]);
-
-  const isUniqueCertificateNumberViolation = (error) =>
-    error?.code === "23505" &&
-    String(error?.message || "").toLowerCase().includes("certificate_number");
-
-  const updateParticipantCertificateRecord = async (participantId, payload) => {
-    try {
-      return await dataClient.entities.TrainingParticipant.update(participantId, payload);
-    } catch (error) {
-      // Colisão de numeração precisa propagar para quem chamou decidir (tentar
-      // o próximo número) — nunca deve ser mascarada silenciosamente.
-      if (isUniqueCertificateNumberViolation(error)) throw error;
-      const message = String(error?.message || "").toLowerCase();
-      const hasCertificateNumberColumnError =
-        message.includes("certificate_number") ||
-        message.includes("certificate_issue_metadata");
-      if (!hasCertificateNumberColumnError) throw error;
-      const {
-        certificate_number: _certificateNumber,
-        certificate_issue_metadata: _certificateIssueMetadata,
-        ...fallbackPayload
-      } = payload;
-      return dataClient.entities.TrainingParticipant.update(
-        participantId,
-        fallbackPayload
-      );
-    }
-  };
-
-  /**
-   * Reserva um número de certificado ANTES de gerar o PDF/enviar o e-mail:
-   * se a numeração colidir (corrida entre duas emissões concorrentes), tenta
-   * o próximo número em vez de deixar um e-mail já enviado ficar com número
-   * duplicado ou órfão.
-   */
-  const reserveCertificateNumber = async (
-    participantId,
-    startingSequence,
-    buildPayload
-  ) => {
-    const maxAttempts = 10;
-    let sequence = startingSequence;
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const certificateNumber = buildCertificateNumber(sequence);
-      try {
-        await updateParticipantCertificateRecord(
-          participantId,
-          buildPayload(certificateNumber)
-        );
-        return { certificateNumber, nextSequence: sequence + 1 };
-      } catch (error) {
-        if (isUniqueCertificateNumberViolation(error) && attempt < maxAttempts - 1) {
-          sequence += 1;
-          continue;
-        }
-        if (isUniqueCertificateNumberViolation(error)) {
-          throw new Error(
-            "Não foi possível reservar um número de certificado único (provavelmente outra emissão aconteceu ao mesmo tempo). Tente emitir novamente."
-          );
-        }
-        throw error;
-      }
-    }
-    throw new Error("Não foi possível reservar um número de certificado único.");
-  };
-
   const resolveTeamWordGenerator = (role) => {
     if (role === "coordenador") return generateCoordinatorCertificateWordBlob;
     if (role === "monitor") return generateMonitorCertificateWordBlob;
@@ -767,42 +656,11 @@ export default function CertificateManager({ training, participants = [], onClos
     };
   };
 
-  // Reserva o número de certificado de equipe criando o registro no banco
-  // ANTES de gerar o PDF/mandar e-mail — mesma lógica anti-colisão já usada
-  // pra participantes: se colidir com outra emissão concorrente, tenta o
-  // próximo número aqui, nunca depois de já ter mandado o e-mail.
-  const reserveStaffCertificateRecord = async (startingSequence, buildRecordPayload) => {
-    const maxAttempts = 10;
-    let sequence = startingSequence;
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const certificateNumber = buildCertificateNumber(sequence);
-      try {
-        const created = await dataClient.entities.TrainingStaffCertificate.create(
-          buildRecordPayload(certificateNumber)
-        );
-        return { certificateNumber, nextSequence: sequence + 1, record: created };
-      } catch (error) {
-        if (isUniqueCertificateNumberViolation(error) && attempt < maxAttempts - 1) {
-          sequence += 1;
-          continue;
-        }
-        if (isUniqueCertificateNumberViolation(error)) {
-          throw new Error(
-            "Não foi possível reservar um número de certificado único (provavelmente outra emissão aconteceu ao mesmo tempo). Tente emitir novamente."
-          );
-        }
-        throw error;
-      }
-    }
-    throw new Error("Não foi possível reservar um número de certificado único.");
-  };
-
   const issueRoleCertificates = async ({
     recipients,
     roleLabel,
     emailRole,
     filePrefix,
-    generator,
     splitByLectureSessions = false,
   }) => {
     if (!training) {
@@ -811,17 +669,12 @@ export default function CertificateManager({ training, participants = [], onClos
     if (!Array.isArray(recipients) || recipients.length === 0) {
       throw new Error(`Nenhum ${roleLabel} cadastrado para emissão.`);
     }
-    if (allCertificateNumbersQuery.isLoading || !allCertificateNumbersQuery.isSuccess) {
-      throw new Error(
-        "Ainda carregando os números de certificado já emitidos. Aguarde um instante e tente novamente."
-      );
-    }
 
     setProcessing(true);
     setResult(null);
     const templateOverride = await resolveSelectedTemplateOverride();
     const results = [];
-    let certificateSequence = maxExistingCertificateSequence + 1;
+    const templateKey = await freezeCertificateTemplate(templateOverride);
 
     for (const recipient of recipients) {
       const variants = splitByLectureSessions
@@ -839,42 +692,29 @@ export default function CertificateManager({ training, participants = [], onClos
         const recipientLecture = String(variant?.lecture || "").trim();
 
         try {
-        const { certificateNumber, nextSequence, record } = await reserveStaffCertificateRecord(
-          certificateSequence,
-          (number) => ({
-            training_id: training?.id || null,
-            training_title: training?.title || "",
-            professional_id: variant?.professional_id || null,
-            professional_name: recipientName,
-            professional_email: recipientEmail || null,
-            professional_rg: recipientRg || null,
-            professional_cpf: recipientCpf || null,
-            role: roleLabel,
-            lecture: recipientLecture || variant?.lecture_details || null,
-            lecture_date: variant?.lecture_date || null,
-            certificate_number: number,
-            certificate_issue_metadata: {
-              number,
-              training_id: training?.id || null,
-              training_title: training?.title || "",
-              type: roleLabel,
-              issued_at: new Date().toISOString(),
-              template_model_id: selectedTemplateScope,
-            },
-          })
-        );
-        certificateSequence = nextSequence;
-
-        const pdf = generator(
-          buildStaffCertificatePayload(
-            { ...variant, certificate_number: certificateNumber },
-            recipientEmail
-          ),
-          training,
-          templateOverride,
-          certificateGenerationOptions
-        );
-        const pdfBlob = pdf.output("blob");
+        const role = roleLabel.toLowerCase();
+        const staff = {
+          training_id: training.id,
+          training_title: training.title,
+          professional_id: variant.professional_id || null,
+          professional_name: recipientName,
+          professional_email: recipientEmail || null,
+          professional_rg: recipientRg || null,
+          professional_cpf: recipientCpf || null,
+          role,
+          lecture: recipientLecture || variant.lecture_details || null,
+          lecture_date: variant.certificateScheduleEntry?.date || null,
+        };
+        const record = await reserveCertificateIssue({
+          staff,
+          metadata: buildCertificateIssueMetadata({
+            recipient: buildStaffCertificatePayload(variant, recipientEmail),
+            training, type: role, templateKey, modelId: selectedTemplateScope,
+            options: certificateGenerationOptions,
+          }),
+        });
+        const certificateNumber = record.certificate_number;
+        const pdfBlob = await getCertificateBlob(record);
         const safeName = recipientName.replace(/\s+/g, "_");
         const certificateSuffix = [
           certificateNumber,
@@ -885,9 +725,6 @@ export default function CertificateManager({ training, participants = [], onClos
           .map((item) => toSafeFileName(item, "certificado"))
           .join("-");
         const pdfFileName = `${filePrefix}-${safeName}-${certificateSuffix}.pdf`;
-        const pdfFile = new File([pdfBlob], pdfFileName, {
-          type: "application/pdf",
-        });
         const attachmentBase64 = await blobToBase64(pdfBlob);
         if (!attachmentBase64) {
           throw new Error("Falha ao gerar anexo do certificado.");
@@ -897,11 +734,6 @@ export default function CertificateManager({ training, participants = [], onClos
           contentType: "application/pdf",
           content: attachmentBase64,
         };
-
-        const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
-        await dataClient.entities.TrainingStaffCertificate.update(record.id, {
-          certificate_url: file_url,
-        });
 
         const warnings = [];
         let emailError = "";
@@ -967,7 +799,6 @@ export default function CertificateManager({ training, participants = [], onClos
       }
     }
 
-    queryClient.invalidateQueries({ queryKey: ["all-certificate-numbers"] });
     return results;
   };
 
@@ -1314,11 +1145,6 @@ export default function CertificateManager({ training, participants = [], onClos
       if (!training) {
         throw new Error("Treinamento inválido para emissão de certificados.");
       }
-      if (allCertificateNumbersQuery.isLoading || !allCertificateNumbersQuery.isSuccess) {
-        throw new Error(
-          "Ainda carregando os números de certificado já emitidos. Aguarde um instante e tente novamente."
-        );
-      }
       setProcessing(true);
       setResult(null);
 
@@ -1328,7 +1154,7 @@ export default function CertificateManager({ training, participants = [], onClos
 
       const results = [];
       const templateOverride = await resolveSelectedTemplateOverride();
-      let certificateSequence = maxExistingCertificateSequence + 1;
+      const templateKey = await freezeCertificateTemplate(templateOverride);
 
       for (const participant of participantsToIssue) {
         try {
@@ -1336,44 +1162,22 @@ export default function CertificateManager({ training, participants = [], onClos
             ? format(addMonths(new Date(), training.validity_months), "yyyy-MM-dd")
             : null;
 
-          // Reserva o número no banco ANTES de gerar o PDF/enviar o e-mail: se
-          // colidir com outra emissão concorrente, tenta o próximo número aqui
-          // — nunca depois de já ter mandado um e-mail com o número errado.
-          const { certificateNumber, nextSequence } = await reserveCertificateNumber(
-            participant.id,
-            certificateSequence,
-            (number) => ({
-              certificate_number: number,
-              certificate_issue_metadata: {
-                number,
-                training_id: training?.id || null,
-                training_title: training?.title || "",
-                type: "participante",
-                issued_at: new Date().toISOString(),
-                template_model_id: selectedTemplateScope,
-              },
-              validity_date: validityDateForReservation,
-            })
-          );
-          certificateSequence = nextSequence;
-
-          const participantWithMetrics = {
-            ...buildParticipantWithCertificateMetrics(participant),
-            certificate_number: certificateNumber,
-          };
-          // Generate PDF
-          const pdf = generateParticipantCertificate(
-            participantWithMetrics,
-            training,
-            templateOverride,
-            certificateGenerationOptions
-          );
-          const pdfBlob = pdf.output('blob');
+          const participantWithMetrics = buildParticipantWithCertificateMetrics(participant);
+          const record = await reserveCertificateIssue({
+            participantId: participant.id,
+            validityDate: validityDateForReservation,
+            metadata: buildCertificateIssueMetadata({
+              recipient: participantWithMetrics, training, type: "participante",
+              templateKey, modelId: selectedTemplateScope,
+              options: certificateGenerationOptions, validityDate: validityDateForReservation,
+            }),
+          });
+          const certificateNumber = record.certificate_number;
+          const pdfBlob = await getCertificateBlob(record);
           const pdfFileName = `certificado-${toSafeFileName(
             participant.professional_name,
             "participante"
           )}-${toSafeFileName(certificateNumber)}.pdf`;
-          const pdfFile = new File([pdfBlob], pdfFileName, { type: 'application/pdf' });
           const attachmentBase64 = await blobToBase64(pdfBlob);
           if (!attachmentBase64) {
             throw new Error("Falha ao gerar anexo do certificado.");
@@ -1383,9 +1187,6 @@ export default function CertificateManager({ training, participants = [], onClos
             contentType: "application/pdf",
             content: attachmentBase64,
           };
-
-          // Upload PDF
-          const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
           const warnings = [];
           let emailError = "";
@@ -1431,38 +1232,15 @@ export default function CertificateManager({ training, participants = [], onClos
             emailError = "Participante sem e-mail cadastrado para envio.";
           }
 
-          // Segunda atualização: só os campos que dependem do PDF/e-mail já
-          // terem sido gerados/enviados. certificate_number/validity_date já
-          // foram persistidos com sucesso em reserveCertificateNumber acima.
-          /** @type {any} */
-          const participantUpdatePayload = {
-            certificate_url: file_url,
-            certificate_issue_metadata: {
-              number: certificateNumber,
-              training_id: training?.id || null,
-              training_title: training?.title || "",
-              type: "participante",
-              issued_at: new Date().toISOString(),
-              file_name: pdfFileName,
-              template_model_id: selectedTemplateScope,
-            },
-            ...(useRepadScoreCriteria &&
-            Number.isFinite(participantWithMetrics?.certificate_score)
-              ? { grade: formatScore(participantWithMetrics.certificate_score, 1) }
-              : {}),
-          };
           if (emailSent) {
-            participantUpdatePayload.certificate_issued = true;
-            participantUpdatePayload.certificate_sent_date = new Date().toISOString();
+            await dataClient.entities.TrainingParticipant.update(record.id, {
+              certificate_sent_date: new Date().toISOString(),
+            });
           }
-
-          await updateParticipantCertificateRecord(
-            participant.id,
-            participantUpdatePayload
-          );
 
           if (!emailSent) {
             results.push({
+              id: participant.id,
               name: participant.professional_name,
               certificateNumber,
               success: false,
@@ -1494,7 +1272,6 @@ export default function CertificateManager({ training, participants = [], onClos
     },
     onSuccess: (results) => {
       setProcessing(false);
-      queryClient.invalidateQueries({ queryKey: ["all-certificate-numbers"] });
       const successCount = results.filter((r) => r.success).length;
       const failedResults = results.filter((r) => !r.success);
       const failCount = failedResults.length;
@@ -1918,7 +1695,7 @@ export default function CertificateManager({ training, participants = [], onClos
         </h3>
         <p className="text-sm text-slate-500 mt-1">
           {eligibleParticipants.length} participante(s) elegível(eis) •{" "}
-          {alreadySentCount} certificado(s) de participantes já enviado(s)
+          {alreadySentCount} certificado(s) de participantes já emitido(s)
         </p>
         <p className="text-sm text-slate-500 mt-1">
           Equipe cadastrada: {coordinatorCount} coordenador(es), {monitorCount} monitor(es),{" "}

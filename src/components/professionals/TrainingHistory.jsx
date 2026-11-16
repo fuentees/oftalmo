@@ -1,3 +1,4 @@
+import { downloadCertificate } from "@/lib/certificateArchive";
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
@@ -224,12 +225,12 @@ export default function TrainingHistory({ professional, entries }) {
                   )}
                 </div>
 
-                {participant.certificate_url && (
+                {(participant.certificate_url || participant.certificate_issued) && (
                   <div className="mt-4 pt-4 border-t">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => window.open(participant.certificate_url, "_blank")}
+                      onClick={() => downloadCertificate(participant).catch((error) => window.alert(error.message))}
                       className="w-full md:w-auto"
                     >
                       <Award className="h-4 w-4 mr-2" />

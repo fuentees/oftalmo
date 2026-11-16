@@ -1,17 +1,13 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
-import { generateParticipantCertificate } from "@/components/trainings/CertificateGenerator";
+import { downloadCertificate, getCertificateBlob } from "@/lib/certificateArchive";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
   resolveCertificateEmailTemplate,
   interpolateEmailTemplate,
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
-import {
-  resolveCertificateTemplate,
-  resolveCertificateTemplateByModel,
-} from "@/lib/certificateTemplate";
 import { isRepadronizacaoTraining } from "@/lib/trainingType";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,14 +22,13 @@ import {
   CheckCircle,
   ArrowLeft,
   FileText,
-  RefreshCw,
   Loader2,
   Mail,
   StickyNote,
   PlusCircle,
   Trash2,
 } from "lucide-react";
-import { addMonths, format } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 
@@ -492,23 +487,6 @@ export default function ParticipantProfile() {
     return repadronizedTrainingKeys.has(key);
   };
 
-  const repadBestScoreByTrainingKey = useMemo(() => {
-    const map = new Map();
-    participantTracomaResults.forEach((row) => {
-      const key = buildTrainingKey(row?.training_id, row?.training_title);
-      if (!key) return;
-      const kappaValue = Number(row?.kappa);
-      if (!Number.isFinite(kappaValue)) return;
-      const clampedKappa = Math.max(0, Math.min(1, kappaValue));
-      const score = clampedKappa * 100;
-      const previous = map.get(key);
-      if (!previous || score > previous.score) {
-        map.set(key, { kappa: clampedKappa, score });
-      }
-    });
-    return map;
-  }, [participantTracomaResults]);
-
   const participationsSorted = useMemo(
     () =>
       [...validParticipations].sort((a, b) => {
@@ -586,121 +564,15 @@ export default function ParticipantProfile() {
     return training;
   };
 
-  // Usa o mesmo modelo de certificado escolhido na emissão original (gravado
-  // em certificate_issue_metadata.template_model_id) — sem isso, baixar ou
-  // regenerar aqui podia trazer um modelo diferente do que foi realmente
-  // emitido, se o admin tivesse escolhido um modelo não-padrão na hora.
-  const resolveTemplateForParticipation = (participation, training) => {
-    const modelId = participation?.certificate_issue_metadata?.template_model_id;
-    if (modelId) return resolveCertificateTemplateByModel(modelId);
-    return resolveCertificateTemplate(training);
-  };
-
-  const buildCertificateParticipantPayload = (participation, training) => {
-    if (!participation) return participation;
-    const trainingKey = buildTrainingKey(
-      participation.training_id || training?.id,
-      participation.training_title || training?.title
-    );
-    const repadScore = repadBestScoreByTrainingKey.get(trainingKey);
-    if (!repadScore) return participation;
-    return {
-      ...participation,
-      certificate_kappa: repadScore.kappa,
-      certificate_score: repadScore.score,
-      grade:
-        participation.grade ??
-        Number(repadScore.score).toFixed(1).replace(".", ","),
-    };
-  };
-
   const handleDownloadCertificate = async (participation) => {
-    if (!participation) return;
-    if (participation.certificate_url) {
-      const link = document.createElement("a");
-      link.href = participation.certificate_url;
-      link.download = `certificado-${participation.professional_name || "participante"}.pdf`;
-      link.click();
-      return;
-    }
-
-    const training = resolveTrainingForCertificate(participation);
-    if (!training) return;
-    const participantPayload = buildCertificateParticipantPayload(
-      participation,
-      training
-    );
-    const templateOverride = await resolveTemplateForParticipation(participation, training);
-    const pdf = generateParticipantCertificate(
-      participantPayload,
-      training,
-      templateOverride
-    );
-    const fileName = `certificado-${participation.professional_name || "participante"}.pdf`;
-    pdf.save(fileName);
-  };
-
-  const handleRegenerateCertificate = async (participation) => {
-    if (!participation) return;
-    if (regeneratingId) return;
+    if (!participation || regeneratingId) return;
     setRegenStatus(null);
-    setEmailStatus(null);
     setRegeneratingId(participation.id);
-    const previewWindow = window.open("", "_blank");
     try {
-      const training = resolveTrainingForCertificate(participation);
-      if (!training) {
-        throw new Error("Treinamento não encontrado para regenerar.");
-      }
-      const participantPayload = buildCertificateParticipantPayload(
-        participation,
-        training
-      );
-      const templateOverride = await resolveTemplateForParticipation(participation, training);
-      const pdf = generateParticipantCertificate(
-        participantPayload,
-        training,
-        templateOverride
-      );
-      const pdfBlob = pdf.output("blob");
-      const safeName = toSafeFileName(participation.professional_name || "participante");
-      const fileName = `certificado-${safeName || "participante"}.pdf`;
-      const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
-      const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
-      const validityDate = training.validity_months
-        ? addMonths(new Date(), training.validity_months).toISOString().split("T")[0]
-        : participation.validity_date || null;
-
-      await dataClient.entities.TrainingParticipant.update(participation.id, {
-        certificate_url: file_url,
-        certificate_issued: true,
-        certificate_sent_date: new Date().toISOString(),
-        validity_date: validityDate,
-      });
-
-      const blobUrl = URL.createObjectURL(pdfBlob);
-      if (previewWindow) {
-        previewWindow.location.href = blobUrl;
-        previewWindow.focus();
-      } else {
-        window.open(blobUrl, "_blank");
-      }
-      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-      pdf.save(fileName);
-
-      await queryClient.invalidateQueries({ queryKey: ["participants"] });
-      setRegenStatus({
-        type: "success",
-        message: "PDF regenerado com sucesso.",
-      });
+      await downloadCertificate(participation);
+      setRegenStatus({ type: "success", message: "Segunda via baixada com os dados da emissão original." });
     } catch (error) {
-      if (previewWindow) {
-        previewWindow.close();
-      }
-      setRegenStatus({
-        type: "error",
-        message: error.message || "Erro ao regenerar o PDF.",
-      });
+      setRegenStatus({ type: "error", message: error.message });
     } finally {
       setRegeneratingId(null);
     }
@@ -721,39 +593,24 @@ export default function ParticipantProfile() {
 
     setSendingId(participation.id);
     try {
-      const training = resolveTrainingForCertificate(participation);
+      const training = participation.certificate_issue_metadata?.snapshot?.training || resolveTrainingForCertificate(participation);
       if (!training) {
         throw new Error("Treinamento não encontrado para enviar.");
       }
       const emailTemplate = await resolveCertificateEmailTemplate();
-      const participantPayload = buildCertificateParticipantPayload(
-        participation,
-        training
-      );
-      const templateOverride = await resolveTemplateForParticipation(participation, training);
-      const pdf = generateParticipantCertificate(
-        participantPayload,
-        training,
-        templateOverride
-      );
-      const pdfBlob = pdf.output("blob");
+      const pdfBlob = await getCertificateBlob(participation);
       const safeName = toSafeFileName(participation.professional_name || "participante");
       const fileName = `certificado-${safeName || "participante"}.pdf`;
-      const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
       const attachmentBase64 = await blobToBase64(pdfBlob);
       if (!attachmentBase64) {
         throw new Error("Falha ao gerar o anexo.");
       }
 
-      const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
-      const validityDate = training.validity_months
-        ? addMonths(new Date(), training.validity_months).toISOString().split("T")[0]
-        : participation.validity_date || null;
-
       const emailData = buildCertificateEmailData({
         training,
         nome: participation.professional_name,
         rg: participation.professional_rg,
+        numero_certificado: participation.certificate_number,
         role: "participant",
       });
       const subject = interpolateEmailTemplate(emailTemplate.subject, emailData).trim() ||
@@ -776,8 +633,6 @@ export default function ParticipantProfile() {
       await dataClient.entities.TrainingParticipant.update(participation.id, {
         certificate_sent_date: new Date().toISOString(),
         certificate_issued: true,
-        certificate_url: file_url,
-        validity_date: validityDate,
       });
 
       setEmailStatus({
@@ -885,22 +740,10 @@ export default function ParticipantProfile() {
                   size="sm"
                   variant="outline"
                   onClick={() => handleDownloadCertificate(participation)}
+                  disabled={regeneratingId !== null}
                 >
                   <FileText className="h-4 w-4 mr-1" />
-                  Baixar PDF
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleRegenerateCertificate(participation)}
-                  disabled={regeneratingId === participation.id}
-                >
-                  {regeneratingId === participation.id ? (
-                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4 mr-1" />
-                  )}
-                  Regenerar PDF
+                  {regeneratingId === participation.id ? "Baixando..." : "Baixar segunda via"}
                 </Button>
                 <Button
                   size="sm"

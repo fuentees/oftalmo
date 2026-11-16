@@ -1,37 +1,23 @@
 import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { dataClient } from "@/api/dataClient";
-import {
-  generateCoordinatorCertificate,
-  generateMonitorCertificate,
-  generateSpeakerCertificate,
-} from "@/components/trainings/CertificateGenerator";
+import { downloadCertificate, getCertificateBlob } from "@/lib/certificateArchive";
 import {
   DEFAULT_CERTIFICATE_EMAIL_TEMPLATE,
   resolveCertificateEmailTemplate,
   interpolateEmailTemplate,
   buildCertificateEmailData,
 } from "@/lib/certificateEmailTemplate";
-import {
-  resolveCertificateTemplate,
-  resolveCertificateTemplateByModel,
-} from "@/lib/certificateTemplate";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Award, Calendar, FileText, Loader2, Mail, RefreshCw } from "lucide-react";
+import { Award, Calendar, FileText, Loader2, Mail } from "lucide-react";
 import { format } from "date-fns";
 
 const ROLE_LABELS = {
   coordenador: "Coordenador",
   monitor: "Monitor",
   palestrante: "Palestrante",
-};
-
-const ROLE_GENERATORS = {
-  coordenador: generateCoordinatorCertificate,
-  monitor: generateMonitorCertificate,
-  palestrante: generateSpeakerCertificate,
 };
 
 const ROLE_EMAIL_KEYS = {
@@ -78,82 +64,18 @@ export default function StaffCertificatesPanel({ certificates = [], trainings = 
       title: record.training_title || "Treinamento",
     };
 
-  const resolveTemplateForRecord = async (record, training) => {
-    const modelId = record?.certificate_issue_metadata?.template_model_id;
-    if (modelId) return resolveCertificateTemplateByModel(modelId);
-    return resolveCertificateTemplate(training);
-  };
-
-  const buildStaffPayload = (record) => ({
-    name: record.professional_name || "",
-    email: record.professional_email || "",
-    rg: record.professional_rg || "",
-    cpf: record.professional_cpf || "",
-    document: "",
-    professional_id: record.professional_id || "",
-    lecture: record.lecture || "",
-    certificate_number: record.certificate_number || "",
-  });
-
-  const generatePdf = async (record) => {
-    const generator = ROLE_GENERATORS[record.role];
-    if (!generator) throw new Error("Tipo de certificado desconhecido.");
-    const training = resolveTraining(record);
-    const templateOverride = await resolveTemplateForRecord(record, training);
-    return generator(buildStaffPayload(record), training, templateOverride);
-  };
-
   const setStatus = (id, status) =>
     setStatusById((prev) => ({ ...prev, [id]: status }));
 
   const handleDownload = async (record) => {
-    if (record.certificate_url) {
-      const link = document.createElement("a");
-      link.href = record.certificate_url;
-      link.download = `certificado-${record.professional_name || "profissional"}.pdf`;
-      link.click();
-      return;
-    }
-    try {
-      const pdf = await generatePdf(record);
-      pdf.save(`certificado-${record.professional_name || "profissional"}.pdf`);
-    } catch (error) {
-      setStatus(record.id, { type: "error", message: error.message || "Erro ao baixar o PDF." });
-    }
-  };
-
-  const handleRegenerate = async (record) => {
     if (regeneratingId) return;
-    setStatus(record.id, null);
     setRegeneratingId(record.id);
-    const previewWindow = window.open("", "_blank");
+    setStatus(record.id, null);
     try {
-      const pdf = await generatePdf(record);
-      const pdfBlob = pdf.output("blob");
-      const safeName = toSafeFileName(record.professional_name || "profissional");
-      const fileName = `certificado-${safeName || "profissional"}.pdf`;
-      const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
-      const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
-
-      await dataClient.entities.TrainingStaffCertificate.update(record.id, {
-        certificate_url: file_url,
-      });
-
-      const blobUrl = URL.createObjectURL(pdfBlob);
-      if (previewWindow) {
-        previewWindow.location.href = blobUrl;
-        previewWindow.focus();
-      } else {
-        window.open(blobUrl, "_blank");
-      }
-      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-      pdf.save(fileName);
-
-      await queryClient.invalidateQueries({ queryKey: ["training-staff-certificates"] });
-      setStatus(record.id, { type: "success", message: "PDF regenerado com sucesso." });
+      await downloadCertificate(record);
+      setStatus(record.id, { type: "success", message: "Segunda via baixada com os dados da emissão original." });
     } catch (error) {
-      if (previewWindow) previewWindow.close();
-      setStatus(record.id, { type: "error", message: error.message || "Erro ao regenerar o PDF." });
+      setStatus(record.id, { type: "error", message: error.message });
     } finally {
       setRegeneratingId(null);
     }
@@ -168,17 +90,14 @@ export default function StaffCertificatesPanel({ certificates = [], trainings = 
     }
     setSendingId(record.id);
     try {
-      const training = resolveTraining(record);
+      const training = record.certificate_issue_metadata?.snapshot?.training || resolveTraining(record);
       const emailTemplate = await resolveCertificateEmailTemplate();
-      const pdf = await generatePdf(record);
-      const pdfBlob = pdf.output("blob");
+      const pdfBlob = await getCertificateBlob(record);
       const safeName = toSafeFileName(record.professional_name || "profissional");
       const fileName = `certificado-${safeName || "profissional"}.pdf`;
-      const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
       const attachmentBase64 = await blobToBase64(pdfBlob);
       if (!attachmentBase64) throw new Error("Falha ao gerar o anexo.");
 
-      const { file_url } = await dataClient.integrations.Core.UploadFile({ file: pdfFile });
 
       const emailData = buildCertificateEmailData({
         training,
@@ -201,9 +120,6 @@ export default function StaffCertificatesPanel({ certificates = [], trainings = 
         attachments: [{ filename: fileName, contentType: "application/pdf", content: attachmentBase64 }],
       });
 
-      await dataClient.entities.TrainingStaffCertificate.update(record.id, {
-        certificate_url: file_url,
-      });
 
       await queryClient.invalidateQueries({ queryKey: ["training-staff-certificates"] });
       setStatus(record.id, { type: "success", message: "E-mail reenviado com sucesso." });
@@ -278,23 +194,11 @@ export default function StaffCertificatesPanel({ certificates = [], trainings = 
                     )}
 
                     <div className="mt-3 flex flex-col gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleDownload(record)}>
+                      <Button size="sm" variant="outline" onClick={() => handleDownload(record)} disabled={regeneratingId !== null}>
                         <FileText className="h-4 w-4 mr-1" />
-                        Baixar PDF
+                        {regeneratingId === record.id ? "Baixando..." : "Baixar segunda via"}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleRegenerate(record)}
-                        disabled={regeneratingId === record.id}
-                      >
-                        {regeneratingId === record.id ? (
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-4 w-4 mr-1" />
-                        )}
-                        Regenerar PDF
-                      </Button>
+
                       <Button
                         size="sm"
                         variant="outline"

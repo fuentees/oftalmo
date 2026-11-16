@@ -1,3 +1,4 @@
+import { certificateEmissionDate } from "@/lib/certificateRecord";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
@@ -1027,7 +1028,7 @@ const buildParticipantCertificateTextData = (participant, training, template) =>
   const trainingPeriod = buildTrainingPeriod(trainingDates);
   const trainingDays = buildTrainingDays(trainingDates);
   const participantDate = trainingDates[0] || formatDateSafe(training?.dates?.[0]?.date);
-  const emissionDate = formatDateSafe(new Date());
+  const emissionDate = formatDateSafe(certificateEmissionDate(participant));
   const scoreInfo = resolveParticipantScore(participant);
   const documentInfo = resolveDocumentInfo({
     rg: participant?.professional_rg,
@@ -1076,7 +1077,7 @@ const buildStaffCertificateTextData = (staff, training, template, roleKey) => {
     trainingDates[0] ||
     formatDateSafe(training?.dates?.[0]?.date) ||
     formatDateSafe(new Date());
-  const emissionDate = formatDateSafe(new Date());
+  const emissionDate = formatDateSafe(certificateEmissionDate(staff));
   const documentInfo = resolveDocumentInfo({
     rg: staff?.rg,
     cpf: staff?.cpf,
@@ -1319,6 +1320,7 @@ export const generateParticipantCertificate = (
   const pdf = new jsPDF({
     orientation: "landscape",
     unit: "mm",
+    compress: true,
     format: "a4"
   });
 
@@ -1397,7 +1399,7 @@ export const generateParticipantCertificate = (
   const trainingPeriod = buildTrainingPeriod(trainingDates);
   const trainingDays = buildTrainingDays(trainingDates);
   const participantDate = trainingDates[0] || formatDateSafe(training?.dates?.[0]?.date);
-  const emissionDate = formatDateSafe(new Date());
+  const emissionDate = formatDateSafe(certificateEmissionDate(participant));
   const scoreInfo = resolveParticipantScore(participant);
   const documentInfo = resolveDocumentInfo({
     rg: participant.professional_rg,
@@ -1538,6 +1540,7 @@ const generateStaffCertificate = ({
   const pdf = new jsPDF({
     orientation: "landscape",
     unit: "mm",
+    compress: true,
     format: "a4",
   });
 
@@ -1619,7 +1622,7 @@ const generateStaffCertificate = ({
     trainingDates[0] ||
     formatDateSafe(training.dates?.[0]?.date) ||
     formatDateSafe(new Date());
-  const emissionDate = formatDateSafe(new Date());
+  const emissionDate = formatDateSafe(certificateEmissionDate(staff));
   const documentInfo = resolveDocumentInfo({
     rg: staff.rg,
     cpf: staff.cpf,

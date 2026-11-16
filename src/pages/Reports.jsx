@@ -1,3 +1,4 @@
+import { downloadCertificate } from "@/lib/certificateArchive";
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -1117,15 +1118,13 @@ export default function Reports() {
     {
       header: "Link",
       render: (row) =>
-        row.certificate_url ? (
-          <a
-            href={row.certificate_url}
-            target="_blank"
-            rel="noreferrer"
+        (row.certificate_url || row.certificate_issued) ? (
+          <button
+            onClick={() => downloadCertificate(row).catch((error) => window.alert(error.message))}
             className="text-blue-600 hover:underline text-xs"
           >
             Abrir
-          </a>
+          </button>
         ) : (
           "—"
         ),
